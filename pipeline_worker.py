@@ -1530,6 +1530,22 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                         "for %d transcript lines (%.1fs / %d = %.2fs each)",
                         _n, _audio_dur, _n, _step,
                     )
+                    # Persist so the Context Engine review page can show them.
+                    try:
+                        with _db() as _conn, _conn.cursor() as _cur:
+                            _cur.execute(
+                                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+                                "lyrics_timed JSONB;"
+                            )
+                            _cur.execute(
+                                "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
+                                (Json(timed_lyrics), project_id),
+                            )
+                            _conn.commit()
+                    except Exception as _e:
+                        logger.warning(
+                            "Stage 2: could not persist fallback lyrics_timed (%s)", _e
+                        )
             else:
                 has_real_ts = any(
                     float(t.get("end") or 0) > float(t.get("start") or 0)
