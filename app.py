@@ -2080,7 +2080,7 @@ def postprod_upload_logo(project_id: str, slot: str):
         return jsonify({"ok": False, "error": "No file provided"}), 400
     ext = Path(secure_filename(f.filename)).suffix.lower()
     if ext not in ALLOWED_LOGO:
-        return jsonify({"ok": False, "error": "Only PNG/JPG/WEBP files accepted"}), 400
+        return jsonify({"ok": False, "error": "Only PNG files accepted for logo overlays"}), 400
     raw_bytes = f.read()
     if len(raw_bytes) > 5 * 1024 * 1024:
         return jsonify({"ok": False, "error": "File too large (max 5 MB)"}), 400

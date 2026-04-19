@@ -2897,7 +2897,8 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
         per_shot_kb  = settings.get("per_shot_kb") or {}           # {str(idx): mode}
         transition   = settings.get("transition", "crossfade")
         trans_dur    = float(settings.get("transition_duration", 0.8))
-        colour_filter = settings.get("colour_filter", "original").lower().replace(" ", "-")
+        colour_filter    = settings.get("colour_filter", "original").lower().replace(" ", "-")
+        filter_intensity = max(0, min(100, int(settings.get("filter_intensity", 100))))
         aspect       = settings.get("aspect_ratio", "16:9")
         quality      = settings.get("quality", "1080p").lower().replace(" ", "-")
         logo_slots   = settings.get("logos") or {}                  # {slot: {r2_key, opacity, ...}}
