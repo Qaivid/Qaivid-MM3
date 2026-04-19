@@ -45,6 +45,17 @@
       </div>
     </div>
 
+    <!-- ── Timing summary ───────────────────────────────────── -->
+    {% if audio_dur and audio_dur > 0 %}
+    <div class="sc-timing-bar {% if dur_scale and dur_scale > 1.05 %}sc-timing-warn{% else %}sc-timing-ok{% endif %}">
+      <span>🎵 Audio: <strong>{{ "%.1f"|format(audio_dur) }}s</strong></span>
+      <span>🖼 Stills total: <strong>{{ "%.1f"|format(total_stills_dur) }}s</strong></span>
+      {% if dur_scale and dur_scale != 1.0 %}
+      <span>⚖ Quick video scales each shot <strong>×{{ "%.2f"|format(dur_scale) }}</strong> to match audio</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <!-- ── Bulk actions ─────────────────────────────────────── -->
     <div class="sc-bulk-actions">
       <button class="btn-secondary sc-btn-gen-all" id="btn-gen-all"

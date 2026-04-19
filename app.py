@@ -838,7 +838,28 @@ def project_detail(project_id: str):
                                or a.get("prompt") or p.get("prompt") or "")
             p["source"] = a.get("source")
             shots.append(p)
-        return render_template("stills_control.html", project=project, shots=shots)
+
+        # Compute total stills duration vs audio duration for display
+        total_stills_dur = round(sum(s.get("duration") or 0 for s in timeline), 1)
+        audio_data = project.get("audio_data") or {}
+        beat_times = audio_data.get("beat_times") or []
+        bpm = audio_data.get("bpm") or 0
+        if beat_times and bpm:
+            beat_interval = 60.0 / bpm
+            audio_dur = round(beat_times[-1] + beat_interval, 1)
+        else:
+            audio_dur = 0.0
+        # Scale factor applied to per-shot durations when generating quick video
+        scale = round(audio_dur / total_stills_dur, 3) if total_stills_dur > 0 and audio_dur > 0 else 1.0
+
+        return render_template(
+            "stills_control.html",
+            project=project,
+            shots=shots,
+            total_stills_dur=total_stills_dur,
+            audio_dur=audio_dur,
+            dur_scale=scale,
+        )
 
     if stage == "stills_review":
         shot_assets = _get_shot_assets(project_id)
@@ -1943,6 +1964,14 @@ def postprod_page(project_id: str):
                                     "complete", "stills_review"):
         flash("Post Production is not available yet — approve your stills first.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
+
+    # Populate wizard fields so _stage_header.html can render clickable back-steps
+    project["_actual_stage"] = project.get("stage") or "post_production"
+    project["_viewing_stage"] = project.get("stage") or "post_production"
+    project["_is_review_only"] = False
+    project["_viewing_as_admin"] = False
+    project["_owner_email"] = None
+    project["_actual_stage_label"] = STAGE_LABELS.get(project.get("stage", ""), "Post Production")
 
     shot_assets = _get_shot_assets(project_id)
     timeline = project.get("styled_timeline") or []

@@ -2997,25 +2997,18 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     logger.warning("Quick video: ffprobe duration failed — stills will not be extended",
                                    exc_info=True)
 
-            # ── Loop / extend stills to cover the full audio track ─────────────
-            # Audio is source of truth: cycle stills until they fill audio_dur.
+            # ── Proportionally scale stills to fill the full audio track ──────
+            # Audio is source of truth — never touch it, only stretch/compress
+            # each still's duration so the total exactly matches audio_dur.
             if audio_dur > 0.1:
                 total_stills_dur = sum(d for _, _, d in local_stills)
-                if total_stills_dur < audio_dur - 0.1:
-                    extended: list[tuple[int, Path, float]] = []
-                    remaining = audio_dur
-                    guard = 0
-                    while remaining > 0.05 and guard < 10_000:
-                        for idx, path, base_dur in local_stills:
-                            if remaining <= 0.05:
-                                break
-                            extended.append((idx, path, min(base_dur, remaining)))
-                            remaining -= min(base_dur, remaining)
-                            guard += 1
-                    local_stills = extended
+                if total_stills_dur > 0 and abs(total_stills_dur - audio_dur) > 0.5:
+                    scale = audio_dur / total_stills_dur
+                    local_stills = [(idx, path, max(0.5, dur * scale))
+                                    for idx, path, dur in local_stills]
                     logger.info(
-                        "Quick video: stills extended from %.1fs → %.1fs (audio) for project %s",
-                        total_stills_dur, audio_dur, project_id,
+                        "Quick video: scaled stills %.1fs → %.1fs (audio) ×%.3f for project %s",
+                        total_stills_dur, audio_dur, scale, project_id,
                     )
 
             # ── Build per-shot processed clips ────────────────────────────────
@@ -3298,23 +3291,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                                        (e.stderr or b"").decode("utf-8", "ignore")[:300])
 
             # ── Audio mux ─────────────────────────────────────────────────────
-            audio_local: Optional[Path] = None
-            audio_filename = row.get("audio_filename")
-            if audio_filename:
-                candidate = PROJECTS_ROOT / project_id / "uploads" / audio_filename
-                if candidate.is_file():
-                    audio_local = candidate
-                elif r2_storage.r2_available():
-                    try:
-                        data = r2_storage.download_bytes(
-                            f"projects/{project_id}/uploads/{audio_filename}"
-                        )
-                        candidate.parent.mkdir(parents=True, exist_ok=True)
-                        candidate.write_bytes(data)
-                        audio_local = candidate
-                    except Exception:
-                        logger.warning("Quick video: could not fetch audio for project %s", project_id)
-
+            # audio_local already fetched above; video duration now matches audio.
             muxed = work_dir / "muxed.mp4"
             if audio_local:
                 cmd = [
@@ -3323,7 +3300,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     "-i", str(audio_local),
                     "-map", "0:v:0", "-map", "1:a:0",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                    "-shortest", str(muxed),
+                    str(muxed),           # no -shortest: video already matches audio
                 ]
                 subprocess.run(cmd, check=True, capture_output=True)
                 current_video = muxed
