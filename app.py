@@ -779,7 +779,14 @@ def project_detail(project_id: str):
         )
 
     if stage == "context_review":
-        return render_template("stage_context.html", project=project)
+        with db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT lyrics_timed FROM projects WHERE id=%s", (project_id,)
+            )
+            _lrow = cur.fetchone()
+        lyrics_timed = list((_lrow or {}).get("lyrics_timed") or []) if _lrow else []
+        return render_template("stage_context.html", project=project,
+                               lyrics_timed=lyrics_timed)
 
     if stage == "assumptions_review":
         return render_template("stage_assumptions.html", project=project)

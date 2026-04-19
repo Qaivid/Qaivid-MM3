@@ -1457,7 +1457,8 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT text, genre, audio_data, context_packet, style_profile FROM projects WHERE id=%s",
+                "SELECT text, genre, audio_data, context_packet, style_profile, "
+                "lyrics_timed FROM projects WHERE id=%s",
                 (project_id,),
             )
             row = cur.fetchone()
@@ -1469,6 +1470,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         audio_data_blob = dict(row.get("audio_data") or {})
         audio_data_blob.pop("_pre_analysis", None)
         context_packet = dict(row.get("context_packet") or {})
+        timed_lyrics: list[dict] = list(row.get("lyrics_timed") or [])
         _raw_sp = dict(row.get("style_profile") or {})
         style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
 
@@ -1501,6 +1503,28 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         #           → GenericShotValidator.validate_sequence()  [mark+rewrite weak shots]
         #           → ShotVarietyEngine.assign_shot_types()     [enforce target distribution]
         #           → _enforce_variety_caps() post-pass         [hard caps face≤25%, body≤35%]
+        # Task #105 — if timed_lyrics were stored from Stage 0 but all timestamps
+        # are 0 (Gemini-only transcription, Whisper failed), generate approximate
+        # timestamps by distributing lines evenly over audio_data duration_seconds.
+        if timed_lyrics:
+            has_real_ts = any(
+                float(t.get("end") or 0) > float(t.get("start") or 0)
+                for t in timed_lyrics
+            )
+            if not has_real_ts:
+                _audio_dur = float(audio_data_blob.get("duration_seconds") or 0)
+                if _audio_dur > 0:
+                    _n = len(timed_lyrics)
+                    _step = _audio_dur / _n
+                    for _i, _t in enumerate(timed_lyrics):
+                        _t["start"] = round(_i * _step, 3)
+                        _t["end"] = round((_i + 1) * _step, 3)
+                    logger.info(
+                        "Stage 2: generated approximate timestamps for %d lyric lines "
+                        "(%.1fs / %d = %.2fs each)",
+                        _n, _audio_dur, _n, _step,
+                    )
+
         # Task #69 — pass the user-locked Creative Brief so the orchestrator
         # splices it into its freshly-regenerated context_packet (otherwise
         # director_note/central_metaphor would be lost when the storyboard
@@ -1510,6 +1534,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             audio_analytics=audio_data_blob,
             style_profile=style_profile,
             creative_brief=context_packet.get("creative_brief"),
+            timed_lyrics=timed_lyrics or None,
         ))
         raw_storyboard = pre_result.get("storyboard") or []
         raw_timeline = pre_result.get("timeline") or []

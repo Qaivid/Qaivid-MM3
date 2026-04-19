@@ -187,6 +187,41 @@
             </table>
         </div>
 
+        {% if lyrics_timed %}
+        <details class="ctx-timed-lyrics" style="margin: 18px 0;">
+            <summary style="cursor:pointer; font-weight:600; font-size:14px; padding:8px 0; list-style:none; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:18px;">▶</span>
+                Timed Lyrics <span class="ctx-override-hint">({{ lyrics_timed|length }} lines · Whisper timestamps)</span>
+            </summary>
+            <div style="margin-top:10px; overflow-x:auto;">
+                <table class="ctx-lm-table">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Time window</th><th>Lyric line</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for tl in lyrics_timed %}
+                    {% set s = tl.start | float %}
+                    {% set e = tl.end | float %}
+                    {% set sm = (s // 60) | int %}
+                    {% set ss = (s % 60) | int %}
+                    {% set em = (e // 60) | int %}
+                    {% set es = (e % 60) | int %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td style="white-space:nowrap; font-variant-numeric:tabular-nums; font-size:12px; color:var(--text-secondary, #888);">
+                            {{ "%d:%02d" | format(sm, ss) }} – {{ "%d:%02d" | format(em, es) }}
+                        </td>
+                        <td style="font-size:13px;">{{ tl.text or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endif %}
+
         <form method="post" action="{{ url_for('advance_stage_2', project_id=project.id) }}"
               class="ctx-override-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

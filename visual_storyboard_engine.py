@@ -475,6 +475,9 @@ class VisualStoryboardEngine:
                         "is_generic": shot_event.get("is_generic"),
                         "is_valid": shot_event.get("is_valid"),
                     },
+                    # Lyric timestamps from Whisper (Task #105)
+                    "lyric_start_seconds": shot.get("lyric_start_seconds"),
+                    "lyric_end_seconds":   shot.get("lyric_end_seconds"),
                 }
             )
 

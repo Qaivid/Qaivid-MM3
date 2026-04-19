@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from unified_context_engine_master import UnifiedContextEngine
 from visual_storyboard_engine import VisualStoryboardEngine
@@ -142,6 +142,7 @@ class ProductionOrchestrator:
         pre_analysis: Optional[Dict[str, Any]] = None,
         style_profile: Optional[Dict[str, Any]] = None,
         creative_brief: Optional[Dict[str, Any]] = None,
+        timed_lyrics: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         text = self._validate_text(text)
         genre = self._validate_genre(genre)
@@ -165,6 +166,27 @@ class ProductionOrchestrator:
         # central_metaphor are not lost when the storyboard rebuilds context.
         if creative_brief:
             context_packet["creative_brief"] = creative_brief
+
+        # Task #105 — attach Whisper lyric timestamps to line_meanings so the
+        # storyboard engine and assembly engine can anchor shots to real audio time.
+        if timed_lyrics:
+            line_meanings = context_packet.get("line_meanings") or []
+            n_timed = len(timed_lyrics)
+            attached = 0
+            for i, lm in enumerate(line_meanings):
+                if i < n_timed:
+                    ts = timed_lyrics[i]
+                    start_s = float(ts.get("start") or 0.0)
+                    end_s = float(ts.get("end") or 0.0)
+                    if end_s > start_s:
+                        lm["lyric_start_seconds"] = start_s
+                        lm["lyric_end_seconds"] = end_s
+                        attached += 1
+            if attached:
+                logger.info(
+                    "Attached lyric timestamps to %d/%d line_meanings",
+                    attached, len(line_meanings),
+                )
 
         storyboard = self.storyboard_engine.build_storyboard(
             context_packet, style_profile=style_profile

@@ -115,12 +115,84 @@ class RhythmicAssemblyEngine:
                     "shot_validation":          shot.get("shot_validation"),
                     "llm_expression_mode":      shot.get("llm_expression_mode"),
                     "variety_cap_reclassified": shot.get("variety_cap_reclassified"),
+                    # Lyric-anchor timestamps (Task #105)
+                    "lyric_start_seconds":      shot.get("lyric_start_seconds"),
+                    "lyric_end_seconds":        shot.get("lyric_end_seconds"),
                 }
             )
 
             current_timestamp += synced_duration
 
-        # ── Audio-duration normalization ──────────────────────────────────────
+        # ── Lyric-anchor mode (Task #105) ─────────────────────────────────────
+        # When shots carry Whisper-derived lyric_start_seconds, anchor each
+        # shot's start_time directly to the lyric timestamp instead of
+        # relying on the accumulated beat-formula sum.  Durations become the
+        # gaps between consecutive lyric anchors, guaranteeing that the
+        # visual timeline is synchronised with actual vocal phrasing.
+        # When ≥50% of shots have anchors we commit to anchor mode and skip
+        # the proportional normalization pass (which would overwrite start times).
+        n_anchors = sum(
+            1 for s in validated_storyboard
+            if s.get("lyric_start_seconds") is not None
+        )
+        use_lyric_anchors = timeline and n_anchors >= len(validated_storyboard) * 0.5
+
+        if use_lyric_anchors:
+            logger.info(
+                "Lyric-anchor mode: %d/%d shots anchored to Whisper timestamps",
+                n_anchors, len(validated_storyboard),
+            )
+            # Build a monotonically non-decreasing list of start times.
+            # Beat-snap each lyric timestamp; never go backwards past the
+            # minimum gap (min_shot_duration) from the previous shot.
+            anchor_starts: List[float] = []
+            prev_end = 0.0
+            for s in validated_storyboard:
+                lts = s.get("lyric_start_seconds")
+                if lts is not None:
+                    raw = float(lts)
+                    snapped = round(round(raw / beat_duration) * beat_duration, 3)
+                    start = max(snapped, prev_end)
+                else:
+                    start = prev_end
+                anchor_starts.append(start)
+                prev_end = start + self.min_shot_duration
+
+            # Assign durations as gaps between consecutive anchor starts.
+            for i, entry in enumerate(timeline):
+                start = anchor_starts[i]
+                if i + 1 < len(anchor_starts):
+                    dur = max(self.min_shot_duration,
+                              round(anchor_starts[i + 1] - start, 3))
+                else:
+                    dur = (
+                        max(self.min_shot_duration, round(audio_duration - start, 3))
+                        if audio_duration > 0
+                        else entry["duration"]
+                    )
+                entry["start_time"] = round(start, 3)
+                entry["duration"] = round(dur, 3)
+                entry["end_time"] = round(start + dur, 3)
+                entry["start_beat"] = round(start / beat_duration)
+                entry["bar_index"] = int(start // bar_duration) + 1
+                entry["lyric_anchored"] = True
+
+            # Reconcile last shot against audio_duration.
+            if audio_duration > 0 and timeline:
+                last = timeline[-1]
+                residual = round(audio_duration - last["end_time"], 3)
+                if abs(residual) > 0.05:
+                    adjusted = max(self.min_shot_duration,
+                                   round(last["duration"] + residual, 3))
+                    last["duration"] = adjusted
+                    last["end_time"] = round(last["start_time"] + adjusted, 3)
+                    logger.debug(
+                        "Lyric-anchor reconciliation: residual=%.3fs applied to last shot",
+                        residual,
+                    )
+            return timeline
+
+        # ── Audio-duration normalization (non-anchor mode) ────────────────────
         # If the accumulated shot durations don't cover the full audio track,
         # scale them proportionally so they fill the audio exactly.  Beat-snap
         # is re-applied after scaling so the rhythm relationship is preserved,
@@ -211,6 +283,8 @@ class RhythmicAssemblyEngine:
                     "shot_validation":          shot.get("shot_validation"),
                     "llm_expression_mode":      shot.get("llm_expression_mode"),
                     "variety_cap_reclassified": shot.get("variety_cap_reclassified"),
+                    "lyric_start_seconds":      shot.get("lyric_start_seconds"),
+                    "lyric_end_seconds":        shot.get("lyric_end_seconds"),
                 }
             )
 
