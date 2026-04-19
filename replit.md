@@ -1,20 +1,36 @@
-# Qaivid MetaMind 1.0
+# Qaivid MetaMind 3.1
 
-A web-based SaaS that turns lyrics, poems, scripts, and stories into beat-synced cinematic shot lists, powered by an 8-module Python pipeline (audio analysis -> context extraction -> visual storyboard -> rhythmic timeline -> style grading -> JSON export).
+A web-based SaaS that turns lyrics, poems, scripts, and stories into beat-synced cinematic music videos, powered by a multi-stage user-gated pipeline (audio analysis → context extraction → visual storyboard → rhythmic timeline → style grading → image/video generation).
 
 ## Architecture
 
 - **Backend**: Flask (`app.py`) running on port 5000
 - **Database**: Replit PostgreSQL via `psycopg` (connection via `DATABASE_URL`)
 - **Frontend**: Server-rendered Jinja2 templates + plain CSS (no build step)
-- **Pipeline engines** (do not modify):
+- **Core pipeline engines**:
   - `audio_processor.py` - extracts BPM, beats, segments, energy from audio
   - `unified_context_engine_master.py` - GPT-4o context extraction (theme, speaker, location)
-  - `visual_storyboard_engine.py` - generates visual prompts per beat segment
+  - `visual_storyboard_engine.py` - generates visual prompts per beat; MM3.1 adds cinematic beat enrichment via `_attach_optional_cinematic_layers()`
   - `rhythmic_assembly_engine.py` - assembles a beat-synced timeline
-  - `style_grading_engine.py` - applies cinematic style profiles
+  - `style_grading_engine.py` - applies cinematic style profiles; passes through MM3.1 fields
   - `asset_export_module.py` - exports JSON for downstream tooling
-  - `production_orchestrator.py` - coordinates all engines end-to-end
+  - `production_orchestrator.py` - coordinates all engines end-to-end (context→storyboard→timeline)
+- **MM3.1 Cinematic Beat Engine** (all fail-safe, loaded optionally inside VSE):
+  - `cinematic_beat_engine.py` - emotion → behaviour → beat objects (fixes "static portrait" problem)
+  - `behaviour_mapper.py` - emotion label → concrete physical behaviour library
+  - `shot_event_builder.py` - beat → shot event (action, trigger, contrast, shift, environment)
+  - `shot_variety_engine.py` - cycles shot_type across 8 types (portrait/movement/wide_env/etc.)
+  - `generic_shot_validator.py` - flags and filters generic shots
+  - `camera_motivation_engine.py` - subject action → camera_plan (movement, style, intensity)
+  - `still_keyframe_prompt_builder.py` - event → still image prompt
+  - `motion_render_prompt_builder.py` - event → motion/video prompt
+  - `motif_progression_engine.py` - tracks motif stages (introduction→resolution) across sequence
+  - `chorus_evolution_engine.py` - evolves repeated chorus shots (hope→numbness arc)
+  - `cinematic_beat_orchestrator.py` - standalone debug/test utility for the 10-module chain
+- **Updated core modules** (MM3.1 backward-compatible replacements):
+  - `cinematography_engine.py` - adds ACTION_TO_RIG, CAMERA_PLAN_TO_RIG, event-signal rig selection
+  - `shot_prompt_composer.py` - event lead sentence now preferred over raw meaning in prompts
+- **Auth**: `auth.py` - login_required + admin_required decorators
 - **Web layer**: `app.py`, `templates/`, `static/`
 
 ## Required Secrets

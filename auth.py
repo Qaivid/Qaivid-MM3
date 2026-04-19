@@ -112,6 +112,20 @@ def login_required(view):
     return wrapper
 
 
+def admin_required(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        user = current_user()
+        if not user:
+            flash("Please sign in to continue.", "error")
+            return redirect(url_for("login", next=request.path))
+        if not user.get("is_admin"):
+            flash("Admin access required.", "error")
+            return redirect(url_for("index"))
+        return view(*args, **kwargs)
+    return wrapper
+
+
 # --- bootstrap admin ---------------------------------------------------------
 
 def bootstrap_admin() -> None:

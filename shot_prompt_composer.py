@@ -1,26 +1,21 @@
 """Tight, model-friendly prompt composer for per-shot still generation.
 
-Replaces the wall-of-text styled_visual_prompt (which dumps director's
-notes, story spine, ambiguity handling, etc. into the prompt and is
-truncated mid-sentence at 1800 chars) with a focused 60-180 word
-visual description that diffusion models can actually attend to.
-
-The composer is deterministic and works directly off the structured
-fields produced by the upstream engines plus the linked character /
-location records. The full styled_visual_prompt remains in the DB for
-inspection, UI display, and editing — but the model only ever sees
-this clean version unless the user has hand-edited the prompt
-(``user_override``), in which case the user's verbatim text is used
-with the cinematography prefix and quality boosters reattached.
-
-Returns:
-    A tuple ``(prompt, negative_prompt)`` ready for FAL.
+MM3.1 upgrade:
+- Preserves the existing public API:
+    compose_image_prompt(...)
+    QUALITY_BOOSTERS
+    DEFAULT_NEGATIVE
+- Keeps prompts compact and model-friendly.
+- Stops throwing away the most important cinematic information when present:
+  action, trigger, object interaction, environment interaction, emotional shift,
+  and visual contrast from the new MM3.1 shot-event layer.
+- Falls back cleanly to the legacy MM3 shot fields when no new data exists.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 # ── Quality boosters and negative prompt (Flux-tuned) ─────────────────
@@ -37,7 +32,7 @@ DEFAULT_NEGATIVE = (
     "amateur photography, bad composition"
 )
 
-# ── Phrases to strip — these are director instructions, not visual prose
+# ── Phrases to strip — director/system instructions, not visual prose ─
 _INSTRUCTION_PATTERNS = [
     r"Maintain (?:strict )?character continuity[^.]*\.",
     r"Performance:[^.]*\.",
@@ -65,8 +60,15 @@ _INSTRUCTION_PATTERNS = [
     r"Addressee context:[^.]*\.",
     r"Intensity:[^.]*\.",
 ]
-
 _INSTRUCTION_RE = re.compile("|".join(_INSTRUCTION_PATTERNS), re.IGNORECASE)
+
+
+_ENV_LABEL_RE = re.compile(
+    r"\b(?:world\s*dna|location\s*dna|geography|architecture(?:\s*style)?|"
+    r"domestic\s*setting|characteristic\s*setting|characteristic\s*time|"
+    r"time\s*of\s*day|season)\s*:\s*",
+    re.IGNORECASE,
+)
 
 
 def _trim(s: Optional[str], limit: int = 140) -> str:
@@ -74,7 +76,7 @@ def _trim(s: Optional[str], limit: int = 140) -> str:
     sentence/clause boundary where possible."""
     if not s:
         return ""
-    s = " ".join(s.split())
+    s = " ".join(str(s).split())
     if len(s) <= limit:
         return s.rstrip(" .,;:") + "."
     cut = s[:limit]
@@ -83,6 +85,22 @@ def _trim(s: Optional[str], limit: int = 140) -> str:
         if i > limit * 0.5:
             return cut[:i].rstrip(" .,;:") + "."
     return cut.rstrip(" .,;:") + "."
+
+
+def _clean_text(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    s = _INSTRUCTION_RE.sub("", str(s))
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
+def _event_payload(shot: dict) -> Dict[str, Any]:
+    for key in ("shot_event", "event", "cinematic_beat"):
+        payload = shot.get(key)
+        if isinstance(payload, dict) and payload:
+            return payload
+    return {}
 
 
 def _gendered_subject(character: Optional[dict]) -> str:
@@ -107,7 +125,6 @@ def _gendered_subject(character: Optional[dict]) -> str:
     elif gender in {"female", "woman"}:
         parts.append("woman")
     else:
-        # Skip the gender word entirely — let PuLID + ref image carry it.
         parts.append("person")
 
     role = (character.get("role") or "").strip()
@@ -120,10 +137,7 @@ def _gendered_subject(character: Optional[dict]) -> str:
 def _wardrobe_clause(character: Optional[dict]) -> str:
     if not character:
         return ""
-    # Prefer per-shot scene-appropriate wardrobe (from wardrobe_engine) over
-    # the single global default stored on the character record.  This is how
-    # real filmmaking works: the face stays the same across shots but the
-    # clothes change with the scene (wedding → home → field → performance).
+
     wardrobe = (
         character.get("wardrobe_override")
         or character.get("wardrobe")
@@ -131,8 +145,6 @@ def _wardrobe_clause(character: Optional[dict]) -> str:
     ).strip()
     grooming = (character.get("grooming") or "").strip()
 
-    # Normalise: strip LLM "The [subject] wears " prefix so we can re-attach
-    # a clean "wearing" ourselves, avoiding "wearing The woman wears…"
     _WEARS_PREFIX = re.compile(
         r"^(?:the\s+\w+(?:\s+\w+)?\s+wears?\s+|wearing\s+)",
         re.IGNORECASE,
@@ -145,17 +157,7 @@ def _wardrobe_clause(character: Optional[dict]) -> str:
     return _trim("wearing " + ", ".join(bits), 160)
 
 
-_ENV_LABEL_RE = re.compile(
-    r"\b(?:world\s*dna|location\s*dna|geography|architecture(?:\s*style)?|"
-    r"domestic\s*setting|characteristic\s*setting|characteristic\s*time|"
-    r"time\s*of\s*day|season)\s*:\s*",
-    re.IGNORECASE,
-)
-
-
 def _dedupe_phrases(s: str) -> str:
-    """Remove case-insensitive duplicate comma/period-separated phrases
-    while preserving order. Avoids 'Punjabi village, ..., Punjabi village'."""
     seen: set[str] = set()
     out: list[str] = []
     for chunk in re.split(r"\s*[,.]\s*", s):
@@ -171,12 +173,6 @@ def _dedupe_phrases(s: str) -> str:
 
 
 def _environment_clause(location: Optional[dict], shot: dict) -> str:
-    """Build a concrete environment description.
-
-    Prefers the linked location plate's name + description, falls back to
-    the shot's environment_profile when no location is linked. Strips
-    upstream field labels ('World DNA:', 'geography:', etc.) and
-    deduplicates repeated phrases."""
     raw = ""
     if location:
         name = (location.get("name") or "").strip()
@@ -196,7 +192,6 @@ def _environment_clause(location: Optional[dict], shot: dict) -> str:
         env = shot.get("environment_profile") or {}
         if isinstance(env, dict):
             loc_dna = (env.get("location_dna") or "").strip()
-            # Prefer scene_frame (shot-specific location) over global characteristic_setting
             sf = env.get("scene_frame") or {}
             scene_loc = (sf.get("location") or "").strip() if isinstance(sf, dict) else ""
             scene_tod = (sf.get("time_of_day") or "").strip() if isinstance(sf, dict) else ""
@@ -204,7 +199,6 @@ def _environment_clause(location: Optional[dict], shot: dict) -> str:
             if isinstance(wa, dict):
                 season = (wa.get("season") or "").strip()
                 arch = (wa.get("architecture_style") or "").strip()
-                # Support both new names and legacy pre-rename names
                 char_setting = (
                     wa.get("characteristic_setting")
                     or wa.get("domestic_setting")
@@ -215,7 +209,6 @@ def _environment_clause(location: Optional[dict], shot: dict) -> str:
                     or wa.get("time_of_day")
                     or ""
                 ).strip()
-                # Scene-specific values take priority over cultural defaults
                 active_location = scene_loc or char_setting
                 active_time = scene_tod or char_time
                 bits = [b for b in (loc_dna, active_location, arch, season, active_time) if b]
@@ -254,9 +247,70 @@ def _palette_clause(shot: dict) -> str:
 
 
 def _meaning_sentence(shot: dict) -> str:
-    """The shot's actual story beat — must lead the prompt."""
     m = (shot.get("meaning") or "").strip()
     return _trim(m, 200) if m else ""
+
+
+def _shot_event_lead_sentence(shot: dict) -> str:
+    """Prefer a concrete event/action sentence over a generic mood sentence."""
+    event = _event_payload(shot)
+    action = _clean_text(event.get("action") or event.get("subject_action"))
+    trigger = _clean_text(event.get("trigger") or event.get("trigger_event"))
+    shift = _clean_text(event.get("emotional_shift"))
+    contrast = _clean_text(event.get("visual_contrast"))
+
+    parts: list[str] = []
+
+    if action:
+        parts.append(action.rstrip("."))
+    if trigger:
+        parts.append(f"triggered by {trigger.rstrip('.')}")
+    if shift:
+        parts.append(f"capturing {shift.rstrip('.')}")
+    elif contrast:
+        parts.append(f"carrying the tension of {contrast.rstrip('.')}")
+
+    if not parts:
+        return ""
+    return _trim(", ".join(parts), 220)
+
+
+def _object_interaction_clause(shot: dict) -> str:
+    event = _event_payload(shot)
+    obj = _clean_text(event.get("object_interaction") or event.get("object_usage"))
+    if not obj:
+        return ""
+    return _trim(f"Object interaction: {obj}", 160)
+
+
+def _environment_interaction_clause(shot: dict) -> str:
+    event = _event_payload(shot)
+    env = _clean_text(event.get("environment_interaction") or event.get("environment_usage"))
+    if not env:
+        return ""
+    return _trim(f"Environment interaction: {env}", 180)
+
+
+def _contrast_clause(shot: dict) -> str:
+    event = _event_payload(shot)
+    contrast = _clean_text(event.get("visual_contrast"))
+    if not contrast:
+        return ""
+    return _trim(f"Visual tension: {contrast}", 180)
+
+
+def _camera_plan_clause(shot: dict) -> str:
+    event = _event_payload(shot)
+    cp = shot.get("camera_plan") or event.get("camera_plan") or {}
+    if not isinstance(cp, dict):
+        return ""
+    movement = (cp.get("movement") or "").strip()
+    style = (cp.get("style") or "").strip()
+    intensity = (cp.get("intensity") or "").strip()
+    bits = [b for b in (movement, style, intensity) if b]
+    if not bits:
+        return ""
+    return _trim("Camera behaviour: " + ", ".join(bits), 120)
 
 
 def compose_image_prompt(
@@ -271,85 +325,91 @@ def compose_image_prompt(
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
-    Args:
-        shot: The styled timeline shot dict.
-        character: The linked character row (with ethnicity, gender,
-            age_range, wardrobe, grooming, role, etc.) or None.
-        location: The linked location row (name, description, mood) or None.
-        has_character_ref: True if a character reference image will be
-            passed to the model. Adds a continuity cue saying "the same
-            person as the reference image" so non-PuLID layers (style,
-            wardrobe, complexion) stay consistent across all shots.
-        has_environment_ref: True if an env reference will be passed.
-            Adds a parallel continuity cue for setting consistency.
-        user_override: If the user hand-edited the prompt in the UI,
-            their verbatim text is used (with cine_prefix + boosters
-            reattached). The composer is bypassed entirely.
-        cine_prefix: Optional cinematography prefix from
-            ``cinematography_engine.lens_clause`` to prepend.
-
-    Returns:
-        ``(prompt, negative_prompt)`` — the prompt is sentence-aware
-        trimmed to roughly ~1100 chars, leaving headroom for cine_prefix
-        and continuity cues.
+    Existing MM3 signature preserved.
     """
-    # ── 1. User override path: keep the user's verbatim text ────────
+    # ── 1. User override path: keep user's text, but still clean hard instructions ─
     if user_override and user_override.strip():
-        body = user_override.strip()
-        # Still strip director instructions if the user pasted them in.
-        body = _INSTRUCTION_RE.sub("", body).strip()
-        body = re.sub(r"\s+", " ", body)
-        prompt = _attach_envelope(body, cine_prefix, has_character_ref,
-                                  has_environment_ref)
+        body = _clean_text(user_override)
+        prompt = _attach_envelope(
+            body,
+            cine_prefix,
+            has_character_ref,
+            has_environment_ref,
+        )
         return prompt, DEFAULT_NEGATIVE
 
-    # ── 2. Compose from structured fields ───────────────────────────
     parts: list[str] = []
 
-    # Subject sentence (leads the prompt — most-attended position)
+    # 1) Lead with the strongest available shot idea.
+    event_lead = _shot_event_lead_sentence(shot)
     meaning = _meaning_sentence(shot)
     subject = _gendered_subject(character)
-    if meaning:
+
+    if event_lead:
+        parts.append(event_lead)
+        parts.append(f"Subject: {subject}.")
+        if meaning:
+            parts.append(f"Story beat: {meaning}".rstrip(".") + ".")
+    elif meaning:
         parts.append(meaning)
         parts.append(f"Subject: {subject}.")
     else:
         parts.append(f"{subject.capitalize()}.")
 
-    # Wardrobe / grooming (drives identity-consistent appearance)
+    # 2) Identity / wardrobe
     wardrobe = _wardrobe_clause(character)
     if wardrobe:
         parts.append(wardrobe.capitalize())
 
-    # Environment
+    # 3) Environment
     env = _environment_clause(location, shot)
     if env:
         parts.append(f"Setting: {env}".rstrip(".") + ".")
 
-    # Framing + lens
+    # 4) MM3.1 action support
+    obj_clause = _object_interaction_clause(shot)
+    if obj_clause:
+        parts.append(obj_clause)
+
+    env_interaction = _environment_interaction_clause(shot)
+    if env_interaction:
+        parts.append(env_interaction)
+
+    contrast = _contrast_clause(shot)
+    if contrast:
+        parts.append(contrast)
+
+    # 5) Framing + camera
     framing = _framing_clause(shot)
     if framing:
         parts.append(f"Framing: {framing}".rstrip(".") + ".")
 
-    # Motion — only emit when cine_prefix is empty, otherwise the
-    # cinematography rig already encodes movement + lens + DoF and
-    # repeating it doubles the model's signal toward the same look
-    # (e.g. "shallow depth of field" appearing twice in every prompt).
+    # If there is no explicit cine_prefix from cinematography_engine, still pass motion/camera hints.
     if not (cine_prefix or "").strip():
-        motion = _motion_clause(shot)
-        if motion:
-            parts.append(f"Camera: {motion}".rstrip(".") + ".")
+        cam_plan = _camera_plan_clause(shot)
+        if cam_plan:
+            parts.append(cam_plan)
+        else:
+            motion = _motion_clause(shot)
+            if motion:
+                parts.append(f"Camera: {motion}".rstrip(".") + ".")
 
-    # Palette + lighting
+    # 6) Lighting / palette last
     palette = _palette_clause(shot)
     if palette:
         parts.append(palette.capitalize())
 
     body = " ".join(p for p in parts if p)
+    body = _clean_text(body)
     body = re.sub(r"\.\.+", ".", body)
     body = re.sub(r"\s+", " ", body).strip()
 
-    prompt = _attach_envelope(body, cine_prefix, has_character_ref,
-                              has_environment_ref)
+    prompt = _attach_envelope(
+        body,
+        cine_prefix,
+        has_character_ref,
+        has_environment_ref,
+    )
     return prompt, DEFAULT_NEGATIVE
 
 
@@ -359,24 +419,9 @@ def _attach_envelope(
     has_character_ref: bool,
     has_environment_ref: bool,
 ) -> str:
-    """Attach cinematography prefix, continuity cues, and quality boosters.
-
-    The continuity cues are the key piece for cross-shot consistency:
-    when a reference image is being passed to the model (PuLID for
-    character, image-to-image for environment), the text prompt
-    explicitly tells the model to match that reference's appearance,
-    wardrobe, complexion, lighting, and palette. Without these cues,
-    the prompt's other descriptors can pull the output away from the
-    reference.
-    """
+    """Attach cinematography prefix, continuity cues, and quality boosters."""
     continuity_cues: list[str] = []
     if has_character_ref:
-        # Lock FACE and COMPLEXION only — NOT wardrobe.
-        # The reference plate establishes the character's identity (face,
-        # skin tone, bone structure). Clothing and jewelry must be driven by
-        # the per-shot wardrobe description so the character's look changes
-        # between scenes (casual courtyard ≠ wedding ceremony ≠ wheat-field
-        # walk), exactly as real film costume design works.
         continuity_cues.append(
             "Match the exact face, complexion, and skin tone of the character "
             "reference image — same identity across all shots. "
@@ -393,13 +438,10 @@ def _attach_envelope(
     if cine and not cine.endswith("."):
         cine += "."
 
-    # Order: cinematography → body → continuity cues → quality boosters.
     pieces = [cine, body, cues, QUALITY_BOOSTERS]
     full = " ".join(p for p in pieces if p).strip()
     full = re.sub(r"\s+", " ", full)
 
-    # Sentence-aware trim to ~1100 chars (well under FAL's effective
-    # attention window, leaving room for the cues and boosters).
     if len(full) <= 1100:
         return full
     cut = full[:1100]

@@ -1,0 +1,118 @@
+You are integrating a safe MM3.1 upgrade into the existing Qaivid Metamind 3.0 codebase.
+
+Goal:
+Keep the current app fully working, preserve all existing routes, data flow, and outputs, but infuse the newly uploaded MM3.1 files so the system becomes more cinematic, more action-driven, and less static in still prompts and render prompts.
+
+Important integration rule:
+Do NOT rebuild the whole system.
+Do NOT break existing contracts.
+Do NOT rename existing public methods unless absolutely necessary.
+Do NOT remove current fallback logic.
+Instead, wire the new files into the old structure as an additive upgrade with graceful fallback.
+
+New files uploaded:
+
+cinematic_beat_engine.py
+behaviour_mapper.py
+shot_event_builder.py
+shot_variety_engine.py
+generic_shot_validator.py
+camera_motivation_engine.py
+still_keyframe_prompt_builder.py
+motion_render_prompt_builder.py
+motif_progression_engine.py
+chorus_evolution_engine.py
+
+Edited existing files uploaded:
+
+visual_storyboard_engine.py
+cinematography_engine.py
+shot_prompt_composer.py
+production_orchestrator.py
+pipeline_worker.py
+
+What these new files are for:
+
+Add a cinematic beat layer between context understanding and prompt generation.
+Convert emotion into behaviour and shot events, not just mood description.
+Add shot variety so outputs are not repetitive portraits.
+Reject generic non-cinematic shots where possible.
+Make camera behaviour respond to action/event, not only emotion.
+Separate still-image prompt logic from motion/render prompt logic.
+Evolve motifs and choruses across the song instead of repeating flat visuals.
+
+Required integration behaviour:
+
+Keep the old pipeline working even if some new MM3.1 fields are missing.
+If new MM3.1 modules are present, use them first.
+If they fail or return nothing useful, fall back to the old MM3 logic.
+No route, endpoint, or UI should break because of these upgrades.
+The app must still run even if only part of the new cinematic data is available.
+
+Required data flow:
+
+unified_context_engine_master.py continues producing the context packet.
+visual_storyboard_engine.py should now enrich each shot with cinematic-beat-aware information when possible.
+production_orchestrator.py should safely run the new modules in sequence.
+pipeline_worker.py should use the orchestrator without changing the outer app contract.
+cinematography_engine.py should use shot_event and camera_plan when available, otherwise old emotion/style logic.
+shot_prompt_composer.py should preserve action/event language instead of stripping it out.
+still_keyframe_prompt_builder.py should be used for frozen cinematic still prompts when the upgraded path is active.
+motion_render_prompt_builder.py should be used for motion/render prompts when the upgraded path is active.
+
+Integration order:
+
+Load context as before.
+Generate or attach cinematic beats.
+Convert beats into shot events.
+Apply motif progression and chorus evolution where relevant.
+Apply camera motivation.
+Apply shot variety.
+Validate/filter generic shots if possible without collapsing the sequence.
+Build still prompts and motion prompts.
+Fall back to legacy prompt generation wherever upgraded data is absent.
+
+Very important technical requirements:
+
+Preserve backward compatibility.
+Preserve existing imports if they are still used elsewhere.
+Add optional imports for the new MM3.1 files.
+Use try/except or graceful import fallbacks where needed.
+Do not hard-crash if one of the new modules is missing.
+Do not create circular imports.
+Do not overwrite old fields unless necessary; prefer adding new fields such as:
+cinematic_beat
+shot_event
+shot_type
+shot_validation
+camera_plan
+still_prompt
+motion_prompt
+
+Expected output improvement:
+The upgraded system should stop producing mostly static prompts like:
+“sad woman looking away in cinematic light”
+and start producing prompts with actual cinematic behaviour, for example:
+“she pauses while hanging clothes after hearing a motorbike outside the courtyard wall”
+
+Testing requirement:
+After integration, run a full test on one real song input and verify that each shot now contains as many of these as possible:
+
+cinematic_beat
+shot_event
+camera_plan
+shot_type
+still_prompt
+motion_prompt
+
+Success criteria:
+
+The old app still works.
+No existing functionality is broken.
+New MM3.1 fields are infused into the pipeline.
+Still prompts gain more cinematic action and variety.
+Motion/render prompts become more event-driven and visually directed.
+Chorus repetition and motif recurrence become more progressive and less repetitive.
+
+Final instruction:
+Integrate these files carefully into the current structure, keep everything stable, and make the smallest clean changes necessary to improve real video output quality rather than just code appearance.

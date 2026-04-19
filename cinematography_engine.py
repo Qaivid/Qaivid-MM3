@@ -1,18 +1,18 @@
 """Cinematography Engine — deterministic per-shot rig + motion derivation.
 
-Adds a structured `cinematography` block to every storyboard shot so the
-downstream stills, video, and continuity prompts share a single canonical
-camera taxonomy instead of free-form prose.
-
-The engine is intentionally non-LLM: given (shot, context_packet,
-style_profile) it always returns the same block, and gracefully degrades
-(returns ``None`` for legacy shots that lack the inputs).
-
-Public surface:
-  - ``RIGS``                     — canonical rig vocabulary
-  - ``EMOTION_TO_RIG``           — emotion → ranked rig list
-  - ``derive(shot, ctx, sp)``    — return the cinematography block (or None)
-  - ``motion_prompt_from_block(block)`` — short Kling-friendly motion line
+MM3.1 upgrade:
+- Keeps the existing public API:
+  - RIGS
+  - EMOTION_TO_RIG
+  - derive(...)
+  - motion_prompt_from_block(...)
+  - lens_clause(...)
+- Preserves anti-repeat rig logic, style affinity, lens selection, and
+  direction cycling from MM3.
+- Adds safe support for MM3.1 shot-event driven camera planning:
+  - If a shot carries `shot_event` / `camera_plan`, those signals are used first.
+  - Falls back to the legacy emotion/style/mode pathway when new fields are absent.
+- Does not require any other new module to be present.
 """
 from __future__ import annotations
 
@@ -31,8 +31,7 @@ RIGS: tuple[str, ...] = (
     "handheld",
 )
 
-# ---- Emotion → rig affinity (ranked, first match wins) ---------------------
-# Keys are *substrings* matched against the shot's emotional signal.
+# ---- Emotion → rig affinity (legacy support) -------------------------------
 EMOTION_TO_RIG: Dict[str, List[str]] = {
     "grief":      ["tripod", "dolly", "steadicam"],
     "longing":    ["dolly", "tripod", "steadicam"],
@@ -60,10 +59,12 @@ EMOTION_TO_RIG: Dict[str, List[str]] = {
     "drift":      ["dolly", "steadicam", "drone"],
 }
 
-_DEFAULT_RANK: List[str] = ["dolly", "steadicam", "tripod", "gimbal", "crane",
-                            "handheld", "drone", "vehicle"]
+_DEFAULT_RANK: List[str] = [
+    "dolly", "steadicam", "tripod", "gimbal",
+    "crane", "handheld", "drone", "vehicle"
+]
 
-# ---- Style preset rig affinities (cinematic_style id → ranked rigs) --------
+# ---- Style preset rig affinities -------------------------------------------
 STYLE_RIG_AFFINITY: Dict[str, List[str]] = {
     "cinematic_natural":   ["dolly", "steadicam", "tripod", "crane"],
     "noir_dramatic":       ["dolly", "tripod", "crane", "steadicam"],
@@ -83,8 +84,38 @@ MODE_RIG_BIAS: Dict[str, List[str]] = {
     "macro":       ["tripod", "dolly"],
 }
 
-# ---- Lens recommendations per rig + mode -----------------------------------
-# Default lens used only when the framing_directive provides no usable cue.
+# ---- Event / action → rig affinity (new MM3.1 layer) -----------------------
+ACTION_TO_RIG: Dict[str, List[str]] = {
+    "walk":        ["steadicam", "gimbal", "dolly"],
+    "approach":    ["dolly", "steadicam", "gimbal"],
+    "move":        ["gimbal", "steadicam", "dolly"],
+    "run":         ["gimbal", "handheld", "vehicle"],
+    "pause":       ["tripod", "dolly", "steadicam"],
+    "freeze":      ["tripod", "dolly", "steadicam"],
+    "stop":        ["tripod", "dolly", "steadicam"],
+    "turn":        ["dolly", "steadicam", "gimbal"],
+    "look back":   ["dolly", "steadicam", "tripod"],
+    "drop":        ["handheld", "tripod", "gimbal"],
+    "fall":        ["handheld", "tripod", "gimbal"],
+    "slip":        ["handheld", "gimbal", "tripod"],
+    "reach":       ["dolly", "steadicam", "tripod"],
+    "lift":        ["tripod", "dolly", "steadicam"],
+    "sit":         ["tripod", "dolly", "steadicam"],
+    "wait":        ["tripod", "dolly", "steadicam"],
+    "check":       ["tripod", "dolly", "steadicam"],
+    "hold":        ["tripod", "dolly", "steadicam"],
+}
+
+CAMERA_PLAN_TO_RIG: Dict[str, List[str]] = {
+    "locked":      ["tripod", "dolly", "steadicam"],
+    "static":      ["tripod", "dolly", "steadicam"],
+    "follow":      ["steadicam", "gimbal", "dolly"],
+    "slow_push":   ["dolly", "steadicam", "tripod"],
+    "snap":        ["handheld", "gimbal", "tripod"],
+    "orbit":       ["gimbal", "steadicam", "dolly"],
+    "sweep":       ["crane", "gimbal", "drone"],
+}
+
 LENS_FOR_MODE: Dict[str, str] = {
     "face":        "50mm portrait, medium depth",
     "body":        "50mm natural, medium depth",
@@ -93,9 +124,6 @@ LENS_FOR_MODE: Dict[str, str] = {
     "macro":       "100mm macro, very shallow",
 }
 
-# Framing-directive keyword → lens. Specific patterns first; the first
-# matching keyword wins. This breaks the "every face shot is 85mm/shallow
-# DoF" monoculture by letting framing cues drive lens choice.
 LENS_BY_FRAMING: List[tuple[tuple[str, ...], str]] = [
     (("extreme close-up", "macro detail", "tear-line", "eyes and brow"),
      "100mm macro, very shallow depth of field"),
@@ -121,19 +149,6 @@ LENS_BY_FRAMING: List[tuple[tuple[str, ...], str]] = [
      "85mm short-tele, shallow stop"),
 ]
 
-
-def _pick_lens(mode: str, framing_directive: str) -> str:
-    fd = (framing_directive or "").lower()
-    for kws, lens in LENS_BY_FRAMING:
-        if any(kw in fd for kw in kws):
-            return lens
-    return LENS_FOR_MODE.get(mode, "50mm natural, medium depth")
-
-
-# ---- Direction templates (rig, mode) → motion direction --------------------
-# When multiple shots land on the same (rig, mode), the engine cycles through
-# the available directions using ``shot_index`` so seven dolly+face shots in a
-# row don't all "slow push-in".
 _DIRECTION_VARIANTS: Dict[tuple[str, str], List[str]] = {
     ("dolly", "face"):        ["slow push-in", "slow pull-back", "slight lateral arc"],
     ("dolly", "body"):        ["slow push-in", "lateral track", "pull-back reveal"],
@@ -159,6 +174,14 @@ _DIRECTION_VARIANTS: Dict[tuple[str, str], List[str]] = {
 }
 
 
+def _pick_lens(mode: str, framing_directive: str) -> str:
+    fd = (framing_directive or "").lower()
+    for kws, lens in LENS_BY_FRAMING:
+        if any(kw in fd for kw in kws):
+            return lens
+    return LENS_FOR_MODE.get(mode, "50mm natural, medium depth")
+
+
 def _direction_for(rig: str, mode: str, intensity: float,
                    shot_index: Optional[int] = None) -> str:
     variants = _DIRECTION_VARIANTS.get((rig, mode))
@@ -166,7 +189,6 @@ def _direction_for(rig: str, mode: str, intensity: float,
         if shot_index is not None and len(variants) > 1:
             return variants[int(shot_index) % len(variants)]
         return variants[0]
-    # Fallback for combos not in the variants table.
     if rig == "tripod":
         return "locked frame, micro breath only"
     if rig == "dolly":
@@ -202,6 +224,20 @@ def _intensity_for(intensity: float) -> str:
     return "low"
 
 
+def _event_payload(shot: Dict[str, Any]) -> Dict[str, Any]:
+    return (
+        shot.get("shot_event")
+        or shot.get("event")
+        or shot.get("cinematic_beat")
+        or {}
+    ) if isinstance(shot, dict) else {}
+
+
+def _camera_plan_payload(shot: Dict[str, Any], event_payload: Dict[str, Any]) -> Dict[str, Any]:
+    cp = shot.get("camera_plan") or event_payload.get("camera_plan") or {}
+    return cp if isinstance(cp, dict) else {}
+
+
 def _emotion_signal(shot: Dict[str, Any], ctx: Dict[str, Any]) -> str:
     parts = [
         str(shot.get("meaning") or ""),
@@ -212,11 +248,41 @@ def _emotion_signal(shot: Dict[str, Any], ctx: Dict[str, Any]) -> str:
     spk = ctx.get("speaker") or {}
     if isinstance(spk, dict):
         parts.append(str(spk.get("emotional_state") or ""))
+    event_payload = _event_payload(shot)
+    parts.extend([
+        str(event_payload.get("emotional_shift") or ""),
+        str(event_payload.get("visual_contrast") or ""),
+    ])
+    return " ".join(parts).lower()
+
+
+def _event_signal(shot: Dict[str, Any]) -> str:
+    event_payload = _event_payload(shot)
+    parts = [
+        str(event_payload.get("action") or ""),
+        str(event_payload.get("subject_action") or ""),
+        str(event_payload.get("trigger") or ""),
+        str(event_payload.get("trigger_event") or ""),
+        str(event_payload.get("camera_motivation") or ""),
+        str((shot.get("camera_plan") or {}).get("movement") or ""),
+        str((shot.get("camera_plan") or {}).get("style") or ""),
+    ]
     return " ".join(parts).lower()
 
 
 def _emotion_rank(signal: str) -> List[str]:
     for kw, ranked in EMOTION_TO_RIG.items():
+        if kw in signal:
+            return ranked
+    return list(_DEFAULT_RANK)
+
+
+def _event_rank(signal: str) -> List[str]:
+    # Camera-plan terms take precedence when present.
+    for kw, ranked in CAMERA_PLAN_TO_RIG.items():
+        if kw in signal:
+            return ranked
+    for kw, ranked in ACTION_TO_RIG.items():
         if kw in signal:
             return ranked
     return list(_DEFAULT_RANK)
@@ -234,33 +300,38 @@ def _mode_rank(mode: str) -> List[str]:
     return list(MODE_RIG_BIAS.get(mode, _DEFAULT_RANK))
 
 
-def _pick_rig(emotion_rank: List[str], style_rank: List[str],
-              mode_rank: List[str], director_note: str = "",
-              prev_rig: Optional[str] = None,
-              recent_rigs: Optional[List[str]] = None,
-              emotion_signal: str = "",
-              mode: str = "") -> tuple[str, str]:
-    """Score-blend the three rankings; return (chosen_rig, justification).
-
-    ``prev_rig`` and ``recent_rigs`` apply an anti-repeat penalty so a long
-    run of same-mode shots doesn't all collapse onto the same rig (which
-    is what produces the "every shot is a dolly push-in" monotony).
-
-    ``emotion_signal`` and ``mode`` are used to build a plain-language
-    justification sentence shown to the user in the storyboard UI."""
+def _pick_rig(
+    event_rank: List[str],
+    emotion_rank: List[str],
+    style_rank: List[str],
+    mode_rank: List[str],
+    director_note: str = "",
+    prev_rig: Optional[str] = None,
+    recent_rigs: Optional[List[str]] = None,
+    emotion_signal: str = "",
+    event_signal: str = "",
+    mode: str = "",
+) -> tuple[str, str]:
+    """Blend event + emotion + style + mode into a rig choice."""
     note = (director_note or "").lower()
     score: Dict[str, float] = {r: 0.0 for r in RIGS}
+
+    for i, rig in enumerate(event_rank):
+        if rig in score:
+            score[rig] += (len(event_rank) - i) * 1.9
+
     for i, rig in enumerate(emotion_rank):
         if rig in score:
-            score[rig] += (len(emotion_rank) - i) * 1.5
+            score[rig] += (len(emotion_rank) - i) * 1.3
+
     for i, rig in enumerate(style_rank):
         if rig in score:
             score[rig] += (len(style_rank) - i) * 1.0
+
     for i, rig in enumerate(mode_rank):
         if rig in score:
-            score[rig] += (len(mode_rank) - i) * 1.2
+            score[rig] += (len(mode_rank) - i) * 1.1
 
-    # Director-note keyword boosts
     boost_map = {
         "handheld":  ["handheld", "verite", "vérité", "raw", "doc-style"],
         "drone":     ["aerial", "drone", "epic wide"],
@@ -275,9 +346,6 @@ def _pick_rig(emotion_rank: List[str], style_rank: List[str],
         if any(kw in note for kw in kws):
             score[rig] += 6.0
 
-    # Anti-repeat: penalize the immediately previous rig and any rig that
-    # has dominated the last few shots. Penalty is bounded so a strongly
-    # justified rig can still re-win when needed.
     if prev_rig and prev_rig in score:
         score[prev_rig] -= 3.0
     if recent_rigs:
@@ -289,7 +357,6 @@ def _pick_rig(emotion_rank: List[str], style_rank: List[str],
 
     chosen = max(score.items(), key=lambda kv: kv[1])[0]
 
-    # Plain-language justification sentence for the storyboard UI.
     _rig_labels: Dict[str, str] = {
         "tripod":    "A locked tripod",
         "dolly":     "A dolly move",
@@ -305,15 +372,16 @@ def _pick_rig(emotion_rank: List[str], style_rank: List[str],
     has_director_note = bool(note and any(
         kw in note for kws in boost_map.values() for kw in kws
     ))
-    is_emotion_top = bool(emotion_rank and emotion_rank[0] == chosen)
-    is_emotion_near = not is_emotion_top and chosen in emotion_rank[:2]
-    is_style_top = bool(style_rank and style_rank[0] == chosen)
-    is_mode_top = bool(mode_rank and mode_rank[0] == chosen)
 
-    matched_emotion = next(
-        (kw for kw in EMOTION_TO_RIG if kw in (emotion_signal or "")), None
-    )
-    # Map internal stem keys to readable display labels
+    event_top = bool(event_rank and event_rank[0] == chosen)
+    emotion_top = bool(emotion_rank and emotion_rank[0] == chosen)
+    style_top = bool(style_rank and style_rank[0] == chosen)
+    mode_top = bool(mode_rank and mode_rank[0] == chosen)
+
+    matched_action = next((kw for kw in ACTION_TO_RIG if kw in (event_signal or "")), None)
+    matched_plan = next((kw for kw in CAMERA_PLAN_TO_RIG if kw in (event_signal or "")), None)
+    matched_emotion = next((kw for kw in EMOTION_TO_RIG if kw in (emotion_signal or "")), None)
+
     _emotion_display: Dict[str, str] = {
         "nostalg":   "nostalgic",
         "celebrate": "celebratory",
@@ -332,31 +400,18 @@ def _pick_rig(emotion_rank: List[str], style_rank: List[str],
 
     if has_director_note:
         justification = f"{rig_label} — the director's note called for this choice."
-    elif is_emotion_top and emotion_display:
-        justification = (
-            f"{rig_label} captures the {emotion_display} tone best"
-            f" — it's the strongest match for that emotional weight."
-        )
-    elif is_emotion_near and emotion_display:
-        justification = (
-            f"{rig_label} complements the {emotion_display} mood in this shot."
-        )
-    elif is_emotion_top:
-        justification = (
-            f"{rig_label} is the best match for the emotional tone of this shot."
-        )
-    elif is_style_top:
-        justification = (
-            f"{rig_label} fits the visual style chosen for this project."
-        )
-    elif is_mode_top and mode:
-        justification = (
-            f"{rig_label} is well-suited to {mode} shots."
-        )
+    elif matched_plan and event_top:
+        justification = f"{rig_label} best supports the planned camera behaviour for this shot."
+    elif matched_action and event_top:
+        justification = f"{rig_label} best responds to the action happening in this shot."
+    elif emotion_top and emotion_display:
+        justification = f"{rig_label} captures the {emotion_display} tone best."
+    elif style_top:
+        justification = f"{rig_label} fits the visual style chosen for this project."
+    elif mode_top and mode:
+        justification = f"{rig_label} is well-suited to {mode} shots."
     else:
-        justification = (
-            f"{rig_label} is a balanced choice for this shot."
-        )
+        justification = f"{rig_label} is a balanced choice for this shot."
 
     return chosen, justification
 
@@ -368,27 +423,30 @@ def derive(
     prev_block: Optional[Dict[str, Any]] = None,
     recent_blocks: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Return the structured cinematography block for one shot.
-
-    Returns ``None`` if shot lacks an expression_mode (legacy / malformed).
-
-    ``prev_block`` and ``recent_blocks`` (if provided) feed the anti-repeat
-    rig penalty and the direction-cycling so consecutive same-mode shots
-    don't all collapse onto the same lens / rig / direction. Backward
-    compatible — both default to None.
-    """
+    """Return the structured cinematography block for one shot."""
     if not isinstance(shot, dict):
         return None
+
     mode = (shot.get("expression_mode") or "").lower()
     if mode not in ("face", "body", "environment", "symbolic", "macro"):
-        return None
+        # Safe fallback if a newer shot uses shot_type but missed expression_mode.
+        shot_type = (shot.get("shot_type") or "").lower()
+        mode_map = {
+            "portrait": "face",
+            "movement": "body",
+            "wide_environment": "environment",
+            "empty_frame": "environment",
+            "object_detail": "macro",
+            "reflection": "symbolic",
+            "silhouette": "symbolic",
+            "over_shoulder": "body",
+        }
+        mode = mode_map.get(shot_type, "face")
 
     ctx = context_packet or {}
     sp = style_profile or {}
 
-    # Backward-compat guard (Task #69): legacy projects that have no locked
-    # Creative Brief should fall through with no rig block — only opt-in once
-    # the user has approved a brief variant.
+    # Backward-compatible guard from MM3.
     chosen_brief = ((ctx.get("creative_brief") or {}).get("chosen") or {})
     if not isinstance(chosen_brief, dict) or not chosen_brief:
         return None
@@ -402,10 +460,14 @@ def derive(
         intensity = 0.5
     intensity = max(0.0, min(1.0, intensity))
 
-    signal = _emotion_signal(shot, ctx)
-    e_rank = _emotion_rank(signal)
-    s_rank = _style_rank(sp)
-    m_rank = _mode_rank(mode)
+    event_payload = _event_payload(shot)
+    event_signal = _event_signal(shot)
+    emotion_signal = _emotion_signal(shot, ctx)
+
+    event_rank = _event_rank(event_signal)
+    emotion_rank = _emotion_rank(emotion_signal)
+    style_rank = _style_rank(sp)
+    mode_rank = _mode_rank(mode)
 
     prev_rig = (prev_block or {}).get("rig") if isinstance(prev_block, dict) else None
     recent_rigs = [
@@ -413,18 +475,55 @@ def derive(
         if isinstance(b, dict) and (b or {}).get("rig")
     ]
 
-    rig, justification = _pick_rig(e_rank, s_rank, m_rank, director_note,
-                                   prev_rig=prev_rig, recent_rigs=recent_rigs,
-                                   emotion_signal=signal, mode=mode)
+    rig, justification = _pick_rig(
+        event_rank,
+        emotion_rank,
+        style_rank,
+        mode_rank,
+        director_note,
+        prev_rig=prev_rig,
+        recent_rigs=recent_rigs,
+        emotion_signal=emotion_signal,
+        event_signal=event_signal,
+        mode=mode,
+    )
 
-    # Shot-index drives direction cycling so seven dolly+face shots in a
-    # row rotate through push-in / pull-back / lateral-arc instead of all
-    # being "slow push-in".
     shot_index = shot.get("shot_index") or shot.get("timeline_index")
-    direction = _direction_for(rig, mode, intensity, shot_index=shot_index)
+
+    camera_plan = _camera_plan_payload(shot, event_payload)
+    plan_movement = str(camera_plan.get("movement") or "").strip().lower()
+    plan_style = str(camera_plan.get("style") or "").strip().lower()
+    plan_intensity = str(camera_plan.get("intensity") or "").strip().lower()
+
+    if plan_movement == "none":
+        direction = "locked frame, micro breath only"
+    elif plan_movement == "follow":
+        direction = "floating follow" if rig in ("steadicam", "gimbal") else "tracking pace"
+    elif plan_movement == "slow_push":
+        direction = "slow push-in"
+    elif plan_movement == "snap":
+        direction = "snap emphasis on action"
+    else:
+        direction = _direction_for(rig, mode, intensity, shot_index=shot_index)
+
     speed = _speed_for(intensity)
+    if plan_intensity == "high":
+        speed = "fast"
+    elif plan_intensity == "medium":
+        speed = "moderate"
+    elif plan_intensity == "low":
+        speed = "slow"
+
     intensity_label = _intensity_for(intensity)
+    if plan_intensity in ("low", "medium", "high"):
+        intensity_label = plan_intensity
+
     lens = _pick_lens(mode, str(shot.get("framing_directive") or ""))
+
+    if plan_style == "locked" and rig != "tripod":
+        justification += " The shot plan prefers a restrained, controlled frame."
+    elif plan_style in ("steady", "cinematic") and rig in ("steadicam", "gimbal", "dolly"):
+        justification += " The shot plan benefits from smooth controlled motion."
 
     return {
         "rig": rig,

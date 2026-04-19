@@ -251,13 +251,15 @@ class StyleGradingEngine:
                     "motion_prompt": str(shot.get("motion_prompt", "")).strip(),
                     "framing_directive": str(shot.get("framing_directive", "")).strip(),
                     "composition_note": str(shot.get("composition_note", "")).strip(),
-<<<<<<< HEAD
                     # Cinematography rig block (Task #69) — pass-through so
                     # styled_timeline keeps the structured rig/lens info that
                     # the storyboard UI badges + video generator depend on.
                     "cinematography": shot.get("cinematography"),
-=======
->>>>>>> a59a5ef (Task #50 — Storyboard Cinematic Quality Overhaul (with code review fixes))
+                    # MM3.1 cinematic beat pass-throughs
+                    "cinematic_beat": shot.get("cinematic_beat"),
+                    "shot_event": shot.get("shot_event"),
+                    "shot_type": shot.get("shot_type", ""),
+                    "shot_validation": shot.get("shot_validation"),
                 }
             )
 

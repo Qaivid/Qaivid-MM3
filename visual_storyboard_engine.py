@@ -228,6 +228,10 @@ class VisualStoryboardEngine:
         self._scene_map: List[Dict[str, Any]] = []
         self._total_shots: int = 0
 
+        # Optional MM3.1 cinematic layer caches.
+        self._cinematic_beats_by_index: Dict[int, Dict[str, Any]] = {}
+        self._shot_events_by_index: Dict[int, Dict[str, Any]] = {}
+
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -243,6 +247,7 @@ class VisualStoryboardEngine:
     ) -> List[Dict[str, Any]]:
         ctx = self._validate_context_packet(context_packet)
         self._active_style_profile: Dict[str, Any] = style_profile or {}
+        ctx = self._attach_optional_cinematic_layers(ctx)
 
         # Reset rotation state so each build_storyboard() call is deterministic,
         # even if the engine instance is reused across multiple projects.
@@ -253,6 +258,8 @@ class VisualStoryboardEngine:
         self._body_lang_last_keys = None
         self._body_lang_cycle_idx = 0
         self._cine_history: List[Dict[str, Any]] = []
+        self._cinematic_beats_by_index = self._index_by_line(ctx.get("cinematic_beats", []))
+        self._shot_events_by_index = self._index_by_line(ctx.get("shot_events", []))
 
         storyboard: List[Dict[str, Any]] = []
         total_shots = len(ctx["line_meanings"])
@@ -262,14 +269,14 @@ class VisualStoryboardEngine:
         self._total_shots = total_shots
 
         for shot in ctx["line_meanings"]:
-            arc_position = self._arc_position(shot["line_index"], total_shots)
+            shot_index = shot["line_index"]
+            beat = self._cinematic_beats_by_index.get(shot_index, {})
+            shot_event = self._shot_events_by_index.get(shot_index, {})
+            arc_position = self._arc_position(shot_index, total_shots)
 
             # Track chorus repeats for escalation offset
             if shot["repeat_status"] == "repeat" and not self._prev_was_repeat:
                 self._chorus_count += 1
-                # Apply an offset to each mode counter so chorus 2 starts
-                # at a different position than chorus 1, and chorus 3 differs
-                # from chorus 2.
                 if self._chorus_count > 1:
                     for mode in self._frame_counters:
                         self._frame_counters[mode] = (
@@ -277,12 +284,7 @@ class VisualStoryboardEngine:
                         ) % self._mode_table_len(mode)
             self._prev_was_repeat = (shot["repeat_status"] == "repeat")
 
-            # Track face/body run for mandatory env cutaway
             mode = shot["expression_mode"]
-
-            # Evaluate whether this env/symbolic shot should be a wide breath cutaway
-            # — must check BEFORE resetting the counter on non-face/body shots.
-            # Trigger after >= 4 consecutive face/body shots (spec: every 4 shots).
             pending_cutaway = (
                 self._shots_since_env_cutaway >= 4
                 and mode in ("environment", "symbolic")
@@ -293,11 +295,9 @@ class VisualStoryboardEngine:
             else:
                 self._shots_since_env_cutaway = 0
 
-            # Derive framing directive and pick motion template index
             frame_directive, frame_idx = self._pick_frame(mode)
             framing_bias = self._derive_framing_bias(mode, frame_idx)
 
-            # Override: mandatory environment breath shot
             if pending_cutaway:
                 frame_directive = (
                     "wide establishing cutaway — breathe the space before "
@@ -305,15 +305,16 @@ class VisualStoryboardEngine:
                 )
                 self._shots_since_env_cutaway = 0
 
-            # Body language lookup — non-body shots break the consecutive run
             if mode == "body":
-                body_lang = self._lookup_body_language(shot)
+                base_body_lang = self._lookup_body_language(shot)
             else:
-                body_lang = ""
+                base_body_lang = ""
                 self._body_lang_last_keys = None
                 self._body_lang_cycle_idx = 0
 
-            # Cinematography Engine — deterministic structured rig/motion block.
+            body_lang = self._augment_body_language(base_body_lang, beat, shot_event)
+            action_prompt = self._build_action_prompt(shot, beat, shot_event)
+
             try:
                 from cinematography_engine import (
                     derive as _cine_derive,
@@ -329,19 +330,21 @@ class VisualStoryboardEngine:
             if cinematography:
                 self._cine_history.append(cinematography)
 
+            motion_prompt = self._build_motion_prompt(mode, frame_idx, shot)
             if cinematography:
-                motion_prompt = _cine_motion(cinematography) or self._build_motion_prompt(mode, frame_idx, shot)
-            else:
-                motion_prompt = self._build_motion_prompt(mode, frame_idx, shot)
+                motion_prompt = _cine_motion(cinematography) or motion_prompt
+            motion_prompt = self._override_motion_prompt_with_event(motion_prompt, shot_event)
 
-            # Per-scene location override (routes each shot to its scene's setting)
-            scene_override = self._scene_override_for(shot["line_index"], total_shots)
+            scene_override = self._scene_override_for(shot_index, total_shots)
+            camera_prompt = self._build_camera_prompt(ctx, shot, frame_directive)
+            camera_prompt = self._augment_camera_prompt(camera_prompt, shot_event)
 
             prompt_segments = {
                 "character": self._build_character_prompt(ctx, shot),
                 "environment": self._build_environment_prompt(ctx, shot, scene_override=scene_override),
+                "action": action_prompt,
                 "performance": self._build_performance_prompt(ctx, shot, body_lang),
-                "camera": self._build_camera_prompt(ctx, shot, frame_directive),
+                "camera": camera_prompt,
                 "motif": self._build_motif_prompt(ctx, shot),
                 "continuity": self._build_continuity_prompt(ctx, shot, arc_position),
                 "cinematography": self._build_cinematography_prompt(cinematography),
@@ -370,8 +373,8 @@ class VisualStoryboardEngine:
 
             storyboard.append(
                 {
-                    "shot_index": shot["line_index"],
-                    "shot_id": f"shot_{shot['line_index']}",
+                    "shot_index": shot_index,
+                    "shot_id": f"shot_{shot_index}",
                     "source_line": shot["text"],
                     "meaning": shot["meaning"],
                     "function": shot["function"],
@@ -390,7 +393,6 @@ class VisualStoryboardEngine:
                     "scene_name": (scene_override or {}).get("scene_name", ""),
                     "scene_location": (scene_override or {}).get("location", ""),
                     "rendering_notes": self._build_rendering_notes(ctx, shot, arc_position),
-                    # richer MetaMind surface
                     "literal_meaning": shot["literal_meaning"],
                     "implied_meaning": shot["implied_meaning"],
                     "emotional_meaning": shot["emotional_meaning"],
@@ -407,15 +409,176 @@ class VisualStoryboardEngine:
                     "locked_assumptions": dict(ctx["locked_assumptions"]),
                     "dramatic_premise": ctx["dramatic_premise"],
                     "prompt_segments": prompt_segments,
-                    # Cinematic variety fields (Task #50)
                     "framing_directive": frame_directive,
                     "composition_note": body_lang,
                     "motion_prompt": motion_prompt,
                     "cinematography": cinematography,
+                    "cinematic_beat": beat,
+                    "shot_event": shot_event,
+                    "shot_type": shot_event.get("shot_type", ""),
+                    "shot_validation": {
+                        "is_generic": shot_event.get("is_generic"),
+                        "is_valid": shot_event.get("is_valid"),
+                    },
                 }
             )
 
         return storyboard
+
+    # =========================================================================
+    # OPTIONAL MM3.1 CINEMATIC LAYER
+    # =========================================================================
+
+    def _attach_optional_cinematic_layers(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach MM3.1 cinematic beats and shot events if the new modules exist.
+
+        This method is intentionally fail-soft so the existing MM3 pipeline keeps
+        working even while files are being uploaded one by one.
+        """
+        enriched = dict(ctx)
+        line_meanings = list(enriched.get("line_meanings", []))
+
+        try:
+            if not enriched.get("cinematic_beats"):
+                from cinematic_beat_engine import CinematicBeatEngine
+                engine = CinematicBeatEngine()
+                enriched["cinematic_beats"] = engine.generate_beats(enriched, self._active_style_profile)
+        except Exception:
+            enriched.setdefault("cinematic_beats", [])
+
+        try:
+            beats = list(enriched.get("cinematic_beats", []))
+            if beats and not enriched.get("shot_events"):
+                from shot_event_builder import ShotEventBuilder
+                builder = ShotEventBuilder()
+                shot_events = builder.build_sequence(beats)
+                for idx, event in enumerate(shot_events):
+                    line = line_meanings[idx] if idx < len(line_meanings) else {}
+                    event.setdefault("line_index", line.get("line_index", idx + 1))
+                    event.setdefault("is_chorus", line.get("repeat_status") == "repeat")
+                enriched["shot_events"] = shot_events
+        except Exception:
+            enriched.setdefault("shot_events", [])
+
+        try:
+            if enriched.get("shot_events"):
+                from camera_motivation_engine import CameraMotivationEngine
+                camera_engine = CameraMotivationEngine()
+                enriched["shot_events"] = camera_engine.apply_to_sequence(enriched["shot_events"])
+        except Exception:
+            pass
+
+        try:
+            if enriched.get("shot_events"):
+                from motif_progression_engine import MotifProgressionEngine
+                motif_engine = MotifProgressionEngine()
+                enriched["shot_events"] = motif_engine.apply_full_progression(enriched["shot_events"])
+        except Exception:
+            pass
+
+        try:
+            if enriched.get("shot_events"):
+                from chorus_evolution_engine import ChorusEvolutionEngine
+                chorus_engine = ChorusEvolutionEngine()
+                enriched["shot_events"] = chorus_engine.apply_evolution(enriched["shot_events"])
+        except Exception:
+            pass
+
+        try:
+            if enriched.get("shot_events"):
+                from shot_variety_engine import ShotVarietyEngine
+                variety_engine = ShotVarietyEngine()
+                enriched["shot_events"] = variety_engine.apply_variety(enriched["shot_events"])
+        except Exception:
+            pass
+
+        try:
+            if enriched.get("shot_events"):
+                from generic_shot_validator import GenericShotValidator
+                validator = GenericShotValidator()
+                enriched["shot_events"] = validator.validate_sequence(enriched["shot_events"])
+        except Exception:
+            pass
+
+        return enriched
+
+    def _index_by_line(self, items: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+        indexed: Dict[int, Dict[str, Any]] = {}
+        for idx, item in enumerate(items or [], start=1):
+            if not isinstance(item, dict):
+                continue
+            line_index = item.get("line_index") or idx
+            indexed[int(line_index)] = item
+        return indexed
+
+    def _augment_body_language(
+        self,
+        base_body_lang: str,
+        beat: Dict[str, Any],
+        shot_event: Dict[str, Any],
+    ) -> str:
+        parts: List[str] = []
+        if base_body_lang:
+            parts.append(base_body_lang)
+        action = str(shot_event.get("action") or beat.get("subject_action") or "").strip()
+        obj = str(shot_event.get("object_interaction") or beat.get("object_usage") or "").strip()
+        trigger = str(shot_event.get("trigger") or beat.get("trigger_event") or "").strip()
+        if action:
+            parts.append(f"physical action: {action}")
+        if obj:
+            parts.append(f"object relation: {obj}")
+        if trigger:
+            parts.append(f"response trigger: {trigger}")
+        return "; ".join(p for p in parts if p)
+
+    def _build_action_prompt(
+        self,
+        shot: Dict[str, Any],
+        beat: Dict[str, Any],
+        shot_event: Dict[str, Any],
+    ) -> str:
+        action = str(shot_event.get("action") or beat.get("subject_action") or "").strip()
+        trigger = str(shot_event.get("trigger") or beat.get("trigger_event") or "").strip()
+        contrast = str(shot_event.get("visual_contrast") or beat.get("visual_contrast") or "").strip()
+        shift = str(shot_event.get("emotional_shift") or beat.get("emotional_shift") or "").strip()
+
+        if not action and shot.get("expression_mode") == "body":
+            action = self._lookup_body_language(shot)
+
+        clauses: List[str] = []
+        if action:
+            clauses.append(f"Shot event: {action}.")
+        if trigger:
+            clauses.append(f"Triggered by: {trigger}.")
+        if shift:
+            clauses.append(f"Emotional turn: {shift}.")
+        if contrast:
+            clauses.append(f"Visual contrast: {contrast}.")
+        return " ".join(clauses).strip()
+
+    def _augment_camera_prompt(self, camera_prompt: str, shot_event: Dict[str, Any]) -> str:
+        camera_plan = shot_event.get("camera_plan") or {}
+        if not isinstance(camera_plan, dict) or not camera_plan:
+            return camera_prompt
+        movement = str(camera_plan.get("movement") or "").strip()
+        style = str(camera_plan.get("style") or "").strip()
+        intensity = str(camera_plan.get("intensity") or "").strip()
+        addon = ", ".join(p for p in [movement, style, intensity] if p)
+        if not addon:
+            return camera_prompt
+        return f"{camera_prompt} Camera behaviour: {addon}.".strip()
+
+    def _override_motion_prompt_with_event(self, fallback_prompt: str, shot_event: Dict[str, Any]) -> str:
+        try:
+            from motion_render_prompt_builder import MotionRenderPromptBuilder
+            if shot_event:
+                builder = MotionRenderPromptBuilder()
+                prompt = builder.build_prompt(shot_event)
+                if prompt:
+                    return prompt[:250] if len(prompt) > 250 else prompt
+        except Exception:
+            pass
+        return fallback_prompt
 
     # =========================================================================
     # VALIDATION
