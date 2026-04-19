@@ -1,0 +1,737 @@
+import logging
+import uuid
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class VisualStoryboardEngine:
+    """
+    Qaivid MetaMind - Visual Storyboard Engine
+
+    Purpose:
+    Convert the MetaMind context packet into storyboard-ready shot objects.
+
+    Design principles:
+    - consume the updated unified context engine output cleanly
+    - preserve backward compatibility where sensible
+    - keep one shot = one intention
+    - keep cultural grounding, continuity, and restrictions visible downstream
+    """
+
+    DEFAULT_FIDELITY_NO_REF = 0.72
+    DEFAULT_FIDELITY_WITH_REF = 1.0
+
+    def __init__(self):
+        self.user_reference_image: Optional[str] = None
+        self.character_consistency_id = str(uuid.uuid4())
+
+    # =========================================================================
+    # PUBLIC API
+    # =========================================================================
+
+    def inject_user_reference(self, image_url: str) -> None:
+        self.user_reference_image = image_url
+        logger.info("User reference image injected. Character fidelity lock enabled.")
+
+    def build_storyboard(self, context_packet: Dict[str, Any]) -> List[Dict[str, Any]]:
+        ctx = self._validate_context_packet(context_packet)
+
+        storyboard: List[Dict[str, Any]] = []
+        total_shots = len(ctx["line_meanings"])
+
+        for shot in ctx["line_meanings"]:
+            arc_position = self._arc_position(shot["line_index"], total_shots)
+
+            prompt_segments = {
+                "character": self._build_character_prompt(ctx, shot),
+                "environment": self._build_environment_prompt(ctx, shot),
+                "performance": self._build_performance_prompt(ctx, shot),
+                "camera": self._build_camera_prompt(ctx, shot),
+                "motif": self._build_motif_prompt(ctx, shot),
+                "continuity": self._build_continuity_prompt(ctx, shot, arc_position),
+                "repeat": self._build_repeat_prompt(shot),
+                "ambiguity": self._build_ambiguity_prompt(ctx),
+                "constraints": self._build_constraints_prompt(ctx),
+                "restrictions": self._build_restrictions_prompt(ctx),
+            }
+
+            visual_prompt = " ".join(
+                segment for segment in prompt_segments.values() if segment
+            ).strip()
+
+            storyboard.append(
+                {
+                    "shot_index": shot["line_index"],
+                    "shot_id": f"shot_{shot['line_index']}",
+                    "source_line": shot["text"],
+                    "meaning": shot["meaning"],
+                    "function": shot["function"],
+                    "repeat_status": shot["repeat_status"],
+                    "intensity": shot["intensity"],
+                    "expression_mode": shot["expression_mode"],
+                    "genre": ctx["input_type"],
+                    "location_dna": ctx["location_dna"],
+                    "visual_prompt": visual_prompt,
+                    "character_consistency_id": self.character_consistency_id,
+                    "reference_image": self.user_reference_image,
+                    "fidelity_lock": self._get_fidelity_lock(),
+                    "continuity_anchor": self._build_continuity_anchor(ctx, shot, arc_position),
+                    "camera_profile": self._build_camera_profile(ctx, shot),
+                    "environment_profile": self._build_environment_profile(ctx),
+                    "rendering_notes": self._build_rendering_notes(ctx, shot, arc_position),
+                    # richer MetaMind surface
+                    "literal_meaning": shot["literal_meaning"],
+                    "implied_meaning": shot["implied_meaning"],
+                    "emotional_meaning": shot["emotional_meaning"],
+                    "cultural_meaning": shot["cultural_meaning"],
+                    "visualization_mode": shot["visualization_mode"],
+                    "visual_suitability": shot["visual_suitability"],
+                    "arc_position": arc_position,
+                    "arc_directive": self._build_arc_directive(ctx, arc_position),
+                    "speaker_profile": self._build_speaker_profile(ctx),
+                    "addressee_profile": self._build_addressee_profile(ctx),
+                    "world_profile": self._build_world_profile(ctx),
+                    "motif_profile": self._build_motif_profile_for_shot(ctx, shot),
+                    "restrictions": list(ctx["restrictions"]),
+                    "locked_assumptions": dict(ctx["locked_assumptions"]),
+                    "dramatic_premise": ctx["dramatic_premise"],
+                    "prompt_segments": prompt_segments,
+                }
+            )
+
+        return storyboard
+
+    # =========================================================================
+    # VALIDATION
+    # =========================================================================
+
+    def _validate_context_packet(self, context_packet: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(context_packet, dict):
+            raise ValueError("Context packet must be a dictionary.")
+
+        ctx = dict(context_packet)
+
+        # core packet defaults
+        ctx.setdefault("input_profile", {})
+        ctx.setdefault("input_type", ctx.get("input_profile", {}).get("recognized_type", "text"))
+        ctx.setdefault("language", "Unknown")
+        ctx.setdefault("narrative_mode", "unknown")
+        ctx.setdefault("location_dna", "Universal")
+        ctx.setdefault("genre_directive", "")
+        ctx.setdefault("core_theme", "Unclear core theme")
+        ctx.setdefault("dramatic_premise", "")
+        ctx.setdefault("narrative_spine", "")
+        ctx.setdefault("speaker", {})
+        ctx.setdefault("addressee", {})
+        ctx.setdefault("world_assumptions", {})
+        ctx.setdefault("emotional_arc", {})
+        ctx.setdefault("line_meanings", [])
+        ctx.setdefault("motifs", [])
+        ctx.setdefault("motif_map", {})
+        ctx.setdefault("entities", [])
+        ctx.setdefault("literary_devices", [])
+        ctx.setdefault("visual_constraints", [])
+        ctx.setdefault("restrictions", [])
+        ctx.setdefault("surfaced_assumptions", [])
+        ctx.setdefault("locked_assumptions", {})
+        ctx.setdefault("ambiguity_flags", [])
+        ctx.setdefault("ambiguity_details", [])
+        ctx.setdefault("confidence", 0.72)
+        ctx.setdefault("confidence_scores", {})
+        ctx.setdefault("meta", {})
+
+        if not isinstance(ctx["line_meanings"], list) or not ctx["line_meanings"]:
+            raise ValueError("Context packet must contain non-empty line_meanings.")
+
+        for key in ("motifs", "entities", "literary_devices", "visual_constraints", "restrictions", "surfaced_assumptions", "ambiguity_flags", "ambiguity_details"):
+            if not isinstance(ctx.get(key), list):
+                ctx[key] = []
+
+        for key in ("speaker", "addressee", "world_assumptions", "emotional_arc", "motif_map", "locked_assumptions", "confidence_scores", "input_profile", "meta"):
+            if not isinstance(ctx.get(key), dict):
+                ctx[key] = {}
+
+        ctx["world_assumptions"].setdefault("geography", "Unspecified")
+        ctx["world_assumptions"].setdefault("era", "Unspecified")
+        ctx["world_assumptions"].setdefault("season", "Unspecified")
+        ctx["world_assumptions"].setdefault("time_of_day", "Unspecified")
+        ctx["world_assumptions"].setdefault("social_context", "Unspecified")
+        ctx["world_assumptions"].setdefault("economic_context", "Unspecified")
+        ctx["world_assumptions"].setdefault("architecture_style", "Unspecified")
+        ctx["world_assumptions"].setdefault("domestic_setting", "Unspecified")
+
+        repaired_lines = []
+        for i, item in enumerate(ctx["line_meanings"], start=1):
+            if not isinstance(item, dict):
+                item = {}
+
+            repaired_lines.append(
+                {
+                    "line_index": self._safe_int(item.get("line_index"), i),
+                    "text": self._clean(item.get("text"), ""),
+                    "literal_meaning": self._clean(item.get("literal_meaning"), ""),
+                    "implied_meaning": self._clean(item.get("implied_meaning"), ""),
+                    "emotional_meaning": self._clean(item.get("emotional_meaning"), ""),
+                    "cultural_meaning": self._clean(item.get("cultural_meaning"), ""),
+                    "meaning": self._clean(item.get("meaning"), "Meaning unavailable"),
+                    "function": self._clean(item.get("function"), "emotional_expression"),
+                    "repeat_status": self._clean(item.get("repeat_status"), "original").lower(),
+                    "intensity": self._clamp_float(item.get("intensity"), 0.5),
+                    "expression_mode": self._repair_expression_mode(item.get("expression_mode")),
+                    "visualization_mode": self._repair_visualization_mode(item.get("visualization_mode")),
+                    "visual_suitability": self._repair_visual_suitability(item.get("visual_suitability")),
+                }
+            )
+
+        ctx["line_meanings"] = repaired_lines
+        return ctx
+
+    # =========================================================================
+    # PROMPT BUILDERS
+    # =========================================================================
+
+    def _build_character_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> str:
+        speaker = ctx["speaker"]
+        addressee = ctx["addressee"]
+
+        if self.user_reference_image:
+            return (
+                "Character anchor: use the exact person from the provided reference image "
+                "for facial geometry, identity consistency, and overall look."
+            )
+
+        appearance_bits = []
+        for key, label in (
+            ("ethnicity", "ethnicity"),
+            ("complexion", "complexion"),
+            ("wardrobe", "wardrobe"),
+            ("grooming", "grooming"),
+        ):
+            value = self._clean(speaker.get(key), "")
+            if value and value.lower() not in {"unspecified", "unclear"}:
+                appearance_bits.append(f"{label}: {value}")
+
+        appearance_clause = f" Appearance lock: {'; '.join(appearance_bits)}." if appearance_bits else ""
+
+        return (
+            f"Character anchor: portray a {self._clean(speaker.get('age_range'), 'unclear age')} "
+            f"{self._clean(speaker.get('gender'), 'unclear gender')} figure in the role of "
+            f"{self._clean(speaker.get('social_role'), 'unclear role')}, with emotional state centered on "
+            f"{self._clean(speaker.get('emotional_state'), 'emotionally charged')}. "
+            f"Speaker identity context: {self._clean(speaker.get('identity'), 'unclear speaker')}.{appearance_clause} "
+            f"Addressee context: {self._clean(addressee.get('identity'), 'unclear addressee')}, "
+            f"presence: {self._clean(addressee.get('presence'), 'unclear presence')}. "
+            f"Maintain strict character continuity across all shots."
+        )
+
+    def _build_environment_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> str:
+        world = ctx["world_assumptions"]
+        entities = ctx["entities"]
+        motifs = ctx["motifs"]
+
+        place_entities = [
+            e["name"] for e in entities
+            if isinstance(e, dict) and str(e.get("type", "")).lower() == "place" and e.get("name")
+        ]
+        symbol_entities = [
+            e["name"] for e in entities
+            if isinstance(e, dict) and str(e.get("type", "")).lower() == "symbol" and e.get("name")
+        ]
+
+        parts = [
+            f"Environment anchor: setting grounded in {ctx['location_dna']}.",
+            f"Geography: {self._clean(world.get('geography'), 'Unspecified')}.",
+            f"Era: {self._clean(world.get('era'), 'Unspecified')}.",
+            f"Season: {self._clean(world.get('season'), 'Unspecified')}.",
+            f"Time of day: {self._clean(world.get('time_of_day'), 'Unspecified')}.",
+            f"Architecture style: {self._clean(world.get('architecture_style'), 'Unspecified')}.",
+            f"Domestic setting: {self._clean(world.get('domestic_setting'), 'Unspecified')}.",
+        ]
+
+        if ctx["location_dna"] and ctx["location_dna"].lower() != "universal":
+            parts.append("Use culturally faithful textures, materials, and regional domestic logic.")
+
+        if place_entities:
+            parts.append(f"Relevant place cues: {', '.join(place_entities[:5])}.")
+
+        if shot["expression_mode"] == "symbolic" and symbol_entities:
+            parts.append(f"Symbolic environment cues may draw from: {', '.join(symbol_entities[:5])}.")
+
+        if motifs:
+            parts.append(f"Keep atmosphere compatible with recurring motifs such as {', '.join(motifs[:5])}.")
+
+        if shot["cultural_meaning"]:
+            parts.append(f"Cultural subtext to preserve: {shot['cultural_meaning']}.")
+
+        if shot["meaning"]:
+            parts.append(f"The environment should support the emotional meaning of: {shot['meaning']}.")
+
+        return " ".join(parts)
+
+    def _build_performance_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> str:
+        mode = shot["expression_mode"]
+        intensity_label = self._label_intensity(shot["intensity"])
+
+        if shot["visualization_mode"] == "performance_only":
+            return (
+                f"Performance: treat this primarily as a performance-led beat carrying emotional meaning "
+                f"'{shot['emotional_meaning']}'. Do not force unnecessary literal action. "
+                f"Function: {shot['function']}. Intensity: {intensity_label}."
+            )
+
+        if mode == "face":
+            return (
+                f"Performance: communicate implied meaning '{shot['implied_meaning']}' and emotional meaning "
+                f"'{shot['emotional_meaning']}' through eyes, brow tension, restrained expression, and facial stillness. "
+                f"Literal line sense: '{shot['literal_meaning']}'. Function: {shot['function']}. "
+                f"Intensity level: {intensity_label}. No mouth-performance dependence."
+            )
+
+        if mode == "body":
+            return (
+                f"Performance: communicate implied meaning '{shot['implied_meaning']}' and emotional meaning "
+                f"'{shot['emotional_meaning']}' through posture, gesture, stillness, and body tension. "
+                f"Literal line sense: '{shot['literal_meaning']}'. Function: {shot['function']}. "
+                f"Intensity level: {intensity_label}."
+            )
+
+        if mode == "symbolic" or shot["visualization_mode"] == "symbolic":
+            return (
+                f"Performance: interpret the line symbolically, preserving implied meaning '{shot['implied_meaning']}' "
+                f"and emotional meaning '{shot['emotional_meaning']}', without flattening it into literal plot action. "
+                f"Function: {shot['function']}. Intensity level: {intensity_label}."
+            )
+
+        if mode == "macro":
+            return (
+                f"Performance: use high-detail focal emphasis to express meaning '{shot['meaning']}'. "
+                f"Function: {shot['function']}. Intensity level: {intensity_label}."
+            )
+
+        if ctx["input_type"] == "documentary":
+            return (
+                f"Performance: observational realism conveying emotional meaning '{shot['emotional_meaning']}' "
+                f"with minimal stylization. Literal layer: '{shot['literal_meaning']}'. "
+                f"Function: {shot['function']}. Intensity level: {intensity_label}."
+            )
+
+        return (
+            f"Performance: build a cinematic moment that conveys implied meaning '{shot['implied_meaning']}' "
+            f"and emotional meaning '{shot['emotional_meaning']}' through environment, composition, gesture, and mood. "
+            f"Literal line sense: '{shot['literal_meaning']}'. Function: {shot['function']}. "
+            f"Intensity level: {intensity_label}."
+        )
+
+    def _build_camera_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> str:
+        genre = ctx["input_type"]
+        narrative_mode = self._clean(
+            ctx["locked_assumptions"].get("narrative_mode") or ctx.get("narrative_mode"),
+            "unknown"
+        )
+
+        if genre == "ad":
+            return (
+                "Cinematography: premium commercial framing, polished composition, macro-capable lens language, "
+                "precise lighting control, elegant depth separation."
+            )
+
+        if genre == "documentary":
+            return (
+                "Cinematography: observational camera language, restrained movement, natural light realism, "
+                "authentic framing, documentary sobriety."
+            )
+
+        if genre == "script":
+            return (
+                "Cinematography: performance-first framing, controlled coverage, face and gesture readable, "
+                "dramatic but grounded visual language."
+            )
+
+        if shot["expression_mode"] == "face":
+            return "Cinematography: intimate close framing, facial readability, subtle focus falloff, restrained camera motion."
+
+        if shot["expression_mode"] == "symbolic" or shot["visualization_mode"] == "symbolic":
+            return "Cinematography: poetic composition, metaphor-friendly framing, expressive atmosphere, visual suggestiveness."
+
+        if shot["repeat_status"] == "repeat":
+            return "Cinematography: preserve continuity with prior repetition while varying emotional emphasis, scale, angle, or mood."
+
+        if narrative_mode in {"symbolic", "philosophical", "psychological"}:
+            return "Cinematography: controlled poetic realism, suggestive framing, emotionally weighted atmosphere, and restrained visual symbolism."
+
+        if shot["intensity"] >= 0.8:
+            return "Cinematography: heightened cinematic energy, stronger contrast, more emotionally charged framing, controlled visual momentum."
+
+        return "Cinematography: cinematic naturalism, balanced composition, atmospheric lighting, clear visual storytelling."
+
+    def _build_motif_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> str:
+        motif_forms = self._motif_forms_relevant_to_shot(ctx["motif_map"], shot)
+
+        if motif_forms:
+            return "Motif handling: prioritize visual rendering of these motif forms — " + "; ".join(motif_forms[:5]) + "."
+
+        if ctx["motif_map"]:
+            descriptive = []
+            for name, payload in list(ctx["motif_map"].items())[:5]:
+                if not isinstance(payload, dict):
+                    continue
+                visual_form = self._clean(payload.get("visual_form"), "")
+                significance = self._clean(payload.get("significance"), "")
+                piece = name
+                if visual_form:
+                    piece += f" ({visual_form})"
+                if significance:
+                    piece += f" — {significance}"
+                descriptive.append(piece)
+            if descriptive:
+                return "Motif handling: keep recurring motifs available — " + "; ".join(descriptive) + "."
+
+        if ctx["motifs"]:
+            return f"Motif handling: keep recurring visual motifs available where relevant, especially {', '.join(ctx['motifs'][:5])}."
+
+        return ""
+
+    def _build_continuity_prompt(self, ctx: Dict[str, Any], shot: Dict[str, Any], arc_position: str) -> str:
+        parts = [
+            f"Continuity: preserve narrative mode {ctx.get('narrative_mode', 'unknown')} and remain aligned with the narrative spine.",
+        ]
+
+        if ctx["narrative_spine"]:
+            parts.append(f"Spine anchor: {ctx['narrative_spine']}.")
+
+        if ctx["dramatic_premise"]:
+            parts.append(f"Dramatic premise: {ctx['dramatic_premise']}.")
+
+        arc_directive = self._build_arc_directive(ctx, arc_position)
+        if arc_directive:
+            parts.append(f"Arc beat ({arc_position}): {arc_directive}.")
+
+        if shot["repeat_status"] == "repeat":
+            parts.append("This shot should feel connected to an earlier emotional beat, not like a completely new event.")
+
+        source_format = ctx["meta"].get("source_format") or ctx["input_profile"].get("source_format", "plain_text")
+        parts.append(f"Source format awareness: {source_format}.")
+
+        return " ".join(parts)
+
+    def _build_repeat_prompt(self, shot: Dict[str, Any]) -> str:
+        if shot["repeat_status"] == "repeat":
+            return "Repetition logic: treat this as emotional return or escalation, not as a separate narrative event."
+        return ""
+
+    def _build_ambiguity_prompt(self, ctx: Dict[str, Any]) -> str:
+        details = ctx["ambiguity_details"]
+        flags = ctx["ambiguity_flags"]
+
+        if details:
+            snippets = []
+            for item in details[:4]:
+                if isinstance(item, dict):
+                    snippets.append(
+                        f"{self._clean(item.get('field'), 'general')}: {self._clean(item.get('reason'), 'unclear')}"
+                    )
+            if snippets:
+                return "Ambiguity handling: stay conservative where interpretation is uncertain. Relevant ambiguity notes: " + "; ".join(snippets) + "."
+
+        if flags:
+            return "Ambiguity handling: stay conservative where interpretation is uncertain. Relevant ambiguity notes: " + "; ".join(flags[:4]) + "."
+
+        return ""
+
+    def _build_constraints_prompt(self, ctx: Dict[str, Any]) -> str:
+        if not ctx["visual_constraints"]:
+            return ""
+        return f"Visual constraints: {'; '.join(ctx['visual_constraints'][:8])}."
+
+    def _build_restrictions_prompt(self, ctx: Dict[str, Any]) -> str:
+        if not ctx["restrictions"]:
+            return ""
+        return f"Hard restrictions (must obey): {'; '.join(ctx['restrictions'][:8])}."
+
+    # =========================================================================
+    # SUPPORT OBJECT BUILDERS
+    # =========================================================================
+
+    def _build_camera_profile(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> Dict[str, Any]:
+        profile = {
+            "style": "cinematic_naturalism",
+            "framing_bias": "medium",
+            "movement": "restrained",
+            "lighting": "atmospheric",
+            "narrative_mode": self._clean(ctx.get("narrative_mode"), "unknown"),
+        }
+
+        if ctx["input_type"] == "ad":
+            profile.update({
+                "style": "commercial_premium",
+                "framing_bias": "close_macro",
+                "movement": "controlled",
+                "lighting": "clean_high_control",
+            })
+        elif ctx["input_type"] == "documentary":
+            profile.update({
+                "style": "observational_realism",
+                "framing_bias": "natural_coverage",
+                "movement": "minimal_or_handheld",
+                "lighting": "natural",
+            })
+        elif ctx["input_type"] == "script":
+            profile.update({
+                "style": "performance_driven",
+                "framing_bias": "face_body_readability",
+                "movement": "controlled_dramatic",
+                "lighting": "grounded_dramatic",
+            })
+        elif shot["expression_mode"] == "symbolic" or shot["visualization_mode"] == "symbolic":
+            profile.update({
+                "style": "poetic_symbolic",
+                "framing_bias": "evocative",
+                "movement": "gentle",
+                "lighting": "expressive",
+            })
+        elif shot["intensity"] > 0.8:
+            profile.update({
+                "movement": "moderate_emphasis",
+                "lighting": "charged",
+            })
+
+        return profile
+
+    def _build_environment_profile(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        entities = ctx["entities"]
+        place_entities = [
+            e["name"] for e in entities
+            if isinstance(e, dict) and str(e.get("type", "")).lower() == "place" and e.get("name")
+        ]
+        object_entities = [
+            e["name"] for e in entities
+            if isinstance(e, dict) and str(e.get("type", "")).lower() == "object" and e.get("name")
+        ]
+
+        return {
+            "location_dna": ctx["location_dna"],
+            "place_entities": place_entities[:8],
+            "object_entities": object_entities[:8],
+            "motifs": ctx["motifs"][:8],
+            "motif_map": {
+                name: {
+                    "type": (payload.get("type") if isinstance(payload, dict) else "") or "",
+                    "significance": (payload.get("significance") if isinstance(payload, dict) else "") or "",
+                    "visual_form": (payload.get("visual_form") if isinstance(payload, dict) else "") or "",
+                }
+                for name, payload in list(ctx["motif_map"].items())[:8]
+            },
+            "world_assumptions": dict(ctx["world_assumptions"]),
+            "regional_grounding_required": (ctx["location_dna"] or "").lower() != "universal",
+        }
+
+    def _build_continuity_anchor(self, ctx: Dict[str, Any], shot: Dict[str, Any], arc_position: str) -> Dict[str, Any]:
+        speaker = ctx["speaker"]
+        addressee = ctx["addressee"]
+
+        return {
+            "character_consistency_id": self.character_consistency_id,
+            "speaker_identity": self._clean(speaker.get("identity"), "unclear speaker"),
+            "speaker_role": self._clean(speaker.get("social_role"), "unclear role"),
+            "speaker_ethnicity": self._clean(speaker.get("ethnicity"), ""),
+            "speaker_complexion": self._clean(speaker.get("complexion"), ""),
+            "speaker_wardrobe": self._clean(speaker.get("wardrobe"), ""),
+            "speaker_grooming": self._clean(speaker.get("grooming"), ""),
+            "addressee_identity": self._clean(addressee.get("identity"), "unclear addressee"),
+            "addressee_relationship": self._clean(addressee.get("relationship"), ""),
+            "location_dna": ctx["location_dna"],
+            "repeat_status": shot["repeat_status"],
+            "arc_position": arc_position,
+        }
+
+    def _build_rendering_notes(self, ctx: Dict[str, Any], shot: Dict[str, Any], arc_position: str) -> List[str]:
+        notes: List[str] = []
+
+        if self.user_reference_image:
+            notes.append("Use the provided user reference image as the strongest character anchor.")
+
+        if shot["repeat_status"] == "repeat":
+            notes.append("Preserve continuity with earlier similar beat while varying emotion or framing.")
+
+        if shot["expression_mode"] == "face":
+            notes.append("Prioritize eye line, brow tension, and subtle facial detail.")
+
+        if shot["expression_mode"] == "symbolic":
+            notes.append("Keep symbolism emotionally grounded and not over-surreal.")
+
+        if (ctx["location_dna"] or "").lower() != "universal":
+            notes.append("Maintain regional authenticity in materials, architecture, and atmosphere.")
+
+        ethnicity = self._clean(ctx["speaker"].get("ethnicity"), "")
+        if ethnicity and ethnicity.lower() not in {"unspecified", "unclear"}:
+            notes.append(f"Honor speaker ethnicity ({ethnicity}); do not substitute another ethnic appearance.")
+
+        wardrobe = self._clean(ctx["speaker"].get("wardrobe"), "")
+        if wardrobe and wardrobe.lower() not in {"unspecified", "unclear"}:
+            notes.append(f"Wardrobe must remain consistent with: {wardrobe}.")
+
+        if shot["visual_suitability"] == "low":
+            notes.append("Visual suitability is low for this line — lean on metaphor or environmental framing.")
+        elif shot["visual_suitability"] == "medium":
+            notes.append("Mixed visual suitability — balance literal and symbolic rendering.")
+
+        if shot["visualization_mode"] and shot["visualization_mode"] != "direct":
+            notes.append(f"Visualization mode for this shot: {shot['visualization_mode']}.")
+
+        notes.append(f"Emotional arc position: {arc_position}.")
+        return notes
+
+    def _build_speaker_profile(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        sp = ctx["speaker"]
+        return {
+            "identity": self._clean(sp.get("identity"), ""),
+            "gender": self._clean(sp.get("gender"), ""),
+            "age_range": self._clean(sp.get("age_range"), ""),
+            "social_role": self._clean(sp.get("social_role"), ""),
+            "emotional_state": self._clean(sp.get("emotional_state"), ""),
+            "relationship_to_addressee": self._clean(sp.get("relationship_to_addressee"), ""),
+            "ethnicity": self._clean(sp.get("ethnicity"), ""),
+            "complexion": self._clean(sp.get("complexion"), ""),
+            "wardrobe": self._clean(sp.get("wardrobe"), ""),
+            "grooming": self._clean(sp.get("grooming"), ""),
+        }
+
+    def _build_addressee_profile(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        ad = ctx["addressee"]
+        return {
+            "identity": self._clean(ad.get("identity"), ""),
+            "relationship": self._clean(ad.get("relationship"), ""),
+            "presence": self._clean(ad.get("presence"), ""),
+        }
+
+    def _build_world_profile(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "location_dna": ctx["location_dna"],
+            "world_assumptions": dict(ctx["world_assumptions"]),
+        }
+
+    def _build_motif_profile_for_shot(self, ctx: Dict[str, Any], shot: Dict[str, Any]) -> Dict[str, Any]:
+        relevant = []
+        text_blob = " ".join(
+            str(shot.get(k, "")) for k in
+            ("text", "meaning", "literal_meaning", "implied_meaning", "emotional_meaning", "cultural_meaning")
+        ).lower()
+
+        for name, payload in ctx["motif_map"].items():
+            if not isinstance(payload, dict):
+                continue
+            if name and name.lower() in text_blob:
+                relevant.append(
+                    {
+                        "name": name,
+                        "type": self._clean(payload.get("type"), ""),
+                        "significance": self._clean(payload.get("significance"), ""),
+                        "visual_form": self._clean(payload.get("visual_form"), ""),
+                    }
+                )
+
+        return {
+            "all_motifs": list(ctx["motifs"]),
+            "shot_relevant_motifs": relevant,
+        }
+
+    # =========================================================================
+    # ARC / MOTIF HELPERS
+    # =========================================================================
+
+    def _arc_position(self, line_index: int, total: int) -> str:
+        if total <= 0:
+            return "opening"
+        ratio = float(line_index) / float(max(total, 1))
+        if ratio <= 0.34:
+            return "opening"
+        if ratio <= 0.67:
+            return "development"
+        return "resolution"
+
+    def _build_arc_directive(self, ctx: Dict[str, Any], arc_position: str) -> str:
+        arc = ctx["emotional_arc"]
+        return self._clean(arc.get(arc_position), "")
+
+    def _motif_forms_relevant_to_shot(self, motif_map: Dict[str, Any], shot: Dict[str, Any]) -> List[str]:
+        if not motif_map:
+            return []
+
+        text_blob = " ".join(
+            str(shot.get(k, "")) for k in
+            ("text", "meaning", "literal_meaning", "implied_meaning", "emotional_meaning", "cultural_meaning")
+        ).lower()
+
+        results = []
+        for name, payload in motif_map.items():
+            if not name or not isinstance(payload, dict):
+                continue
+
+            matched = name.lower() in text_blob
+            if not matched:
+                for key in ("visual_form", "significance", "type"):
+                    aux = self._clean(payload.get(key), "").lower()
+                    if aux:
+                        tokens = [t for t in aux.split() if len(t) > 3]
+                        if any(tok in text_blob for tok in tokens):
+                            matched = True
+                            break
+
+            if matched:
+                visual_form = self._clean(payload.get("visual_form"), "")
+                results.append(f"{name} → {visual_form}" if visual_form else name)
+
+        return results
+
+    # =========================================================================
+    # PRIMITIVE HELPERS
+    # =========================================================================
+
+    def _get_fidelity_lock(self) -> float:
+        return self.DEFAULT_FIDELITY_WITH_REF if self.user_reference_image else self.DEFAULT_FIDELITY_NO_REF
+
+    def _repair_expression_mode(self, value: Any) -> str:
+        allowed = {"face", "body", "environment", "symbolic", "macro"}
+        value = self._clean(value, "environment").lower()
+        return value if value in allowed else "environment"
+
+    def _repair_visualization_mode(self, value: Any) -> str:
+        allowed = {"direct", "indirect", "symbolic", "absorbed", "performance_only"}
+        value = self._clean(value, "indirect").lower()
+        return value if value in allowed else "indirect"
+
+    def _repair_visual_suitability(self, value: Any) -> str:
+        allowed = {"high", "medium", "low"}
+        value = self._clean(value, "medium").lower()
+        return value if value in allowed else "medium"
+
+    def _label_intensity(self, value: float) -> str:
+        if value < 0.25:
+            return "very low"
+        if value < 0.45:
+            return "low"
+        if value < 0.65:
+            return "medium"
+        if value < 0.85:
+            return "high"
+        return "very high"
+
+    def _clamp_float(self, value: Any, fallback: float) -> float:
+        try:
+            num = float(value)
+            return max(0.0, min(1.0, num))
+        except Exception:
+            return fallback
+
+    def _safe_int(self, value: Any, fallback: int) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return fallback
+
+    def _clean(self, value: Any, fallback: str) -> str:
+        if value is None:
+            return fallback
+        value = str(value).strip()
+        return value if value else fallback
