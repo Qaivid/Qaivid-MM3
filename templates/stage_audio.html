@@ -70,7 +70,37 @@
             </div>
         </div>
 
-        {% if project.transcript %}
+        {% if lyrics_timed %}
+        <div class="audit-section">
+            <h3>Transcript / Lyrics</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:.92em;">
+                <thead>
+                    <tr style="opacity:.55;font-size:.8em;text-transform:uppercase;letter-spacing:.06em;">
+                        <th style="text-align:left;padding:4px 10px 4px 0;width:90px;">#</th>
+                        <th style="text-align:left;padding:4px 10px 4px 0;width:140px;">Time</th>
+                        <th style="text-align:left;padding:4px 0;">Lyric</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for tl in lyrics_timed %}
+                {% set s = tl.start | float %}
+                {% set e = tl.end | float %}
+                {% set sm = (s // 60) | int %}
+                {% set ss = (s % 60) | int %}
+                {% set em = (e // 60) | int %}
+                {% set es = (e % 60) | int %}
+                <tr style="border-top:1px solid rgba(255,255,255,.06);">
+                    <td style="padding:5px 10px 5px 0;opacity:.45;font-variant-numeric:tabular-nums;">{{ loop.index }}</td>
+                    <td style="padding:5px 10px 5px 0;font-variant-numeric:tabular-nums;opacity:.7;white-space:nowrap;font-size:.87em;">
+                        {{ '%d:%02d' % (sm, ss) }} – {{ '%d:%02d' % (em, es) }}
+                    </td>
+                    <td style="padding:5px 0;">{{ tl.text or '' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% elif project.transcript %}
         <div class="audit-section">
             <h3>Transcript / Lyrics</h3>
             <pre class="audit-transcript">{{ project.transcript }}</pre>

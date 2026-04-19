@@ -767,7 +767,46 @@ def project_detail(project_id: str):
         return render_template("stage_running.html", project=project)
 
     if stage == "audio_review":
-        return render_template("stage_audio.html", project=project)
+        try:
+            with db() as _ac, _ac.cursor(row_factory=dict_row) as _acur:
+                _acur.execute(
+                    "SELECT lyrics_timed, text, audio_data FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                _ar = _acur.fetchone()
+            _lyrics_timed = list((_ar or {}).get("lyrics_timed") or []) if _ar else []
+            if not _lyrics_timed and _ar:
+                _dur = ((_ar.get("audio_data") or {}).get("duration_seconds") or 0)
+                _txt = (_ar.get("text") or "").strip()
+                if _dur > 0 and _txt:
+                    _lines = [l for l in _txt.splitlines() if l.strip()]
+                    _n = len(_lines)
+                    if _n:
+                        _step = _dur / _n
+                        _lyrics_timed = [
+                            {"text": _lines[_i], "start": round(_i * _step, 3),
+                             "end": round((_i + 1) * _step, 3)}
+                            for _i in range(_n)
+                        ]
+                        try:
+                            with db() as _ac2, _ac2.cursor() as _cur2:
+                                _cur2.execute(
+                                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+                                    "lyrics_timed JSONB;"
+                                )
+                                _cur2.execute(
+                                    "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
+                                    (Json(_lyrics_timed), project_id),
+                                )
+                                _ac2.commit()
+                        except Exception as _pe:
+                            logger.warning(
+                                "audio_review: could not persist fallback lyrics_timed (%s)", _pe
+                            )
+        except Exception:
+            _lyrics_timed = []
+        return render_template("stage_audio.html", project=project,
+                               lyrics_timed=_lyrics_timed)
 
     if stage == "style_review":
         from style_profile_registry import StyleProfileRegistry
