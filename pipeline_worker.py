@@ -1567,6 +1567,17 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                         "distributed %d lines evenly (%.1fs / %d = %.2fs each)",
                         _n, _audio_dur, _n, _step,
                     )
+                    try:
+                        with _db() as _conn2, _conn2.cursor() as _cur2:
+                            _cur2.execute(
+                                "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
+                                (Json(timed_lyrics), project_id),
+                            )
+                            _conn2.commit()
+                    except Exception as _e:
+                        logger.warning(
+                            "Stage 2: could not persist repaired lyrics_timed (%s)", _e
+                        )
 
         # Task #69 — pass the user-locked Creative Brief so the orchestrator
         # splices it into its freshly-regenerated context_packet (otherwise
