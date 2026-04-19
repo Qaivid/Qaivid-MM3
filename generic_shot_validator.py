@@ -119,8 +119,16 @@ class GenericShotValidator:
         mode = (event.get("expression_mode") or "face").lower()
 
         # --- action fallback ---
+        # Rewrite when action is: absent, < 3 words, OR verb-less (even if
+        # 3+ words).  The same verb check used in is_generic() is applied here
+        # so is_generic=True events always exit rewrite_generic() with a verb.
         action = (event.get("action") or event.get("subject_action") or "").strip()
-        if not action or len(action.split()) < 3:
+        needs_action_rewrite = (
+            not action
+            or len(action.split()) < 3
+            or not _ACTION_VERB_RE.match(action)
+        )
+        if needs_action_rewrite:
             fallback = _FALLBACK_ACTIONS.get(mode, _DEFAULT_FALLBACK_ACTION)
             event["_original_action"] = action
             event["action"] = fallback
