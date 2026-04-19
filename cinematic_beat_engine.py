@@ -157,18 +157,31 @@ class CinematicBeatEngine:
         context_packet: Dict[str, Any],
         style_profile: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Build one cinematic beat per line_meanings entry."""
+        """Build one cinematic beat per line_meanings entry.
+
+        Architecture (MM3.1):
+        1. Attempt a single project-level LLM synthesis call that processes
+           ALL lines at once and returns a richer beat list (creative fields
+           come from the model's narrative understanding, not lookup tables).
+        2. Fall back to the deterministic heuristic path (_build_beat) if the
+           LLM call fails, is disabled, or returns malformed output.
+        3. For either path, per-line heuristics fill any fields the LLM omits.
+        """
         ctx = self._validate_context_packet(context_packet)
         style_profile = style_profile or {}
 
         lines = ctx["line_meanings"]
         total = len(lines)
-        beats: List[Dict[str, Any]] = []
 
+        # Stage 1: attempt project-level LLM synthesis
+        llm_overrides = self._synthesize_beats_llm(lines, style_profile)
+
+        # Stage 2: build heuristic beats (always — LLM fills gaps, doesn't replace)
+        beats: List[Dict[str, Any]] = []
         for idx, line in enumerate(lines):
             previous_line = lines[idx - 1] if idx > 0 else None
             next_line = lines[idx + 1] if idx + 1 < total else None
-            beat = self._build_beat(
+            heuristic_beat = self._build_beat(
                 ctx=ctx,
                 line=line,
                 index=idx,
@@ -177,9 +190,102 @@ class CinematicBeatEngine:
                 next_line=next_line,
                 style_profile=style_profile,
             )
-            beats.append(beat)
+            if llm_overrides and idx < len(llm_overrides):
+                llm_item = llm_overrides[idx]
+                if isinstance(llm_item, dict):
+                    # LLM overrides key creative fields; heuristic supplies anything missing.
+                    merged = {**heuristic_beat, **{
+                        k: v for k, v in llm_item.items()
+                        if v is not None and v != "" and k in (
+                            "lyric_relation_type", "subject_action",
+                            "trigger_event", "camera_motive", "shot_function",
+                            "visual_contrast", "beat_type",
+                        )
+                    }}
+                    beats.append(merged)
+                    continue
+            beats.append(heuristic_beat)
 
         return beats
+
+    def _synthesize_beats_llm(
+        self,
+        lines: List[Dict[str, Any]],
+        style_profile: Dict[str, Any],
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Single Gemini call to synthesize beat overrides for all lines.
+
+        Returns a list of partial beat dicts (same length as lines) on success,
+        or None on any failure — caller uses heuristic beats as-is in that case.
+
+        This is a project-level call (one per build, not per line) that allows
+        the LLM to understand the arc across all lines before assigning beats.
+        """
+        try:
+            import json
+            import os
+            gemini_key = os.getenv("GEMINI_API_KEY")
+            if not gemini_key:
+                return None
+
+            style_mood = (style_profile or {}).get("mood", "cinematic")
+            style_genre = (style_profile or {}).get("genre", "narrative")
+
+            lines_summary = "\n".join(
+                f"{l.get('line_index', i + 1)}. [{l.get('expression_mode', 'body')}] "
+                f'"{l.get("text", "")}" '
+                f"emotion:{l.get('emotional_meaning', '')} "
+                f"implied:{l.get('implied_meaning', '')}"
+                for i, l in enumerate(lines)
+            )
+
+            prompt = (
+                f"You are a cinematography director synthesising beat intelligence "
+                f"for a music video.\n"
+                f"Style: {style_mood}, {style_genre}.\n"
+                f"Total shots: {len(lines)}\n\n"
+                f"Shot list (one per line):\n{lines_summary}\n\n"
+                f"For each shot output a JSON object with these keys:\n"
+                f"  lyric_relation_type: one of literal|indirect|symbolic|contrast|memory|performance\n"
+                f"  subject_action: concrete physical action (starts with a verb)\n"
+                f"  trigger_event: what event / stimulus causes this beat\n"
+                f"  camera_motive: single camera motivation directive\n"
+                f"  shot_function: one of opening|build|climax|release|echo|close\n"
+                f"  visual_contrast: inner vs outer tension (one sentence)\n"
+                f"\nConsider the full arc across all shots before deciding.\n"
+                f"Return ONLY a JSON array of exactly {len(lines)} objects. "
+                f"No commentary, no markdown."
+            )
+
+            from google import genai as _genai
+            _client = _genai.Client(api_key=gemini_key)
+            response = _client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            text = (response.text or "").strip()
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                lines_raw = text.split("\n")
+                text = "\n".join(lines_raw[1:])
+                if text.rstrip().endswith("```"):
+                    text = text.rstrip()[:-3]
+            parsed = json.loads(text)
+            if not isinstance(parsed, list) or len(parsed) != len(lines):
+                logger.warning(
+                    "CinematicBeatEngine LLM returned %s items, expected %s — discarding",
+                    len(parsed) if isinstance(parsed, list) else "non-list",
+                    len(lines),
+                )
+                return None
+            logger.info(
+                "CinematicBeatEngine LLM synthesis: %d beats synthesised for %d lines",
+                len(parsed), len(lines),
+            )
+            return parsed
+        except Exception as exc:
+            logger.debug("CinematicBeatEngine LLM synthesis failed (will use heuristic): %s", exc)
+            return None
 
     def attach_beats(
         self,

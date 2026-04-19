@@ -300,6 +300,22 @@ def _mode_rank(mode: str) -> List[str]:
     return list(MODE_RIG_BIAS.get(mode, _DEFAULT_RANK))
 
 
+def _has_event_match(signal: str) -> bool:
+    """Return True when the event signal matched a canonical ACTION or CAMERA_PLAN entry.
+
+    When False the signal fell through to _DEFAULT_RANK (no meaningful event data).
+    """
+    if not signal:
+        return False
+    for kw in CAMERA_PLAN_TO_RIG:
+        if kw in signal:
+            return True
+    for kw in ACTION_TO_RIG:
+        if kw in signal:
+            return True
+    return False
+
+
 def _pick_rig(
     event_rank: List[str],
     emotion_rank: List[str],
@@ -312,25 +328,47 @@ def _pick_rig(
     event_signal: str = "",
     mode: str = "",
 ) -> tuple[str, str]:
-    """Blend event + emotion + style + mode into a rig choice."""
+    """Select a camera rig with explicit event-primary architecture.
+
+    Selection strategy:
+    1. When an action / camera-plan event signal is present:
+       - event_rank is the PRIMARY selector (weight 20.0 per position)
+       - emotion / style / mode act as TIE-BREAKERS only (weight 0.5 / 0.3 / 0.4)
+    2. When no event signal matches the canonical tables:
+       - emotion / style / mode drive the choice (weights 5.0 / 2.0 / 2.0)
+       - event_rank is the fallback order for the default rank
+    """
     note = (director_note or "").lower()
     score: Dict[str, float] = {r: 0.0 for r in RIGS}
 
-    for i, rig in enumerate(event_rank):
-        if rig in score:
-            score[rig] += (len(event_rank) - i) * 1.9
+    has_event = _has_event_match(event_signal)
 
-    for i, rig in enumerate(emotion_rank):
-        if rig in score:
-            score[rig] += (len(emotion_rank) - i) * 1.3
-
-    for i, rig in enumerate(style_rank):
-        if rig in score:
-            score[rig] += (len(style_rank) - i) * 1.0
-
-    for i, rig in enumerate(mode_rank):
-        if rig in score:
-            score[rig] += (len(mode_rank) - i) * 1.1
+    if has_event:
+        # Stage 1: event drives the choice overwhelmingly.
+        # Emotion / style / mode only break ties when two event rigs score equally.
+        for i, rig in enumerate(event_rank):
+            if rig in score:
+                score[rig] += (len(event_rank) - i) * 20.0
+        for i, rig in enumerate(emotion_rank):
+            if rig in score:
+                score[rig] += (len(emotion_rank) - i) * 0.5
+        for i, rig in enumerate(style_rank):
+            if rig in score:
+                score[rig] += (len(style_rank) - i) * 0.3
+        for i, rig in enumerate(mode_rank):
+            if rig in score:
+                score[rig] += (len(mode_rank) - i) * 0.4
+    else:
+        # Stage 2 (fallback): no event match — emotion / style / mode drive choice.
+        for i, rig in enumerate(emotion_rank):
+            if rig in score:
+                score[rig] += (len(emotion_rank) - i) * 5.0
+        for i, rig in enumerate(style_rank):
+            if rig in score:
+                score[rig] += (len(style_rank) - i) * 2.0
+        for i, rig in enumerate(mode_rank):
+            if rig in score:
+                score[rig] += (len(mode_rank) - i) * 2.0
 
     boost_map = {
         "handheld":  ["handheld", "verite", "vérité", "raw", "doc-style"],

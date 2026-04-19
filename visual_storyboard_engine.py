@@ -26,6 +26,14 @@ class VisualStoryboardEngine:
     # FRAMING LOOKUP TABLES
     # =========================================================================
 
+    # ── BACKWARD-COMPAT FRAMING TABLES ─────────────────────────────────────
+    # These rotation tables are FALLBACK-ONLY in MM3.1.
+    # The primary framing path is beat/event-driven:
+    #   shot_event.camera_motivation → frame_directive (sole directive when set)
+    # These tables are only used when no shot_event is present (test stubs,
+    # legacy projects, or imports from pre-MM3.1 pipeline runs).
+    # Do NOT add new production framing logic here; extend ACTION_TO_RIG /
+    # CAMERA_PLAN_TO_RIG in cinematography_engine.py instead.
     _FACE_FRAMES = (
         "extreme close-up on eyes and brow, shallow depth of field",
         "medium close-up, face and one shoulder, slight negative space",
