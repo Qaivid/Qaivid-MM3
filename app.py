@@ -1156,11 +1156,43 @@ def advance_stage_2b(project_id: str):
     locked: dict = dict(cp.get("locked_assumptions") or {})
     flags = list(cp.get("ambiguity_flags") or [])
 
+    # ── WHY panel ── motivation fields have their own dedicated form inputs
+    # (why_action_<field> / why_value_<field>) so they are processed here,
+    # BEFORE the generic surfaced_assumptions loop.  This prevents the same
+    # field from being double-processed if it also appears in surfaced_assumptions.
+    _WHY_SUBFIELDS = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
+    _WHY_LOCK_KEYS = {f"motivation_{wf}" for wf in _WHY_SUBFIELDS}
+    motivation_block = dict(cp.get("motivation") or {})
+    for wf in _WHY_SUBFIELDS:
+        action = (request.form.get(f"why_action_{wf}") or "").strip()
+        if not action:
+            continue
+        lock_key = f"motivation_{wf}"
+        if action == "reject":
+            locked.pop(lock_key, None)
+            flags.append({
+                "field": lock_key,
+                "reason": "Marked as ambiguous by user during JARVIS Dialogue.",
+                "confidence": 0.0,
+            })
+        else:
+            val = (request.form.get(f"why_value_{wf}") or "").strip()
+            if action == "override" and val:
+                chosen = val
+            else:
+                chosen = str(motivation_block.get(wf) or "").strip()
+            if chosen:
+                locked[lock_key] = chosen
+
     for i, item in enumerate(surfaced):
         if not isinstance(item, dict):
             continue
         field = item.get("field")
         if not field:
+            continue
+        # Skip motivation fields already handled by the WHY panel above so
+        # the generic action_<i> loop cannot override what the user set there.
+        if field in _WHY_LOCK_KEYS:
             continue
         action = (request.form.get(f"action_{i}") or "accept").strip()
         override_value = (request.form.get(f"value_{i}") or "").strip()

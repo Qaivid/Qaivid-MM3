@@ -105,10 +105,15 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": shot.get("motion_prompt", ""),
                     "framing_directive": shot.get("framing_directive", ""),
                     "composition_note": shot.get("composition_note", ""),
-                    # MM3.1 — structured cinematography rig block from
-                    # cinematography_engine.derive(); must survive assembly
-                    # so style_grading_engine and shot_prompt_composer can read it.
-                    "cinematography": shot.get("cinematography"),
+                    # MM3.1 — structured blocks that must survive assembly so
+                    # style_grading_engine and shot_prompt_composer can read them.
+                    "cinematography":           shot.get("cinematography"),
+                    "cinematic_beat":           shot.get("cinematic_beat"),
+                    "shot_event":               shot.get("shot_event"),
+                    "shot_type":                shot.get("shot_type"),
+                    "shot_validation":          shot.get("shot_validation"),
+                    "llm_expression_mode":      shot.get("llm_expression_mode"),
+                    "variety_cap_reclassified": shot.get("variety_cap_reclassified"),
                 }
             )
 
@@ -151,8 +156,14 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": str(shot.get("motion_prompt", "")).strip(),
                     "framing_directive": str(shot.get("framing_directive", "")).strip(),
                     "composition_note": str(shot.get("composition_note", "")).strip(),
-                    # MM3.1 — preserve cinematography rig block
-                    "cinematography": shot.get("cinematography"),
+                    # MM3.1 — preserve beat/event/rig fields through assembly
+                    "cinematography":           shot.get("cinematography"),
+                    "cinematic_beat":           shot.get("cinematic_beat"),
+                    "shot_event":               shot.get("shot_event"),
+                    "shot_type":                shot.get("shot_type"),
+                    "shot_validation":          shot.get("shot_validation"),
+                    "llm_expression_mode":      shot.get("llm_expression_mode"),
+                    "variety_cap_reclassified": shot.get("variety_cap_reclassified"),
                 }
             )
 

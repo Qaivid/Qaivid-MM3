@@ -108,8 +108,14 @@ def test_composer_trims_to_under_1200_chars():
 
 
 def test_composer_strips_director_instructions_from_user_override():
-    """If the user pastes director-style instructions into their edit,
-    the composer should still strip them — the model can't render them."""
+    """Pipeline-internal directives (continuity constraints, hard restrictions)
+    are stripped so the image model only receives visual content.
+
+    MM3.1 note: Performance: is intentionally preserved — it carries emotional
+    register context that the image model can use.  Beat intelligence travels
+    through structured shot_event/cinematic_beat fields AND may also appear as
+    inline Performance: labels in visual_prompt/user_override text.
+    """
     user_text = (
         "A man at a doorway in golden light. "
         "Maintain strict character continuity with the reference plate. "
@@ -120,9 +126,10 @@ def test_composer_strips_director_instructions_from_user_override():
         _SHOT, character=_CHAR, user_override=user_text,
     )
     assert "maintain strict character continuity" not in prompt.lower()
-    assert "performance:" not in prompt.lower()
     assert "hard restrictions" not in prompt.lower()
     assert "doorway in golden light" in prompt.lower()
+    # Performance: is preserved in MM3.1 (provides emotional register context)
+    assert "performance:" in prompt.lower()
 
 
 def test_composer_user_override_keeps_quality_boosters():

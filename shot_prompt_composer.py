@@ -32,20 +32,18 @@ DEFAULT_NEGATIVE = (
     "amateur photography, bad composition"
 )
 
-# ── Phrases to strip — director/system instructions that must not reach
-#    the image model as literal text.  These labels appear in legacy
-#    visual_prompts (LLM-generated) and user overrides; they are
-#    pipeline metadata, not visual descriptions.
+# ── Phrases to strip — pipeline-internal directives that must not reach the
+#    image model as literal text.
 #
-#    Note: MM3.1 cinematic beat data (behaviour, arc position, motif) is
-#    carried in STRUCTURED fields (shot_event, cinematic_beat dicts), NOT
-#    as "Performance: …" text labels.  So stripping these patterns does
-#    NOT discard any MM3.1 intelligence — it only removes the old-format
-#    label syntax that the image model cannot render.
+#    MM3.1 removal: Performance, Function, Arc beat, and Motif handling are
+#    intentionally NOT stripped.  In the new architecture these values arrive
+#    in structured shot_event/cinematic_beat fields and provide useful context
+#    for the image model about what the shot must convey.  Keeping these labels
+#    when they appear in visual_prompt or user_override text is the correct
+#    MM3.1 behaviour (they tell the model the emotional register and story
+#    function of the shot).
 _INSTRUCTION_PATTERNS = [
     r"Maintain (?:strict )?character continuity[^.]*\.",
-    r"Performance:[^.]*\.",
-    r"Function:[^.]*\.",
     r"Repetition logic:[^.]*\.",
     r"Ambiguity handling:[^.]*\.",
     r"Relevant ambiguity notes:[^.]*\.",
@@ -53,14 +51,10 @@ _INSTRUCTION_PATTERNS = [
     r"Hard restrictions[^:]*:[^.]*\.",
     r"Visual constraints:[^.]*\.",
     r"Continuity:[^.]*\.",
-    r"Motif handling:[^.]*\.",
     r"Cultural subtext to preserve:[^.]*\.",
     r"Why this song exists:[^.]*\.",
     r"Spine anchor:[^.]*\.",
-    r"Dramatic premise:[^.]*\.",
     r"Treatment:[^.]*\.",
-    r"Central metaphor[^:]*:[^.]*\.",
-    r"Arc beat[^:]*:[^.]*\.",
     r"Style notes:[^.]*\.",
     r"Rendering notes:[^.]*\.",
     r"Transition behavior:[^.]*\.",
