@@ -34,6 +34,7 @@ from pipeline_worker import (
     kick_stage_4,
     kick_stage_5,
     kick_stage_refs,
+    kick_quick_video,
     regenerate_entity_plate,
     retry_all_failed_refs,
     retry_all_failed_shots,
@@ -418,6 +419,7 @@ STAGE_ORDER = [
     "references_review",
     "stills_control",
     "stills_review",
+    "post_production",
     "videos_review",
     "final_review",
 ]
@@ -432,6 +434,7 @@ STAGE_LABELS = {
     "references_review": "References",
     "stills_control": "Stills",
     "stills_review": "Stills (Legacy)",
+    "post_production": "Post Production",
     "videos_review": "Video Clips",
     "final_review": "Final Cut",
     "complete": "Complete",
@@ -851,6 +854,9 @@ def project_detail(project_id: str):
                  for a in shot_assets]
         return render_template("stage_stills.html", project=project,
                                shots=shots, refs=refs)
+
+    if stage == "post_production":
+        return redirect(url_for("postprod_page", project_id=project_id))
 
     if stage == "videos_review":
         shot_assets = _get_shot_assets(project_id)
@@ -1772,7 +1778,7 @@ def advance_stage_4(project_id: str):
 # ── Stills Control routes ────────────────────────────────────────────────────
 
 _STILLS_EDITABLE_STAGES = (
-    "stills_control", "stills_review", "videos_review", "complete",
+    "stills_control", "stills_review", "post_production", "videos_review", "complete",
 )
 
 
@@ -1873,23 +1879,23 @@ def stills_upload_one(project_id: str, shot_index: int):
 @app.route("/project/<project_id>/stills/approve", methods=["POST"])
 @login_required
 def stills_approve(project_id: str):
-    """User approved all stills — advance to video generation."""
+    """User approved all stills — advance to Post Production stage."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET status=%s, stage=%s, updated_at=NOW() "
+            "UPDATE projects SET status='awaiting_review', stage='post_production', "
+            "updated_at=NOW() "
             " WHERE id=%s AND stage='stills_control' AND status='awaiting_review'",
-            ("queued", "queued", project_id),
+            (project_id,),
         )
         advanced = cur.rowcount == 1
         conn.commit()
     if not advanced:
         flash("Cannot advance — project is not at the stills review step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    kick_stage_4(project_id)
-    return redirect(url_for("project_detail", project_id=project_id))
+    return redirect(url_for("postprod_page", project_id=project_id))
 
 
 @app.route("/project/<project_id>/advance/5", methods=["POST"])
@@ -1918,6 +1924,186 @@ def advance_stage_5(project_id: str):
 
     kick_stage_5(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
+
+
+# ── Post Production Routes (Task #100) ───────────────────────────────────────
+
+ALLOWED_LOGO = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_SRT  = {".srt", ".vtt"}
+
+
+@app.route("/project/<project_id>/postprod", methods=["GET"])
+@login_required
+def postprod_page(project_id: str):
+    """Render the Post Production studio page."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if project.get("stage") not in ("post_production", "videos_review", "final_review",
+                                    "complete", "stills_review"):
+        flash("Post Production is not available yet — approve your stills first.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    shot_assets = _get_shot_assets(project_id)
+    timeline = project.get("styled_timeline") or []
+    shots = []
+    for a in shot_assets:
+        tl_shot = next(
+            (s for s in timeline
+             if (s.get("shot_index") or s.get("timeline_index")) == a["shot_index"]),
+            {},
+        )
+        p = _shot_payload(a, tl_shot)
+        p["url"] = _asset_url(a.get("file_path"))
+        shots.append(p)
+
+    config = project.get("postprod_config") or {}
+    quick_video_url = _asset_url(project.get("quick_video_url")) if project.get("quick_video_url") else None
+    total_duration = sum(s.get("duration") or 0 for s in timeline)
+
+    return render_template(
+        "stage_postprod.html",
+        project=project,
+        shots=shots,
+        config=config,
+        quick_video_url=quick_video_url,
+        total_duration=round(total_duration, 1),
+    )
+
+
+@app.route("/project/<project_id>/postprod/save", methods=["POST"])
+@login_required
+def postprod_save(project_id: str):
+    """Upsert the postprod_config JSON for this project."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    data = request.get_json(silent=True) or {}
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+            (Json(data), project_id),
+        )
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/project/<project_id>/postprod/generate", methods=["POST"])
+@login_required
+def postprod_generate(project_id: str):
+    """Kick async Quick Video assembly."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    settings = request.get_json(silent=True) or {}
+    kick_quick_video(project_id, settings)
+    return jsonify({"ok": True, "status": "generating"})
+
+
+@app.route("/project/<project_id>/postprod/status", methods=["GET"])
+@login_required
+def postprod_status(project_id: str):
+    """Poll for quick video URL and error state."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    config = project.get("postprod_config") or {}
+    generating = bool(config.get("generating"))
+    error = config.get("quick_video_error") or ""
+    raw_url = project.get("quick_video_url") or ""
+    url = _asset_url(raw_url) if raw_url else ""
+    if url:
+        generating = False
+    return jsonify({"ok": True, "generating": generating, "url": url, "error": error})
+
+
+@app.route("/project/<project_id>/postprod/advance", methods=["POST"])
+@login_required
+def postprod_advance(project_id: str):
+    """Skip quick video — kick AI render (Stage 4) and go to videos_review."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    stage = project.get("stage")
+    if stage not in ("post_production", "stills_review"):
+        flash("Cannot advance from this stage.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    kick_stage_4(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/postprod/upload_srt", methods=["POST"])
+@login_required
+def postprod_upload_srt(project_id: str):
+    """Upload an SRT/VTT subtitle file and store its R2 key in postprod_config."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    f = request.files.get("srt_file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    ext = Path(secure_filename(f.filename)).suffix.lower()
+    if ext not in ALLOWED_SRT:
+        return jsonify({"ok": False, "error": "Only .srt and .vtt files accepted"}), 400
+    raw_bytes = f.read()
+    if len(raw_bytes) > 2 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "File too large (max 2 MB)"}), 400
+    r2_key = f"projects/{project_id}/quick/subtitles{ext}"
+    if r2_storage.r2_available():
+        r2_storage.upload_bytes(raw_bytes, r2_key, content_type="text/plain")
+    else:
+        local_path = PROJECTS_ROOT / project_id / "quick"
+        local_path.mkdir(parents=True, exist_ok=True)
+        (local_path / f"subtitles{ext}").write_bytes(raw_bytes)
+    config = project.get("postprod_config") or {}
+    config["srt_r2_key"] = r2_key
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+            (Json(config), project_id),
+        )
+        conn.commit()
+    return jsonify({"ok": True, "r2_key": r2_key, "filename": f.filename})
+
+
+@app.route("/project/<project_id>/postprod/upload_logo/<slot>", methods=["POST"])
+@login_required
+def postprod_upload_logo(project_id: str, slot: str):
+    """Upload a logo PNG for a given slot (top-left, top-right, bottom-left, bottom-right)."""
+    if slot not in ("top-left", "top-right", "bottom-left", "bottom-right"):
+        return jsonify({"ok": False, "error": "Invalid slot"}), 400
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    f = request.files.get("logo_file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    ext = Path(secure_filename(f.filename)).suffix.lower()
+    if ext not in ALLOWED_LOGO:
+        return jsonify({"ok": False, "error": "Only PNG/JPG/WEBP files accepted"}), 400
+    raw_bytes = f.read()
+    if len(raw_bytes) > 5 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "File too large (max 5 MB)"}), 400
+    safe_slot = slot.replace("-", "_")
+    r2_key = f"projects/{project_id}/quick/logo_{safe_slot}{ext}"
+    if r2_storage.r2_available():
+        r2_storage.upload_bytes(raw_bytes, r2_key, content_type=f"image/{ext.lstrip('.')}")
+    else:
+        local_path = PROJECTS_ROOT / project_id / "quick"
+        local_path.mkdir(parents=True, exist_ok=True)
+        (local_path / f"logo_{safe_slot}{ext}").write_bytes(raw_bytes)
+    config = project.get("postprod_config") or {}
+    logos = config.get("logos") or {}
+    logos[slot] = {**(logos.get(slot) or {}), "r2_key": r2_key, "filename": f.filename}
+    config["logos"] = logos
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+            (Json(config), project_id),
+        )
+        conn.commit()
+    preview_url = _asset_url(r2_key) if r2_storage.r2_available() else ""
+    return jsonify({"ok": True, "r2_key": r2_key, "preview_url": preview_url})
 
 
 @app.route("/project/<project_id>/retry/all_failed_refs", methods=["POST"])

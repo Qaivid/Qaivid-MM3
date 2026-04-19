@@ -319,6 +319,10 @@ def ensure_schema() -> None:
             "ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS look_cluster_id TEXT;"
         )
 
+        # Post Production Stage — Quick Video (Task #100)
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS postprod_config JSONB;")
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS quick_video_url TEXT;")
+
         conn.commit()
 
 
@@ -2694,3 +2698,480 @@ def retry_ref(project_id: str, role: str) -> None:
             logger.exception("Ref retry failed")
 
     _REF_EXECUTOR.submit(_job)
+
+
+# ── Post Production — Quick Video assembly (Task #100) ────────────────────────
+
+_POSTPROD_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qaivid-postprod")
+
+_KB_MODES = {
+    "zoom-in":    "zoompan=z='min(zoom+0.0015,1.3)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
+    "zoom-out":   "zoompan=z='if(eq(on,1),1.3,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
+    "pan-left":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)+t*(iw*0.04/d)':y='ih/2-(ih/zoom/2)'",
+    "pan-right":  "zoompan=z=1.1:x='iw/2-(iw/zoom/2)-t*(iw*0.04/d)':y='ih/2-(ih/zoom/2)'",
+    "pan-up":     "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+t*(ih*0.04/d)'",
+    "pan-down":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-t*(ih*0.04/d)'",
+    "static":     "zoompan=z=1.0:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
+    "random":     None,
+}
+
+_KB_RANDOM_POOL = ["zoom-in", "zoom-out", "pan-left", "pan-right", "pan-up", "pan-down"]
+
+_COLOUR_FILTERS = {
+    "original":       "",
+    "film-grain":     "noise=alls=8:allf=t+u,curves=all='0/0 0.4/0.38 0.7/0.68 1/1'",
+    "vintage":        "curves=r='0/0.05 1/0.9':g='0/0.02 1/0.88':b='0/0.08 1/0.85',hue=s=0.7",
+    "bleach-bypass":  "colorchannelmixer=rr=0.5:rg=0.25:rb=0.25:gr=0.25:gg=0.5:gb=0.25:br=0.25:bg=0.25:bb=0.5,curves=all='0/0 0.5/0.42 1/1'",
+    "teal-orange":    "curves=r='0/0.08 0.5/0.6 1/0.95':g='0/0 0.5/0.5 1/1':b='0/0.05 0.4/0.55 1/0.7',hue=s=1.3",
+    "desaturated":    "hue=s=0.25,curves=all='0/0.05 1/0.95'",
+    "high-contrast":  "curves=all='0/0 0.3/0.18 0.7/0.85 1/1'",
+    "warm-glow":      "curves=r='0/0.1 1/1':g='0/0.02 1/0.95':b='0/0 1/0.75',hue=s=1.1",
+    "cool-tone":      "curves=r='0/0 1/0.85':g='0/0 1/0.95':b='0/0.05 1/1',hue=s=1.05",
+}
+
+_XFADE_NAMES = {
+    "cut":          None,
+    "crossfade":    "fade",
+    "dip-to-black": "fade",
+    "dissolve":     "dissolve",
+    "wipe":         "wipeleft",
+}
+
+# Aspect ratio → (w, h) for FFmpeg scale+pad
+_ASPECT_DIMS = {
+    "16:9": (1920, 1080),
+    "9:16": (1080, 1920),
+    "1:1":  (1080, 1080),
+    "4:3":  (1440, 1080),
+}
+
+# Quality presets → (width, height, crf, preset)
+_QUALITY_PRESETS = {
+    "480p":    (854,  480,  26, "veryfast"),
+    "720p":    (1280, 720,  23, "fast"),
+    "1080p":   (1920, 1080, 20, "medium"),
+    "1080p-hq":(1920, 1080, 18, "slow"),
+    "4k":      (3840, 2160, 18, "medium"),
+    "9:16":    (1080, 1920, 20, "medium"),
+    "1:1":     (1080, 1080, 20, "medium"),
+}
+
+
+def _kb_expr(mode: Optional[str], shot_fps: int, shot_dur: float) -> str:
+    """Return a zoompan filter string for the given Ken Burns mode."""
+    import random as _rnd
+    if not mode or mode == "random":
+        mode = _rnd.choice(_KB_RANDOM_POOL)
+    base = _KB_MODES.get(mode, _KB_MODES["zoom-in"])
+    n_frames = max(1, int(shot_fps * shot_dur))
+    return f"{base}:d={n_frames}:fps={shot_fps}:s=1920x1080"
+
+
+def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
+    """Background job: assembles approved stills into a polished quick video MP4."""
+    import shutil
+    import subprocess
+    import tempfile
+    import requests
+    import json as _json
+    import random as _rnd
+
+    try:
+        ffmpeg = shutil.which("ffmpeg") or (
+            "/nix/store/ynlnyy6rn70kvzamy3b40bp3qlz70mn0-ffmpeg-full-7.1.1-bin/bin/ffmpeg"
+        )
+        if not ffmpeg or not Path(ffmpeg).exists():
+            raise RuntimeError("ffmpeg binary not found.")
+
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, audio_filename, styled_timeline, postprod_config "
+                "FROM projects WHERE id=%s",
+                (project_id,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise RuntimeError("Project not found.")
+
+        timeline = row.get("styled_timeline") or []
+        if not timeline:
+            raise RuntimeError("No styled timeline — run the storyboard pipeline first.")
+
+        # ── Settings ──────────────────────────────────────────────────────────
+        global_kb    = settings.get("ken_burns_mode", "zoom-in")
+        per_shot_kb  = settings.get("per_shot_kb") or {}           # {str(idx): mode}
+        transition   = settings.get("transition", "crossfade")
+        trans_dur    = float(settings.get("transition_duration", 0.8))
+        colour_filter = settings.get("colour_filter", "original").lower().replace(" ", "-")
+        aspect       = settings.get("aspect_ratio", "16:9")
+        quality      = settings.get("quality", "1080p").lower().replace(" ", "-")
+        logo_slots   = settings.get("logos") or {}                  # {slot: {r2_key, opacity, ...}}
+        srt_r2_key   = settings.get("srt_r2_key") or ""
+        per_shot_dur = settings.get("per_shot_duration") or {}      # {str(idx): float}
+
+        # ── Work dir ──────────────────────────────────────────────────────────
+        work_dir = Path(tempfile.mkdtemp(prefix=f"qv_quick_{project_id}_"))
+        try:
+            # ── Collect shots ─────────────────────────────────────────────────
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT shot_index, file_path FROM shot_assets "
+                    " WHERE project_id=%s AND status='ready' ORDER BY shot_index",
+                    (project_id,),
+                )
+                ready_rows = cur.fetchall()
+
+            if not ready_rows:
+                raise RuntimeError("No ready stills found — generate stills first.")
+
+            timeline_map = {
+                (s.get("shot_index") or s.get("timeline_index")): s for s in timeline
+            }
+
+            # ── Output dimensions ─────────────────────────────────────────────
+            # Quality preset may override aspect ratio (9:16 and 1:1 presets)
+            if quality in ("9:16", "1:1"):
+                aspect = quality
+            aw, ah = _ASPECT_DIMS.get(aspect, (1920, 1080))
+            qw, qh, crf, enc_preset = _QUALITY_PRESETS.get(quality, (1920, 1080, 20, "medium"))
+            out_w, out_h = (aw, ah)
+
+            shot_fps = 25
+            local_stills: list[tuple[int, Path, float]] = []
+
+            for r in ready_rows:
+                idx = r["shot_index"]
+                url = r["file_path"]
+                shot = timeline_map.get(idx) or {}
+                if str(idx) in per_shot_dur:
+                    dur = float(per_shot_dur[str(idx)])
+                else:
+                    dur = float(shot.get("duration") or 4.0)
+                dur = max(0.5, dur)
+
+                dst = work_dir / f"still_{idx:04d}.jpg"
+                try:
+                    resp = requests.get(url, timeout=60, stream=True)
+                    resp.raise_for_status()
+                    with open(dst, "wb") as f:
+                        for chunk in resp.iter_content(1 << 16):
+                            f.write(chunk)
+                    local_stills.append((idx, dst, dur))
+                except Exception:
+                    logger.warning("Quick video: could not download still %s for project %s", idx, project_id)
+
+            if not local_stills:
+                raise RuntimeError("Could not download any ready stills.")
+
+            # ── Build per-shot processed clips ────────────────────────────────
+            processed_clips: list[Path] = []
+            colour_expr = _COLOUR_FILTERS.get(colour_filter, "")
+
+            for i, (idx, still_path, dur) in enumerate(local_stills):
+                shot_mode = per_shot_kb.get(str(idx)) or global_kb
+                kb_expr   = _kb_expr(shot_mode, shot_fps, dur)
+                n_frames  = max(1, int(shot_fps * dur))
+                out_clip  = work_dir / f"clip_{i:04d}.mp4"
+
+                # scale + pad to fill chosen aspect ratio, then apply Ken Burns
+                scale_pad = (
+                    f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{out_h}"
+                )
+                vf_chain = f"{scale_pad},{kb_expr}"
+                if colour_expr:
+                    vf_chain = f"{vf_chain},{colour_expr}"
+
+                cmd = [
+                    ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                    "-loop", "1", "-i", str(still_path),
+                    "-vf", vf_chain,
+                    "-t", str(dur),
+                    "-r", str(shot_fps),
+                    "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                    "-pix_fmt", "yuv420p", "-an",
+                    str(out_clip),
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+                processed_clips.append(out_clip)
+
+            # ── Concatenate clips (with or without xfade transitions) ─────────
+            xfade_effect = _XFADE_NAMES.get(transition)
+            use_dip_black = (transition == "dip-to-black")
+
+            if len(processed_clips) == 1 or xfade_effect is None:
+                # Hard cut or single clip: use concat demuxer
+                concat_list = work_dir / "concat.txt"
+                with open(concat_list, "w") as f:
+                    for p in processed_clips:
+                        f.write(f"file '{p.as_posix()}'\n")
+                stitched = work_dir / "stitched.mp4"
+                cmd = [
+                    ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                    "-f", "concat", "-safe", "0", "-i", str(concat_list),
+                    "-c", "copy", str(stitched),
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+            else:
+                # xfade filter_complex chain
+                td = min(trans_dur, min(d for _, _, d in local_stills) * 0.5)
+                td = max(0.1, td)
+
+                if use_dip_black:
+                    # For dip-to-black: fade each clip out then in using fade filter
+                    faded_clips: list[Path] = []
+                    for i, clip in enumerate(processed_clips):
+                        faded = work_dir / f"faded_{i:04d}.mp4"
+                        dur_i = local_stills[i][2]
+                        vf = ""
+                        if i > 0:
+                            vf += f"fade=t=in:st=0:d={td}:color=black"
+                        if i < len(processed_clips) - 1:
+                            fade_out_st = max(0, dur_i - td)
+                            if vf:
+                                vf += f",fade=t=out:st={fade_out_st:.3f}:d={td}:color=black"
+                            else:
+                                vf = f"fade=t=out:st={fade_out_st:.3f}:d={td}:color=black"
+                        if vf:
+                            cmd = [
+                                ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                                "-i", str(clip),
+                                "-vf", vf, "-c:v", "libx264",
+                                "-preset", enc_preset, "-crf", str(crf),
+                                "-pix_fmt", "yuv420p", "-an", str(faded),
+                            ]
+                            subprocess.run(cmd, check=True, capture_output=True)
+                            faded_clips.append(faded)
+                        else:
+                            faded_clips.append(clip)
+
+                    concat_list = work_dir / "concat.txt"
+                    with open(concat_list, "w") as f:
+                        for p in faded_clips:
+                            f.write(f"file '{p.as_posix()}'\n")
+                    stitched = work_dir / "stitched.mp4"
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-f", "concat", "-safe", "0", "-i", str(concat_list),
+                        "-c", "copy", str(stitched),
+                    ]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                else:
+                    # xfade filter_complex
+                    inputs = []
+                    for clip in processed_clips:
+                        inputs += ["-i", str(clip)]
+
+                    n = len(processed_clips)
+                    filter_parts = []
+                    offsets: list[float] = []
+                    cumulative = 0.0
+                    for i in range(n - 1):
+                        cumulative += local_stills[i][2] - td
+                        offsets.append(round(cumulative, 3))
+
+                    prev_label = "[0:v]"
+                    for i in range(n - 1):
+                        next_label = f"[v{i+1}]" if i < n - 2 else "[vout]"
+                        filter_parts.append(
+                            f"{prev_label}[{i+1}:v]xfade=transition={xfade_effect}"
+                            f":duration={td}:offset={offsets[i]}{next_label}"
+                        )
+                        prev_label = f"[v{i+1}]"
+
+                    filter_complex = ";".join(filter_parts)
+                    stitched = work_dir / "stitched.mp4"
+                    cmd = (
+                        [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                        + inputs
+                        + ["-filter_complex", filter_complex,
+                           "-map", "[vout]",
+                           "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                           "-pix_fmt", "yuv420p", "-an", str(stitched)]
+                    )
+                    subprocess.run(cmd, check=True, capture_output=True)
+
+            # ── Logo overlays ─────────────────────────────────────────────────
+            current_video = stitched
+            if logo_slots and r2_storage.r2_available():
+                logo_filter_parts = []
+                logo_inputs = []
+                logo_idx = 1
+
+                slot_positions = {
+                    "top-left":     ("20", "20"),
+                    "top-right":    ("main_w-overlay_w-20", "20"),
+                    "bottom-left":  ("20", "main_h-overlay_h-20"),
+                    "bottom-right": ("main_w-overlay_w-20", "main_h-overlay_h-20"),
+                }
+
+                valid_logos: list[tuple[str, dict, str, str]] = []
+                for slot, logo_cfg in logo_slots.items():
+                    r2_key = (logo_cfg or {}).get("r2_key", "")
+                    if not r2_key:
+                        continue
+                    try:
+                        logo_data = r2_storage.download_bytes(r2_key)
+                        logo_path = work_dir / f"logo_{slot}.png"
+                        logo_path.write_bytes(logo_data)
+                        pos = slot_positions.get(slot, ("20", "20"))
+                        valid_logos.append((slot, logo_cfg, str(logo_path), pos))
+                    except Exception:
+                        logger.warning("Quick video: could not download logo for slot %s", slot)
+
+                if valid_logos:
+                    logo_out = work_dir / "with_logos.mp4"
+                    cmd_parts = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                                 "-i", str(current_video)]
+                    for _slot, _cfg, logo_path, _pos in valid_logos:
+                        cmd_parts += ["-i", logo_path]
+
+                    overlay_filter = ""
+                    prev = "[0:v]"
+                    for li, (_slot, logo_cfg, _lp, pos) in enumerate(valid_logos):
+                        opacity = float((logo_cfg or {}).get("opacity", 0.9))
+                        width   = int((logo_cfg or {}).get("width", 120))
+                        lbl_in  = f"[{li+1}:v]"
+                        lbl_out = f"[ov{li}]" if li < len(valid_logos) - 1 else "[vfinal]"
+                        overlay_filter += (
+                            f"{lbl_in}scale={width}:-1[ls{li}];"
+                            f"[ls{li}]format=rgba,colorchannelmixer=aa={opacity:.2f}[la{li}];"
+                            f"{prev}[la{li}]overlay={pos[0]}:{pos[1]}{lbl_out};"
+                        )
+                        prev = lbl_out
+
+                    overlay_filter = overlay_filter.rstrip(";")
+                    cmd_parts += [
+                        "-filter_complex", overlay_filter,
+                        "-map", "[vfinal]", "-map", "0:a?",
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-pix_fmt", "yuv420p", "-an", str(logo_out),
+                    ]
+                    try:
+                        subprocess.run(cmd_parts, check=True, capture_output=True)
+                        current_video = logo_out
+                    except subprocess.CalledProcessError as e:
+                        logger.warning("Quick video: logo overlay failed — skipping (%s)",
+                                       (e.stderr or b"").decode("utf-8", "ignore")[:300])
+
+            # ── Audio mux ─────────────────────────────────────────────────────
+            audio_local: Optional[Path] = None
+            audio_filename = row.get("audio_filename")
+            if audio_filename:
+                candidate = PROJECTS_ROOT / project_id / "uploads" / audio_filename
+                if candidate.is_file():
+                    audio_local = candidate
+                elif r2_storage.r2_available():
+                    try:
+                        data = r2_storage.download_bytes(
+                            f"projects/{project_id}/uploads/{audio_filename}"
+                        )
+                        candidate.parent.mkdir(parents=True, exist_ok=True)
+                        candidate.write_bytes(data)
+                        audio_local = candidate
+                    except Exception:
+                        logger.warning("Quick video: could not fetch audio for project %s", project_id)
+
+            muxed = work_dir / "muxed.mp4"
+            if audio_local:
+                cmd = [
+                    ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                    "-i", str(current_video),
+                    "-i", str(audio_local),
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    "-shortest", str(muxed),
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+                current_video = muxed
+
+            # ── Subtitle burn-in ──────────────────────────────────────────────
+            if srt_r2_key and r2_storage.r2_available():
+                try:
+                    srt_data = r2_storage.download_bytes(srt_r2_key)
+                    srt_path = work_dir / "subtitles.srt"
+                    srt_path.write_bytes(srt_data)
+
+                    sub_style = settings.get("subtitle_style") or {}
+                    font_name  = sub_style.get("font", "Arial")
+                    font_size  = int(sub_style.get("font_size", 24))
+                    primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
+                    outline_c  = sub_style.get("outline_colour", "&H00000000")
+                    back_c     = sub_style.get("back_colour", "&H80000000")
+                    bold       = int(sub_style.get("bold", 0))
+                    outline    = float(sub_style.get("outline", 1.5))
+                    shadow     = float(sub_style.get("shadow", 0))
+                    alignment  = int(sub_style.get("alignment", 2))
+                    margin_v   = int(sub_style.get("margin_v", 40))
+
+                    force_style = (
+                        f"FontName={font_name},FontSize={font_size},"
+                        f"PrimaryColour={primary_c},OutlineColour={outline_c},"
+                        f"BackColour={back_c},Bold={bold},"
+                        f"Outline={outline},Shadow={shadow},"
+                        f"Alignment={alignment},MarginV={margin_v}"
+                    )
+
+                    subtitled = work_dir / "subtitled.mp4"
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-i", str(current_video),
+                        "-vf", f"subtitles={srt_path.as_posix()}:force_style='{force_style}'",
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-c:a", "copy", str(subtitled),
+                    ]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    current_video = subtitled
+                except Exception:
+                    logger.warning("Quick video: subtitle burn-in failed (non-fatal)", exc_info=True)
+
+            # ── Upload to R2 ──────────────────────────────────────────────────
+            safe_name = (row.get("name") or "qaivid").strip().replace(" ", "_")
+            r2_key = f"projects/{project_id}/quick/{safe_name}_quick.mp4"
+            final_url = r2_storage.upload_file(current_video, r2_key)
+
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE projects SET quick_video_url=%s, updated_at=NOW() WHERE id=%s",
+                    (final_url, project_id),
+                )
+                conn.commit()
+
+            logger.info("Quick video assembled for project %s → %s", project_id, final_url)
+
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or b"").decode("utf-8", "ignore")[:800]
+        logger.exception("Quick video ffmpeg error for project %s: %s", project_id, stderr)
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
+                "WHERE id=%s",
+                (_json.dumps({"quick_video_error": f"ffmpeg failed: {stderr}"}), project_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.exception("Quick video assembly failed for project %s", project_id)
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
+                "WHERE id=%s",
+                (_json.dumps({"quick_video_error": str(exc)[:400]}), project_id),
+            )
+            conn.commit()
+
+
+def kick_quick_video(project_id: str, settings: dict) -> None:
+    """Queue an async quick-video assembly job."""
+    import json as _json
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET quick_video_url=NULL, "
+            "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
+            "updated_at=NOW() WHERE id=%s",
+            (_json.dumps({"generating": True, "quick_video_error": None}), project_id),
+        )
+        conn.commit()
+    _POSTPROD_EXECUTOR.submit(_assemble_quick_video_job, project_id, settings)

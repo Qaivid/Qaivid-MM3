@@ -14,10 +14,11 @@
     ('storyboard_review', '4', 'Storyboard'),
     ('references_review', '5', 'References'),
     ('stills_review', '6', 'Stills'),
-    ('videos_review', '7', 'Videos'),
-    ('final_review', '8', 'Final Cut'),
+    ('post_production', '7', 'Post Production'),
+    ('videos_review', '8', 'Videos'),
+    ('final_review', '9', 'Final Cut'),
 ] %}
-{% set stage_order = ['audio_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_review','videos_review','final_review'] %}
+{% set stage_order = ['audio_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_review','post_production','videos_review','final_review'] %}
 {# Map any canonical pipeline stage that the wizard doesn't render
    directly (style_review, stills_control, complete, failed, etc.)
    onto the closest wizard step so past stages still light up as

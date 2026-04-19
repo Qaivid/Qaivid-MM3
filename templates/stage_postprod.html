@@ -1,0 +1,1233 @@
+{% extends "base.html" %}
+{% set active_stage = 'post_production' %}
+{% block title %}{{ project.name }} — Post Production · Qaivid{% endblock %}
+
+{% block content %}
+<div class="pp-wrap">
+  {% include '_stage_header.html' %}
+
+  <!-- ── Top toolbar ────────────────────────────────────────────────────── -->
+  <div class="pp-toolbar">
+    <div class="pp-toolbar-left">
+      <span class="pp-project-badge">{{ project.name }}</span>
+      <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
+    </div>
+    <div class="pp-toolbar-right">
+      <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save Settings</button>
+      <button class="pp-btn pp-btn-generate" id="btn-generate" onclick="ppGenerate()">
+        ▶ Generate Quick Video
+      </button>
+      {% if quick_video_url %}
+      <a class="pp-btn pp-btn-download" id="btn-download" href="{{ quick_video_url }}" download target="_blank">
+        ⬇ Download
+      </a>
+      {% else %}
+      <a class="pp-btn pp-btn-download pp-btn-download-hidden" id="btn-download" href="#" download target="_blank">
+        ⬇ Download
+      </a>
+      {% endif %}
+      <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="pp-btn pp-btn-ai">Full AI Render →</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Status bar ─────────────────────────────────────────────────────── -->
+  <div class="pp-status-bar" id="pp-status-bar" style="display:none;">
+    <div class="pp-status-spinner"></div>
+    <span id="pp-status-text">Generating quick video…</span>
+  </div>
+  <div class="pp-error-bar" id="pp-error-bar" style="display:none;">
+    <span id="pp-error-text"></span>
+  </div>
+
+  <!-- ── Studio split layout ───────────────────────────────────────────── -->
+  <div class="pp-studio">
+
+    <!-- Left: preview + thumbnail strip -->
+    <div class="pp-preview-col">
+      <div class="pp-preview-frame" id="pp-preview-frame">
+        <!-- Ken Burns animated current still -->
+        <div class="pp-kb-wrap" id="pp-kb-wrap">
+          <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
+          <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
+          <div class="pp-sub-preview" id="pp-sub-preview"></div>
+          <!-- Logo overlay previews -->
+          <div class="pp-logo-tl" id="pp-logo-tl"></div>
+          <div class="pp-logo-tr" id="pp-logo-tr"></div>
+          <div class="pp-logo-bl" id="pp-logo-bl"></div>
+          <div class="pp-logo-br" id="pp-logo-br"></div>
+        </div>
+        <!-- Play controls -->
+        <div class="pp-controls">
+          <button class="pp-ctrl-btn" onclick="ppPrev()" title="Previous">◀</button>
+          <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()" title="Play/Pause">▶</button>
+          <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶▶</button>
+          <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
+        </div>
+      </div>
+
+      <!-- Thumbnail strip -->
+      <div class="pp-thumb-strip" id="pp-thumb-strip">
+        {% for shot in shots %}
+        <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
+             id="pp-thumb-{{ shot.shot_index }}"
+             data-idx="{{ shot.shot_index }}"
+             data-dur="{{ shot.duration or 4.0 }}"
+             onclick="ppJumpTo({{ loop.index0 }})"
+             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s">
+          {% if shot.url %}
+          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+          {% else %}
+          <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
+          {% endif %}
+          <div class="pp-thumb-meta">
+            <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
+            <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
+                    onclick="ppEditDuration(event, {{ shot.shot_index }})"
+                    title="Click to override duration">
+              {{ '%.1f'|format(shot.duration or 4.0) }}s
+            </button>
+            <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+          </div>
+          <!-- KB override popover -->
+          <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
+            <div class="pp-kb-pop-label">Ken Burns for shot {{ shot.shot_index }}</div>
+            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
+              <option value="">— Use global —</option>
+              <option value="zoom-in">Zoom In</option>
+              <option value="zoom-out">Zoom Out</option>
+              <option value="pan-left">Pan Left</option>
+              <option value="pan-right">Pan Right</option>
+              <option value="pan-up">Pan Up</option>
+              <option value="pan-down">Pan Down</option>
+              <option value="static">Static</option>
+              <option value="random">Random</option>
+            </select>
+            <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Right: 5-tab control panel -->
+    <div class="pp-control-panel">
+      <div class="pp-tabs">
+        <button class="pp-tab active" onclick="ppTab(this,'anim')">Animation</button>
+        <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
+        <button class="pp-tab" onclick="ppTab(this,'over')">Overlays</button>
+        <button class="pp-tab" onclick="ppTab(this,'filt')">Filters</button>
+        <button class="pp-tab" onclick="ppTab(this,'expo')">Export</button>
+      </div>
+
+      <!-- ── Animation tab ──────────────────────────────────────────────── -->
+      <div class="pp-panel active" id="pp-panel-anim">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Global Ken Burns Motion</label>
+          <select class="pp-ctrl-select" id="ctrl-kb-mode" onchange="ppConfigChange()">
+            <option value="zoom-in">Zoom In</option>
+            <option value="zoom-out">Zoom Out</option>
+            <option value="pan-left">Pan Left</option>
+            <option value="pan-right">Pan Right</option>
+            <option value="pan-up">Pan Up</option>
+            <option value="pan-down">Pan Down</option>
+            <option value="static">Static (no motion)</option>
+            <option value="random">Random per shot</option>
+          </select>
+          <p class="pp-ctrl-hint">Click any thumbnail to set a per-shot override.</p>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Transition Between Shots</label>
+          <select class="pp-ctrl-select" id="ctrl-transition" onchange="ppConfigChange()">
+            <option value="crossfade">Crossfade (dissolve)</option>
+            <option value="cut">Hard Cut</option>
+            <option value="dip-to-black">Dip to Black</option>
+            <option value="dissolve">Dissolve</option>
+            <option value="wipe">Wipe Left</option>
+          </select>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Transition Duration
+            <span class="pp-ctrl-val" id="val-trans-dur">0.8s</span>
+          </label>
+          <input type="range" class="pp-range" id="ctrl-trans-dur"
+                 min="0.2" max="2.0" step="0.1" value="0.8"
+                 oninput="ppRangeVal('trans-dur',this.value,'s'); ppConfigChange()">
+        </div>
+      </div>
+
+      <!-- ── Subtitles tab ──────────────────────────────────────────────── -->
+      <div class="pp-panel" id="pp-panel-subs">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Upload Subtitle File</label>
+          <div class="pp-upload-area" id="srt-upload-area">
+            <input type="file" accept=".srt,.vtt" id="srt-file-input"
+                   style="display:none;" onchange="ppUploadSrt(this)">
+            <button class="pp-upload-btn" onclick="document.getElementById('srt-file-input').click()">
+              ↑ Choose .srt or .vtt
+            </button>
+            <span class="pp-upload-name" id="srt-filename">No file uploaded</span>
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Style Preset</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-preset" onchange="ppSubPreset(this.value); ppConfigChange()">
+            <option value="none">None</option>
+            <option value="classic-white">Classic White</option>
+            <option value="neon-glow">Neon Glow</option>
+            <option value="cinematic-gold">Cinematic Gold</option>
+            <option value="bold-impact">Bold Impact</option>
+            <option value="documentary">Documentary</option>
+            <option value="minimal">Minimal</option>
+            <option value="kids-fun">Kids Fun</option>
+            <option value="cartoon-bubble">Cartoon Bubble</option>
+            <option value="electric">Electric</option>
+            <option value="rainbow-karaoke">Rainbow Karaoke</option>
+            <option value="candy-pop">Candy Pop</option>
+          </select>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Font</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-font" onchange="ppConfigChange(); ppSubPreview()">
+            <option>Arial</option><option>Georgia</option><option>Impact</option>
+            <option>Verdana</option><option>Trebuchet MS</option><option>Courier New</option>
+            <option>Times New Roman</option><option>Comic Sans MS</option>
+            <option>Palatino</option><option>Garamond</option>
+            <option>Franklin Gothic Medium</option><option>Gill Sans</option>
+          </select>
+        </div>
+
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Font Size
+              <span class="pp-ctrl-val" id="val-sub-size">24px</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-size"
+                   min="12" max="72" step="1" value="24"
+                   oninput="ppRangeVal('sub-size',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Outline
+              <span class="pp-ctrl-val" id="val-sub-outline">1.5px</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-outline"
+                   min="0" max="5" step="0.5" value="1.5"
+                   oninput="ppRangeVal('sub-outline',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Text Colour</label>
+            <input type="color" class="pp-color" id="ctrl-sub-color" value="#ffffff"
+                   oninput="ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Background</label>
+            <input type="color" class="pp-color" id="ctrl-sub-bg" value="#000000"
+                   oninput="ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Vertical pos
+              <span class="pp-ctrl-val" id="val-sub-y">90%</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-y"
+                   min="0" max="100" step="1" value="90"
+                   oninput="ppRangeVal('sub-y',this.value,'%'); ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Drop Shadow
+              <span class="pp-ctrl-val" id="val-sub-shadow">0px</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-shadow"
+                   min="0" max="8" step="0.5" value="0"
+                   oninput="ppRangeVal('sub-shadow',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Animation</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange()">
+            <option value="none">None</option>
+            <option value="fade">Fade In</option>
+            <option value="typewriter">Typewriter</option>
+            <option value="slide-up">Slide Up</option>
+            <option value="pop">Pop</option>
+          </select>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Preview text</label>
+          <div id="pp-sub-preview-box" class="pp-sub-preview-box">Sample subtitle text</div>
+        </div>
+      </div>
+
+      <!-- ── Overlays tab ──────────────────────────────────────────────── -->
+      <div class="pp-panel" id="pp-panel-over">
+        {% for slot_id, slot_label in [('top-left','Top Left'), ('top-right','Top Right'), ('bottom-left','Bottom Left'), ('bottom-right','Bottom Right')] %}
+        <div class="pp-ctrl-group pp-logo-slot" id="logo-slot-{{ slot_id }}">
+          <div class="pp-logo-slot-header">
+            <label class="pp-ctrl-label">{{ slot_label }} Logo</label>
+            <span class="pp-logo-uploaded" id="logo-fn-{{ slot_id }}"></span>
+          </div>
+          <div class="pp-upload-area">
+            <input type="file" accept="image/png,image/jpeg,image/webp"
+                   id="logo-file-{{ slot_id }}" style="display:none;"
+                   onchange="ppUploadLogo('{{ slot_id }}', this)">
+            <button class="pp-upload-btn" onclick="document.getElementById('logo-file-{{ slot_id }}').click()">
+              ↑ Upload PNG
+            </button>
+          </div>
+          <div class="pp-logo-controls" id="logo-ctrl-{{ slot_id }}" style="display:none;">
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">Width
+                  <span class="pp-ctrl-val" id="val-logo-w-{{ slot_id }}">120px</span>
+                </label>
+                <input type="range" class="pp-range" id="ctrl-logo-w-{{ slot_id }}"
+                       min="40" max="400" step="10" value="120"
+                       oninput="ppRangeVal('logo-w-{{ slot_id }}',this.value,'px'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Opacity
+                  <span class="pp-ctrl-val" id="val-logo-op-{{ slot_id }}">90%</span>
+                </label>
+                <input type="range" class="pp-range" id="ctrl-logo-op-{{ slot_id }}"
+                       min="0" max="100" step="5" value="90"
+                       oninput="ppRangeVal('logo-op-{{ slot_id }}',this.value,'%'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- ── Filters tab ────────────────────────────────────────────────── -->
+      <div class="pp-panel" id="pp-panel-filt">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Colour Preset</label>
+          <div class="pp-filter-grid" id="pp-filter-grid">
+            {% for fk, fl in [('original','Original'),('film-grain','Film Grain'),('vintage','Vintage'),
+                               ('bleach-bypass','Bleach Bypass'),('teal-orange','Teal & Orange'),
+                               ('desaturated','Desaturated'),('high-contrast','High Contrast'),
+                               ('warm-glow','Warm Glow'),('cool-tone','Cool Tone')] %}
+            <button class="pp-filter-chip {% if fk=='original' %}active{% endif %}"
+                    data-filter="{{ fk }}"
+                    onclick="ppSelectFilter('{{ fk }}')">{{ fl }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Intensity
+            <span class="pp-ctrl-val" id="val-filt-intensity">100%</span>
+          </label>
+          <input type="range" class="pp-range" id="ctrl-filt-intensity"
+                 min="0" max="100" step="5" value="100"
+                 oninput="ppRangeVal('filt-intensity',this.value,'%'); ppApplyFilterPreview(); ppConfigChange()">
+        </div>
+        <div class="pp-filter-preview" id="pp-filter-preview">
+          {% if shots and shots[0].url %}
+          <img src="{{ shots[0].url }}" alt="filter preview" id="pp-filter-preview-img">
+          {% endif %}
+          <div class="pp-filter-preview-label" id="pp-filter-preview-label">Original</div>
+        </div>
+      </div>
+
+      <!-- ── Export tab ─────────────────────────────────────────────────── -->
+      <div class="pp-panel" id="pp-panel-expo">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Aspect Ratio</label>
+          <div class="pp-ar-grid">
+            {% for ar, arl in [('16:9','16:9  Landscape'),('9:16','9:16  Vertical'),('1:1','1:1  Square'),('4:3','4:3  Classic')] %}
+            <button class="pp-ar-chip {% if ar=='16:9' %}active{% endif %}"
+                    data-ar="{{ ar }}"
+                    onclick="ppSelectAR('{{ ar }}')">{{ arl }}</button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Quality Preset</label>
+          <select class="pp-ctrl-select" id="ctrl-quality" onchange="ppConfigChange()">
+            <option value="480p">480p — Fast preview</option>
+            <option value="720p">720p — HD preview</option>
+            <option value="1080p" selected>1080p — Full HD</option>
+            <option value="1080p-hq">1080p HQ — High quality</option>
+            <option value="4k">4K — Maximum quality</option>
+          </select>
+        </div>
+
+        <div class="pp-export-summary">
+          <div class="pp-export-row">
+            <span>Shots</span><strong>{{ shots|length }}</strong>
+          </div>
+          <div class="pp-export-row">
+            <span>Total duration</span><strong>{{ total_duration }}s</strong>
+          </div>
+          <div class="pp-export-row">
+            <span>Ready stills</span>
+            <strong>{{ shots|selectattr('status','equalto','ready')|list|length }}</strong>
+          </div>
+        </div>
+
+        <button class="pp-btn pp-btn-generate pp-btn-generate-full" id="btn-generate-expo"
+                onclick="ppGenerate()">▶ Generate Quick Video</button>
+        <p class="pp-ctrl-hint" style="margin-top:8px;">
+          Generation runs in the background. Stay on this page to see progress,
+          or come back later — the Download button will appear when ready.
+        </p>
+      </div>
+    </div><!-- /pp-control-panel -->
+  </div><!-- /pp-studio -->
+</div><!-- /pp-wrap -->
+
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.pp-wrap { max-width: 1400px; margin: 0 auto; padding: 0 20px 60px; }
+
+.pp-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #11111a; border: 1px solid #2a2a38; border-radius: 10px;
+  padding: 10px 16px; margin: 14px 0 10px; gap: 12px; flex-wrap: wrap;
+}
+.pp-toolbar-left  { display: flex; align-items: center; gap: 12px; }
+.pp-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pp-project-badge {
+  font-weight: 700; font-size: 14px; color: #fff;
+  background: rgba(212,255,58,.08); border: 1px solid rgba(212,255,58,.2);
+  padding: 4px 10px; border-radius: 6px;
+}
+.pp-shot-count { color: #5a6270; font-size: 12px; }
+
+/* Buttons */
+.pp-btn {
+  padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: 1px solid #2a2a38; background: #1a1f26;
+  color: #cfd6df; transition: all .15s; text-decoration: none; display: inline-flex;
+  align-items: center; gap: 5px;
+}
+.pp-btn:hover { border-color: #444; color: #fff; }
+.pp-btn-save { border-color: #2a2a38; }
+.pp-btn-save.dirty { border-color: #f5a623; color: #f5a623; }
+.pp-btn-generate {
+  background: linear-gradient(135deg,#2563eb,#7c3aed);
+  border-color: transparent; color: #fff;
+}
+.pp-btn-generate:hover { opacity: .9; color: #fff; }
+.pp-btn-download { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.08); }
+.pp-btn-download:hover { background: rgba(34,197,94,.15); color: #22c55e; }
+.pp-btn-download-hidden { display: none !important; }
+.pp-btn-ai { border-color: #f5a623; color: #f5a623; background: rgba(245,166,35,.06); }
+.pp-btn-ai:hover { background: rgba(245,166,35,.14); color: #f5a623; }
+.pp-btn-generate-full { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+
+/* Status / error bars */
+.pp-status-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(37,99,235,.12); border: 1px solid rgba(37,99,235,.3);
+  color: #93c5fd; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
+  font-size: 13px;
+}
+.pp-status-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(147,197,253,.3); border-top-color: #93c5fd;
+  animation: ppSpin 1s linear infinite; flex-shrink: 0;
+}
+@keyframes ppSpin { to { transform: rotate(360deg); } }
+.pp-error-bar {
+  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+  color: #f87171; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
+  font-size: 13px;
+}
+
+/* ── Studio layout ───────────────────────────────────────────────────── */
+.pp-studio {
+  display: grid; grid-template-columns: 1fr 290px; gap: 16px; align-items: start;
+}
+@media (max-width: 900px) { .pp-studio { grid-template-columns: 1fr; } }
+
+/* ── Preview ─────────────────────────────────────────────────────────── */
+.pp-preview-col { display: flex; flex-direction: column; gap: 10px; }
+.pp-preview-frame {
+  background: #000; border-radius: 10px; overflow: hidden;
+  aspect-ratio: 16/9; position: relative;
+  border: 1px solid #2a2a38;
+}
+.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 600px; }
+.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1; }
+.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3; }
+
+.pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
+.pp-kb-img  {
+  width: 100%; height: 100%; object-fit: cover;
+  transform-origin: center center;
+  transition: transform 0.05s linear;
+}
+/* Ken Burns CSS animations */
+.pp-kb-wrap.kb-zoom-in  .pp-kb-img { animation: ppKBZoomIn  var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-zoom-out .pp-kb-img { animation: ppKBZoomOut var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-left .pp-kb-img { animation: ppKBPanLeft var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-right .pp-kb-img{ animation: ppKBPanRight var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-up   .pp-kb-img { animation: ppKBPanUp  var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-down .pp-kb-img { animation: ppKBPanDown var(--kb-dur,4s) ease-in-out forwards; }
+@keyframes ppKBZoomIn  { from { transform: scale(1); }   to { transform: scale(1.18); } }
+@keyframes ppKBZoomOut { from { transform: scale(1.18); } to { transform: scale(1); } }
+@keyframes ppKBPanLeft { from { transform: scale(1.1) translateX(4%); }  to { transform: scale(1.1) translateX(-4%); } }
+@keyframes ppKBPanRight{ from { transform: scale(1.1) translateX(-4%); } to { transform: scale(1.1) translateX(4%); } }
+@keyframes ppKBPanUp   { from { transform: scale(1.1) translateY(4%); }  to { transform: scale(1.1) translateY(-4%); } }
+@keyframes ppKBPanDown { from { transform: scale(1.1) translateY(-4%); } to { transform: scale(1.1) translateY(4%); } }
+
+.pp-filter-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+  mix-blend-mode: color; opacity: 0; transition: opacity .3s;
+}
+.pp-sub-preview {
+  position: absolute; left: 5%; right: 5%; bottom: 10%;
+  text-align: center; pointer-events: none; font-size: 18px;
+  text-shadow: 0 1px 3px #000; color: #fff; transition: all .2s;
+}
+/* Logo overlays */
+.pp-logo-tl,.pp-logo-tr,.pp-logo-bl,.pp-logo-br {
+  position: absolute; max-width: 120px; pointer-events: none;
+  opacity: .9; transition: opacity .2s;
+}
+.pp-logo-tl { top: 14px; left: 14px; }
+.pp-logo-tr { top: 14px; right: 14px; }
+.pp-logo-bl { bottom: 14px; left: 14px; }
+.pp-logo-br { bottom: 14px; right: 14px; }
+
+/* Controls bar */
+.pp-controls {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: linear-gradient(transparent, rgba(0,0,0,.7));
+}
+.pp-ctrl-btn {
+  background: rgba(255,255,255,.12); border: none; color: #fff;
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+}
+.pp-ctrl-btn:hover { background: rgba(255,255,255,.22); }
+.pp-time-display { color: rgba(255,255,255,.6); font-size: 11px; margin-left: auto; font-family: monospace; }
+
+/* ── Thumbnail strip ─────────────────────────────────────────────────── */
+.pp-thumb-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 6px 0;
+  scrollbar-width: thin; scrollbar-color: #2a2a38 transparent;
+}
+.pp-thumb-item {
+  flex: 0 0 auto; width: 72px; cursor: pointer;
+  border-radius: 6px; overflow: visible; position: relative;
+  border: 2px solid transparent; transition: border-color .15s;
+}
+.pp-thumb-item img, .pp-thumb-placeholder {
+  width: 72px; height: 48px; object-fit: cover;
+  border-radius: 4px; display: block; background: #1a1f26;
+}
+.pp-thumb-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: #444; font-size: 11px;
+}
+.pp-thumb-item.active { border-color: #d4ff3a; }
+.pp-thumb-item:hover  { border-color: #4a4a60; }
+.pp-thumb-meta {
+  display: flex; align-items: center; gap: 2px;
+  padding: 2px 2px 0; flex-wrap: wrap;
+}
+.pp-thumb-idx { font-size: 9px; color: #5a6270; flex: 0 0 auto; }
+.pp-thumb-dur-badge {
+  font-size: 9px; background: rgba(255,255,255,.08); border: none;
+  color: #9aa6b2; padding: 1px 4px; border-radius: 3px; cursor: pointer;
+  font-family: monospace; transition: background .1s; flex: 1;
+}
+.pp-thumb-dur-badge:hover { background: rgba(212,255,58,.15); color: #d4ff3a; }
+.pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
+
+/* KB override popover */
+.pp-kb-popover {
+  position: absolute; bottom: 100%; left: 0; z-index: 200;
+  background: #1a1f26; border: 1px solid #3a3a50;
+  border-radius: 8px; padding: 10px; min-width: 170px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+}
+.pp-kb-pop-label { font-size: 11px; color: #9aa6b2; margin-bottom: 6px; }
+.pp-kb-pop-select {
+  width: 100%; background: #0d1018; border: 1px solid #2a3040;
+  color: #cfd6df; border-radius: 4px; padding: 4px; font-size: 11px;
+  margin-bottom: 6px;
+}
+.pp-kb-pop-clear {
+  font-size: 10px; color: #ff6b6b; background: none; border: none;
+  cursor: pointer; padding: 0; text-decoration: underline;
+}
+
+/* ── Control panel ───────────────────────────────────────────────────── */
+.pp-control-panel {
+  background: #11111a; border: 1px solid #2a2a38; border-radius: 10px;
+  overflow: hidden; position: sticky; top: 70px;
+}
+.pp-tabs {
+  display: flex; border-bottom: 1px solid #2a2a38; background: #0d0d14;
+}
+.pp-tab {
+  flex: 1; padding: 9px 4px; background: none; border: none;
+  color: #5a6270; font-size: 11px; cursor: pointer; font-weight: 600;
+  letter-spacing: .02em; transition: all .15s; border-bottom: 2px solid transparent;
+}
+.pp-tab:hover  { color: #9aa6b2; }
+.pp-tab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; }
+.pp-panel { display: none; padding: 14px; }
+.pp-panel.active { display: block; }
+
+/* Controls */
+.pp-ctrl-group { margin-bottom: 14px; }
+.pp-ctrl-label {
+  display: block; font-size: 10px; font-weight: 700; color: #6a7585;
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px;
+}
+.pp-ctrl-val { color: #c8f135; font-weight: 700; margin-left: 4px; }
+.pp-ctrl-select {
+  width: 100%; background: #0d1018; border: 1px solid #2a3040;
+  color: #cfd6df; border-radius: 6px; padding: 7px 10px; font-size: 12px;
+  font-family: inherit;
+}
+.pp-ctrl-hint { font-size: 10px; color: #4a5260; margin: 4px 0 0; line-height: 1.4; }
+.pp-range {
+  width: 100%; accent-color: #d4ff3a; cursor: pointer;
+  height: 4px; background: #2a3040; border-radius: 2px;
+}
+.pp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pp-color {
+  width: 100%; height: 34px; border-radius: 6px; border: 1px solid #2a3040;
+  background: #0d1018; cursor: pointer; padding: 2px;
+}
+.pp-upload-area {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.pp-upload-btn {
+  background: rgba(212,255,58,.07); border: 1px dashed rgba(212,255,58,.3);
+  color: #c8f135; padding: 5px 12px; border-radius: 6px; font-size: 11px;
+  cursor: pointer; transition: background .15s;
+}
+.pp-upload-btn:hover { background: rgba(212,255,58,.14); }
+.pp-upload-name { font-size: 10px; color: #4a5260; }
+.pp-logo-slot { border: 1px solid #1e2230; border-radius: 6px; padding: 10px; }
+.pp-logo-slot-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pp-logo-uploaded { font-size: 10px; color: #22c55e; }
+.pp-logo-controls { }
+
+/* Filter grid */
+.pp-filter-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 12px;
+}
+.pp-filter-chip {
+  background: #1a1f26; border: 1px solid #2a3040; color: #7a8594;
+  border-radius: 5px; padding: 5px 4px; font-size: 10px; cursor: pointer;
+  text-align: center; transition: all .15s; font-weight: 600;
+}
+.pp-filter-chip:hover  { border-color: #4a5260; color: #cfd6df; }
+.pp-filter-chip.active { border-color: #d4ff3a; color: #d4ff3a; background: rgba(212,255,58,.07); }
+
+.pp-filter-preview { position: relative; border-radius: 6px; overflow: hidden; margin-top: 10px; }
+.pp-filter-preview img {
+  width: 100%; display: block; border-radius: 6px; transition: filter .3s;
+}
+.pp-filter-preview-label {
+  position: absolute; bottom: 6px; right: 8px;
+  font-size: 10px; color: rgba(255,255,255,.6);
+  background: rgba(0,0,0,.4); padding: 2px 6px; border-radius: 3px;
+}
+
+/* Aspect ratio grid */
+.pp-ar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.pp-ar-chip {
+  background: #1a1f26; border: 1px solid #2a3040; color: #7a8594;
+  border-radius: 5px; padding: 6px 4px; font-size: 10px; cursor: pointer;
+  text-align: center; transition: all .15s; font-weight: 600;
+}
+.pp-ar-chip:hover  { border-color: #4a5260; color: #cfd6df; }
+.pp-ar-chip.active { border-color: #38e1ff; color: #38e1ff; background: rgba(56,225,255,.07); }
+
+/* Export summary */
+.pp-export-summary {
+  background: #0d1018; border: 1px solid #1e2230; border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 12px;
+}
+.pp-export-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: #7a8594; padding: 3px 0;
+}
+.pp-export-row strong { color: #cfd6df; }
+
+/* Subtitle preview box */
+.pp-sub-preview-box {
+  background: rgba(0,0,0,.5); border-radius: 4px; padding: 8px;
+  text-align: center; font-size: 18px; color: #fff;
+  transition: all .2s; min-height: 40px;
+  border: 1px solid #1e2230;
+}
+</style>
+
+<script>
+(function () {
+  const PID   = {{ project.id | tojson }};
+  const CSRF  = document.querySelector('meta[name="csrf-token"]').content;
+
+  /* ── Shot data ──────────────────────────────────────────────────────── */
+  const SHOTS = [
+    {% for shot in shots %}
+    {
+      idx: {{ shot.shot_index }},
+      url: {{ (shot.url or '') | tojson }},
+      dur: {{ shot.duration or 4.0 }},
+      start: {{ shot.start_time or 0.0 }},
+      meaning: {{ (shot.meaning or '') | tojson }},
+    },
+    {% endfor %}
+  ];
+
+  /* ── Config object ──────────────────────────────────────────────────── */
+  const cfg = Object.assign({
+    ken_burns_mode: 'zoom-in',
+    per_shot_kb: {},
+    transition: 'crossfade',
+    transition_duration: 0.8,
+    colour_filter: 'original',
+    filter_intensity: 100,
+    aspect_ratio: '16:9',
+    quality: '1080p',
+    logos: {},
+    srt_r2_key: '',
+    per_shot_duration: {},
+    subtitle_style: {
+      font: 'Arial', font_size: 24, primary_colour: '&H00FFFFFF',
+      outline_colour: '&H00000000', back_colour: '&H80000000',
+      bold: 0, outline: 1.5, shadow: 0, alignment: 2, margin_v: 40,
+    },
+  }, {{ config | tojson }});
+
+  /* ── Restore controls from cfg ────────────────────────────────────────*/
+  function restoreControls() {
+    setVal('ctrl-kb-mode', cfg.ken_burns_mode || 'zoom-in');
+    setVal('ctrl-transition', cfg.transition || 'crossfade');
+    setVal('ctrl-trans-dur', cfg.transition_duration || 0.8);
+    ppRangeVal('trans-dur', cfg.transition_duration || 0.8, 's');
+    setVal('ctrl-quality', cfg.quality || '1080p');
+    setVal('ctrl-filt-intensity', cfg.filter_intensity || 100);
+    ppRangeVal('filt-intensity', cfg.filter_intensity || 100, '%');
+
+    if (cfg.colour_filter) ppSelectFilter(cfg.colour_filter, true);
+    if (cfg.aspect_ratio)  ppSelectAR(cfg.aspect_ratio, true);
+
+    const s = cfg.subtitle_style || {};
+    setVal('ctrl-sub-font', s.font || 'Arial');
+    setVal('ctrl-sub-size', s.font_size || 24);
+    ppRangeVal('sub-size', s.font_size || 24, 'px');
+    setVal('ctrl-sub-outline', s.outline || 1.5);
+    ppRangeVal('sub-outline', s.outline || 1.5, 'px');
+    setVal('ctrl-sub-shadow', s.shadow || 0);
+    ppRangeVal('sub-shadow', s.shadow || 0, 'px');
+    setVal('ctrl-sub-y', 90);
+    ppRangeVal('sub-y', 90, '%');
+
+    if (cfg.srt_r2_key) {
+      document.getElementById('srt-filename').textContent = '✓ Subtitle file loaded';
+    }
+    // per-shot KB badges
+    Object.keys(cfg.per_shot_kb || {}).forEach(idx => ppUpdateKBBadge(parseInt(idx)));
+    // per-shot durations
+    Object.keys(cfg.per_shot_duration || {}).forEach(idx => {
+      const badge = document.getElementById('pp-dur-' + idx);
+      if (badge) badge.textContent = parseFloat(cfg.per_shot_duration[idx]).toFixed(1) + 's';
+    });
+  }
+
+  function setVal(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.value = v;
+  }
+
+  /* ── Dirty tracking ─────────────────────────────────────────────────── */
+  let dirty = false;
+  function markDirty() {
+    dirty = true;
+    document.getElementById('btn-save').classList.add('dirty');
+  }
+  window.ppConfigChange = function() { syncCfgFromControls(); markDirty(); ppApplyFilterPreview(); ppUpdateKBPreview(); };
+
+  function syncCfgFromControls() {
+    cfg.ken_burns_mode        = document.getElementById('ctrl-kb-mode').value;
+    cfg.transition            = document.getElementById('ctrl-transition').value;
+    cfg.transition_duration   = parseFloat(document.getElementById('ctrl-trans-dur').value);
+    cfg.filter_intensity      = parseInt(document.getElementById('ctrl-filt-intensity').value);
+    cfg.quality               = document.getElementById('ctrl-quality').value;
+
+    const s = cfg.subtitle_style || {};
+    s.font      = document.getElementById('ctrl-sub-font').value;
+    s.font_size = parseInt(document.getElementById('ctrl-sub-size').value);
+    s.outline   = parseFloat(document.getElementById('ctrl-sub-outline').value);
+    s.shadow    = parseFloat(document.getElementById('ctrl-sub-shadow').value);
+    const yPct  = parseInt(document.getElementById('ctrl-sub-y').value);
+    s.margin_v  = Math.round((100 - yPct) * 10.8); // approx pixels from bottom
+    s.primary_colour = hexToAss(document.getElementById('ctrl-sub-color').value);
+    s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, 128);
+    cfg.subtitle_style = s;
+  }
+
+  function hexToAss(hex, alpha) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    const a = (alpha !== undefined) ? alpha : 0;
+    const av = a.toString(16).padStart(2,'0').toUpperCase();
+    return `&H${av}${b.toString(16).padStart(2,'0').toUpperCase()}${g.toString(16).padStart(2,'0').toUpperCase()}${r.toString(16).padStart(2,'0').toUpperCase()}`;
+  }
+
+  /* ── Save ───────────────────────────────────────────────────────────── */
+  window.ppSave = async function() {
+    syncCfgFromControls();
+    await fetch(`/project/${PID}/postprod/save`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
+      body: JSON.stringify(cfg),
+    });
+    dirty = false;
+    const btn = document.getElementById('btn-save');
+    btn.classList.remove('dirty');
+    btn.textContent = '✓ Saved';
+    setTimeout(() => { btn.textContent = 'Save Settings'; }, 1500);
+  };
+
+  /* ── Generate ───────────────────────────────────────────────────────── */
+  window.ppGenerate = async function() {
+    syncCfgFromControls();
+    await ppSave();
+    showStatus('Generating quick video…');
+    hideError();
+    const btn = document.getElementById('btn-generate');
+    btn.disabled = true; btn.textContent = '⏳ Generating…';
+    const res = await fetch(`/project/${PID}/postprod/generate`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
+      body: JSON.stringify(cfg),
+    });
+    if (res.ok) startPolling();
+    else {
+      btn.disabled = false; btn.textContent = '▶ Generate Quick Video';
+      showError('Failed to start generation. Please try again.');
+    }
+  };
+
+  /* ── Polling ────────────────────────────────────────────────────────── */
+  let pollTimer = null;
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(`/project/${PID}/postprod/status`);
+        const d = await r.json();
+        if (d.url) {
+          clearInterval(pollTimer); pollTimer = null;
+          hideStatus();
+          const dlBtn = document.getElementById('btn-download');
+          dlBtn.href = d.url;
+          dlBtn.classList.remove('pp-btn-download-hidden');
+          dlBtn.style.display = '';
+          const genBtn = document.getElementById('btn-generate');
+          genBtn.disabled = false; genBtn.textContent = '▶ Generate Quick Video';
+          const expo = document.getElementById('btn-generate-expo');
+          if (expo) { expo.disabled = false; expo.textContent = '▶ Generate Quick Video'; }
+        } else if (d.error) {
+          clearInterval(pollTimer); pollTimer = null;
+          hideStatus();
+          showError(d.error);
+          const genBtn = document.getElementById('btn-generate');
+          genBtn.disabled = false; genBtn.textContent = '▶ Generate Quick Video';
+        }
+      } catch(e) {}
+    }, 3000);
+  }
+
+  function showStatus(msg) {
+    const bar = document.getElementById('pp-status-bar');
+    document.getElementById('pp-status-text').textContent = msg;
+    bar.style.display = 'flex';
+  }
+  function hideStatus() { document.getElementById('pp-status-bar').style.display = 'none'; }
+  function showError(msg) {
+    const bar = document.getElementById('pp-error-bar');
+    document.getElementById('pp-error-text').textContent = msg;
+    bar.style.display = 'block';
+  }
+  function hideError() { document.getElementById('pp-error-bar').style.display = 'none'; }
+
+  /* ── Tabs ───────────────────────────────────────────────────────────── */
+  window.ppTab = function(btn, id) {
+    document.querySelectorAll('.pp-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.pp-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pp-panel-' + id).classList.add('active');
+  };
+
+  /* ── Range value display ────────────────────────────────────────────── */
+  window.ppRangeVal = function(id, v, unit) {
+    const el = document.getElementById('val-' + id);
+    if (el) el.textContent = v + unit;
+  };
+
+  /* ── Ken Burns preview ──────────────────────────────────────────────── */
+  let currentIdx = 0;
+  let playTimer  = null;
+  let playing    = false;
+
+  window.ppJumpTo = function(i) {
+    if (i < 0 || i >= SHOTS.length) return;
+    currentIdx = i;
+    renderShot();
+    document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
+    const shot = SHOTS[i];
+    const thumb = document.getElementById('pp-thumb-' + shot.idx);
+    if (thumb) { thumb.classList.add('active'); thumb.scrollIntoView({block:'nearest',inline:'center'}); }
+    // close all popovers
+    document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+  };
+
+  function renderShot() {
+    const shot = SHOTS[currentIdx];
+    if (!shot) return;
+    const img = document.getElementById('pp-kb-img');
+    img.src = shot.url || '';
+    const wrap = document.getElementById('pp-kb-wrap');
+    const kbMode = cfg.per_shot_kb[shot.idx] || cfg.ken_burns_mode || 'zoom-in';
+    wrap.className = 'pp-kb-wrap';
+    if (kbMode !== 'static' && kbMode !== 'random') {
+      wrap.style.setProperty('--kb-dur', (cfg.per_shot_duration[shot.idx] || shot.dur) + 's');
+      void wrap.offsetWidth; // force reflow to restart animation
+      wrap.classList.add('kb-' + kbMode);
+    }
+    const dur = cfg.per_shot_duration[shot.idx] || shot.dur;
+    const elapsed = SHOTS.slice(0, currentIdx).reduce((a,s) => a + (cfg.per_shot_duration[s.idx] || s.dur), 0);
+    document.getElementById('pp-time-display').textContent =
+      elapsed.toFixed(1) + 's / ' + SHOTS.reduce((a,s) => a+(cfg.per_shot_duration[s.idx]||s.dur),0).toFixed(1) + 's';
+    ppSubPreview();
+  }
+
+  window.ppUpdateKBPreview = function() { renderShot(); };
+
+  window.ppPrev = function() { ppJumpTo(currentIdx - 1); };
+  window.ppNext = function() { ppJumpTo(currentIdx + 1); };
+
+  window.ppTogglePlay = function() {
+    const btn = document.getElementById('pp-play-btn');
+    if (playing) {
+      clearTimeout(playTimer); playing = false; btn.textContent = '▶';
+    } else {
+      playing = true; btn.textContent = '⏸'; ppAutoAdvance();
+    }
+  };
+
+  function ppAutoAdvance() {
+    if (!playing) return;
+    const shot = SHOTS[currentIdx];
+    const dur  = (cfg.per_shot_duration[shot.idx] || shot.dur) * 1000;
+    playTimer = setTimeout(() => {
+      if (currentIdx < SHOTS.length - 1) { ppJumpTo(currentIdx + 1); ppAutoAdvance(); }
+      else { playing = false; document.getElementById('pp-play-btn').textContent = '▶'; }
+    }, dur);
+  }
+
+  /* ── KB per-shot override ───────────────────────────────────────────── */
+  // Thumbnail right-click or badge click opens popover
+  document.querySelectorAll('.pp-thumb-item').forEach(item => {
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const idx = parseInt(item.dataset.idx);
+      ppOpenKBPop(idx);
+    });
+  });
+
+  function ppOpenKBPop(idx) {
+    // close all others first
+    document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+    const pop = document.getElementById('pp-kb-pop-' + idx);
+    if (!pop) return;
+    pop.style.display = 'block';
+    const sel = pop.querySelector('.pp-kb-pop-select');
+    if (sel) sel.value = cfg.per_shot_kb[idx] || '';
+    // close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!pop.contains(e.target)) { pop.style.display = 'none'; document.removeEventListener('click', close); }
+      });
+    }, 50);
+  }
+
+  window.ppSetShotKB = function(idx, mode) {
+    if (mode) { cfg.per_shot_kb[idx] = mode; }
+    else { delete cfg.per_shot_kb[idx]; }
+    ppUpdateKBBadge(idx);
+    markDirty();
+  };
+
+  window.ppClearShotKB = function(idx) {
+    delete cfg.per_shot_kb[idx];
+    ppUpdateKBBadge(idx);
+    document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+    markDirty();
+  };
+
+  function ppUpdateKBBadge(idx) {
+    const badge = document.getElementById('pp-kb-badge-' + idx);
+    if (badge) badge.style.display = cfg.per_shot_kb[idx] ? '' : 'none';
+  }
+
+  /* Thumbnail long-press on mobile also opens popover */
+  document.querySelectorAll('.pp-thumb-item').forEach(item => {
+    let pressTimer;
+    item.addEventListener('touchstart', () => {
+      pressTimer = setTimeout(() => ppOpenKBPop(parseInt(item.dataset.idx)), 600);
+    });
+    item.addEventListener('touchend', () => clearTimeout(pressTimer));
+  });
+
+  /* ── Per-shot duration override ─────────────────────────────────────── */
+  window.ppEditDuration = function(e, idx) {
+    e.stopPropagation();
+    const badge = document.getElementById('pp-dur-' + idx);
+    if (!badge) return;
+    const cur = cfg.per_shot_duration[idx] || SHOTS.find(s=>s.idx===idx)?.dur || 4.0;
+    const val = prompt(`Duration for shot ${idx} (seconds):\n(Leave blank to use beat-synced auto-duration)`, cur.toFixed(1));
+    if (val === null) return;
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed) && parsed > 0) {
+      cfg.per_shot_duration[idx] = parsed;
+      badge.textContent = parsed.toFixed(1) + 's';
+    } else if (val.trim() === '') {
+      delete cfg.per_shot_duration[idx];
+      const shot = SHOTS.find(s => s.idx === idx);
+      badge.textContent = (shot ? shot.dur : 4.0).toFixed(1) + 's';
+    }
+    markDirty();
+  };
+
+  /* ── Filter preview ─────────────────────────────────────────────────── */
+  const FILTER_CSS = {
+    'original':       '',
+    'film-grain':     'contrast(1.05) brightness(0.97)',
+    'vintage':        'sepia(0.4) contrast(0.9) brightness(0.95) saturate(0.8)',
+    'bleach-bypass':  'contrast(1.3) saturate(0.4) brightness(0.9)',
+    'teal-orange':    'contrast(1.1) saturate(1.4) hue-rotate(-10deg)',
+    'desaturated':    'saturate(0.2) contrast(1.05)',
+    'high-contrast':  'contrast(1.5) brightness(0.95)',
+    'warm-glow':      'sepia(0.2) saturate(1.3) brightness(1.05) hue-rotate(5deg)',
+    'cool-tone':      'saturate(1.1) hue-rotate(15deg) brightness(1.0)',
+  };
+
+  window.ppSelectFilter = function(key, silent) {
+    cfg.colour_filter = key;
+    document.querySelectorAll('.pp-filter-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.filter === key);
+    });
+    ppApplyFilterPreview();
+    if (!silent) markDirty();
+  };
+
+  window.ppApplyFilterPreview = function() {
+    const filt  = cfg.colour_filter || 'original';
+    const intens = (cfg.filter_intensity || 100) / 100;
+    const baseCss = FILTER_CSS[filt] || '';
+    const preview  = document.getElementById('pp-filter-preview-img');
+    const overlay  = document.getElementById('pp-filter-overlay');
+    if (preview) {
+      preview.style.filter  = baseCss;
+      preview.style.opacity = 0.5 + 0.5 * intens;
+    }
+    // Live preview on the player
+    const kbImg = document.getElementById('pp-kb-img');
+    if (kbImg) kbImg.style.filter = baseCss ? `${baseCss} opacity(${intens})` : '';
+    const label = document.getElementById('pp-filter-preview-label');
+    if (label) label.textContent = filt.replace(/-/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+  };
+
+  /* ── Aspect ratio ───────────────────────────────────────────────────── */
+  window.ppSelectAR = function(ar, silent) {
+    cfg.aspect_ratio = ar;
+    document.querySelectorAll('.pp-ar-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.ar === ar);
+    });
+    const frame = document.getElementById('pp-preview-frame');
+    frame.className = 'pp-preview-frame';
+    if      (ar === '9:16') frame.classList.add('ar-9-16');
+    else if (ar === '1:1')  frame.classList.add('ar-1-1');
+    else if (ar === '4:3')  frame.classList.add('ar-4-3');
+    if (!silent) markDirty();
+  };
+
+  /* ── Subtitle preview ───────────────────────────────────────────────── */
+  window.ppSubPreview = function() {
+    const font    = document.getElementById('ctrl-sub-font')?.value || 'Arial';
+    const size    = document.getElementById('ctrl-sub-size')?.value || 24;
+    const color   = document.getElementById('ctrl-sub-color')?.value || '#ffffff';
+    const bg      = document.getElementById('ctrl-sub-bg')?.value || '#000000';
+    const outline = document.getElementById('ctrl-sub-outline')?.value || 1.5;
+    const shadow  = document.getElementById('ctrl-sub-shadow')?.value || 0;
+    const y       = document.getElementById('ctrl-sub-y')?.value || 90;
+
+    const shot = SHOTS[currentIdx];
+    const text = shot?.meaning?.slice(0,60) || 'Sample subtitle text';
+    const sub  = document.getElementById('pp-sub-preview');
+    if (sub && cfg.srt_r2_key) {
+      sub.textContent = text;
+      sub.style.cssText = `
+        position:absolute; left:5%; right:5%;
+        bottom:${100 - parseInt(y)}%;
+        text-align:center; font-family:${font}; font-size:${size}px;
+        color:${color};
+        text-shadow: ${outline}px ${outline}px 0 #000, -${outline}px ${outline}px 0 #000,
+                     ${outline}px -${outline}px 0 #000, -${outline}px -${outline}px 0 #000,
+                     0 ${shadow}px 4px rgba(0,0,0,.8);
+        background: ${bg}80; padding: 2px 8px; border-radius: 3px;
+        pointer-events:none;
+      `;
+    } else if (sub) {
+      sub.textContent = '';
+    }
+
+    // Update the preview box in the subs panel
+    const box = document.getElementById('pp-sub-preview-box');
+    if (box) {
+      box.textContent = text;
+      box.style.fontFamily  = font;
+      box.style.fontSize    = size + 'px';
+      box.style.color       = color;
+      box.style.background  = bg + '80';
+      box.style.textShadow  = `${outline}px ${outline}px 0 #000`;
+    }
+  };
+
+  window.ppSubPreset = function(preset) {
+    const presets = {
+      'classic-white':   { color:'#ffffff', bg:'#000000', outline:1.5, shadow:0, font:'Arial', size:24 },
+      'neon-glow':       { color:'#00ffff', bg:'#000033', outline:2,   shadow:0, font:'Impact', size:26 },
+      'cinematic-gold':  { color:'#f5c518', bg:'#000000', outline:1,   shadow:2, font:'Georgia', size:24 },
+      'bold-impact':     { color:'#ffffff', bg:'#000000', outline:3,   shadow:0, font:'Impact', size:30 },
+      'documentary':     { color:'#eeeeee', bg:'#111111', outline:1,   shadow:1, font:'Gill Sans', size:22 },
+      'minimal':         { color:'#ffffff', bg:'#00000000', outline:0, shadow:0, font:'Trebuchet MS', size:20 },
+      'kids-fun':        { color:'#ff6b6b', bg:'#ffff00', outline:0,   shadow:1, font:'Comic Sans MS', size:28 },
+      'cartoon-bubble':  { color:'#000000', bg:'#ffffff', outline:0,   shadow:2, font:'Comic Sans MS', size:24 },
+      'electric':        { color:'#00ff00', bg:'#000000', outline:2,   shadow:3, font:'Courier New', size:24 },
+      'rainbow-karaoke': { color:'#ff00ff', bg:'#000033', outline:1,   shadow:0, font:'Impact', size:28 },
+      'candy-pop':       { color:'#ff69b4', bg:'#ffe4e1', outline:1,   shadow:1, font:'Verdana', size:22 },
+      'none':            null,
+    };
+    const p = presets[preset];
+    if (!p) { setVal('ctrl-sub-color','#ffffff'); setVal('ctrl-sub-bg','#000000'); return; }
+    setVal('ctrl-sub-color', p.color);
+    setVal('ctrl-sub-bg', p.bg);
+    setVal('ctrl-sub-outline', p.outline);
+    ppRangeVal('sub-outline', p.outline, 'px');
+    setVal('ctrl-sub-shadow', p.shadow);
+    ppRangeVal('sub-shadow', p.shadow, 'px');
+    setVal('ctrl-sub-font', p.font);
+    setVal('ctrl-sub-size', p.size);
+    ppRangeVal('sub-size', p.size, 'px');
+    ppSubPreview();
+  };
+
+  /* ── SRT upload ─────────────────────────────────────────────────────── */
+  window.ppUploadSrt = async function(input) {
+    if (!input.files[0]) return;
+    const fname = input.files[0].name;
+    const fd = new FormData();
+    fd.append('srt_file', input.files[0]);
+    fd.append('csrf_token', CSRF);
+    const res = await fetch(`/project/${PID}/postprod/upload_srt`, { method:'POST', body:fd });
+    const d = await res.json();
+    if (d.ok) {
+      cfg.srt_r2_key = d.r2_key;
+      document.getElementById('srt-filename').textContent = '✓ ' + fname;
+      markDirty();
+    } else {
+      alert('Upload failed: ' + d.error);
+    }
+  };
+
+  /* ── Logo upload ────────────────────────────────────────────────────── */
+  window.ppUploadLogo = async function(slot, input) {
+    if (!input.files[0]) return;
+    const fname = input.files[0].name;
+    const fd = new FormData();
+    fd.append('logo_file', input.files[0]);
+    fd.append('csrf_token', CSRF);
+    const res = await fetch(`/project/${PID}/postprod/upload_logo/${slot}`, { method:'POST', body:fd });
+    const d = await res.json();
+    if (d.ok) {
+      if (!cfg.logos) cfg.logos = {};
+      if (!cfg.logos[slot]) cfg.logos[slot] = {};
+      cfg.logos[slot].r2_key = d.r2_key;
+      document.getElementById('logo-fn-' + slot).textContent = '✓ ' + fname;
+      const ctrl = document.getElementById('logo-ctrl-' + slot);
+      if (ctrl) ctrl.style.display = '';
+      if (d.preview_url) ppLogoPreview(slot, d.preview_url);
+      markDirty();
+    } else {
+      alert('Upload failed: ' + d.error);
+    }
+  };
+
+  window.ppLogoPreview = function(slot, previewUrl) {
+    const map = { 'top-left':'pp-logo-tl','top-right':'pp-logo-tr','bottom-left':'pp-logo-bl','bottom-right':'pp-logo-br' };
+    const el = document.getElementById(map[slot]);
+    if (!el) return;
+    const url = previewUrl || ((cfg.logos || {})[slot] || {}).preview_url || '';
+    if (!url && !el.querySelector('img')) return;
+    if (!el.querySelector('img')) {
+      const img = document.createElement('img');
+      img.style.maxWidth = '100%';
+      el.appendChild(img);
+    }
+    const img = el.querySelector('img');
+    if (url) img.src = url;
+    const wEl = document.getElementById('ctrl-logo-w-' + slot);
+    const oEl = document.getElementById('ctrl-logo-op-' + slot);
+    if (wEl) el.style.maxWidth = wEl.value + 'px';
+    if (oEl) el.style.opacity  = oEl.value / 100;
+  };
+
+  /* ── Auto-poll if generating was in progress ────────────────────────── */
+  const cfgGenerating = {{ (config.get('generating', False) | tojson) }};
+  const hasUrl = {{ (quick_video_url is not none) | tojson }};
+  if (cfgGenerating && !hasUrl) {
+    showStatus('Generating quick video…');
+    startPolling();
+  }
+  if (hasUrl) {
+    const dlBtn = document.getElementById('btn-download');
+    if (dlBtn) dlBtn.style.display = '';
+  }
+
+  /* ── Init ───────────────────────────────────────────────────────────── */
+  restoreControls();
+  if (SHOTS.length > 0) ppJumpTo(0);
+  ppApplyFilterPreview();
+  ppSubPreview();
+
+  // Close popovers on escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display='none');
+  });
+
+})();
+</script>
+{% endblock %}
