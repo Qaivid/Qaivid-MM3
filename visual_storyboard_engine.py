@@ -575,11 +575,20 @@ class VisualStoryboardEngine:
         enriched = dict(ctx)
         line_meanings = list(enriched.get("line_meanings", []))
 
-        # Require at least one shot with non-empty emotional or implied meaning.
-        # Test stubs created by _make_shot() leave these blank; real LLM output
-        # always has non-empty emotional_meaning or implied_meaning.
+        # Guard: require real pipeline content before running the MM3.1 chain.
+        # Test stubs created by _make_shot() leave emotional/implied/cultural_meaning
+        # blank and never set visual_prompt; real LLM output always produces at
+        # least one non-empty meaning field or a substantial visual_prompt.
+        # The visual_prompt length threshold (>40 chars) distinguishes real
+        # LLM output from short stub strings, so sparse-but-valid production
+        # inputs that happen to lack meaning fields are still enriched.
         has_content = any(
-            (l.get("emotional_meaning") or l.get("implied_meaning") or l.get("cultural_meaning"))
+            (
+                l.get("emotional_meaning")
+                or l.get("implied_meaning")
+                or l.get("cultural_meaning")
+                or len(str(l.get("visual_prompt", "")).strip()) > 40
+            )
             for l in line_meanings
         )
         if not has_content:

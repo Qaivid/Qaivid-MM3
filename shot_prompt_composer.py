@@ -366,6 +366,10 @@ def compose_image_prompt(
     Existing MM3 signature preserved.
     """
     # ── 1. User override path: keep user's text, but still clean hard instructions ─
+    # Verb fallback (_inject_verb_fallback) is intentionally NOT applied here —
+    # the user has taken deliberate control of the shot description and may
+    # legitimately want a noun-led or state-descriptive prompt.  Stripping their
+    # agency to prepend a generated verb would corrupt their intent.
     if user_override and user_override.strip():
         body = _clean_text(user_override)
         prompt = _attach_envelope(
