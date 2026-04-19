@@ -299,6 +299,38 @@
         </div>
 
         <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Position / Alignment</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-align" onchange="ppConfigChange(); ppSubPreview()">
+            <option value="2">Bottom Centre</option>
+            <option value="1">Bottom Left</option>
+            <option value="3">Bottom Right</option>
+            <option value="8">Top Centre</option>
+            <option value="7">Top Left</option>
+            <option value="9">Top Right</option>
+            <option value="5">Middle Centre</option>
+          </select>
+        </div>
+
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Left Margin
+              <span class="pp-ctrl-val" id="val-sub-marginl">10px</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-marginl"
+                   min="0" max="300" step="5" value="10"
+                   oninput="ppRangeVal('sub-marginl',this.value,'px'); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Right Margin
+              <span class="pp-ctrl-val" id="val-sub-marginr">10px</span>
+            </label>
+            <input type="range" class="pp-range" id="ctrl-sub-marginr"
+                   min="0" max="300" step="5" value="10"
+                   oninput="ppRangeVal('sub-marginr',this.value,'px'); ppConfigChange()">
+          </div>
+        </div>
+
+        <div class="pp-ctrl-group">
           <label class="pp-ctrl-label">Animation</label>
           <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange()">
             <option value="none">None</option>
@@ -892,6 +924,9 @@
     s.shadow     = parseFloat(document.getElementById('ctrl-sub-shadow').value);
     const yPct   = parseInt(document.getElementById('ctrl-sub-y').value);
     s.margin_v   = Math.round((100 - yPct) * 10.8);
+    s.margin_l   = parseInt(document.getElementById('ctrl-sub-marginl')?.value || 10);
+    s.margin_r   = parseInt(document.getElementById('ctrl-sub-marginr')?.value || 10);
+    s.alignment  = parseInt(document.getElementById('ctrl-sub-align')?.value || 2);
     s.primary_colour = hexToAss(document.getElementById('ctrl-sub-color').value);
     s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, 128);
     s.animation  = document.getElementById('ctrl-sub-anim')?.value || 'none';

@@ -2745,26 +2745,29 @@ _ASPECT_DIMS = {
     "4:3":  (1440, 1080),
 }
 
-# Quality presets → (width, height, crf, preset)
+# Quality presets → (short_side_pixels, crf, ffmpeg_preset)
+# Output resolution = aspect_ratio_dims scaled so that min(w,h) == short_side
 _QUALITY_PRESETS = {
-    "480p":    (854,  480,  26, "veryfast"),
-    "720p":    (1280, 720,  23, "fast"),
-    "1080p":   (1920, 1080, 20, "medium"),
-    "1080p-hq":(1920, 1080, 18, "slow"),
-    "4k":      (3840, 2160, 18, "medium"),
-    "9:16":    (1080, 1920, 20, "medium"),
-    "1:1":     (1080, 1080, 20, "medium"),
+    "480p":    (480,  26, "veryfast"),
+    "720p":    (720,  23, "fast"),
+    "1080p":   (1080, 20, "medium"),
+    "1080p-hq":(1080, 18, "slow"),
+    "4k":      (2160, 18, "medium"),
+    # Legacy keys for backwards-compat (some old postprod_configs use these)
+    "9:16":    (1080, 20, "medium"),
+    "1:1":     (1080, 20, "medium"),
 }
 
 
-def _kb_expr(mode: Optional[str], shot_fps: int, shot_dur: float) -> str:
-    """Return a zoompan filter string for the given Ken Burns mode."""
+def _kb_expr(mode: Optional[str], shot_fps: int, shot_dur: float,
+             out_w: int = 1920, out_h: int = 1080) -> str:
+    """Return a zoompan filter string for the given Ken Burns mode and output size."""
     import random as _rnd
     if not mode or mode == "random":
         mode = _rnd.choice(_KB_RANDOM_POOL)
     base = _KB_MODES.get(mode, _KB_MODES["zoom-in"])
     n_frames = max(1, int(shot_fps * shot_dur))
-    return f"{base}:d={n_frames}:fps={shot_fps}:s=1920x1080"
+    return f"{base}:d={n_frames}:fps={shot_fps}:s={out_w}x{out_h}"
 
 
 def _srt_time_to_cs(t: str) -> int:
@@ -2792,12 +2795,15 @@ def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
     import re as _re
     content = srt_bytes.decode("utf-8", errors="replace")
 
-    font      = style.get("font", "Arial")
-    font_size = int(style.get("font_size", 24))
-    primary_c = style.get("primary_colour", "&H00FFFFFF")
-    outline   = float(style.get("outline", 1.5))
-    shadow    = float(style.get("shadow", 0))
-    margin_v  = int(style.get("margin_v", 40))
+    font       = style.get("font", "Arial")
+    font_size  = int(style.get("font_size", 24))
+    primary_c  = style.get("primary_colour", "&H00FFFFFF")
+    outline    = float(style.get("outline", 1.5))
+    shadow     = float(style.get("shadow", 0))
+    margin_v   = int(style.get("margin_v", 40))
+    margin_l   = int(style.get("margin_l", 10))
+    margin_r   = int(style.get("margin_r", 10))
+    alignment  = int(style.get("alignment", 2))
 
     # Strip the leading &H from colour to get BBGGRR hex
     def _c(col: str) -> str:
@@ -2815,7 +2821,7 @@ def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
         " BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{font},{font_size},"
         f"&H{_c(primary_c)},&H0000FFFF,&H00000000,&H80000000,"
-        f"0,0,0,0,100,100,0,0,1,{outline:.1f},{shadow:.1f},2,10,10,{margin_v},1\n"
+        f"0,0,0,0,100,100,0,0,1,{outline:.1f},{shadow:.1f},{alignment},{margin_l},{margin_r},{margin_v},1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2922,8 +2928,12 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             if quality in ("9:16", "1:1"):
                 aspect = quality
             aw, ah = _ASPECT_DIMS.get(aspect, (1920, 1080))
-            qw, qh, crf, enc_preset = _QUALITY_PRESETS.get(quality, (1920, 1080, 20, "medium"))
-            out_w, out_h = (aw, ah)
+            qshort, crf, enc_preset = _QUALITY_PRESETS.get(quality, (1080, 20, "medium"))
+            # Scale aspect ratio dims so the short side matches the quality target
+            native_short = min(aw, ah)
+            _scale = qshort / native_short
+            out_w = max(2, int(aw * _scale) // 2 * 2)  # ensure even number of pixels
+            out_h = max(2, int(ah * _scale) // 2 * 2)
 
             shot_fps = 25
             local_stills: list[tuple[int, Path, float]] = []
@@ -2958,7 +2968,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
 
             for i, (idx, still_path, dur) in enumerate(local_stills):
                 shot_mode = per_shot_kb.get(str(idx)) or global_kb
-                kb_expr   = _kb_expr(shot_mode, shot_fps, dur)
+                kb_expr   = _kb_expr(shot_mode, shot_fps, dur, out_w, out_h)
                 n_frames  = max(1, int(shot_fps * dur))
                 out_clip  = work_dir / f"clip_{i:04d}.mp4"
 
@@ -3239,13 +3249,16 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                         shadow     = float(sub_style.get("shadow", 0))
                         alignment  = int(sub_style.get("alignment", 2))
                         margin_v   = int(sub_style.get("margin_v", 40))
+                        margin_l   = int(sub_style.get("margin_l", 10))
+                        margin_r   = int(sub_style.get("margin_r", 10))
 
                         force_style = (
                             f"FontName={font_name},FontSize={font_size},"
                             f"PrimaryColour={primary_c},OutlineColour={outline_c},"
                             f"BackColour={back_c},Bold={bold},"
                             f"Outline={outline},Shadow={shadow},"
-                            f"Alignment={alignment},MarginV={margin_v}"
+                            f"Alignment={alignment},"
+                            f"MarginL={margin_l},MarginR={margin_r},MarginV={margin_v}"
                         )
                         sub_filter = (
                             f"subtitles={srt_path.as_posix()}:force_style='{force_style}'"
