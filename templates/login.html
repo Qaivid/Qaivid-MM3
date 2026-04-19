@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Qaivid MetaMind 3.0{% endblock %}
+{% block content %}
+<section class="auth-hero">
+    <div class="eyebrow">Welcome back</div>
+    <h1 class="auth-headline">Step back into <span class="accent">the studio</span></h1>
+    <p class="auth-tagline">Your projects, your characters, your shots — exactly where you left them.</p>
+</section>
+<section class="card auth-card">
+    <h2>Sign in</h2>
+    <p class="muted">Pick up where you left off.</p>
+    <form action="{{ url_for('login') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autofocus
+                   value="{{ email or '' }}">
+        </div>
+        <div class="row">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <input type="hidden" name="next" value="{{ next_url or '' }}">
+        <div class="row">
+            <button type="submit" class="btn-primary">Sign in</button>
+        </div>
+    </form>
+    <p class="muted">No account yet? <a href="{{ url_for('signup') }}">Create one</a>.</p>
+</section>
+{% endblock %}

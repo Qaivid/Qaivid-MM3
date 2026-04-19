@@ -1,0 +1,90 @@
+{# Reusable stage header. Renders:
+   1) breadcrumb back to "My Projects" + admin banner if applicable
+   2) clickable stage wizard (done steps link back via ?at=<stage>)
+   Expects: project (with _viewing_as_admin, _owner_email, _viewing_stage,
+            _actual_stage, _is_review_only), active_stage (string)
+#}
+{% set actual = project._actual_stage %}
+{% set viewing = project._viewing_stage or active_stage %}
+{% set steps = [
+    ('audio_review', '0', 'Acoustic Audit'),
+    ('context_review', '1', 'Context Engine'),
+    ('assumptions_review', '2', 'JARVIS Dialogue'),
+    ('creative_brief_review', '3', 'Creative Brief'),
+    ('storyboard_review', '4', 'Storyboard'),
+    ('references_review', '5', 'References'),
+    ('stills_review', '6', 'Stills'),
+    ('videos_review', '7', 'Videos'),
+    ('final_review', '8', 'Final Cut'),
+] %}
+{% set stage_order = ['audio_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_review','videos_review','final_review'] %}
+{# Map any canonical pipeline stage that the wizard doesn't render
+   directly (style_review, stills_control, complete, failed, etc.)
+   onto the closest wizard step so past stages still light up as
+   clickable links. Without this, a project sitting at e.g.
+   `stills_control` produced actual_idx = -1 and every step rendered
+   as a non-clickable <span>. #}
+{% set _stage_alias = {
+    'style_review':       'context_review',
+    'stills_control':     'stills_review',
+    'videos_control':     'videos_review',
+    'running_audio':      'audio_review',
+    'running_context':    'context_review',
+    'running_assumptions':'assumptions_review',
+    'running_brief':      'creative_brief_review',
+    'running_storyboard': 'storyboard_review',
+    'running_references': 'references_review',
+    'running_stills':     'stills_review',
+    'running_videos':     'videos_review',
+    'running_final':      'final_review',
+    'complete':           'final_review',
+} %}
+{% set actual_norm = _stage_alias.get(actual, actual) %}
+{# If actual_stage is unknown/new/failed, treat as no-progress so no forward jumps are exposed. #}
+{% set actual_idx = stage_order.index(actual_norm) if actual_norm in stage_order else -1 %}
+
+<div class="proj-breadcrumb">
+    <a href="{{ url_for('index') }}" class="back-link">← My Projects</a>
+    <span class="proj-breadcrumb-name">{{ project.name }}</span>
+    {% if project._is_review_only %}
+    <span class="proj-review-badge">↩ reviewing earlier step — <a href="{{ url_for('project_detail', project_id=project.id) }}">jump to current ({{ actual }})</a></span>
+    {% endif %}
+</div>
+
+{% if project.status == 'failed' and project.error %}
+<div class="recovery-banner">
+    <strong>⚠ {{ project._actual_stage_label or 'Pipeline' }} step failed.</strong>
+    You're now back at the last successfully completed step. Re-run it to try again.
+    <details style="margin-top:6px;">
+        <summary style="cursor:pointer;">Show error details</summary>
+        <pre style="white-space:pre-wrap;font-size:12px;margin-top:6px;">{{ project.error }}</pre>
+    </details>
+</div>
+{% endif %}
+
+{% if project._viewing_as_admin %}
+<div class="admin-banner">
+    ⚙ <strong>Viewing as Admin</strong> — this project belongs to <strong>{{ project._owner_email or 'unknown user' }}</strong>.
+    Your edits and stage advances will affect their project.
+    <a href="{{ url_for('admin') }}" class="admin-banner-link">Back to Admin →</a>
+</div>
+{% endif %}
+
+<div class="stage-wizard">
+    <div class="stage-wizard-steps">
+        {% for stage_key, num, label in steps %}
+            {% set sidx = loop.index0 %}
+            {% set is_active = (viewing == stage_key) %}
+            {% set is_done = (sidx < actual_idx) and not is_active %}
+            {% set is_clickable = sidx <= actual_idx %}
+            {% if is_clickable and not is_active %}
+                <a class="swiz-step {% if is_done %}done{% endif %}"
+                   href="{{ url_for('project_detail', project_id=project.id, at=stage_key) }}"
+                   title="Jump to {{ label }}">{{ num }} {{ label }}</a>
+            {% else %}
+                <span class="swiz-step {% if is_active %}active{% elif is_done %}done{% endif %}">{{ num }} {{ label }}</span>
+            {% endif %}
+            {% if not loop.last %}<span class="swiz-sep">→</span>{% endif %}
+        {% endfor %}
+    </div>
+</div>

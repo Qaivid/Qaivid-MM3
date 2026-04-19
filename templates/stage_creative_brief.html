@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% set active_stage = 'creative_brief_review' %}
+{% block title %}{{ project.name }} — Creative Brief · Qaivid{% endblock %}
+{% block content %}
+<style>
+.sb-restyle-link { color: #ffb142; font-weight: 600; text-decoration: none; }
+.sb-restyle-link:hover { text-decoration: underline; }
+.btn-link { background: none; border: none; padding: 0; cursor: pointer; font-size: inherit; }
+</style>
+{% set cp = project.context_packet or {} %}
+{% set cb = cp.creative_brief or {} %}
+{% set variants = cb.variants or [] %}
+{% set chosen = cb.chosen or {} %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    {% if cb.used_fallback %}
+    <div class="alert-banner alert-banner--warning" id="fallback-warning" role="alert">
+        <span class="alert-banner__icon">⚠</span>
+        <span class="alert-banner__text">
+            We couldn't generate custom variants for this song — showing defaults instead.
+            You can edit any field below, or
+            {% if not project._is_review_only %}
+            <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
+                  style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="sb-restyle-link btn-link">try again →</button>
+            </form>
+            {% else %}
+            try again from the project page.
+            {% endif %}
+        </span>
+        <button class="alert-banner__dismiss" onclick="this.closest('#fallback-warning').remove()"
+                aria-label="Dismiss">&times;</button>
+    </div>
+    {% endif %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 3 — Creative Brief</span>
+            <h1>Pick the director's treatment</h1>
+            <p class="stage-sub">
+                Below are {{ variants|length }} distinct visual treatments for this song.
+                Each variant proposes a different metaphor, scope, and tone.
+                Pick the one closest to your vision, edit any field inline,
+                and add a director's note (e.g. "70s Tarkovsky", "no people, only objects").
+                Locking advances the pipeline to the Storyboard stage.
+            </p>
+        </div>
+
+        {% if not variants %}
+        <div class="ctx-block">
+            <p>No variants were generated. The pipeline will fall back to a default treatment.</p>
+            <form method="post" action="{{ url_for('advance_brief', project_id=project.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="variant_id" value="v0"/>
+                <input type="hidden" name="title" value="Default Treatment"/>
+                <button type="submit" class="btn btn-primary">Continue without brief</button>
+            </form>
+        </div>
+        {% else %}
+        <form method="post" action="{{ url_for('advance_brief', project_id=project.id) }}" class="brief-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <p class="ctx-override-hint">
+                Pick a variant with the radio button. The fields under your pick are
+                editable inline — anything you change here overrides the original
+                variant when you lock.
+            </p>
+            <div class="brief-variants">
+            {% for v in variants %}
+                {% set vid = v.id or ('v' ~ loop.index) %}
+                {% set is_chosen = chosen.variant_id == vid or (loop.first and not chosen.variant_id) %}
+                <label class="brief-variant{% if is_chosen %} brief-variant--active{% endif %}" data-vid="{{ vid }}">
+                    <div class="brief-variant-head">
+                        <input type="radio" name="variant_id" value="{{ vid }}"
+                               {% if is_chosen %}checked{% endif %}/>
+                        <h3>{{ v.title }}</h3>
+                        <span class="brief-score" title="Self-critique score">
+                            {{ v.self_critique.score or 7 }}/10
+                        </span>
+                    </div>
+                    <p class="brief-pitch">{{ v.pitch }}</p>
+                    {% if v.justification %}
+                    <p class="brief-justification"><em>Why this works:</em> {{ v.justification }}</p>
+                    {% endif %}
+
+                    {# Always-visible comparison rows — shown on every card
+                       so users can compare side-by-side regardless of which
+                       variant is selected. #}
+                    <div class="brief-compare-meta">
+                        <span class="brief-meta-pill"><strong>Metaphor:</strong> {{ v.central_metaphor or '—' }}</span>
+                        <span class="brief-meta-pill"><strong>Cast:</strong>
+                            {% if v.cast_roster %}{{ v.cast_roster|join(', ') }}{% else %}<em>no people</em>{% endif %}
+                        </span>
+                        <span class="brief-meta-pill"><strong>Score:</strong> {{ v.self_critique.score or 7 }}/10</span>
+                    </div>
+                    {% if v.treatment %}
+                    <details class="brief-treatment-preview">
+                        <summary>Treatment preview</summary>
+                        <pre class="brief-treatment">{{ v.treatment[:600] }}{% if v.treatment|length > 600 %}…{% endif %}</pre>
+                    </details>
+                    {% endif %}
+
+                    {# Render editable fields for EVERY variant. Only the
+                       currently-selected variant's inputs are form-active
+                       (data-name swapped to the real form name); the others
+                       are disabled so they're omitted from POST. The radio
+                       click handler below swaps active state on selection. #}
+                    <div class="brief-edit-grid" {% if not is_chosen %}hidden{% endif %}>
+                        <label class="brief-edit-row">
+                            <span>Title</span>
+                            <input type="text" data-name="title" {% if is_chosen %}name="title"{% else %}disabled{% endif %} maxlength="200"
+                                   value="{{ (is_chosen and chosen.title) or v.title or '' }}"/>
+                        </label>
+                        <label class="brief-edit-row">
+                            <span>Pitch</span>
+                            <input type="text" data-name="pitch" {% if is_chosen %}name="pitch"{% else %}disabled{% endif %} maxlength="500"
+                                   value="{{ (is_chosen and chosen.pitch) or v.pitch or '' }}"/>
+                        </label>
+                        <label class="brief-edit-row">
+                            <span>Central metaphor</span>
+                            <input type="text" data-name="central_metaphor" {% if is_chosen %}name="central_metaphor"{% else %}disabled{% endif %} maxlength="300"
+                                   value="{{ (is_chosen and chosen.central_metaphor) or v.central_metaphor or '' }}"/>
+                        </label>
+                        <label class="brief-edit-row">
+                            <span>Cast roster <em>(comma-separated; blank = no people)</em></span>
+                            <input type="text" data-name="cast_roster" {% if is_chosen %}name="cast_roster"{% else %}disabled{% endif %} maxlength="500"
+                                   value="{{ ((is_chosen and chosen.cast_roster) or v.cast_roster or [])|join(', ') }}"/>
+                        </label>
+                        <label class="brief-edit-row brief-edit-row--full">
+                            <span>Treatment</span>
+                            <textarea data-name="treatment" {% if is_chosen %}name="treatment"{% else %}disabled{% endif %} rows="6" maxlength="4000">{{ (is_chosen and chosen.treatment) or v.treatment or '' }}</textarea>
+                        </label>
+                    </div>
+
+                    {% if v.scenes %}
+                    <details>
+                        <summary>Scenes ({{ v.scenes|length }})</summary>
+                        <ul class="brief-scenes">
+                            {% for s in v.scenes %}
+                            <li><strong>{{ s.name }}</strong> ({{ s.beat_range }}): {{ s.summary }}</li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                    {% endif %}
+                    {% if v.self_critique.rationale %}
+                    <p class="brief-critique"><em>Self-critique:</em> {{ v.self_critique.rationale }}</p>
+                    {% endif %}
+                </label>
+            {% endfor %}
+            </div>
+
+            <div class="ctx-block ctx-full">
+                <h3>Director's note</h3>
+                <p class="ctx-override-hint">
+                    A short freeform direction the cinematography engine will weight (e.g.
+                    "handheld vérité", "Tarkovsky locked frames", "epic drone wides only").
+                </p>
+                <textarea name="director_note" rows="3" maxlength="600"
+                          placeholder="Optional — leave blank to honor the picked variant as-is."
+                >{{ chosen.director_note or '' }}</textarea>
+            </div>
+
+            <div class="brief-actions">
+                <button type="submit" class="btn btn-primary">Lock variant & continue to Storyboard →</button>
+            </div>
+        </form>
+
+        {% if not project._is_review_only %}
+        <div class="ctx-block" style="margin-top:1.5rem; border-top: 1px solid rgba(255,255,255,.08); padding-top:1rem;">
+            <div class="ctx-override-hint" style="margin:0 0 .6rem;">
+                Not happy with any of these treatments?
+                <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
+                      style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit"
+                            class="sb-restyle-link btn-link"
+                            style="font-size:inherit;"
+                            onclick="return confirm('Generate brand-new brief variants? The current options will be replaced.')">
+                        Regenerate variants →
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+{# Task #69 — Toggle which variant's edit-grid is form-active when the user
+   picks a different radio option. Disabled inputs aren't sent on submit, so
+   only the selected variant's edits are persisted to creative_brief.chosen. #}
+<script>
+(function () {
+  var form = document.querySelector('.brief-form');
+  if (!form) return;
+  function activate(variantEl) {
+    form.querySelectorAll('.brief-variant').forEach(function (label) {
+      var grid = label.querySelector('.brief-edit-grid');
+      var on = label === variantEl;
+      label.classList.toggle('brief-variant--active', on);
+      if (!grid) return;
+      if (on) { grid.removeAttribute('hidden'); } else { grid.setAttribute('hidden', ''); }
+      grid.querySelectorAll('[data-name]').forEach(function (inp) {
+        if (on) {
+          inp.disabled = false;
+          inp.setAttribute('name', inp.dataset.name);
+        } else {
+          inp.disabled = true;
+          inp.removeAttribute('name');
+        }
+      });
+    });
+  }
+  form.querySelectorAll('input[type=radio][name=variant_id]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (r.checked) activate(r.closest('.brief-variant'));
+    });
+  });
+})();
+</script>
+{% endblock %}

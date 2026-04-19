@@ -1,0 +1,518 @@
+{% extends "base.html" %}
+{% set active_stage = 'videos_control' %}
+{% block title %}{{ project.name }} — Video Clips · Qaivid{% endblock %}
+
+{% block content %}
+{% set ns = namespace(pending=0, rendering=0, ready=0, failed=0) %}
+{% for s in shots %}
+  {% if s.video_status == 'ready' %}{% set ns.ready = ns.ready + 1 %}
+  {% elif s.video_status == 'rendering' %}{% set ns.rendering = ns.rendering + 1 %}
+  {% elif s.video_status == 'failed' %}{% set ns.failed = ns.failed + 1 %}
+  {% else %}{% set ns.pending = ns.pending + 1 %}
+  {% endif %}
+{% endfor %}
+
+<div class="stage-wrap">
+  {% include '_stage_header.html' %}
+
+  <div class="stage-card">
+    <div class="stage-header">
+      <span class="stage-badge">Stage 4 — Video Clips</span>
+      <h1>{{ project.name }}</h1>
+      <p class="stage-sub">
+        Edit motion prompts, generate clips one at a time or all at once.
+        <strong>Nothing renders until you ask.</strong>
+      </p>
+    </div>
+
+    <!-- ══ Status + bulk action bar ════════════════════════════════════ -->
+    <div class="vc-topbar">
+      <div class="vc-counters">
+        <span class="vc-pill vc-pending" id="vc-count-pending">{{ ns.pending }} pending</span>
+        <span class="vc-pill vc-rendering" id="vc-count-rendering"
+              style="{{ 'display:none' if ns.rendering == 0 }}">{{ ns.rendering }} rendering</span>
+        <span class="vc-pill vc-ready" id="vc-count-ready">{{ ns.ready }} / {{ shots|length }} ready</span>
+        {% if ns.failed %}
+        <span class="vc-pill vc-failed" id="vc-count-failed">{{ ns.failed }} failed</span>
+        {% endif %}
+      </div>
+      <div class="vc-bulk-btns">
+        <button class="btn-secondary" id="btn-gen-all" onclick="vcGenerateAll(false)">
+          ▶ Generate All Pending
+        </button>
+        <button class="btn-secondary vc-regen-all-btn" onclick="vcConfirmRegenAll()">
+          ↺ Regenerate All
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ Shot list ═══════════════════════════════════════════════════ -->
+    <div class="vc-list" id="vc-list">
+      {% for s in shots %}
+      <div class="vc-row vc-row--{{ s.video_status }}" id="vc-row-{{ s.shot_index }}"
+           data-idx="{{ s.shot_index }}">
+
+        <!-- ── Left: start frame ─────────────────────────────────────── -->
+        <div class="vc-frame-col">
+          <div class="vc-frame-wrap">
+            {% if s.url %}
+            <a href="{{ s.url }}" target="_blank" rel="noopener">
+              <img src="{{ s.url }}" alt="Shot {{ s.shot_index }}" class="vc-frame-img" loading="lazy">
+            </a>
+            {% else %}
+            <div class="vc-frame-empty">No still</div>
+            {% endif %}
+            <span class="vc-frame-num">#{{ s.shot_index }}</span>
+          </div>
+
+          <!-- Video preview (only when ready) -->
+          <div class="vc-clip-wrap" id="vc-clip-{{ s.shot_index }}">
+            {% if s.video_status == 'ready' and s.video_url %}
+            <video src="{{ s.video_url }}" loop muted autoplay playsinline
+                   class="vc-clip-video"></video>
+            <span class="vc-clip-label">▶ clip ready</span>
+            {% elif s.video_status == 'rendering' %}
+            <div class="vc-clip-spinner"><div class="vc-spinner"></div><span>Rendering…</span></div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- ── Right: metadata + prompt + action ────────────────────── -->
+        <div class="vc-detail-col">
+
+          <!-- Shot meta row -->
+          <div class="vc-meta-row">
+            <span class="vc-meta-shot">Shot {{ s.shot_index }}</span>
+            {% if s.start_time is not none %}
+            <span class="vc-meta-chip">{{ "%.1f"|format(s.start_time) }}s</span>
+            {% endif %}
+            {% if s.duration %}
+            <span class="vc-meta-chip">{{ s.duration }}s long</span>
+            {% endif %}
+            {% if s.expression_mode %}
+            <span class="vc-meta-chip vc-mode-chip">{{ s.expression_mode }}</span>
+            {% endif %}
+            {% if s.motion_scale %}
+            <span class="vc-meta-chip">motion {{ s.motion_scale }}</span>
+            {% endif %}
+            <!-- Status badge -->
+            <span class="vc-status-badge vc-badge--{{ s.video_status }}"
+                  id="vc-badge-{{ s.shot_index }}">
+              {% if s.video_status == 'ready' %}✓ Ready
+              {% elif s.video_status == 'rendering' %}⟳ Rendering
+              {% elif s.video_status == 'failed' %}⚠ Failed
+              {% else %}— Pending{% endif %}
+            </span>
+          </div>
+
+          {% if s.meaning %}
+          <div class="vc-meaning">{{ s.meaning }}</div>
+          {% endif %}
+
+          <!-- Visual prompt (read-only) -->
+          {% set vis_prompt = s.prompt %}
+          {% if vis_prompt %}
+          <div class="vc-prompt-section">
+            <div class="vc-prompt-label">Visual prompt</div>
+            <div class="vc-prompt-text">{{ vis_prompt }}</div>
+          </div>
+          {% endif %}
+
+          <!-- Motion prompt (editable) -->
+          <div class="vc-motion-section">
+            <div class="vc-prompt-label">
+              Motion prompt
+              <span class="vc-saved-indicator" id="vc-saved-{{ s.shot_index }}"
+                    style="display:none;color:#c6ff00;font-size:10px;margin-left:6px;">✓ saved</span>
+            </div>
+            <textarea class="vc-motion-input" id="vc-motion-{{ s.shot_index }}"
+                      rows="2" placeholder="Describe how this shot should move…"
+                      onblur="vcSaveMotion({{ s.shot_index }})">{{ s.motion_prompt or '' }}</textarea>
+          </div>
+
+          <!-- Error message -->
+          {% if s.video_error %}
+          <div class="vc-error-msg" id="vc-err-{{ s.shot_index }}">⚠ {{ s.video_error[:160] }}</div>
+          {% else %}
+          <div class="vc-error-msg" id="vc-err-{{ s.shot_index }}" style="display:none;"></div>
+          {% endif %}
+
+          <!-- Action button -->
+          <div class="vc-action-row">
+            {% if s.video_status == 'ready' %}
+            <button class="btn-secondary vc-gen-btn" id="vc-btn-{{ s.shot_index }}"
+                    onclick="vcGenerateOne({{ s.shot_index }})">↺ Regenerate</button>
+            {% elif s.video_status == 'rendering' %}
+            <button class="btn-secondary" id="vc-btn-{{ s.shot_index }}"
+                    disabled style="opacity:.4;">⟳ Rendering…</button>
+            {% else %}
+            <button class="btn-secondary vc-gen-btn" id="vc-btn-{{ s.shot_index }}"
+                    onclick="vcGenerateOne({{ s.shot_index }})">▶ Generate clip</button>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ══ Approve bar ══════════════════════════════════════════════════ -->
+    <div class="stage-actions" style="margin-top:32px;">
+      <button type="button" class="btn-stage-primary" onclick="vcOpenApproveModal()">
+        Approve & Assemble Final Video &#8594;
+      </button>
+      <p class="muted" style="font-size:12px;margin-top:6px;">
+        Only ready clips will be included. Pending shots are skipped.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Approve modal ════════════════════════════════════════════════════ -->
+<div id="vc-approve-modal" style="display:none;position:fixed;inset:0;z-index:9000;
+     background:rgba(0,0,0,.72);align-items:center;justify-content:center;">
+  <div style="background:#16161e;border:1px solid #2a2a38;border-radius:14px;
+              padding:32px 36px;max-width:460px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h2 style="margin:0 0 10px;font-size:20px;color:#fff;">Assemble final video?</h2>
+    <p style="color:#aaa;font-size:14px;margin:0 0 20px;line-height:1.6;">
+      Stitch <strong id="vcm-ready" style="color:#c6ff00;">—</strong> ready clips with your audio.
+      <span id="vcm-skip-note" style="color:#f5a623;"></span>
+    </p>
+    <div style="background:#1e1e2a;border-radius:8px;padding:14px 16px;margin-bottom:22px;font-size:13px;color:#bbb;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span>Ready clips</span><strong id="vcm-ready2" style="color:#c6ff00;">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span>Pending / failed (skipped)</span><strong id="vcm-skip" style="color:#f5a623;">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a38;padding-top:8px;margin-top:4px;">
+        <span>Next</span><strong style="color:#fff;">Final cut + audio mux</strong>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;">
+      <form method="post" action="{{ url_for('videos_approve', project_id=project.id) }}" style="flex:1;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-stage-primary" style="width:100%;padding:13px;font-size:15px;">
+          Yes, assemble &#8594;
+        </button>
+      </form>
+      <button type="button" onclick="vcCloseApproveModal()"
+              style="padding:13px 20px;background:#2a2a38;border:none;border-radius:8px;color:#aaa;font-size:14px;cursor:pointer;">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Regen-all confirm modal ══════════════════════════════════════════ -->
+<div id="vc-regenall-modal" style="display:none;position:fixed;inset:0;z-index:9000;
+     background:rgba(0,0,0,.72);align-items:center;justify-content:center;">
+  <div style="background:#16161e;border:1px solid #2a2a38;border-radius:14px;
+              padding:28px 32px;max-width:400px;width:90%;">
+    <h2 style="margin:0 0 10px;font-size:18px;color:#fff;">Regenerate all clips?</h2>
+    <p style="color:#aaa;font-size:14px;line-height:1.6;margin:0 0 20px;">
+      This re-renders every clip including ones already ready. Each clip costs API credits.
+    </p>
+    <div style="display:flex;gap:12px;">
+      <button onclick="vcGenerateAll(true);document.getElementById('vc-regenall-modal').style.display='none';"
+              class="btn-stage-primary" style="flex:1;padding:11px;">Yes, regenerate all</button>
+      <button onclick="document.getElementById('vc-regenall-modal').style.display='none';"
+              style="padding:11px 18px;background:#2a2a38;border:none;border-radius:8px;color:#aaa;cursor:pointer;">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ── Top bar ── */
+.vc-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0 20px;
+  padding: 14px 16px;
+  background: #1a1f28;
+  border: 1px solid #2a2f38;
+  border-radius: 10px;
+}
+.vc-counters { display:flex;gap:8px;flex-wrap:wrap;align-items:center; }
+.vc-pill { font-size:12px;font-weight:600;padding:4px 11px;border-radius:20px; }
+.vc-pending  { background:rgba(160,160,200,.1);color:#9aa6b2;border:1px solid rgba(160,160,200,.22); }
+.vc-rendering{ background:rgba(255,200,50,.1);color:#ffd070;border:1px solid rgba(255,200,50,.28); }
+.vc-ready    { background:rgba(200,241,53,.1);color:#c6ff00;border:1px solid rgba(200,241,53,.25); }
+.vc-failed   { background:rgba(220,60,60,.1);color:#ff7070;border:1px solid rgba(220,60,60,.28); }
+.vc-bulk-btns { display:flex;gap:8px;flex-wrap:wrap; }
+.vc-regen-all-btn { border-color:#444 !important;color:#666 !important;font-size:12px; }
+
+/* ── Shot list ── */
+.vc-list { display:flex;flex-direction:column;gap:16px; }
+.vc-row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  background: #1a1f28;
+  border: 1px solid #2a2f38;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+@media (max-width: 680px) {
+  .vc-row { grid-template-columns: 1fr; }
+}
+.vc-row--ready    { border-color: rgba(200,241,53,.3); }
+.vc-row--failed   { border-color: rgba(220,60,60,.3); }
+.vc-row--rendering{ border-color: rgba(255,200,50,.3); }
+
+/* ── Left col: frames ── */
+.vc-frame-col { display:flex;flex-direction:column;border-right:1px solid #2a2f38; }
+.vc-frame-wrap { position:relative;aspect-ratio:16/9;overflow:hidden;background:#111; flex-shrink:0; }
+.vc-frame-img  { width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s; }
+.vc-frame-img:hover { opacity:.88; }
+.vc-frame-empty{ display:flex;align-items:center;justify-content:center;height:100%;color:#333;font-size:12px; }
+.vc-frame-num  {
+  position:absolute;top:6px;left:8px;font-size:10px;font-weight:700;
+  background:rgba(0,0,0,.65);color:#bbb;padding:2px 7px;border-radius:4px;
+}
+
+/* ── Clip area ── */
+.vc-clip-wrap { flex:1;min-height:60px;background:#0d0d14;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;position:relative; }
+.vc-clip-video { width:100%;display:block;max-height:140px;object-fit:cover; }
+.vc-clip-label { font-size:10px;color:#c6ff00;text-align:center;padding:4px; }
+.vc-clip-spinner{ display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px; }
+.vc-clip-spinner span { font-size:11px;color:#888; }
+.vc-spinner {
+  width:24px;height:24px;border:3px solid #333;border-top-color:#ffd070;
+  border-radius:50%;animation:vcspin .8s linear infinite;
+}
+@keyframes vcspin { to { transform:rotate(360deg); } }
+
+/* ── Right col: details ── */
+.vc-detail-col { padding:14px 16px;display:flex;flex-direction:column;gap:10px; }
+
+.vc-meta-row { display:flex;flex-wrap:wrap;align-items:center;gap:6px; }
+.vc-meta-shot { font-size:14px;font-weight:700;color:#e0e6ef; }
+.vc-meta-chip {
+  font-size:11px;padding:2px 8px;border-radius:10px;
+  background:rgba(255,255,255,.06);color:#9aa6b2;border:1px solid rgba(255,255,255,.09);
+}
+.vc-mode-chip { background:rgba(100,180,255,.1);color:#88c8ff;border-color:rgba(100,180,255,.2); }
+.vc-status-badge {
+  margin-left:auto;font-size:11px;font-weight:600;padding:3px 10px;border-radius:10px;
+  letter-spacing:.3px;
+}
+.vc-badge--pending  { background:rgba(160,160,200,.1);color:#9aa6b2;border:1px solid rgba(160,160,200,.2); }
+.vc-badge--rendering{ background:rgba(255,200,50,.12);color:#ffd070;border:1px solid rgba(255,200,50,.28); }
+.vc-badge--ready    { background:rgba(200,241,53,.12);color:#c6ff00;border:1px solid rgba(200,241,53,.28); }
+.vc-badge--failed   { background:rgba(220,60,60,.12);color:#ff7070;border:1px solid rgba(220,60,60,.28); }
+
+.vc-meaning {
+  font-size:12px;color:#8a95a3;font-style:italic;line-height:1.5;
+  border-left:2px solid #2a2f38;padding-left:8px;
+}
+
+/* ── Prompts ── */
+.vc-prompt-section,.vc-motion-section { display:flex;flex-direction:column;gap:4px; }
+.vc-prompt-label { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555; }
+.vc-prompt-text {
+  font-size:12px;color:#8090a0;line-height:1.55;
+  background:#131820;border:1px solid #222;border-radius:6px;
+  padding:8px 10px;max-height:80px;overflow-y:auto;
+}
+.vc-motion-input {
+  width:100%;font-size:12px;color:#cfd6df;line-height:1.5;
+  background:#1e2430;border:1px solid #333;border-radius:6px;
+  padding:8px 10px;resize:vertical;min-height:48px;
+  transition:border-color .15s;font-family:inherit;box-sizing:border-box;
+}
+.vc-motion-input:focus { border-color:#c6ff00;outline:none; }
+
+.vc-error-msg { font-size:11px;color:#ff7070;line-height:1.4; }
+
+.vc-action-row { display:flex;gap:8px;margin-top:auto;padding-top:4px; }
+.vc-gen-btn { font-size:13px;padding:8px 16px; }
+</style>
+
+<script>
+const PID  = {{ project.id | tojson }};
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+/* ── Video state ── */
+const videoState = {};
+{% for s in shots %}
+videoState[{{ s.shot_index }}] = {
+  status: {{ s.video_status | tojson }},
+  url: {{ (s.video_url or '') | tojson }}
+};
+{% endfor %}
+
+/* ── Apply status to a row ── */
+function applyStatus(idx, status, url, error) {
+  videoState[idx] = { status, url };
+
+  const row = document.getElementById('vc-row-' + idx);
+  if (row) row.className = 'vc-row vc-row--' + status;
+
+  const badge = document.getElementById('vc-badge-' + idx);
+  if (badge) {
+    badge.className = 'vc-status-badge vc-badge--' + status;
+    badge.textContent =
+      status === 'ready'     ? '✓ Ready'     :
+      status === 'rendering' ? '⟳ Rendering' :
+      status === 'failed'    ? '⚠ Failed'    : '— Pending';
+  }
+
+  const clipWrap = document.getElementById('vc-clip-' + idx);
+  if (clipWrap) {
+    if (status === 'ready' && url) {
+      clipWrap.innerHTML = `<video src="${url}" loop muted autoplay playsinline class="vc-clip-video"></video>
+        <span class="vc-clip-label">▶ clip ready</span>`;
+    } else if (status === 'rendering') {
+      clipWrap.innerHTML = `<div class="vc-clip-spinner"><div class="vc-spinner"></div><span>Rendering…</span></div>`;
+    } else {
+      clipWrap.innerHTML = '';
+    }
+  }
+
+  const btn = document.getElementById('vc-btn-' + idx);
+  if (btn) {
+    if (status === 'rendering') {
+      btn.disabled = true; btn.textContent = '⟳ Rendering…'; btn.style.opacity = '.4';
+    } else if (status === 'ready') {
+      btn.disabled = false; btn.textContent = '↺ Regenerate'; btn.style.opacity = '';
+      btn.onclick = () => vcGenerateOne(idx);
+    } else {
+      btn.disabled = false; btn.textContent = '▶ Generate clip'; btn.style.opacity = '';
+      btn.onclick = () => vcGenerateOne(idx);
+    }
+  }
+
+  const errEl = document.getElementById('vc-err-' + idx);
+  if (errEl) {
+    if (error) { errEl.textContent = '⚠ ' + error.slice(0, 160); errEl.style.display = ''; }
+    else errEl.style.display = 'none';
+  }
+
+  updateCounters();
+}
+
+function updateCounters() {
+  let pending = 0, rendering = 0, ready = 0, failed = 0;
+  for (const s of Object.values(videoState)) {
+    if      (s.status === 'ready')     ready++;
+    else if (s.status === 'rendering') rendering++;
+    else if (s.status === 'failed')    failed++;
+    else                               pending++;
+  }
+  const total = Object.keys(videoState).length;
+  const set = (id, txt, show) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = txt; el.style.display = show ? '' : 'none'; }
+  };
+  set('vc-count-pending',   pending   + ' pending',                pending > 0);
+  set('vc-count-rendering', rendering + ' rendering',              rendering > 0);
+  set('vc-count-ready',     ready + ' / ' + total + ' ready',      true);
+  set('vc-count-failed',    failed    + ' failed',                  failed > 0);
+}
+
+/* ── Polling ── */
+let _poll = null;
+function startPolling() {
+  if (_poll) return;
+  _poll = setInterval(async () => {
+    try {
+      const r = await fetch('/project/' + PID + '/videos/status.json');
+      if (!r.ok) return;
+      const data = await r.json();
+      let anyRendering = false;
+      for (const v of data.videos) {
+        const prev = videoState[v.shot_index] || {};
+        if (prev.status !== v.status || prev.url !== v.url)
+          applyStatus(v.shot_index, v.status, v.url, v.error);
+        if (v.status === 'rendering') anyRendering = true;
+      }
+      if (!anyRendering) { clearInterval(_poll); _poll = null; }
+    } catch(e) {}
+  }, 4000);
+}
+
+/* ── Save motion prompt on blur ── */
+window.vcSaveMotion = async function(idx) {
+  const ta = document.getElementById('vc-motion-' + idx);
+  if (!ta) return;
+  const val = ta.value.trim();
+  try {
+    await fetch('/project/' + PID + '/shot/' + idx + '/motion_prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ motion_prompt: val })
+    });
+    const ind = document.getElementById('vc-saved-' + idx);
+    if (ind) { ind.style.display = 'inline'; setTimeout(() => ind.style.display = 'none', 2000); }
+  } catch(e) {}
+};
+
+/* ── Generate one ── */
+window.vcGenerateOne = async function(idx) {
+  const btn = document.getElementById('vc-btn-' + idx);
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Queued…'; }
+  applyStatus(idx, 'rendering', null, null);
+  startPolling();
+  try {
+    await fetch('/project/' + PID + '/videos/generate/' + idx, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF }
+    });
+  } catch(e) {}
+};
+
+/* ── Generate all ── */
+window.vcGenerateAll = async function(force) {
+  const btn = document.getElementById('btn-gen-all');
+  if (btn) { btn.disabled = true; btn.textContent = 'Queuing…'; }
+  for (const [idx, s] of Object.entries(videoState)) {
+    if (force || s.status !== 'ready')
+      applyStatus(parseInt(idx), 'rendering', null, null);
+  }
+  startPolling();
+  try {
+    await fetch('/project/' + PID + '/videos/generate-all' + (force ? '?force=1' : ''), {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF }
+    });
+  } catch(e) {}
+  if (btn) { btn.disabled = false; btn.textContent = '▶ Generate All Pending'; }
+};
+
+window.vcConfirmRegenAll = () => {
+  document.getElementById('vc-regenall-modal').style.display = 'flex';
+};
+
+/* ── Approve modal ── */
+window.vcOpenApproveModal = function() {
+  let ready = 0, skip = 0;
+  for (const s of Object.values(videoState)) {
+    if (s.status === 'ready') ready++; else skip++;
+  }
+  document.getElementById('vcm-ready').textContent  = ready + ' clip' + (ready === 1 ? '' : 's');
+  document.getElementById('vcm-ready2').textContent = ready;
+  document.getElementById('vcm-skip').textContent   = skip;
+  document.getElementById('vcm-skip-note').textContent =
+    skip > 0 ? skip + ' clip' + (skip === 1 ? '' : 's') + ' will be skipped.' : '';
+  document.getElementById('vc-approve-modal').style.display = 'flex';
+};
+window.vcCloseApproveModal = () => {
+  document.getElementById('vc-approve-modal').style.display = 'none';
+};
+
+['vc-approve-modal','vc-regenall-modal'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; });
+});
+
+/* ── Auto-poll if anything already rendering ── */
+if (Object.values(videoState).some(s => s.status === 'rendering')) startPolling();
+</script>
+{% endblock %}

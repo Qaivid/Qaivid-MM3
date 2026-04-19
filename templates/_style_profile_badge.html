@@ -1,0 +1,56 @@
+{# Small badge showing the active Style Profile, linking back to style_review.
+   Renders nothing when the project has no style_profile (legacy projects).
+   Expects: project (dict carrying optional style_profile).
+#}
+{% if project.style_profile and project.style_profile.production and project.style_profile.cinematic %}
+{% set sp = project.style_profile %}
+<a class="style-profile-badge"
+   href="{{ url_for('project_detail', project_id=project.id, at='style_review') }}"
+   title="View or change the Style Profile">
+    <span class="spb-label">Style Profile</span>
+    <span class="spb-pill spb-pill--prod">{{ sp.production.label }}</span>
+    <span class="spb-pill spb-pill--cin">{{ sp.cinematic.label }}</span>
+    <span class="spb-edit">change ›</span>
+</a>
+<style>
+.style-profile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0 0 1rem 0;
+    padding: .45rem .75rem;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border, #333);
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--text, #e5e5e5);
+    font-size: .8rem;
+    transition: border-color .15s, background .15s;
+}
+.style-profile-badge:hover {
+    border-color: var(--accent, #6c63ff);
+    background: rgba(108,99,255,.08);
+}
+.spb-label {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-muted, #888);
+}
+.spb-pill {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .15rem .5rem;
+    border-radius: 4px;
+    letter-spacing: .02em;
+}
+.spb-pill--prod { background: rgba(108,99,255,.2); color: #a89fff; }
+.spb-pill--cin  { background: rgba(255,177,66,.15); color: #ffb142; }
+.spb-edit {
+    font-size: .7rem;
+    color: var(--text-muted, #888);
+    margin-left: .15rem;
+}
+</style>
+{% endif %}

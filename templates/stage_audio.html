@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% set active_stage = 'audio_review' %}
+{% block title %}{{ project.name }} — Acoustic Audit · Qaivid{% endblock %}
+{% block content %}
+{% set ad = project.audio_data %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 0 — Acoustic Audit</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">AudioProcessor has analysed the track. Review the acoustic data below, then run the Context Engine.</p>
+        </div>
+
+        <div class="audit-grid">
+            <div class="audit-cell">
+                <span class="audit-label">BPM</span>
+                <span class="audit-val">{{ "%.1f"|format(ad.bpm or 0) }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Duration</span>
+                <span class="audit-val">{{ "%.1f"|format(ad.duration_seconds or 0) }}s</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Beats</span>
+                <span class="audit-val">{{ (ad.beat_times or [])|length }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Onsets</span>
+                <span class="audit-val">{{ (ad.onset_times or [])|length }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Avg Energy</span>
+                <span class="audit-val">{{ "%.2f"|format(ad.avg_energy or 0) }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Peak Energy</span>
+                <span class="audit-val">{{ "%.2f"|format(ad.peak_energy or 0) }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Dynamic Range</span>
+                <span class="audit-val">{{ "%.2f"|format(ad.dynamic_range or 0) }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Energy Profile</span>
+                <span class="audit-val">{{ ad.energy_profile or "—" }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Brightness</span>
+                <span class="audit-val">{{ ad.brightness_profile or "—" }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Silence Ratio</span>
+                <span class="audit-val">{{ "%.1f%%"|format((ad.silence_ratio or 0)*100) }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Vocal F0 (median)</span>
+                <span class="audit-val">{{ "%.0f Hz"|format(ad.vocal_f0_hz or 0) if (ad.vocal_f0_hz or 0) > 0 else "—" }}</span>
+            </div>
+            <div class="audit-cell">
+                <span class="audit-label">Detected Singer</span>
+                <span class="audit-val">
+                    {% set vg = ad.vocal_gender or 'unknown' %}
+                    {% if vg == 'male' %}Male{% elif vg == 'female' %}Female{% else %}Unknown / Instrumental{% endif %}
+                    {% if (ad.vocal_gender_confidence or 0) > 0 %}
+                        <small style="opacity:.6;">({{ "%.0f%%"|format((ad.vocal_gender_confidence or 0)*100) }} voiced)</small>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        {% if project.transcript %}
+        <div class="audit-section">
+            <h3>Transcript / Lyrics</h3>
+            <pre class="audit-transcript">{{ project.transcript }}</pre>
+        </div>
+        {% endif %}
+
+        <div class="audit-section">
+            <h3>Singer Identity</h3>
+            <p style="opacity:.7;font-size:.9em;margin:0 0 .6em;">
+                Auto-detected from vocal pitch. Override if it's wrong — this drives the speaker's gender in the Context Engine and the casting downstream.
+            </p>
+            <form method="post" action="{{ url_for('advance_stage_1', project_id=project.id) }}" id="audio-advance-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% set vg_detected = ad.vocal_gender or 'unknown' %}
+                <select name="vocal_gender_override" class="audit-select" style="padding:.6em;border-radius:.4em;">
+                    <option value="auto" selected>Auto-detected: {% if vg_detected == 'male' %}Male{% elif vg_detected == 'female' %}Female{% else %}Unknown{% endif %}</option>
+                    <option value="male">Force: Male singer</option>
+                    <option value="female">Force: Female singer</option>
+                    <option value="mixed">Force: Mixed / Duet</option>
+                    <option value="instrumental">Force: Instrumental (no singer)</option>
+                </select>
+        </div>
+
+        <div class="stage-actions">
+                <button type="submit" class="btn-stage-primary">Run Context Engine →</button>
+            </form>
+            <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}"
+                  onsubmit="return confirm('Delete this project?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-stage-danger">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

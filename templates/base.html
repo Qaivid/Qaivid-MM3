@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}Qaivid MetaMind 3.0 — AI music video studio{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body{% if current_user and current_user.is_admin %} class="is-admin"{% endif %}>
+    <header class="topbar">
+        <a class="brand" href="{{ url_for('index') }}">Qaivid<span>MetaMind 3.0</span></a>
+        <nav class="topbar-nav">
+            {% if current_user %}
+                <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">My Projects</a>
+                <a href="{{ url_for('new_project') }}" class="nav-link nav-cta {% if request.endpoint == 'new_project' %}active{% endif %}">+ New Project</a>
+                {% if current_user.is_admin %}
+                    <a href="{{ url_for('admin') }}" class="nav-link nav-admin {% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">&#9881; Admin</a>
+                {% endif %}
+                <span class="nav-user" title="Signed in as {{ current_user.email }}">{{ current_user.email }}{% if current_user.is_admin %} <span class="nav-admin-pill">ADMIN</span>{% endif %}</span>
+                <form action="{{ url_for('logout') }}" method="post" class="nav-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-link-btn">Sign out</button>
+                </form>
+            {% else %}
+                <a href="{{ url_for('login') }}" class="nav-link">Sign in</a>
+                <a href="{{ url_for('signup') }}" class="nav-link nav-cta">Sign up</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-stack">
+                {% for category, msg in messages %}
+                    <div class="flash flash-{{ category }}">{{ msg }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>Qaivid MetaMind 3.0 · pipeline-driven AI video studio</footer>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

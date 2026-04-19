@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Qaivid MetaMind 3.0 — AI music video studio{% endblock %}
+{% block content %}
+<section class="hero">
+    <div class="eyebrow">Live · Pipeline online</div>
+    <h1>So… <span class="accent">what have you got</span><br>to make a video?</h1>
+    <p>Lyrics, a poem, a script, a story, a doc, an ad — paste it in, throw in audio, and we'll spin up a beat-synced cinematic shot list with face-locked stills.</p>
+    <div style="margin-top:24px; display:flex; gap:12px; justify-content:center;">
+        <a href="{{ url_for('signup') }}" class="btn-primary">Sign up</a>
+        <a href="{{ url_for('login') }}" class="btn-stage">Sign in</a>
+    </div>
+</section>
+{% endblock %}

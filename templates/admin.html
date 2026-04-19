@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Admin · Qaivid MetaMind 3.0{% endblock %}
+{% block content %}
+<section class="admin-wrap">
+    <header class="admin-head">
+        <h1>Admin dashboard</h1>
+        <p class="muted">Full control across all users and projects.</p>
+    </header>
+
+    <h2>System</h2>
+    <div class="admin-stats">
+        <div class="stat-card">
+            <span class="stat-label">Users</span>
+            <span class="stat-value">{{ users|length }}</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Projects</span>
+            <span class="stat-value">{{ total_projects }}</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Shots</span>
+            <span class="stat-value">{{ total_shots }}</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Videos</span>
+            <span class="stat-value">{{ total_videos }}</span>
+        </div>
+        <div class="stat-card {{ 'ok' if r2_ok else 'bad' }}">
+            <span class="stat-label">R2</span>
+            <span class="stat-value">{{ "online" if r2_ok else "offline" }}</span>
+        </div>
+        <div class="stat-card {{ 'ok' if api_ok else 'bad' }}">
+            <span class="stat-label">OpenAI</span>
+            <span class="stat-value">{{ "set" if api_ok else "missing" }}</span>
+        </div>
+        <div class="stat-card {{ 'ok' if fal_ok else 'bad' }}">
+            <span class="stat-label">FAL</span>
+            <span class="stat-value">{{ "set" if fal_ok else "missing" }}</span>
+        </div>
+    </div>
+
+    <div class="admin-stats">
+        <div class="stat-card {{ 'warn' if image_modes.ref == 'cheap' else ('mid' if image_modes.ref == 'standard' else 'ok') }}">
+            <span class="stat-label">Ref images</span>
+            <span class="stat-value">{{ image_modes.ref }}</span>
+        </div>
+        <div class="stat-card {{ 'warn' if image_modes.shot == 'cheap' else ('mid' if image_modes.shot == 'standard' else 'ok') }}">
+            <span class="stat-label">Still shots</span>
+            <span class="stat-value">{{ image_modes.shot }}</span>
+        </div>
+    </div>
+
+    <h2>Image generation mode</h2>
+    {% if image_modes.ref == 'cheap' or image_modes.shot == 'cheap' %}
+    <div class="admin-notice warn">
+        ⚠ One or more slots are using <strong>GPT Image 1.5 · Low</strong> —
+        gpt-image-1.5 at low quality, $0.009–$0.013/image, img2img face retention.
+        Suitable for prompt testing. Switch to <strong>Quality</strong> before a production run.
+    </div>
+    {% elif image_modes.shot == 'standard' %}
+    <div class="admin-notice info">
+        ℹ Still shots are in <strong>Standard</strong> mode — FLUX/schnell, no face-lock.
+        Good for landscape/nature videos. Switch to <strong>Quality</strong> for character-driven narrative.
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin_set_image_modes') }}" class="image-mode-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mode-row">
+            <label class="mode-label">Reference images — character &amp; environment plates</label>
+            <div class="mode-options">
+                <label class="mode-radio">
+                    <input type="radio" name="ref_mode" value="quality" {{ 'checked' if image_modes.ref == 'quality' }}>
+                    <span class="mode-tier quality">Quality ✓ Recommended</span>
+                    FAL FLUX/schnell — cinematic plates — ~$0.003/img
+                </label>
+                <label class="mode-radio">
+                    <input type="radio" name="ref_mode" value="cheap" {{ 'checked' if image_modes.ref == 'cheap' }}>
+                    <span class="mode-tier cheap">GPT Image 1.5 · Low</span>
+                    gpt-image-1.5 low quality — $0.009–$0.013/img — img2img face retention
+                </label>
+            </div>
+        </div>
+
+        <div class="mode-row">
+            <label class="mode-label">Still shots — per-shot image renders</label>
+            <div class="mode-options">
+                <label class="mode-radio">
+                    <input type="radio" name="shot_mode" value="quality" {{ 'checked' if image_modes.shot == 'quality' }}>
+                    <span class="mode-tier quality">Quality ✓ Recommended</span>
+                    FLUX dev + PuLID — true face-lock — ~$0.025–0.05/img
+                </label>
+                <label class="mode-radio">
+                    <input type="radio" name="shot_mode" value="standard" {{ 'checked' if image_modes.shot in ('standard', 'sdxl_face') }}>
+                    <span class="mode-tier mid">Standard</span>
+                    FLUX/schnell — cinematic, no face-lock — ~$0.003–0.005/img
+                </label>
+                <label class="mode-radio">
+                    <input type="radio" name="shot_mode" value="cheap" {{ 'checked' if image_modes.shot == 'cheap' }}>
+                    <span class="mode-tier cheap">GPT Image 1.5 · Low</span>
+                    gpt-image-1.5 low quality — $0.009–$0.013/img — img2img face retention
+                </label>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Save mode settings →</button>
+    </form>
+
+    {% if status_counts %}
+    <div class="admin-stats">
+        {% for status, count in status_counts.items() %}
+        <div class="stat-card">
+            <span class="stat-label">{{ status }}</span>
+            <span class="stat-value">{{ count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <h2>Users</h2>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Email</th><th>Role</th><th>Projects</th><th>Joined</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.email }}{% if u.id == current_user_id %} <span class="muted">(you)</span>{% endif %}</td>
+                    <td>{% if u.is_admin %}<span class="status-pill status-ready">admin</span>{% else %}<span class="status-pill">user</span>{% endif %}</td>
+                    <td>{{ u.project_count }}</td>
+                    <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td class="admin-actions">
+                        {% if u.id != current_user_id %}
+                        <form method="post" action="{{ url_for('admin_toggle_admin', user_id=u.id) }}" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-mini">{{ "revoke admin" if u.is_admin else "make admin" }}</button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin_delete_user', user_id=u.id) }}" class="inline"
+                              onsubmit="return confirm('Delete {{ u.email }} and all their projects? This cannot be undone.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-mini btn-danger">delete</button>
+                        </form>
+                        {% else %}
+                        <span class="muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if failed %}
+    <h2>Recent failures</h2>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Project</th><th>Owner</th><th>Error</th><th>When</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for p in failed %}
+                <tr>
+                    <td><a href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a></td>
+                    <td>{{ p.owner_email }}</td>
+                    <td class="err-cell">{{ (p.error or "")[:200] }}</td>
+                    <td>{{ p.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td>
+                        <form method="post" action="{{ url_for('admin_delete_project', project_id=p.id) }}" class="inline"
+                              onsubmit="return confirm('Delete this project?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-mini btn-danger">delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <h2>All projects</h2>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Name</th><th>Owner</th><th>Genre</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for p in projects %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    <td>{{ p.owner_email }}</td>
+                    <td>{{ p.genre }}</td>
+                    <td><span class="status-pill status-{{ p.status }}">{{ p.status }}</span></td>
+                    <td>{{ p.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td class="admin-actions">
+                        <a href="{{ url_for('project_detail', project_id=p.id) }}" class="btn-mini">open</a>
+                        <form method="post" action="{{ url_for('admin_delete_project', project_id=p.id) }}" class="inline"
+                              onsubmit="return confirm('Delete project {{ p.name }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-mini btn-danger">delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set active_stage = 'final_review' %}
+{% block title %}{{ project.name }} — Final Cut · Qaivid{% endblock %}
+{% block content %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 5 — Final Cut</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">
+                Every shot has been stitched in beat order and the original audio muxed in.
+                This is your finished music video.
+            </p>
+        </div>
+
+        {% if project.final_video_url %}
+        <div class="final-video-wrap" style="display:flex;flex-direction:column;align-items:center;gap:16px;margin:24px 0;">
+            <video src="{{ project.final_video_url }}" controls preload="metadata"
+                   style="max-width:100%;width:900px;border-radius:8px;background:#000;"></video>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+                <a href="{{ project.final_video_url }}" download class="btn-stage">
+                    ⬇ Download MP4
+                </a>
+                {% if project.export_path %}
+                <a href="{{ url_for('project_export', project_id=project.id) }}" class="btn-stage btn-secondary">
+                    Download Shot List JSON
+                </a>
+                {% endif %}
+                <a href="{{ url_for('project_detail', project_id=project.id, at='videos_review') }}"
+                   class="btn-stage btn-secondary">← Back to clips</a>
+            </div>
+        </div>
+        {% else %}
+        <div class="assembly-note" style="margin:24px 0;">
+            <strong>No final cut yet.</strong> Return to the Videos step and click
+            <em>Assemble Final Video</em> once every clip is ready.
+            <div style="margin-top:12px;">
+                <a href="{{ url_for('project_detail', project_id=project.id, at='videos_review') }}"
+                   class="btn-stage">← Back to Videos</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

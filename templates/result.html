@@ -1,0 +1,1784 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · Qaivid MetaMind 3.0{% endblock %}
+{# Workspace view = the post-pipeline review page. We treat it as the
+   final stage so the wizard renders every prior step as a clickable
+   link back to its review screen. #}
+{% set active_stage = 'final_review' %}
+
+{% block content %}
+{# Clickable stage wizard — lets the user jump back to any completed
+   stage's review screen (Context, Brief, Storyboard, References, Stills,
+   Videos, Final Cut). Past steps render as <a> links via _stage_header.html. #}
+{% include '_stage_header.html' %}
+
+{# ── MOBILE TOC: floating button + bottom sheet ──────────────────────────── #}
+<div class="mob-toc-fab-wrap">
+    <span class="mob-toc-label" id="mob-toc-label" aria-hidden="true"></span>
+    <button class="mob-toc-fab" id="mob-toc-fab" aria-label="Open navigation" aria-expanded="false" aria-controls="mob-toc-sheet">≡</button>
+</div>
+
+<div class="mob-toc-backdrop" id="mob-toc-backdrop" aria-hidden="true"></div>
+<div class="mob-toc-sheet" id="mob-toc-sheet" role="dialog" aria-modal="true" aria-label="Workspace panels">
+    <div class="mob-toc-handle"></div>
+    <nav class="mob-toc-list">
+        <a class="mob-toc-item" href="#brief-panel">
+            <span class="mob-toc-num">01</span>
+            <span class="mob-toc-name">Brief</span>
+        </a>
+        <a class="mob-toc-item" href="#entity-section">
+            <span class="mob-toc-num">02</span>
+            <span class="mob-toc-name">Characters</span>
+        </a>
+        <a class="mob-toc-item" href="#scenes-panel">
+            <span class="mob-toc-num">03</span>
+            <span class="mob-toc-name">Scenes</span>
+        </a>
+        <a class="mob-toc-item" href="#refs-panel">
+            <span class="mob-toc-num">04</span>
+            <span class="mob-toc-name">References</span>
+        </a>
+        <a class="mob-toc-item" href="#shots-panel">
+            <span class="mob-toc-num">05</span>
+            <span class="mob-toc-name">Shots &amp; Prompts</span>
+        </a>
+        <a class="mob-toc-item" href="#production-panel">
+            <span class="mob-toc-num">06</span>
+            <span class="mob-toc-name">Production</span>
+        </a>
+    </nav>
+</div>
+
+{# ── 3-COLUMN DASHBOARD GRID ───────────────────────────────────────────── #}
+<div class="ws-grid">
+
+    {# ─── LEFT COLUMN: section nav ──────────────────────────────────────── #}
+    <aside class="ws-col-left">
+        <div class="ws-col-inner">
+            <div class="ws-crumb">
+                <a href="{{ url_for('index') }}" class="back-link" id="back-to-studio">&larr; Studio</a>
+                <span class="ws-sep">/</span>
+                <span class="ws-genre">{{ project.genre }}</span>
+            </div>
+            <nav class="ws-side-nav" aria-label="Workspace sections">
+                <a class="ws-side-item" href="#brief-panel">
+                    <span class="ws-side-num">01</span><span class="ws-side-name">Brief</span>
+                </a>
+                <a class="ws-side-item" href="#entity-section">
+                    <span class="ws-side-num">02</span><span class="ws-side-name">Characters</span>
+                </a>
+                <a class="ws-side-item" href="#scenes-panel">
+                    <span class="ws-side-num">03</span><span class="ws-side-name">Scenes</span>
+                </a>
+                <a class="ws-side-item" href="#refs-panel">
+                    <span class="ws-side-num">04</span><span class="ws-side-name">References</span>
+                </a>
+                <a class="ws-side-item" href="#shots-panel">
+                    <span class="ws-side-num">05</span><span class="ws-side-name">Shots &amp; Prompts</span>
+                </a>
+                <a class="ws-side-item" href="#production-panel">
+                    <span class="ws-side-num">06</span><span class="ws-side-name">Production</span>
+                </a>
+            </nav>
+        </div>
+    </aside>
+
+    {# ─── CENTER COLUMN: title + all panels stacked ─────────────────────── #}
+    <div class="ws-col-main">
+        <header class="ws-main-head">
+            <h1 class="ws-title">{{ project.name }}</h1>
+            <p class="ws-meta muted">
+                <span id="shot-count">{{ project.summary.get('styled_timeline_shot_count', project.styled_timeline|length) }}</span> shots ·
+                {{ '%.1f' | format(project.summary.get('total_duration', 0)) }}s total
+            </p>
+        </header>
+
+{# ── 1. BRIEF PANEL ────────────────────────────────────────────────────── #}
+<section class="card panel" id="brief-panel" style="display: {% if project.context_packet %}block{% else %}none{% endif %};">
+    <div class="panel-head">
+        <div class="panel-num">01</div>
+        <h2>Creative Brief</h2>
+        <span class="panel-sub muted">What this video is really about</span>
+    </div>
+    <dl class="kv brief-kv">
+        <dt>Core theme</dt><dd>{{ project.context_packet.get('core_theme', '—') }}</dd>
+        <dt>Narrative spine</dt><dd>{{ project.context_packet.get('narrative_spine', '—') }}</dd>
+        {% set speaker = project.context_packet.get('speaker', {}) %}
+        <dt>Speaker</dt><dd>{{ speaker.get('identity', '—') }} ({{ speaker.get('emotional_state', '—') }})</dd>
+        <dt>Location DNA</dt><dd>{{ project.context_packet.get('location_dna', '—') }}</dd>
+        <dt>Motifs</dt><dd>
+            {% for m in project.context_packet.get('motifs', []) %}
+                <span class="chip">{{ m }}</span>
+            {% else %}—{% endfor %}
+        </dd>
+    </dl>
+</section>
+
+{# ── 2. CHARACTERS & LOCATIONS PANEL ───────────────────────────────────── #}
+<section class="card panel entity-section" id="entity-section" style="display:none;">
+    <div class="panel-head">
+        <div class="panel-num">02</div>
+        <h2>Characters &amp; Locations</h2>
+        <span class="panel-sub muted">Auto-materialized from the text — used to keep every shot consistent</span>
+    </div>
+    <div class="entity-cols">
+        <div>
+            <h3 class="entity-group-label">Characters</h3>
+            <ul class="entity-list" id="character-list"></ul>
+        </div>
+        <div>
+            <h3 class="entity-group-label">Locations</h3>
+            <ul class="entity-list" id="location-list"></ul>
+        </div>
+    </div>
+</section>
+
+{# ── 3. SCENES PANEL (computed client-side) ────────────────────────────── #}
+<section class="card panel" id="scenes-panel" style="display: {% if project.styled_timeline %}block{% else %}none{% endif %};">
+    <div class="panel-head">
+        <div class="panel-num">03</div>
+        <h2>Scenes</h2>
+        <span class="panel-sub muted">Consecutive shots grouped by mood &amp; location</span>
+    </div>
+    <ol class="scene-list" id="scene-list"></ol>
+</section>
+
+{# ── 4. REFERENCE IMAGES PANEL ─────────────────────────────────────────── #}
+<section class="card panel" id="refs-panel">
+    <div class="panel-head">
+        <div class="panel-num">04</div>
+        <h2>Reference Images</h2>
+        <span class="panel-sub muted">Face-lock + world DNA — every shot inherits these</span>
+    </div>
+    <div class="ref-grid">
+        <div class="ref-cell" data-role="character">
+            <div class="ref-label">Character (face-lock)</div>
+            <div class="ref-frame"><div class="ref-placeholder">…</div></div>
+            <div class="ref-meta"></div>
+            <button class="btn-ghost ref-retry" type="button" data-role="character" style="display:none;">Regenerate</button>
+        </div>
+        <div class="ref-cell" data-role="environment">
+            <div class="ref-label">Environment</div>
+            <div class="ref-frame"><div class="ref-placeholder">…</div></div>
+            <div class="ref-meta"></div>
+            <button class="btn-ghost ref-retry" type="button" data-role="environment" style="display:none;">Regenerate</button>
+        </div>
+    </div>
+</section>
+
+{# ── 5. SHOTS PANEL ────────────────────────────────────────────────────── #}
+<section class="card panel" id="shots-panel">
+    <div class="panel-head">
+        <div class="panel-num">05</div>
+        <h2>Shots &amp; Prompts</h2>
+        <span class="panel-sub muted" id="shot-progress">—</span>
+    </div>
+    <div class="shots-bulk-bar">
+        <button class="btn-primary" type="button" id="shots-generate-all">▶ Generate All Pending</button>
+        <button class="btn-ghost" type="button" id="shots-regenerate-all">↻ Regenerate All</button>
+        <span class="shots-bulk-status muted" id="shots-bulk-status"></span>
+    </div>
+    <ol class="shot-list" id="shot-list">
+        {% for shot in project.styled_timeline %}
+            <li class="shot" id="shot-{{ shot.shot_index or shot.timeline_index }}" data-shot-index="{{ shot.shot_index or shot.timeline_index }}">
+                <div class="shot-head">
+                    <span class="shot-num">#{{ shot.shot_index or shot.timeline_index }}</span>
+                    <span class="shot-time">{{ '%.2f' | format(shot.start_time) }}s &rarr; {{ '%.2f' | format(shot.end_time) }}s ({{ '%.2f' | format(shot.duration) }}s)</span>
+                    <span class="shot-tag shot-mode">{{ shot.expression_mode }}</span>
+                    <span class="shot-tag shot-trans">{{ shot.transition }}</span>
+                    <span class="shot-asset-status">…</span>
+                </div>
+                <div class="shot-body">
+                    <div class="shot-still">
+                        <div class="ref-placeholder">queued</div>
+                    </div>
+                    <div class="shot-info">
+                        <p class="shot-meaning">{{ shot.meaning }}</p>
+                        <div class="shot-actions">
+                            <button class="btn-secondary shot-generate-btn" type="button">▶ Generate</button>
+                            <button class="btn-ghost shot-prompt-toggle" type="button" aria-expanded="false">Prompt ▼</button>
+                            <span class="shot-action-status muted"></span>
+                        </div>
+                        <div class="shot-prompt-wrap" hidden>
+                            <textarea class="shot-prompt-text" rows="4" placeholder="Image prompt for this shot…">{{ shot.styled_visual_prompt or shot.visual_prompt or '' }}</textarea>
+                            <div class="shot-prompt-actions">
+                                <button class="btn-ghost shot-prompt-save" type="button">Save prompt</button>
+                                <span class="shot-prompt-status muted"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </li>
+        {% endfor %}
+    </ol>
+    <div id="shot-list-empty" class="empty" style="display: {% if project.styled_timeline %}none{% else %}block{% endif %};">
+        <span class="empty-emoji">◌</span>
+        Reading your text, building the shot list…
+    </div>
+</section>
+
+{# Prompts are now collapsed into each shot card under "Prompt ▼" — section retained only as an empty anchor for legacy links. #}
+<section class="card panel" id="prompts-panel" hidden>
+    <ol class="prompt-list" id="prompt-list"></ol>
+</section>
+
+{# ── 7. PRODUCTION PANEL (live progress mirror) ────────────────────────── #}
+<section class="card panel" id="production-panel">
+    <div class="panel-head">
+        <div class="panel-num">07</div>
+        <h2>Production</h2>
+        <span class="panel-sub muted">Live render progress &amp; final assembly</span>
+    </div>
+    <div class="production-grid">
+        <div class="production-step" id="prod-refs">
+            <div class="prod-icon">◊</div>
+            <div class="prod-name">1 · References</div>
+            <div class="prod-detail" id="prod-refs-detail">waiting</div>
+        </div>
+        <div class="production-step" id="prod-stills">
+            <div class="prod-icon">◐</div>
+            <div class="prod-name">2 · Stills</div>
+            <div class="prod-detail" id="prod-stills-detail">waiting</div>
+        </div>
+        <div class="production-step" id="prod-videos">
+            <div class="prod-icon">▶</div>
+            <div class="prod-name">3 · Videos</div>
+            <div class="prod-detail">awaiting video pipeline</div>
+        </div>
+        <div class="production-step" id="prod-assemble">
+            <div class="prod-icon">⎌</div>
+            <div class="prod-name">4 · Assemble</div>
+            <div class="prod-detail" id="prod-assemble-detail">awaiting final mux</div>
+        </div>
+    </div>
+    <p class="prod-foot muted">
+        Step 4 (Assemble) ships with Phase 6 — final MP4 mux.
+        Use <strong>Download JSON</strong> at the top of the page to export the
+        shot list at any time.
+    </p>
+    {% if project.status == 'complete' %}
+    <button class="btn btn-secondary" id="gen-videos-btn" style="margin-top:14px;">
+        ▶ Generate Video Clips
+    </button>
+    {% endif %}
+    <div class="cost-estimate" id="cost-estimate" style="display:none;">
+        <span class="cost-label">Estimated render cost</span>
+        <span class="cost-value" id="cost-value">—</span>
+        <span class="cost-note muted">based on 2 reference images + per-shot stills @ ~$0.04 each (gpt-image-1.5 medium)</span>
+    </div>
+</section>
+
+    </div>{# /.ws-col-main #}
+
+    {# ─── RIGHT COLUMN: status, actions, pipeline rail ──────────────────── #}
+    <aside class="ws-col-right">
+        <div class="ws-col-inner">
+            <div class="ws-side-card">
+                <div id="status-pill" class="status-pill status-{{ project.status }}">
+                    <span class="dot"></span>
+                    <span id="status-label">{{ project.progress.get('label', project.status) }}</span>
+                </div>
+                <div class="next-step" id="next-step">Next: waiting for the pipeline to start…</div>
+                {% if project.error %}
+                    <div class="warning"><strong>Error:</strong> {{ project.error }}</div>
+                {% endif %}
+                <div class="ws-side-actions">
+                    <span id="export-actions" style="display: {% if project.export_path %}flex{% else %}none{% endif %};">
+                        <a class="btn-primary" href="{{ url_for('project_export', project_id=project.id) }}">Download JSON</a>
+                    </span>
+                    <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}"
+                          onsubmit="return confirm('Delete this project and all its images? This cannot be undone.') && confirm('Are you absolutely sure? Every reference image, still, video clip and JSON for this project will be permanently removed.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-danger">Delete project</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="ws-side-card">
+                <h3 class="ws-side-card-title">Pipeline</h3>
+                <div class="stage-rail stage-rail-vertical" id="stage-rail">
+                    <div class="stage-step" data-stage="audio">
+                        <div class="stage-num">1</div>
+                        <div class="stage-info">
+                            <div class="stage-name">Read Audio</div>
+                            <div class="stage-status">queued</div>
+                        </div>
+                    </div>
+                    <div class="stage-step" data-stage="context">
+                        <div class="stage-num">2</div>
+                        <div class="stage-info">
+                            <div class="stage-name">Interpret Text</div>
+                            <div class="stage-status">queued</div>
+                        </div>
+                    </div>
+                    <div class="stage-step" data-stage="refs">
+                        <div class="stage-num">3</div>
+                        <div class="stage-info">
+                            <div class="stage-name">Build References</div>
+                            <div class="stage-status">queued</div>
+                        </div>
+                    </div>
+                    <div class="stage-step" data-stage="stills">
+                        <div class="stage-num">4</div>
+                        <div class="stage-info">
+                            <div class="stage-name">Render Shots</div>
+                            <div class="stage-status">queued</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+</div>{# /.ws-grid #}
+
+{# ── SCENE THUMBNAIL LIGHTBOX ──────────────────────────────────────────── #}
+<div id="scene-lightbox" class="scene-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="scene-lightbox-title">
+    <div class="scene-lightbox-backdrop" data-lightbox-close></div>
+    <div class="scene-lightbox-panel" role="document">
+        <span class="scene-lightbox-handle" aria-hidden="true"></span>
+        <button type="button" class="scene-lightbox-close" data-lightbox-close aria-label="Close preview">×</button>
+        <div class="scene-lightbox-image-wrap">
+            <button type="button" id="scene-lightbox-prev" class="scene-lightbox-arrow scene-lightbox-prev" aria-label="Previous shot">&#8592;</button>
+            <img id="scene-lightbox-img" alt="" />
+            <div id="scene-lightbox-empty" class="scene-lightbox-empty" hidden>Still not ready yet</div>
+            <button type="button" id="scene-lightbox-next" class="scene-lightbox-arrow scene-lightbox-next" aria-label="Next shot">&#8594;</button>
+        </div>
+        <div class="scene-lightbox-meta">
+            <div class="scene-lightbox-head">
+                <span id="scene-lightbox-title" class="scene-lightbox-num">Shot</span>
+                <a href="#" id="scene-lightbox-goto" class="scene-lightbox-goto">Go to shot →</a>
+            </div>
+            <p id="scene-lightbox-meaning" class="scene-lightbox-meaning"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const projectId = "{{ project.id }}";
+    const statusUrl = "{{ url_for('project_status', project_id=project.id) }}";
+
+    const statusPill   = document.getElementById("status-pill");
+    const statusLabel  = document.getElementById("status-label");
+    const exportActions = document.getElementById("export-actions");
+    const shotList     = document.getElementById("shot-list");
+    const shotListEmpty = document.getElementById("shot-list-empty");
+    const shotProgress = document.getElementById("shot-progress");
+    const shotCount    = document.getElementById("shot-count");
+    const stageRail    = document.getElementById("stage-rail");
+    const nextStepEl   = document.getElementById("next-step");
+    const sceneList    = document.getElementById("scene-list");
+    const promptList   = document.getElementById("prompt-list");
+    const briefPanel   = document.getElementById("brief-panel");
+    const scenesPanel  = document.getElementById("scenes-panel");
+    const promptsPanel = document.getElementById("prompts-panel");
+    const prodStillsDetail = document.getElementById("prod-stills-detail");
+    const prodRefsDetail   = document.getElementById("prod-refs-detail");
+    const prodRefsCard     = document.getElementById("prod-refs");
+    const prodStillsCard   = document.getElementById("prod-stills");
+    let latestTimeline = null;
+    let shotUrlMap = {};   // shot_index → static URL for ready stills
+
+    // ── tiny safe-DOM helpers ──────────────────────────────────────────────
+    function txt(s) { return document.createTextNode(s == null ? "" : String(s)); }
+    function el(tag, cls, ...kids) {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        kids.forEach(k => k != null && e.appendChild(typeof k === "string" ? txt(k) : k));
+        return e;
+    }
+    function fmtTime(t) { return (t == null) ? "" : Number(t).toFixed(2) + "s"; }
+
+    // ── stage rail ─────────────────────────────────────────────────────────
+    const STAGE_ORDER = ["audio", "context", "refs", "stills", "done"];
+    // Backend may emit additional stages we want to fold into one of our 4 rail steps.
+    const STAGE_ALIAS = {
+        queued:     "audio",
+        storyboard: "stills",   // composing the shot list — treat it as stills lead-in
+        videos:     "stills",   // video animation phase — show "stills" step active on the rail
+        error:      null,        // handled via status === "failed"
+    };
+    const STAGE_NEXT = {
+        audio:      "Reading the audio file & extracting tempo…",
+        context:    "Interpreting the text into a creative brief…",
+        refs:       "Generating the character & environment references…",
+        storyboard: "Composing the beat-synced shot list…",
+        stills:     "Rendering each shot still — sit tight…",
+        videos:     "Animating each shot into a video clip…",
+        done:       "All set — your storyboard is ready to download.",
+        error:      "Something broke. Check the error above.",
+    };
+
+    function setStageRail(rawStage, status) {
+        // Normalize: alias unknown / non-rail stages onto a valid rail position.
+        let currentStage = rawStage;
+        if (STAGE_ALIAS.hasOwnProperty(rawStage)) {
+            currentStage = STAGE_ALIAS[rawStage] || "audio";
+        }
+        let currentIdx = STAGE_ORDER.indexOf(currentStage);
+        if (currentIdx === -1) {
+            // Unknown stage from backend — fall back to first step but keep the original
+            // label visible in "Next:" so we don't silently lie to the user.
+            currentIdx = 0;
+            currentStage = "audio";
+        }
+        const steps = stageRail.querySelectorAll(".stage-step");
+        steps.forEach((step, i) => {
+            const stage = step.dataset.stage;
+            const stageIdx = STAGE_ORDER.indexOf(stage);
+            const statusEl = step.querySelector(".stage-status");
+            step.classList.remove("done", "active", "pending", "failed");
+            if (status === "failed" && stageIdx === currentIdx) {
+                step.classList.add("failed");
+                statusEl.textContent = "failed";
+            } else if (currentStage === "done" || stageIdx < currentIdx) {
+                step.classList.add("done");
+                statusEl.textContent = "done";
+            } else if (stageIdx === currentIdx) {
+                step.classList.add("active");
+                statusEl.textContent = "running…";
+            } else {
+                step.classList.add("pending");
+                statusEl.textContent = "queued";
+            }
+        });
+        nextStepEl.textContent = "Next: " + (status === "failed"
+            ? STAGE_NEXT.error
+            : (STAGE_NEXT[currentStage] || ""));
+    }
+
+    // ── reference cells ────────────────────────────────────────────────────
+    function setRef(role, payload) {
+        const cell = document.querySelector(`.ref-cell[data-role="${role}"]`);
+        if (!cell) return;
+        const frame = cell.querySelector(".ref-frame");
+        const meta = cell.querySelector(".ref-meta");
+        const retry = cell.querySelector(".ref-retry");
+        frame.replaceChildren();
+        if (payload.url && payload.status === "ready") {
+            const a = el("a"); a.href = payload.url; a.target = "_blank";
+            const img = document.createElement("img");
+            img.src = payload.url; img.alt = role + " reference";
+            a.appendChild(img); frame.appendChild(a);
+            meta.textContent = payload.source === "uploaded" ? "Uploaded by you" : "Auto-generated";
+            retry.style.display = payload.source === "generated" ? "inline-flex" : "none";
+        } else if (payload.status === "rendering") {
+            frame.appendChild(el("div", "ref-placeholder spin", "rendering…"));
+            meta.textContent = ""; retry.style.display = "none";
+        } else if (payload.status === "failed") {
+            frame.appendChild(el("div", "ref-placeholder failed", "failed"));
+            meta.textContent = payload.error || "Generation failed.";
+            retry.style.display = "inline-flex";
+        } else {
+            frame.appendChild(el("div", "ref-placeholder", "queued"));
+            meta.textContent = ""; retry.style.display = "none";
+        }
+    }
+
+    // ── shot rows ──────────────────────────────────────────────────────────
+    function renderShotRow(shot) {
+        let li = shotList.querySelector(`li[data-shot-index="${shot.shot_index}"]`);
+        if (!li) {
+            li = el("li", "shot");
+            li.id = "shot-" + (shot.shot_index || shot.timeline_index);
+            li.dataset.shotIndex = shot.shot_index || shot.timeline_index;
+            const head = el("div", "shot-head",
+                el("span", "shot-num", "#" + shot.shot_index),
+                el("span", "shot-time"),
+                el("span", "shot-tag shot-mode"),
+                el("span", "shot-tag shot-trans"),
+                el("span", "shot-asset-status", "…")
+            );
+            const still = el("div", "shot-still", el("div", "ref-placeholder", "queued"));
+
+            // Per-shot actions: Generate/Regenerate + Prompt dropdown toggle
+            const actions = el("div", "shot-actions");
+            const genBtn = el("button", "btn-secondary shot-generate-btn", "▶ Generate");
+            genBtn.type = "button";
+            genBtn.dataset.mode = "gen";
+            const promptToggle = el("button", "btn-ghost shot-prompt-toggle", "Prompt ▼");
+            promptToggle.type = "button";
+            promptToggle.setAttribute("aria-expanded", "false");
+            const actionStatus = el("span", "shot-action-status");
+            actions.appendChild(genBtn);
+            actions.appendChild(promptToggle);
+            actions.appendChild(actionStatus);
+
+            // Collapsible prompt editor (hidden by default)
+            const promptWrap = el("div", "shot-prompt-wrap");
+            promptWrap.setAttribute("hidden", "");
+            const ta = document.createElement("textarea");
+            ta.className = "shot-prompt-text";
+            ta.rows = 4;
+            ta.placeholder = "Edit the visual prompt for this shot…";
+            promptWrap.appendChild(ta);
+            const promptActions = el("div", "shot-prompt-actions");
+            const saveBtn = el("button", "btn-ghost shot-prompt-save", "Save Prompt");
+            saveBtn.type = "button";
+            const promptStatus = el("span", "shot-prompt-status");
+            promptActions.appendChild(saveBtn);
+            promptActions.appendChild(promptStatus);
+            promptWrap.appendChild(promptActions);
+
+            const info = el("div", "shot-info",
+                el("p", "shot-meaning"),
+                actions,
+                promptWrap
+            );
+            li.appendChild(head);
+            li.appendChild(el("div", "shot-body", still, info));
+            shotList.appendChild(li);
+        }
+        const status = li.querySelector(".shot-asset-status");
+        const still = li.querySelector(".shot-still");
+        const retry = null; // legacy .shot-retry removed — replaced by .shot-generate-btn
+        const meaning = li.querySelector(".shot-meaning");
+        const time = li.querySelector(".shot-time");
+        const mode = li.querySelector(".shot-mode");
+        const trans = li.querySelector(".shot-trans");
+
+        if (meaning && shot.meaning && !meaning.textContent) meaning.textContent = shot.meaning;
+        if (time && !time.textContent && shot.start_time != null) {
+            time.textContent = `${fmtTime(shot.start_time)} → ${fmtTime(shot.end_time)} (${fmtTime(shot.duration)})`;
+        }
+        if (mode && shot.expression_mode && !mode.textContent) mode.textContent = shot.expression_mode;
+        if (trans && shot.transition && !trans.textContent) trans.textContent = shot.transition;
+
+        status.textContent = shot.status;
+        status.className = `shot-asset-status status-${shot.status}`;
+
+        still.replaceChildren();
+        if (shot.url && shot.status === "ready") {
+            const a = el("a"); a.href = shot.url; a.target = "_blank";
+            const img = document.createElement("img");
+            img.src = shot.url; img.alt = "shot " + shot.shot_index;
+            a.appendChild(img); still.appendChild(a);
+            if (retry) retry.style.display = "inline-flex";
+        } else if (shot.status === "rendering") {
+            still.appendChild(el("div", "ref-placeholder spin", "rendering…"));
+            if (retry) retry.style.display = "none";
+        } else if (shot.status === "failed") {
+            still.appendChild(el("div", "ref-placeholder failed", "failed"));
+            if (retry) retry.style.display = "inline-flex";
+        } else {
+            still.appendChild(el("div", "ref-placeholder", "queued"));
+            if (retry) retry.style.display = "none";
+        }
+
+        // Flip the Generate button between "Generate" / "Regenerate" based on state
+        const genBtn = li.querySelector(".shot-generate-btn");
+        if (genBtn) {
+            if (shot.status === "ready") {
+                genBtn.textContent = "↻ Regenerate";
+                genBtn.dataset.mode = "regen";
+                genBtn.disabled = false;
+            } else if (shot.status === "rendering") {
+                genBtn.textContent = "Rendering…";
+                genBtn.dataset.mode = "wait";
+                genBtn.disabled = true;
+            } else if (shot.status === "failed") {
+                genBtn.textContent = "↻ Retry";
+                genBtn.dataset.mode = "regen";
+                genBtn.disabled = false;
+            } else {
+                genBtn.textContent = "▶ Generate";
+                genBtn.dataset.mode = "gen";
+                genBtn.disabled = false;
+            }
+        }
+    }
+
+    function refreshShotProgress(shots) {
+        const total = shots.length;
+        const ready = shots.filter(s => s.status === "ready").length;
+        const failed = shots.filter(s => s.status === "failed").length;
+        prodStillsCard.classList.remove("done", "active");
+        if (total === 0) {
+            shotProgress.textContent = "—";
+            prodStillsDetail.textContent = "waiting";
+        } else {
+            const summary = `${ready}/${total} ready` + (failed ? ` · ${failed} failed` : "");
+            shotProgress.textContent = summary;
+            prodStillsDetail.textContent = summary;
+            if (ready + failed === total) prodStillsCard.classList.add("done");
+            else if (ready > 0)            prodStillsCard.classList.add("active");
+        }
+    }
+
+    // ── videos progress ───────────────────────────────────────────────────
+    const prodVideosCard   = document.getElementById("prod-videos");
+    const prodVideosDetail = prodVideosCard ? prodVideosCard.querySelector(".prod-detail") : null;
+    const genVideosBtn     = document.getElementById("gen-videos-btn");
+
+    function refreshVideosProgress(videos) {
+        if (!videos || videos.length === 0) return;
+        const total   = videos.length;
+        const ready   = videos.filter(v => v.status === "ready").length;
+        const failed  = videos.filter(v => v.status === "failed").length;
+        const summary = `${ready}/${total} clips` + (failed ? ` · ${failed} failed` : "");
+        if (prodVideosDetail) prodVideosDetail.textContent = summary;
+        if (prodVideosCard) {
+            prodVideosCard.classList.remove("done", "active", "failed");
+            if (ready + failed === total)      prodVideosCard.classList.add("done");
+            else if (ready + failed > 0 || videos.some(v => v.status === "rendering"))
+                                               prodVideosCard.classList.add("active");
+        }
+
+        // Attach or update video players on each shot row
+        videos.forEach(v => {
+            if (v.status !== "ready" || !v.url) return;
+            const li = document.getElementById("shot-" + v.shot_index);
+            if (!li) return;
+            if (li.querySelector(".shot-video")) return;  // already injected
+            const vid = document.createElement("video");
+            vid.className = "shot-video";
+            vid.src = v.url;
+            vid.controls = true;
+            vid.loop = true;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.preload = "none";
+            li.appendChild(vid);
+        });
+
+        // Hide "Generate Videos" button once generation has started
+        if (genVideosBtn && videos.some(v => v.status !== "queued")) {
+            genVideosBtn.style.display = "none";
+        }
+    }
+
+    if (genVideosBtn) {
+        genVideosBtn.addEventListener("click", async () => {
+            genVideosBtn.disabled = true;
+            genVideosBtn.textContent = "Starting…";
+            await csrfPost(`/project/${projectId}/generate_videos`);
+            stopped = false;
+            tick();
+        });
+    }
+
+    // Per-shot still cost (gpt-image-1.5 medium ≈ $0.04/image, +2 reference renders).
+    const STILL_COST = 0.04;
+    const REF_COST   = 0.04;
+    function updateCostEstimate(shotCount) {
+        const total = (shotCount * STILL_COST) + (2 * REF_COST);
+        const el = document.getElementById("cost-estimate");
+        const v  = document.getElementById("cost-value");
+        v.textContent = "$" + total.toFixed(2)
+            + "  (" + shotCount + " stills + 2 refs)";
+        el.style.display = "flex";
+    }
+
+    function refreshRefsProgress(refs) {
+        const states = [refs.character.status, refs.environment.status];
+        prodRefsCard.classList.remove("done", "active", "failed");
+        if (states.every(s => s === "ready")) {
+            prodRefsDetail.textContent = "both ready";
+            prodRefsCard.classList.add("done");
+        } else if (states.some(s => s === "failed")) {
+            prodRefsDetail.textContent = "one failed";
+            prodRefsCard.classList.add("failed");
+        } else if (states.some(s => s === "rendering")) {
+            prodRefsDetail.textContent = "rendering…";
+            prodRefsCard.classList.add("active");
+        } else {
+            prodRefsDetail.textContent = "waiting";
+        }
+    }
+
+    // ── scenes (group consecutive shots by expression_mode + char/loc) ────
+    let scenesBuiltFor = 0;
+    function rebuildScenes(timeline, charMap, locMap, urlMap) {
+        if (!timeline || timeline.length === 0) return;
+        if (timeline.length === scenesBuiltFor) return;
+        scenesBuiltFor = timeline.length;
+
+        const SCENE_GAP_THRESHOLD = 4.0; // seconds; gap larger than this starts a new scene
+        const scenes = [];
+        let cur = null;
+        timeline.forEach(s => {
+            const key = (s.expression_mode || "?") + "|" + (s.character_id || "") + "|" + (s.location_id || "");
+            const gap = (cur && s.start_time != null && cur.end != null)
+                ? (s.start_time - cur.end)
+                : 0;
+            if (!cur || cur.key !== key || gap >= SCENE_GAP_THRESHOLD) {
+                cur = { key, mode: s.expression_mode, char_id: s.character_id, loc_id: s.location_id,
+                        shots: [], start: s.start_time, end: s.end_time, meaning: s.meaning };
+                scenes.push(cur);
+            }
+            cur.shots.push(s);
+            cur.end = s.end_time != null ? s.end_time : cur.end;
+        });
+
+        // Compute emotional temperature per scene from the mix of expression_modes
+        // present (more face/body shots → "hot/intimate"; more environment → "cool").
+        function temperatureLabel(shots) {
+            const human = shots.filter(s => ["face","body"].includes(s.expression_mode)).length;
+            const ratio = human / shots.length;
+            if (ratio >= 0.66) return { label: "intimate", cls: "temp-hot" };
+            if (ratio >= 0.33) return { label: "balanced", cls: "temp-mid" };
+            return { label: "atmospheric", cls: "temp-cool" };
+        }
+
+        sceneList.replaceChildren();
+        scenes.forEach((sc, i) => {
+            const li = el("li", "scene-card");
+            const charName = sc.char_id && charMap[sc.char_id] ? charMap[sc.char_id].name : null;
+            const locName  = sc.loc_id  && locMap[sc.loc_id]   ? locMap[sc.loc_id].name  : null;
+            const temp = temperatureLabel(sc.shots);
+
+            const head = el("div", "scene-head",
+                el("span", "scene-num", "Scene " + (i + 1)),
+                el("span", "scene-mode", sc.mode || "—"),
+                el("span", "scene-time", `${fmtTime(sc.start)} → ${fmtTime(sc.end)}`)
+            );
+            li.appendChild(head);
+            const pills = el("div", "scene-pills");
+            if (charName) pills.appendChild(el("span", "pill pill-char", charName));
+            if (locName)  pills.appendChild(el("span", "pill pill-loc", locName));
+            pills.appendChild(el("span", "pill pill-count", sc.shots.length + " shots"));
+            pills.appendChild(el("span", "pill pill-temp " + temp.cls, temp.label));
+            li.appendChild(pills);
+
+            // Lyric coverage — concatenate the per-shot meanings (which the engine
+            // populates from the lyric/text segment that drove each shot).
+            const lyricCoverage = sc.shots
+                .map(s => s.meaning)
+                .filter(Boolean)
+                .join(" / ");
+            if (lyricCoverage) {
+                li.appendChild(el("div", "scene-lyric-label", "Lyric coverage"));
+                li.appendChild(el("p", "scene-lyric", lyricCoverage));
+            }
+
+            // Thumbnail strip — one tiny tile per shot in this scene.
+            // Images filled in / updated by updateSceneThumbs() each poll tick.
+            const thumbsRow = el("div", "scene-thumbs");
+            const sceneShots = sc.shots.map(s2 => ({
+                idx: s2.shot_index || s2.timeline_index,
+                meaning: s2.meaning
+            }));
+            sc.shots.forEach((s, shotPos) => {
+                const idx = s.shot_index || s.timeline_index;
+                const thumb = el("button", "scene-thumb");
+                thumb.type = "button";
+                thumb.dataset.shotIndex = idx;
+                thumb.setAttribute("aria-label", "Preview shot " + idx);
+                thumb.appendChild(el("span", "scene-thumb-dot"));
+                thumb.addEventListener("click", () => {
+                    openSceneLightbox({ idx, meaning: s.meaning, shots: sceneShots, pos: shotPos });
+                });
+                thumbsRow.appendChild(thumb);
+            });
+            li.appendChild(thumbsRow);
+
+            sceneList.appendChild(li);
+        });
+        scenesPanel.style.display = "block";
+    }
+
+    // ── scene thumbnail live updater ──────────────────────────────────────
+    function updateSceneThumbs(shots) {
+        shots.forEach(shot => {
+            const idx = shot.shot_index || shot.timeline_index;
+            sceneList.querySelectorAll(`.scene-thumb[data-shot-index="${idx}"]`).forEach(thumb => {
+                thumb.replaceChildren();
+                if (shot.url && shot.status === "ready") {
+                    const img = document.createElement("img");
+                    img.src = shot.url;
+                    img.alt = "shot " + shot.shot_index;
+                    thumb.appendChild(img);
+                } else {
+                    thumb.appendChild(el("span", "scene-thumb-dot"));
+                }
+            });
+        });
+    }
+
+    // ── scene thumbnail lightbox ──────────────────────────────────────────
+    const sceneLightbox      = document.getElementById("scene-lightbox");
+    const sceneLightboxImg   = document.getElementById("scene-lightbox-img");
+    const sceneLightboxEmpty = document.getElementById("scene-lightbox-empty");
+    const sceneLightboxTitle = document.getElementById("scene-lightbox-title");
+    const sceneLightboxMean  = document.getElementById("scene-lightbox-meaning");
+    const sceneLightboxGoto  = document.getElementById("scene-lightbox-goto");
+    const sceneLightboxPrev  = document.getElementById("scene-lightbox-prev");
+    const sceneLightboxNext  = document.getElementById("scene-lightbox-next");
+    let lightboxLastFocus = null;
+    let lightboxShots = [];   // [{idx, meaning}, ...] for the active scene
+    let lightboxShotPos = 0;  // current position within lightboxShots
+    let hashRestored = false;
+    let lightboxClosingTimer = null;
+
+    function tryRestoreFromHash(timeline) {
+        if (hashRestored) return;
+        const m = location.hash.match(/^#shot-(\d+)$/);
+        if (!m) { hashRestored = true; return; }
+        const targetIdx = parseInt(m[1], 10);
+        const SCENE_GAP_THRESHOLD = 4.0;
+        const scenes = [];
+        let cur = null;
+        timeline.forEach(s => {
+            const key = (s.expression_mode || "?") + "|" + (s.character_id || "") + "|" + (s.location_id || "");
+            const gap = (cur && s.start_time != null && cur.end != null)
+                ? (s.start_time - cur.end) : 0;
+            if (!cur || cur.key !== key || gap >= SCENE_GAP_THRESHOLD) {
+                cur = { key, shots: [], end: s.end_time };
+                scenes.push(cur);
+            }
+            cur.shots.push(s);
+            cur.end = s.end_time != null ? s.end_time : cur.end;
+        });
+        for (const sc of scenes) {
+            const sceneShots = sc.shots.map(s2 => ({
+                idx: s2.shot_index || s2.timeline_index,
+                meaning: s2.meaning
+            }));
+            const shotPos = sceneShots.findIndex(s2 => s2.idx === targetIdx);
+            if (shotPos !== -1) {
+                const shot = sc.shots[shotPos];
+                hashRestored = true;
+                openSceneLightbox({ idx: targetIdx, meaning: shot.meaning, shots: sceneShots, pos: shotPos });
+                return;
+            }
+        }
+        hashRestored = true;
+    }
+
+    function cancelLightboxClose() {
+        if (lightboxClosingTimer !== null) {
+            clearTimeout(lightboxClosingTimer);
+            lightboxClosingTimer = null;
+        }
+        sceneLightbox.classList.remove("scene-lightbox--closing");
+    }
+
+    function openSceneLightbox({ idx, meaning, shots, pos }) {
+        if (shots) {
+            lightboxShots = shots;
+            lightboxShotPos = pos ?? 0;
+        }
+        history.replaceState(null, "", "#shot-" + idx);
+        const url = shotUrlMap[idx];
+        sceneLightboxTitle.textContent = "Shot #" + idx;
+        sceneLightboxMean.textContent = meaning || "";
+        sceneLightboxMean.style.display = meaning ? "block" : "none";
+        if (url) {
+            sceneLightboxImg.src = url;
+            sceneLightboxImg.alt = "Shot " + idx + " still";
+            sceneLightboxImg.hidden = false;
+            sceneLightboxEmpty.hidden = true;
+        } else {
+            sceneLightboxImg.removeAttribute("src");
+            sceneLightboxImg.hidden = true;
+            sceneLightboxEmpty.hidden = false;
+        }
+        sceneLightboxGoto.onclick = (e) => {
+            e.preventDefault();
+            closeSceneLightbox();
+            const target = document.getElementById("shot-" + idx);
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        };
+        updateLightboxNav();
+        sceneList.querySelectorAll(".scene-thumb--active").forEach(t => t.classList.remove("scene-thumb--active"));
+        sceneList.querySelectorAll(`.scene-thumb[data-shot-index="${idx}"]`).forEach(t => t.classList.add("scene-thumb--active"));
+        const activeThumb = sceneList.querySelector(`.scene-thumb[data-shot-index="${idx}"]`);
+        if (activeThumb) activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+        const isClosing = sceneLightbox.classList.contains("scene-lightbox--closing");
+        const isAlreadyOpen = !sceneLightbox.hidden && !isClosing;
+        if (!isAlreadyOpen) {
+            cancelLightboxClose();
+            lightboxLastFocus = document.activeElement;
+            sceneLightbox.hidden = false;
+            sceneLightbox.setAttribute("aria-hidden", "false");
+            document.body.classList.add("scene-lightbox-open");
+            sceneLightboxImg.classList.remove("open-from-center", "slide-from-right", "slide-from-left");
+            void sceneLightboxImg.offsetWidth;
+            sceneLightboxImg.classList.add("open-from-center");
+            sceneLightboxImg.addEventListener("animationend", () => {
+                sceneLightboxImg.classList.remove("open-from-center");
+            }, { once: true });
+            const closeBtn = sceneLightbox.querySelector(".scene-lightbox-close");
+            if (closeBtn) closeBtn.focus();
+        }
+    }
+
+    function updateLightboxNav() {
+        const multi = lightboxShots.length > 1;
+        sceneLightboxPrev.style.display = multi ? "" : "none";
+        sceneLightboxNext.style.display = multi ? "" : "none";
+        sceneLightboxPrev.disabled = lightboxShotPos <= 0;
+        sceneLightboxNext.disabled = lightboxShotPos >= lightboxShots.length - 1;
+    }
+
+    function navSceneLightbox(delta) {
+        const next = lightboxShotPos + delta;
+        if (next < 0 || next >= lightboxShots.length) return;
+        lightboxShotPos = next;
+        const s = lightboxShots[lightboxShotPos];
+        openSceneLightbox({ idx: s.idx, meaning: s.meaning });
+        const animClass = delta > 0 ? "slide-from-right" : "slide-from-left";
+        sceneLightboxImg.classList.remove("slide-from-right", "slide-from-left");
+        void sceneLightboxImg.offsetWidth;
+        sceneLightboxImg.classList.add(animClass);
+        sceneLightboxImg.addEventListener("animationend", () => {
+            sceneLightboxImg.classList.remove(animClass);
+        }, { once: true });
+    }
+
+    function finishLightboxClose() {
+        sceneLightbox.classList.remove("scene-lightbox--closing");
+        sceneLightbox.hidden = true;
+        sceneLightbox.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("scene-lightbox-open");
+        sceneLightboxImg.removeAttribute("src");
+        history.replaceState(null, "", location.pathname + location.search);
+        if (lightboxLastFocus && typeof lightboxLastFocus.focus === "function") {
+            lightboxLastFocus.focus();
+        }
+        lightboxLastFocus = null;
+        lightboxShots = [];
+        lightboxShotPos = 0;
+        lightboxClosingTimer = null;
+        sceneList.querySelectorAll(".scene-thumb--active").forEach(t => t.classList.remove("scene-thumb--active"));
+    }
+
+    function closeSceneLightbox() {
+        if (sceneLightbox.hidden || sceneLightbox.classList.contains("scene-lightbox--closing")) return;
+        sceneLightbox.classList.add("scene-lightbox--closing");
+        const panel = sceneLightbox.querySelector(".scene-lightbox-panel");
+        const onAnimEnd = () => finishLightboxClose();
+        if (panel) {
+            panel.addEventListener("animationend", onAnimEnd, { once: true });
+            lightboxClosingTimer = setTimeout(finishLightboxClose, 280);
+        } else {
+            finishLightboxClose();
+        }
+    }
+
+    sceneLightboxPrev.addEventListener("click", () => navSceneLightbox(-1));
+    sceneLightboxNext.addEventListener("click", () => navSceneLightbox(1));
+
+    // ── swipe gesture (touch screens) ────────────────────────────────────────
+    let _swipeTouchStartX = 0;
+    let _swipeTouchStartY = 0;
+    let _swipeAxis = null; // 'x' | 'y' | null
+    let _swipeDragging = false;
+    const lightboxPanel = sceneLightbox.querySelector(".scene-lightbox-panel");
+    const lightboxBackdrop = sceneLightbox.querySelector(".scene-lightbox-backdrop");
+    const SWIPE_AXIS_LOCK = 10;
+    const SWIPE_X_THRESHOLD = 40;
+    const SWIPE_Y_CLOSE_THRESHOLD = 90;
+
+    function resetSwipeTransform(animate) {
+        if (!lightboxPanel) return;
+        if (animate) {
+            lightboxPanel.style.transition = "transform 180ms ease-out";
+            if (lightboxBackdrop) lightboxBackdrop.style.transition = "opacity 180ms ease-out";
+        } else {
+            lightboxPanel.style.transition = "";
+            if (lightboxBackdrop) lightboxBackdrop.style.transition = "";
+        }
+        lightboxPanel.style.transform = "";
+        if (lightboxBackdrop) lightboxBackdrop.style.opacity = "";
+        if (animate) {
+            setTimeout(() => {
+                lightboxPanel.style.transition = "";
+                if (lightboxBackdrop) lightboxBackdrop.style.transition = "";
+            }, 200);
+        }
+    }
+
+    const lightboxImageWrap = sceneLightbox.querySelector(".scene-lightbox-image-wrap");
+    let _swipeStartedInImage = false;
+
+    function onSwipeStart(e, fromImage) {
+        if (e.touches.length !== 1) return;
+        _swipeTouchStartX = e.touches[0].clientX;
+        _swipeTouchStartY = e.touches[0].clientY;
+        _swipeAxis = null;
+        _swipeDragging = true;
+        _swipeStartedInImage = !!fromImage;
+    }
+    function onSwipeMove(e) {
+        if (!_swipeDragging) return;
+        const dx = e.touches[0].clientX - _swipeTouchStartX;
+        const dy = e.touches[0].clientY - _swipeTouchStartY;
+        if (_swipeAxis === null) {
+            if (Math.abs(dx) > SWIPE_AXIS_LOCK || Math.abs(dy) > SWIPE_AXIS_LOCK) {
+                _swipeAxis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+            }
+        }
+        if (_swipeAxis === "y" && dy > 0 && lightboxPanel) {
+            lightboxPanel.style.transition = "";
+            lightboxPanel.style.transform = "translateY(" + dy + "px)";
+            if (lightboxBackdrop) {
+                const fade = Math.max(0, 1 - dy / 400);
+                lightboxBackdrop.style.transition = "";
+                lightboxBackdrop.style.opacity = String(fade);
+            }
+        }
+    }
+    function onSwipeEnd(e) {
+        if (!_swipeDragging) return;
+        _swipeDragging = false;
+        const dx = e.changedTouches[0].clientX - _swipeTouchStartX;
+        const dy = e.changedTouches[0].clientY - _swipeTouchStartY;
+        if (_swipeAxis === "x" && _swipeStartedInImage && Math.abs(dx) > SWIPE_X_THRESHOLD) {
+            resetSwipeTransform(false);
+            navSceneLightbox(dx < 0 ? 1 : -1);
+        } else if (_swipeAxis === "y" && dy > SWIPE_Y_CLOSE_THRESHOLD) {
+            // Leave inline transform in place; the closing animation overrides it
+            // so the panel flows from the dragged position into the close animation.
+            closeSceneLightbox();
+            setTimeout(() => resetSwipeTransform(false), 220);
+        } else {
+            resetSwipeTransform(true);
+        }
+        _swipeAxis = null;
+    }
+    function onSwipeCancel() {
+        if (!_swipeDragging) return;
+        _swipeDragging = false;
+        _swipeAxis = null;
+        resetSwipeTransform(true);
+    }
+
+    if (lightboxImageWrap) {
+        lightboxImageWrap.addEventListener("touchstart", (e) => onSwipeStart(e, true), { passive: true });
+        lightboxImageWrap.addEventListener("touchmove", onSwipeMove, { passive: true });
+        lightboxImageWrap.addEventListener("touchend", onSwipeEnd, { passive: true });
+        lightboxImageWrap.addEventListener("touchcancel", onSwipeCancel, { passive: true });
+    }
+    if (lightboxPanel) {
+        // Bind to the panel as well so swipe-down works from the meta/info area too.
+        // We skip events that already started inside the image-wrap to avoid double-handling.
+        lightboxPanel.addEventListener("touchstart", (e) => {
+            if (_swipeDragging) return; // already handled by image-wrap
+            if (lightboxImageWrap && lightboxImageWrap.contains(e.target)) return;
+            onSwipeStart(e, false);
+        }, { passive: true });
+        lightboxPanel.addEventListener("touchmove", (e) => {
+            if (lightboxImageWrap && lightboxImageWrap.contains(e.target) && _swipeStartedInImage) return;
+            onSwipeMove(e);
+        }, { passive: true });
+        lightboxPanel.addEventListener("touchend", (e) => {
+            if (lightboxImageWrap && lightboxImageWrap.contains(e.target) && _swipeStartedInImage) return;
+            onSwipeEnd(e);
+        }, { passive: true });
+        lightboxPanel.addEventListener("touchcancel", onSwipeCancel, { passive: true });
+    }
+
+    sceneLightbox.addEventListener("click", (e) => {
+        if (e.target.hasAttribute("data-lightbox-close")) closeSceneLightbox();
+    });
+    document.addEventListener("keydown", (e) => {
+        if (sceneLightbox.hidden) return;
+        if (e.key === "Escape") closeSceneLightbox();
+        else if (e.key === "ArrowLeft")  navSceneLightbox(-1);
+        else if (e.key === "ArrowRight") navSceneLightbox(1);
+    });
+
+    // ── prompts (structured chunking) ─────────────────────────────────────
+    let promptsBuiltFor = 0;
+    function buildPrompts(timeline) {
+        if (!timeline || timeline.length === 0) return;
+        if (timeline.length === promptsBuiltFor) return;
+        promptsBuiltFor = timeline.length;
+
+        promptList.replaceChildren();
+        timeline.forEach(s => {
+            const li = el("li", "prompt-card");
+            li.appendChild(el("div", "prompt-num", "Shot #" + (s.shot_index || s.timeline_index)));
+            const raw = s.styled_visual_prompt || s.visual_prompt || "";
+            // 5-bucket split — character / action / location / framing / light.
+            // The engine concatenates these in roughly that order; we partition the
+            // comma-delimited chunks evenly across the five labels so each section
+            // gets a coherent slice even when the prompt is short.
+            const chunks = raw.split(/,\s*/).filter(Boolean);
+            const labels = ["Character", "Action", "Location", "Framing", "Light & finish"];
+            const buckets = labels.map(() => []);
+            chunks.forEach((c, i) => {
+                const bucketIdx = Math.min(
+                    Math.floor((i / chunks.length) * labels.length),
+                    labels.length - 1
+                );
+                buckets[bucketIdx].push(c);
+            });
+            const sections = labels
+                .map((label, i) => ({ label, value: buckets[i].join(", ") }))
+                .filter(sec => sec.value);
+            sections.forEach(sec => {
+                li.appendChild(el("div", "prompt-section",
+                    el("span", "prompt-label", sec.label),
+                    el("span", "prompt-text", sec.value),
+                ));
+            });
+            promptList.appendChild(li);
+        });
+        promptsPanel.style.display = "block";
+    }
+
+    // ── poll + dispatch ───────────────────────────────────────────────────
+    let stopped = false;
+    let entityCharMap = {};
+    let entityLocMap = {};
+
+    async function tick() {
+        if (stopped) return;
+        try {
+            const res = await fetch(statusUrl, { cache: "no-store" });
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const data = await res.json();
+
+            statusLabel.textContent = (data.progress && data.progress.label) || data.status;
+            statusPill.className = `status-pill status-${data.status}`;
+
+            const stage = (data.progress && data.progress.stage)
+                || (data.status === "complete" ? "done" : "audio");
+            setStageRail(stage, data.status);
+
+            setRef("character", data.refs.character);
+            setRef("environment", data.refs.environment);
+            refreshRefsProgress(data.refs);
+
+            if (data.shot_count > 0) {
+                shotListEmpty.style.display = "none";
+                shotCount.textContent = data.shot_count;
+            }
+            data.shots.forEach(renderShotRow);
+            refreshShotProgress(data.shots);
+
+            // Keep a fresh map of shot index → image URL for scene thumbnails
+            data.shots.forEach(s => {
+                if (s.url && s.status === "ready") shotUrlMap[s.shot_index] = s.url;
+            });
+
+            // Cache + build scenes + prompts when the styled_timeline is known
+            if (data.styled_timeline && data.styled_timeline.length) {
+                latestTimeline = data.styled_timeline;
+                rebuildScenes(latestTimeline, entityCharMap, entityLocMap, shotUrlMap);
+                tryRestoreFromHash(latestTimeline);
+                buildPrompts(latestTimeline);
+                updateCostEstimate(latestTimeline.length);
+            }
+
+            // Video clips
+            if (data.videos && data.videos.length) {
+                refreshVideosProgress(data.videos);
+            }
+            // Hydrate thumbnails AFTER scene DOM is guaranteed to exist
+            updateSceneThumbs(data.shots);
+
+            if (data.status === "complete" || data.status === "failed") {
+                exportActions.style.display = data.status === "complete" ? "inline-flex" : "none";
+                if (data.status === "complete") {
+                    // Wait for entities to load THEN re-render scenes so the
+                    // location/character pills show resolved names before we stop polling.
+                    await loadEntities();
+                }
+                const shotsDone = data.shots.length === data.shot_count
+                    && data.shots.every(s => s.status === "ready" || s.status === "failed");
+                if (shotsDone) { stopped = true; return; }
+            }
+        } catch (err) {
+            console.error("status poll failed", err);
+        }
+        setTimeout(tick, 2500);
+    }
+
+    // ── retry buttons ─────────────────────────────────────────────────────
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const csrfPost = (url) => fetch(url, { method: "POST", headers: { "X-CSRFToken": csrfToken } });
+
+    document.addEventListener("click", async (ev) => {
+        const refBtn = ev.target.closest(".ref-retry");
+        if (refBtn) {
+            const role = refBtn.dataset.role;
+            refBtn.disabled = true;
+            await csrfPost(`/project/${projectId}/retry/ref/${role}`);
+            setTimeout(() => { refBtn.disabled = false; }, 1500);
+            stopped = false; tick();
+        }
+        // (legacy .shot-retry handler removed — .shot-generate-btn below replaces it)
+
+        // ── Per-shot prompt dropdown toggle ──────────────────────────────
+        const promptToggle = ev.target.closest(".shot-prompt-toggle");
+        if (promptToggle) {
+            const li = promptToggle.closest("li.shot");
+            const wrap = li.querySelector(".shot-prompt-wrap");
+            const open = wrap.hasAttribute("hidden");
+            if (open) {
+                wrap.removeAttribute("hidden");
+                promptToggle.textContent = "Prompt ▲";
+                promptToggle.setAttribute("aria-expanded", "true");
+            } else {
+                wrap.setAttribute("hidden", "");
+                promptToggle.textContent = "Prompt ▼";
+                promptToggle.setAttribute("aria-expanded", "false");
+            }
+            return;
+        }
+
+        // ── Per-shot prompt save ─────────────────────────────────────────
+        const saveBtn = ev.target.closest(".shot-prompt-save");
+        if (saveBtn) {
+            const li = saveBtn.closest("li.shot");
+            const idx = parseInt(li.dataset.shotIndex, 10);
+            const ta  = li.querySelector(".shot-prompt-text");
+            const status = li.querySelector(".shot-prompt-status");
+            const prompt = (ta.value || "").trim();
+            if (!prompt) {
+                status.textContent = "Prompt cannot be empty";
+                return;
+            }
+            saveBtn.disabled = true;
+            status.textContent = "Saving…";
+            try {
+                const res = await fetch(`/project/${projectId}/stills/prompt`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCsrf(),
+                    },
+                    body: JSON.stringify({ shot_index: idx, prompt: prompt }),
+                });
+                if (!res.ok) throw new Error(`status ${res.status}`);
+                status.textContent = "✓ Saved";
+                setTimeout(() => { status.textContent = ""; }, 2500);
+            } catch (e) {
+                status.textContent = "Save failed: " + e.message;
+            } finally {
+                saveBtn.disabled = false;
+            }
+            return;
+        }
+
+        // ── Per-shot Generate / Regenerate ───────────────────────────────
+        const genBtn = ev.target.closest(".shot-generate-btn");
+        if (genBtn) {
+            const li = genBtn.closest("li.shot");
+            const idx = parseInt(li.dataset.shotIndex, 10);
+            const status = li.querySelector(".shot-action-status");
+            const isRegen = genBtn.dataset.mode === "regen";
+            if (isRegen && !confirm(`Regenerate shot #${idx}? This will cost credits and replace the current image.`)) {
+                return;
+            }
+            genBtn.disabled = true;
+            status.textContent = "Queueing…";
+            try {
+                const res = await fetch(`/project/${projectId}/stills/generate/${idx}`, {
+                    method: "POST",
+                    headers: { "X-CSRFToken": getCsrf() },
+                });
+                if (!res.ok) throw new Error(`status ${res.status}`);
+                status.textContent = "Queued — rendering…";
+                stopped = false; tick();
+                setTimeout(() => { status.textContent = ""; }, 4000);
+            } catch (e) {
+                status.textContent = "Failed: " + e.message;
+            } finally {
+                setTimeout(() => { genBtn.disabled = false; }, 1500);
+            }
+            return;
+        }
+    });
+
+    // ── Bulk Generate All / Regenerate All ───────────────────────────────
+    function getCsrf() {
+        const m = document.querySelector('meta[name="csrf-token"]');
+        if (m) return m.getAttribute("content");
+        const h = document.querySelector('input[name="csrf_token"]');
+        return h ? h.value : "";
+    }
+
+    const bulkStatus = document.getElementById("shots-bulk-status");
+    const bulkGenAll = document.getElementById("shots-generate-all");
+    const bulkRegenAll = document.getElementById("shots-regenerate-all");
+
+    async function kickAll(label, force) {
+        bulkStatus.textContent = "Queueing…";
+        try {
+            const url = `/project/${projectId}/stills/generate-all` + (force ? "?force=1" : "");
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "X-CSRFToken": getCsrf() },
+            });
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            bulkStatus.textContent = `${label} — rendering…`;
+            stopped = false; tick();
+            setTimeout(() => { bulkStatus.textContent = ""; }, 5000);
+        } catch (e) {
+            bulkStatus.textContent = "Failed: " + e.message;
+        }
+    }
+
+    if (bulkGenAll) {
+        bulkGenAll.addEventListener("click", async () => {
+            bulkGenAll.disabled = true;
+            await kickAll("All pending shots queued", false);
+            setTimeout(() => { bulkGenAll.disabled = false; }, 2000);
+        });
+    }
+
+    if (bulkRegenAll) {
+        bulkRegenAll.addEventListener("click", async () => {
+            if (!confirm("Regenerate ALL shots? This will cost credits for every shot and replace every existing image.")) return;
+            if (!confirm("Are you absolutely sure? This re-renders every single shot from scratch.")) return;
+            bulkRegenAll.disabled = true;
+            await kickAll("All shots queued for regeneration", true);
+            setTimeout(() => { bulkRegenAll.disabled = false; }, 2000);
+        });
+    }
+
+    // ── entity card loader ────────────────────────────────────────────────
+    const entitySection = document.getElementById("entity-section");
+    const characterListEl = document.getElementById("character-list");
+    const locationListEl  = document.getElementById("location-list");
+    let entitiesLoaded = false;
+
+    function renderEntityCard(entity, kind) {
+        const li = el("li", "entity-card");
+        const badgeCls = kind === "character" ? "entity-badge entity-badge-char" : "entity-badge entity-badge-loc";
+        const badgeText = (entity.entity_type || (kind === "character" ? "character" : "location")).replace(/_/g, " ");
+        li.appendChild(el("div", "entity-name",
+            el("span", badgeCls, badgeText),
+            " " + (entity.name || "")
+        ));
+        const subParts = kind === "character"
+            ? [entity.role, entity.age_range, entity.appearance].filter(Boolean)
+            : [entity.description, entity.mood].filter(Boolean);
+        if (subParts.length) li.appendChild(el("div", "entity-sub", subParts.join(" · ")));
+        const notes = kind === "character" ? entity.cultural_notes : entity.visual_details;
+        if (notes) li.appendChild(el("div", "entity-notes", notes));
+        li.appendChild(el("div", "entity-foot muted",
+            "auto-generated from the brief · inline editing & wardrobe upload coming next release"
+        ));
+        return li;
+    }
+
+    async function loadEntities() {
+        if (entitiesLoaded) return;
+        try {
+            const res = await fetch(`/project/${projectId}/entities`, { cache: "no-store" });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.characters.length === 0 && data.locations.length === 0) return;
+            characterListEl.replaceChildren();
+            locationListEl.replaceChildren();
+            data.characters.forEach(c => {
+                entityCharMap[c.id] = c;
+                characterListEl.appendChild(renderEntityCard(c, "character"));
+            });
+            data.locations.forEach(l => {
+                entityLocMap[l.id] = l;
+                locationListEl.appendChild(renderEntityCard(l, "location"));
+            });
+            entitySection.style.display = "block";
+            entitiesLoaded = true;
+            // re-render scenes now that entity names are known
+            scenesBuiltFor = 0;
+        } catch (e) { /* non-fatal */ }
+    }
+
+    loadEntities();
+    tick();
+
+    // ── Mobile bottom-sheet TOC ─────────────────────────────────────────────
+    (function () {
+        const fab      = document.getElementById("mob-toc-fab");
+        const sheet    = document.getElementById("mob-toc-sheet");
+        const backdrop = document.getElementById("mob-toc-backdrop");
+        if (!fab || !sheet || !backdrop) return;
+
+        const fabWrap = fab.parentElement;
+
+        function openSheet() {
+            sheet.classList.add("is-open");
+            backdrop.classList.add("is-visible");
+            fab.classList.add("is-open");
+            fabWrap.classList.add("is-open");
+            fab.setAttribute("aria-expanded", "true");
+            fab.textContent = "×";
+        }
+
+        function closeSheet() {
+            sheet.classList.remove("is-open");
+            backdrop.classList.remove("is-visible");
+            fab.classList.remove("is-open");
+            fabWrap.classList.remove("is-open");
+            fab.setAttribute("aria-expanded", "false");
+            fab.textContent = "≡";
+        }
+
+        fab.addEventListener("click", () => {
+            if (sheet.classList.contains("is-open")) closeSheet();
+            else openSheet();
+        });
+
+        backdrop.addEventListener("click", closeSheet);
+
+        // Navigate and close on item tap
+        sheet.querySelectorAll(".mob-toc-item").forEach(a => {
+            a.addEventListener("click", e => {
+                const target = document.querySelector(a.getAttribute("href"));
+                if (!target) return;
+                e.preventDefault();
+                closeSheet();
+                // Small delay so the sheet animation doesn't compete with scroll
+                setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+            });
+        });
+
+        // Close on Escape key
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape" && sheet.classList.contains("is-open")) closeSheet();
+        });
+
+        // ── Swipe-down to dismiss ──────────────────────────────────────────
+        let dragStartY = 0;
+        let dragLastY  = 0;
+        let dragLastT  = 0;
+        let dragVelY   = 0;
+        let isDragging = false;
+
+        sheet.addEventListener("touchstart", e => {
+            if (!sheet.classList.contains("is-open")) return;
+            dragStartY = e.touches[0].clientY;
+            dragLastY  = dragStartY;
+            dragLastT  = Date.now();
+            dragVelY   = 0;
+            isDragging = false;
+        }, { passive: true });
+
+        sheet.addEventListener("touchmove", e => {
+            if (!sheet.classList.contains("is-open")) return;
+            const y    = e.touches[0].clientY;
+            const dy   = y - dragStartY;
+            const now  = Date.now();
+            const dt   = now - dragLastT || 1;
+
+            dragVelY  = (y - dragLastY) / dt * 1000; // px/s
+            dragLastY = y;
+            dragLastT = now;
+
+            // Only drag downward
+            if (dy <= 0) {
+                if (isDragging) {
+                    sheet.classList.remove("is-dragging");
+                    sheet.style.transform = "";
+                    isDragging = false;
+                }
+                return;
+            }
+
+            isDragging = true;
+            sheet.classList.add("is-dragging");
+            sheet.style.transform = `translateY(${dy}px)`;
+        }, { passive: true });
+
+        function cancelDrag() {
+            if (!isDragging) return;
+            isDragging = false;
+            sheet.classList.remove("is-dragging");
+            sheet.style.transform = "";
+        }
+
+        sheet.addEventListener("touchend", () => {
+            if (!isDragging) return;
+            const sheetH    = sheet.offsetHeight;
+            const dragged   = dragLastY - dragStartY;
+            const threshold = sheetH * 0.3;
+
+            isDragging = false;
+            sheet.classList.remove("is-dragging"); // re-enable transition
+
+            if (dragged > threshold || dragVelY > 300) {
+                // Animate from current dragged offset to fully off-screen,
+                // then call closeSheet() once the animation has finished.
+                sheet.style.transform = "translateY(100%)";
+                sheet.addEventListener("transitionend", function onDone() {
+                    sheet.removeEventListener("transitionend", onDone);
+                    sheet.style.transform = "";
+                    closeSheet();
+                });
+            } else {
+                // Snap back open — transition will carry the sheet to translateY(0)
+                sheet.style.transform = "";
+            }
+        });
+
+        sheet.addEventListener("touchcancel", cancelDrag);
+
+        // Highlight the active panel in the mobile sheet using the same scroll observer
+        const MOB_PANELS = [
+            "brief-panel", "entity-section", "scenes-panel",
+            "refs-panel", "shots-panel", "production-panel"
+        ];
+        const mobLinks = {};
+        MOB_PANELS.forEach(id => {
+            const link = sheet.querySelector(`.mob-toc-item[href="#${id}"]`);
+            if (link) mobLinks[id] = link;
+        });
+        const mobLabel = document.getElementById("mob-toc-label");
+        const MOB_PANEL_NAMES = {
+            "brief-panel":      "01 · Brief",
+            "entity-section":   "02 · Characters",
+            "scenes-panel":     "03 · Scenes",
+            "refs-panel":       "04 · References",
+            "shots-panel":      "05 · Shots & Prompts",
+            "production-panel": "06 · Production"
+        };
+        let mobActiveId = null;
+        let mobLabelSwapTimer = null;
+        let mobLastScrollY = window.scrollY;
+        let mobScrollDir = 1; // 1 = down, -1 = up
+        window.addEventListener("scroll", () => {
+            const y = window.scrollY;
+            if (y !== mobLastScrollY) {
+                mobScrollDir = y > mobLastScrollY ? 1 : -1;
+                mobLastScrollY = y;
+            }
+        }, { passive: true });
+        function setMobActive(id) {
+            if (id === mobActiveId) return;
+            if (mobActiveId && mobLinks[mobActiveId]) mobLinks[mobActiveId].classList.remove("mob-toc-active");
+            mobActiveId = id;
+            if (mobActiveId && mobLinks[mobActiveId]) mobLinks[mobActiveId].classList.add("mob-toc-active");
+            if (mobLabel) {
+                clearTimeout(mobLabelSwapTimer);
+                // scrolling down: old exits up (-Y), new enters from below (+Y)
+                // scrolling up:   old exits down (+Y), new enters from above (-Y)
+                const exitY  = mobScrollDir === 1 ? "-4px" : "4px";
+                const enterY = mobScrollDir === 1 ? "4px"  : "-4px";
+                mobLabel.style.opacity = "0";
+                mobLabel.style.transform = `translateY(${exitY})`;
+                mobLabelSwapTimer = setTimeout(() => {
+                    mobLabel.textContent = MOB_PANEL_NAMES[id] || "";
+                    mobLabel.style.transition = "none";
+                    mobLabel.style.transform = `translateY(${enterY})`;
+                    mobLabel.style.opacity = "0";
+                    mobLabel.offsetHeight;
+                    mobLabel.style.transition = "";
+                    mobLabel.style.opacity = "1";
+                    mobLabel.style.transform = "translateY(0)";
+                }, 80);
+            }
+        }
+        const mobRatios = {};
+        const mobObserver = new IntersectionObserver(entries => {
+            entries.forEach(e => { mobRatios[e.target.id] = e.intersectionRatio; });
+            let best = null, bestTop = Infinity;
+            MOB_PANELS.forEach(id => {
+                if ((mobRatios[id] || 0) > 0) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.top < bestTop) { bestTop = rect.top; best = id; }
+                    }
+                }
+            });
+            if (best) setMobActive(best);
+        }, { threshold: [0, 0.1, 0.25, 0.5], rootMargin: "0px 0px -40% 0px" });
+        MOB_PANELS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) mobObserver.observe(el);
+        });
+    })();
+
+    // ── Horizontal swipe to navigate between panels (mobile) ───────────────
+    (function () {
+        const SWIPE_PANELS = [
+            "brief-panel", "entity-section", "scenes-panel",
+            "refs-panel", "shots-panel", "production-panel"
+        ];
+
+        // Minimum horizontal distance (px) to register as a swipe
+        const MIN_DIST  = 50;
+        // Minimum horizontal velocity (px/s) to register as a fast flick
+        const MIN_VEL   = 300;
+        // If vertical movement is more than this fraction of horizontal, ignore
+        const AXIS_LOCK = 1.2;
+        // Interactive elements whose touch should not start a panel swipe
+        const INTERACTIVE = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
+
+        const mainEl = document.querySelector("main");
+        if (!mainEl) return;
+
+        let swTouchId   = null;
+        let swStartX    = 0;
+        let swStartY    = 0;
+        let swLastX     = 0;
+        let swLastT     = 0;
+        let swVelX      = 0;
+        let swCancelled = false;
+
+        function resetState() {
+            swTouchId   = null;
+            swStartX    = 0;
+            swStartY    = 0;
+            swLastX     = 0;
+            swLastT     = 0;
+            swVelX      = 0;
+            swCancelled = false;
+        }
+
+        mainEl.addEventListener("touchstart", e => {
+            // Ignore if the mobile bottom sheet is open
+            const sheet = document.getElementById("mob-toc-sheet");
+            if (sheet && sheet.classList.contains("is-open")) { resetState(); return; }
+            // Ignore multi-touch
+            if (e.touches.length !== 1) { resetState(); return; }
+            // Ignore touches that start on interactive controls
+            if (INTERACTIVE.has(e.target.tagName)) { resetState(); return; }
+
+            const t     = e.touches[0];
+            swTouchId   = t.identifier;
+            swStartX    = t.clientX;
+            swStartY    = t.clientY;
+            swLastX     = t.clientX;
+            swLastT     = Date.now();
+            swVelX      = 0;
+            swCancelled = false;
+        }, { passive: true });
+
+        mainEl.addEventListener("touchmove", e => {
+            if (swTouchId === null || swCancelled) return;
+            const t = Array.from(e.touches).find(p => p.identifier === swTouchId);
+            if (!t) return;
+
+            const dx  = t.clientX - swStartX;
+            const dy  = t.clientY - swStartY;
+            const now = Date.now();
+            const dt  = now - swLastT || 1;
+
+            swVelX  = (t.clientX - swLastX) / dt * 1000;
+            swLastX = t.clientX;
+            swLastT = now;
+
+            // Cancel if the gesture is more vertical than horizontal
+            if (Math.abs(dy) > Math.abs(dx) * AXIS_LOCK) {
+                swCancelled = true;
+            }
+        }, { passive: true });
+
+        mainEl.addEventListener("touchend", e => {
+            if (swTouchId === null || swCancelled) { resetState(); return; }
+            const t = Array.from(e.changedTouches).find(p => p.identifier === swTouchId);
+            if (!t) { resetState(); return; }
+
+            // Capture needed values before resetState clears them
+            const startX  = swStartX;
+            const startY  = swStartY;
+            const lastVel = swVelX;
+            resetState();
+
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+
+            // Axis-lock check at release too
+            if (Math.abs(dy) > Math.abs(dx) * AXIS_LOCK) return;
+
+            const isSwipe = Math.abs(dx) >= MIN_DIST || Math.abs(lastVel) >= MIN_VEL;
+            if (!isSwipe) return;
+
+            // Figure out which panel is currently active (highest on screen with > 0 visibility)
+            let activeIdx = -1;
+            let bestTop   = Infinity;
+            SWIPE_PANELS.forEach((id, i) => {
+                const panel = document.getElementById(id);
+                if (!panel) return;
+                const rect    = panel.getBoundingClientRect();
+                const visible = rect.bottom > 0 && rect.top < window.innerHeight;
+                if (visible && rect.top < bestTop) { bestTop = rect.top; activeIdx = i; }
+            });
+
+            if (activeIdx === -1) return;
+
+            // Left swipe → next panel; right swipe → previous panel
+            const nextIdx = dx < 0 ? activeIdx + 1 : activeIdx - 1;
+            if (nextIdx < 0 || nextIdx >= SWIPE_PANELS.length) return;
+
+            const target = document.getElementById(SWIPE_PANELS[nextIdx]);
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, { passive: true });
+
+        mainEl.addEventListener("touchcancel", resetState, { passive: true });
+    })();
+
+    // Left-column section nav: active highlighting + smooth scroll + remembered position
+    (function () {
+        const TOC_PANELS = [
+            "brief-panel", "entity-section", "scenes-panel",
+            "refs-panel", "shots-panel", "production-panel"
+        ];
+        const sideLinks = {};
+        TOC_PANELS.forEach(id => {
+            const link = document.querySelector(`.ws-side-item[href="#${id}"]`);
+            if (link) sideLinks[id] = link;
+        });
+
+        const LS_KEY = "qaivid_panel_" + projectId;
+        function savePanel(id) {
+            try { localStorage.setItem(LS_KEY, id); } catch (e) { /* unavailable */ }
+        }
+        function loadPanel() {
+            try { return localStorage.getItem(LS_KEY); } catch (e) { return null; }
+        }
+        function clearPanel() {
+            try { localStorage.removeItem(LS_KEY); } catch (e) { /* unavailable */ }
+        }
+
+        const backLink = document.getElementById("back-to-studio");
+        if (backLink) backLink.addEventListener("click", clearPanel);
+
+        const savedPanel = loadPanel();
+        if (savedPanel && TOC_PANELS.includes(savedPanel)) {
+            const target = document.getElementById(savedPanel);
+            if (target) target.scrollIntoView({ behavior: "auto", block: "start" });
+        }
+
+        // Smooth-scroll on click
+        document.querySelectorAll(".ws-side-item").forEach(a => {
+            a.addEventListener("click", e => {
+                const target = document.querySelector(a.getAttribute("href"));
+                if (!target) return;
+                e.preventDefault();
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+        });
+
+        // Highlight whichever panel is most visible near the top of the viewport
+        let activeId = null;
+        function setActive(id) {
+            if (id === activeId) return;
+            if (activeId && sideLinks[activeId]) sideLinks[activeId].classList.remove("ws-side-active");
+            activeId = id;
+            if (activeId && sideLinks[activeId]) sideLinks[activeId].classList.add("ws-side-active");
+            savePanel(id);
+        }
+
+        const visibleRatios = {};
+        const observer = new IntersectionObserver(entries => {
+            entries.forEach(e => { visibleRatios[e.target.id] = e.intersectionRatio; });
+            let best = null, bestTop = Infinity;
+            TOC_PANELS.forEach(id => {
+                if ((visibleRatios[id] || 0) > 0) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.top < bestTop) { bestTop = rect.top; best = id; }
+                    }
+                }
+            });
+            if (best) setActive(best);
+        }, { threshold: [0, 0.1, 0.25, 0.5], rootMargin: "0px 0px -40% 0px" });
+
+        TOC_PANELS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) observer.observe(el);
+        });
+    })();
+})();
+</script>
+{% endblock %}

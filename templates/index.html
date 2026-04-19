@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+    <div class="eyebrow">Live · Pipeline online</div>
+    <h1>So… <span class="accent">what have you got</span><br>to make a video?</h1>
+    <p>Lyrics, a poem, a script, a story, a doc, an ad — paste it in, throw in audio if you've got it, and we'll spin up a beat-synced cinematic shot list with face-locked stills.</p>
+    {% if not api_key_set %}
+        <div class="warning">Heads up — OPENAI_API_KEY isn't set. Add it in your secrets to enable generation.</div>
+    {% endif %}
+    {% if not fal_set %}
+        <div class="warning">Heads up — FAL_API_KEY isn't set. Add it in your secrets to render images.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <form action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row">
+            <label for="name">Project name</label>
+            <input type="text" id="name" name="name" placeholder="Untitled banger" maxlength="80">
+        </div>
+
+        <div class="row">
+            <label for="genre">Genre / format</label>
+            <select id="genre" name="genre">
+                <option value="song">Song</option>
+                <option value="poem">Poem</option>
+                <option value="story">Story</option>
+                <option value="script">Script</option>
+                <option value="documentary">Documentary</option>
+                <option value="ad">Ad</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <label for="text">Lyrics / text <span class="label-hint">(optional if you upload audio)</span></label>
+            <textarea id="text" name="text" rows="10" placeholder="Paste lyrics, poem, story, or script here…"></textarea>
+        </div>
+
+        <div class="row">
+            <label for="audio">Audio file (optional)</label>
+            <input type="file" id="audio" name="audio" accept=".mp3,.wav,.m4a,.ogg,.flac">
+            <small>MP3, WAV, M4A, OGG, FLAC — up to 80 MB. Skip and we'll use a default 120 BPM rhythm.</small>
+        </div>
+
+        <div class="row-grid">
+            <div class="row">
+                <label for="character_ref">Character reference (optional)</label>
+                <input type="file" id="character_ref" name="character_ref" accept=".jpg,.jpeg,.png,.webp">
+                <small>Photo of the person to face-lock every shot to. Skip and we'll generate one from your text.</small>
+            </div>
+            <div class="row">
+                <label for="environment_ref">Environment reference (optional)</label>
+                <input type="file" id="environment_ref" name="environment_ref" accept=".jpg,.jpeg,.png,.webp">
+                <small>An image that captures the world / location vibe. Skip and we'll generate one too.</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <button type="submit" class="btn-primary" {% if not api_key_set or not fal_set %}disabled{% endif %}>
+                Generate storyboard
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Your projects</h2>
+        <span class="muted">{{ projects|length }} total</span>
+    </div>
+    {% if projects %}
+        <ul class="project-list">
+            {% for p in projects %}
+                <li>
+                    <a href="{{ url_for('project_detail', project_id=p.id) }}">
+                        <strong>{{ p.name }}</strong>
+                        <span class="meta">{{ p.genre }} · {{ p.shot_count }} shots · {{ p.status }}</span>
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="empty">
+            <span class="empty-emoji">◌</span>
+            No projects yet. Generate your first storyboard above.
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

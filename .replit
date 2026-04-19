@@ -1,0 +1,51 @@
+modules = ["nodejs-20", "python-3.12", "web", "postgresql-16"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["ffmpeg-full", "libsndfile", "postgresql"]
+
+[userenv]
+
+[userenv.shared]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind=0.0.0.0:3000", "--workers=1", "--threads=8", "--timeout=120", "app:app"]

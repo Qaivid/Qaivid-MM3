@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% set active_stage = 'storyboard_review' %}
+{% block title %}{{ project.name }} — Storyboard · Qaivid{% endblock %}
+{% block content %}
+<style>
+.sb-restyle-row { font-size: .9rem; }
+.sb-restyle-link { color: #ffb142; font-weight: 600; text-decoration: none; margin-left: .35rem; }
+.sb-restyle-link:hover { text-decoration: underline; }
+.btn-link { background: none; border: none; padding: 0; cursor: pointer; font-size: inherit; }
+
+/* Cinematography rig popover */
+.sb-cine-badge { position: relative; display: inline-flex; align-items: center; }
+.sb-cine-trigger {
+    background: none; border: none; padding: 0;
+    cursor: pointer; font: inherit; color: inherit;
+    line-height: 1;
+}
+.sb-cine-trigger:hover { opacity: .8; }
+.sb-cine-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 200;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    min-width: 260px;
+    max-width: 340px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
+    font-size: .82rem;
+    color: #ddd;
+    text-align: left;
+}
+.sb-cine-pop-why {
+    font-style: italic;
+    color: #ffb142;
+    margin: 0 0 .55rem;
+    line-height: 1.4;
+}
+.sb-cine-pop-details {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .18rem .6rem;
+    margin: 0;
+}
+.sb-cine-pop-details dt { color: #888; font-weight: 600; white-space: nowrap; }
+.sb-cine-pop-details dd { margin: 0; }
+</style>
+{% set sm = project.summary or {} %}
+{% set tl = project.styled_timeline or [] %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+    {% include '_style_profile_badge.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 2 — Storyboard</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">
+                The VisualStoryboardEngine, RhythmicAssemblyEngine, and StyleGradingEngine have built your shot list.
+                <strong>{{ tl|length }} shots</strong>,
+                total duration <strong>{{ "%.1f"|format(sm.total_duration or 0) }}s</strong>,
+                style preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>.
+            </p>
+        </div>
+
+        {# Task #69 — group shots by Creative Brief scene (if locked) so the
+           review surface mirrors the treatment structure the user picked. #}
+        {% set _cb = (project.context_packet or {}).get('creative_brief') or {} %}
+        {% set _scenes = (_cb.get('chosen') or {}).get('scenes') or [] %}
+        {% set _scene_lookup = {} %}
+        {% for s in _scenes %}
+            {% set _ = _scene_lookup.update({loop.index: s}) %}
+        {% endfor %}
+        {% set _ns = namespace(current_scene=None) %}
+
+        <div class="sb-cards">
+            {% for shot in tl %}
+            {% set idx = shot.shot_index or shot.timeline_index %}
+            {% set cam = shot.camera_profile or {} %}
+            {% set env = shot.environment_profile or {} %}
+            {% set cont = shot.continuity_anchor or {} %}
+            {% set cine = shot.cinematography or {} %}
+            {% set intensity = shot.intensity or 0 %}
+
+            {# Map this shot to a scene by its position in the timeline. #}
+            {% if _scenes %}
+                {% set _shots_per_scene = ((tl|length) / (_scenes|length)) | round(0, 'ceil') | int %}
+                {% set _scene_idx = ((loop.index0 // _shots_per_scene) + 1) %}
+                {% if _scene_idx > _scenes|length %}{% set _scene_idx = _scenes|length %}{% endif %}
+                {% if _scene_idx != _ns.current_scene %}
+                    {% set _ns.current_scene = _scene_idx %}
+                    {% set _scene = _scene_lookup.get(_scene_idx) %}
+                    {% if _scene %}
+                    <h3 class="sb-scene-header">
+                        <span class="sb-scene-num">Scene {{ _scene_idx }}</span>
+                        <span class="sb-scene-name">{{ _scene.name }}</span>
+                        {% if _scene.beat_range %}<span class="muted">· {{ _scene.beat_range }}</span>{% endif %}
+                        {% if _scene.summary %}<span class="sb-scene-summary">{{ _scene.summary }}</span>{% endif %}
+                    </h3>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+
+            <article class="sb-card">
+                <header class="sb-card-head">
+                    <div class="sb-card-num">#{{ idx }}</div>
+                    <div class="sb-card-time">
+                        <strong>{{ "%.1f"|format(shot.start_time or 0) }}s</strong>
+                        <span class="muted">+ {{ "%.1f"|format(shot.duration or 0) }}s</span>
+                        {% if shot.start_beat is defined and shot.start_beat is not none %}
+                        <span class="muted sb-card-beat">· ♩ {{ shot.start_beat }}{% if shot.bar_index is defined and shot.bar_index is not none %} · bar {{ shot.bar_index }}{% endif %}</span>
+                        {% endif %}
+                    </div>
+                    <span class="mode-pill mode-{{ shot.expression_mode or 'env' }}">{{ shot.expression_mode or "—" }}</span>
+                    {% if cine and cine.rig %}
+                    <span class="sb-cine-badge sb-cine-{{ cine.rig }}">
+                        <button class="sb-cine-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+                            🎥 {{ cine.rig }}{% if cine.intensity %} · {{ cine.intensity }}{% endif %}
+                        </button>
+                        <div class="sb-cine-popover" hidden>
+                            <p class="sb-cine-pop-why">{{ cine.justification }}</p>
+                            <dl class="sb-cine-pop-details">
+                                <dt>Direction</dt><dd>{{ cine.direction }}</dd>
+                                <dt>Speed</dt><dd>{{ cine.speed }}</dd>
+                                <dt>Lens</dt><dd>{{ cine.lens }}</dd>
+                            </dl>
+                        </div>
+                    </span>
+                    {% endif %}
+                    <div class="sb-card-int" title="Blended intensity">
+                        <div class="sb-int-bar"><div class="sb-int-fill" style="width: {{ (intensity * 100)|round }}%;"></div></div>
+                        <span>{{ "%.2f"|format(intensity) }}</span>
+                    </div>
+                </header>
+
+                <div class="sb-card-meaning">
+                    <span class="sb-motion-edit" data-project="{{ project.id }}" data-shot="{{ shot.shot_index or shot.timeline_index }}" data-field="meaning" data-endpoint="meaning">
+                        <span class="sb-motion-display">{{ shot.meaning or "—" }}</span>
+                        {% if not project._is_review_only %}
+                        <button class="sb-motion-btn-edit" type="button" title="Edit shot meaning" aria-label="Edit shot meaning">✎</button>
+                        {% endif %}
+                        <span class="sb-motion-edit-area" hidden>
+                            <textarea class="sb-motion-textarea" rows="2">{{ shot.meaning or "" }}</textarea>
+                            <span class="sb-motion-actions">
+                                <button class="sb-motion-btn-save btn-xs" type="button">Save</button>
+                                <button class="sb-motion-btn-cancel btn-xs btn-xs-muted" type="button">Cancel</button>
+                            </span>
+                            <span class="sb-motion-status"></span>
+                        </span>
+                    </span>
+                </div>
+
+                <div class="sb-card-cues">
+                    <div class="sb-cue-row">
+                        <span class="sb-cue-label">Framing</span>
+                        <span class="sb-motion-edit" data-project="{{ project.id }}" data-shot="{{ shot.shot_index or shot.timeline_index }}" data-field="framing_directive" data-endpoint="framing_directive">
+                            <span class="sb-motion-display">{{ shot.framing_directive or "—" }}</span>
+                            {% if not project._is_review_only %}
+                            <button class="sb-motion-btn-edit" type="button" title="Edit framing directive" aria-label="Edit framing directive">✎</button>
+                            {% endif %}
+                            <span class="sb-motion-edit-area" hidden>
+                                <textarea class="sb-motion-textarea" rows="2">{{ shot.framing_directive or "" }}</textarea>
+                                <span class="sb-motion-actions">
+                                    <button class="sb-motion-btn-save btn-xs" type="button">Save</button>
+                                    <button class="sb-motion-btn-cancel btn-xs btn-xs-muted" type="button">Cancel</button>
+                                </span>
+                                <span class="sb-motion-status"></span>
+                            </span>
+                        </span>
+                    </div>
+                    {% if shot.composition_note %}
+                    <div class="sb-cue-row">
+                        <span class="sb-cue-label">Body pose</span>
+                        <span class="sb-cue-value">{{ shot.composition_note }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="sb-cue-row sb-cue-motion">
+                        <span class="sb-cue-label">Motion cue</span>
+                        <span class="sb-motion-edit" data-project="{{ project.id }}" data-shot="{{ shot.shot_index or shot.timeline_index }}">
+                            <span class="sb-motion-display">{{ shot.motion_prompt or "—" }}</span>
+                            {% if not project._is_review_only %}
+                            <button class="sb-motion-btn-edit" type="button" title="Edit motion cue" aria-label="Edit motion cue">✎</button>
+                            {% endif %}
+                            <span class="sb-motion-edit-area" hidden>
+                                <textarea class="sb-motion-textarea" rows="2">{{ shot.motion_prompt or "" }}</textarea>
+                                <span class="sb-motion-actions">
+                                    <button class="sb-motion-btn-save btn-xs" type="button">Save</button>
+                                    <button class="sb-motion-btn-cancel btn-xs btn-xs-muted" type="button">Cancel</button>
+                                </span>
+                                <span class="sb-motion-status"></span>
+                            </span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="sb-card-tags">
+                    {% if shot.function %}<span class="sb-tag"><span class="sb-tag-k">function</span>{{ shot.function }}</span>{% endif %}
+                    {% if shot.motion_scale %}<span class="sb-tag"><span class="sb-tag-k">motion</span>{{ shot.motion_scale }}</span>{% endif %}
+                    {% if shot.transition %}<span class="sb-tag"><span class="sb-tag-k">transition</span>{{ shot.transition }}</span>{% endif %}
+                    {% if shot.repeat_status == "repeat" %}<span class="sb-tag sb-tag-repeat">repeat</span>{% endif %}
+                    {% if shot.audio_intensity is defined and shot.audio_intensity is not none %}
+                    <span class="sb-tag"><span class="sb-tag-k">audio</span>{{ "%.2f"|format(shot.audio_intensity) }}</span>
+                    <span class="sb-tag"><span class="sb-tag-k">shot</span>{{ "%.2f"|format(shot.raw_shot_intensity or 0) }}</span>
+                    {% endif %}
+                </div>
+
+                <details class="sb-card-details">
+                    <summary>Visual prompt, camera, environment, continuity</summary>
+                    <div class="sb-detail-block">
+                        <div class="sb-detail-label">Visual prompt</div>
+                        <div class="sb-detail-prompt">
+                            <span class="sb-motion-edit" data-project="{{ project.id }}" data-shot="{{ shot.shot_index or shot.timeline_index }}" data-field="styled_visual_prompt" data-endpoint="styled_visual_prompt">
+                                <span class="sb-motion-display">{{ shot.styled_visual_prompt or shot.visual_prompt or "—" }}</span>
+                                {% if not project._is_review_only %}
+                                <button class="sb-motion-btn-edit" type="button" title="Edit visual prompt" aria-label="Edit visual prompt">✎</button>
+                                {% endif %}
+                                <span class="sb-motion-edit-area" hidden>
+                                    <textarea class="sb-motion-textarea" rows="6">{{ shot.styled_visual_prompt or shot.visual_prompt or "" }}</textarea>
+                                    <span class="sb-motion-actions">
+                                        <button class="sb-motion-btn-save btn-xs" type="button">Save</button>
+                                        <button class="sb-motion-btn-cancel btn-xs btn-xs-muted" type="button">Cancel</button>
+                                    </span>
+                                    <span class="sb-motion-status"></span>
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                    {% if cam %}
+                    <div class="sb-detail-block">
+                        <div class="sb-detail-label">Camera</div>
+                        <div class="sb-detail-tags">
+                            {% for k, v in cam.items() %}<span class="sb-kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if env %}
+                    <div class="sb-detail-block">
+                        <div class="sb-detail-label">Environment</div>
+                        <div class="sb-detail-tags">
+                            {% for k, v in env.items() %}<span class="sb-kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if cont %}
+                    <div class="sb-detail-block">
+                        <div class="sb-detail-label">Continuity</div>
+                        <div class="sb-detail-tags">
+                            {% for k, v in cont.items() %}<span class="sb-kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if shot.rendering_notes %}
+                    <div class="sb-detail-block">
+                        <div class="sb-detail-label">Notes</div>
+                        <div class="sb-detail-tags">
+                            {% for n in shot.rendering_notes %}<span class="sb-kv">{{ n }}</span>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if shot.fidelity_lock is defined and shot.fidelity_lock is not none %}
+                    <div class="sb-detail-block">
+                        <span class="sb-kv"><b>fidelity_lock</b> {{ "%.2f"|format(shot.fidelity_lock) }}</span>
+                    </div>
+                    {% endif %}
+                </details>
+            </article>
+            {% endfor %}
+        </div>
+
+        <div class="stage-actions">
+            <form method="post" action="{{ url_for('advance_stage_3', project_id=project.id) }}"
+                  enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <p class="muted" style="margin:0 0 10px;">
+                    Next we'll generate ONE locked face plate per character and ONE locked
+                    environment plate per location. You'll review and approve them before any
+                    per-shot still is rendered.
+                </p>
+                <div class="ref-upload-row">
+                    <label class="ref-upload-label">
+                        Optional speaker photo <span class="muted">(skip the AI face plate)</span>
+                        <input type="file" name="character_ref" accept="image/*">
+                    </label>
+                    <label class="ref-upload-label">
+                        Optional environment photo <span class="muted">(skip the AI plate)</span>
+                        <input type="file" name="environment_ref" accept="image/*">
+                    </label>
+                </div>
+                <button type="submit" class="btn-stage-primary">Generate Reference Plates →</button>
+            </form>
+            {% if not project._is_review_only %}
+            <p class="muted sb-restyle-row" style="margin-top:1rem;">
+                Not feeling the look?
+                <a href="{{ url_for('restyle_project', project_id=project.id) }}"
+                   class="sb-restyle-link"
+                   title="Pick a new Style Profile and re-run only the Context → Storyboard → Timeline chain. Your audio analysis is preserved.">
+                    Change Style Profile →
+                </a>
+            </p>
+            <div class="muted sb-restyle-row" style="margin-top:.5rem;">
+                Want a different direction?
+                <form method="post" action="{{ url_for('reset_brief', project_id=project.id) }}"
+                      style="display:inline;" id="form-reset-brief">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="sb-restyle-link btn-link"
+                            title="Go back to the Creative Brief and pick a different variant. Existing variants are kept — no regeneration needed.">
+                        Change Brief →
+                    </button>
+                </form>
+                <span class="muted"> or </span>
+                <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
+                      style="display:inline;" id="form-regen-brief">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="sb-restyle-link btn-link"
+                            title="Discard the current brief variants and generate three fresh treatments. Your audio and context work are preserved."
+                            onclick="return confirm('Generate brand-new brief variants? This will discard the existing ones.')">
+                        Regenerate variants →
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var csrfToken = {{ csrf_token()|tojson }};
+    document.querySelectorAll('.sb-motion-edit').forEach(function (widget) {
+        var projectId = widget.dataset.project;
+        var shotIndex = widget.dataset.shot;
+        var endpoint = widget.dataset.endpoint || 'motion_prompt';
+        var field = widget.dataset.field || 'motion_prompt';
+        var display = widget.querySelector('.sb-motion-display');
+        var editArea = widget.querySelector('.sb-motion-edit-area');
+        var textarea = widget.querySelector('.sb-motion-textarea');
+        var btnEdit = widget.querySelector('.sb-motion-btn-edit');
+        var btnSave = widget.querySelector('.sb-motion-btn-save');
+        var btnCancel = widget.querySelector('.sb-motion-btn-cancel');
+        var status = widget.querySelector('.sb-motion-status');
+
+        function openEdit() {
+            display.hidden = true;
+            btnEdit.hidden = true;
+            editArea.hidden = false;
+            textarea.focus();
+            status.textContent = '';
+            status.className = 'sb-motion-status';
+        }
+
+        function closeEdit() {
+            editArea.hidden = true;
+            display.hidden = false;
+            btnEdit.hidden = false;
+        }
+
+        btnEdit.addEventListener('click', openEdit);
+        btnCancel.addEventListener('click', closeEdit);
+
+        btnSave.addEventListener('click', function () {
+            var newVal = textarea.value.trim();
+            status.textContent = 'Saving\u2026';
+            status.className = 'sb-motion-status';
+            var payload = {};
+            payload[field] = newVal;
+            fetch('/project/' + projectId + '/shot/' + shotIndex + '/' + endpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                body: JSON.stringify(payload)
+            })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
+            })
+            .then(function (data) {
+                if (data.ok) {
+                    display.textContent = newVal || '\u2014';
+                    status.textContent = 'Saved';
+                    status.className = 'sb-motion-status ok';
+                    setTimeout(closeEdit, 800);
+                } else {
+                    status.textContent = data.error || 'Error saving';
+                    status.className = 'sb-motion-status err';
+                }
+            })
+            .catch(function (err) {
+                status.textContent = err.message || 'Network error';
+                status.className = 'sb-motion-status err';
+            });
+        });
+    });
+
+    // Cinematography rig popovers — click badge to open, click anywhere else to close
+    var allPopovers = document.querySelectorAll('.sb-cine-popover');
+    var allTriggers = document.querySelectorAll('.sb-cine-trigger');
+
+    function closeAllCinePopovers() {
+        allPopovers.forEach(function (p) { p.hidden = true; });
+        allTriggers.forEach(function (t) { t.setAttribute('aria-expanded', 'false'); });
+    }
+
+    allTriggers.forEach(function (trigger) {
+        var popover = trigger.parentElement.querySelector('.sb-cine-popover');
+        if (!popover) return;
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var isOpen = !popover.hidden;
+            closeAllCinePopovers();
+            if (!isOpen) {
+                popover.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+            }
+        });
+    });
+
+    document.addEventListener('click', closeAllCinePopovers);
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeAllCinePopovers(); }
+    });
+}());
+</script>
+{% endblock %}

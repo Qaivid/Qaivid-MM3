@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% set active_stage = 'references_review' %}
+{% block title %}{{ project.name }} — References · Qaivid{% endblock %}
+{% block content %}
+{% set ready_chars  = characters|selectattr('ref_status','equalto','ready')|list|length %}
+{% set ready_locs   = locations|selectattr('ref_status','equalto','ready')|list|length %}
+{% set total_ready  = ready_chars + ready_locs %}
+{% set total        = (characters|length) + (locations|length) %}
+{% set pending_count = total - total_ready %}
+{% set failed_chars = characters|selectattr('ref_status','equalto','failed')|list|length %}
+{% set failed_locs  = locations|selectattr('ref_status','equalto','failed')|list|length %}
+{% set failed_looks = characters|map(attribute='looks')|sum(start=[])|selectattr('ref_status','equalto','failed')|list|length %}
+{% set total_failed = failed_chars + failed_locs + failed_looks %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 4 — References</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">
+                One locked face plate per character, one locked environment plate per location.
+                Approve them here so every shot stays visually consistent.
+                <strong>{{ total_ready }}/{{ total }} ready</strong>{% if pending_count %} · <span style="color:#ff6b6b;">{{ pending_count }} not ready</span>{% endif %}.
+            </p>
+        </div>
+
+        {% if total_failed > 0 %}
+        <div class="ref-failed-banner">
+            <span>⚠ {{ total_failed }} plate{{ 's' if total_failed != 1 }} failed to generate
+                {% if failed_chars %}({{ failed_chars }} character{{ 's' if failed_chars != 1 }}){% endif %}
+                {% if failed_locs %}({{ failed_locs }} location{{ 's' if failed_locs != 1 }}){% endif %}
+                {% if failed_looks %}({{ failed_looks }} look{{ 's' if failed_looks != 1 }}){% endif %}.
+            </span>
+            <button onclick="retryAllFailedRefs()" class="btn-secondary ref-retry-btn">
+                ↺ Retry All Failed
+            </button>
+        </div>
+        {% endif %}
+
+        {% if not characters and not locations %}
+        <div class="muted" style="padding:20px;border:1px dashed #444;border-radius:8px;">
+            No cast or locations were extracted from this project. Continue to render stills using the
+            project-wide reference fallbacks.
+        </div>
+        {% endif %}
+
+        {% if characters %}
+        <h2 style="margin-top:24px;">Cast</h2>
+        {% for c in characters %}
+        <div class="char-section">
+            <div class="char-section-header">
+                <span class="char-section-name">{{ c.name }}</span>
+                <span class="muted" style="font-size:12px;">{{ c.entity_type }}{% if c.gender %} · {{ c.gender }}{% endif %}{% if c.ethnicity %} · {{ c.ethnicity }}{% endif %}</span>
+            </div>
+            <div class="stills-grid">
+
+            {# ── Base identity plate ─────────────────────────────── #}
+            <div class="still-card still-{{ c.ref_status }}">
+                <div class="still-img-wrap" style="position:relative;">
+                    {% if c.ref_url %}
+                    <a href="{{ c.ref_url }}" target="_blank" rel="noopener">
+                        <img src="{{ c.ref_url }}" alt="{{ c.name }} plate" loading="lazy">
+                    </a>
+                    {% else %}
+                    <div class="still-placeholder">
+                        {% if c.ref_status == 'failed' %}⚠ Failed{% elif c.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    </div>
+                    {% endif %}
+                    <span class="look-badge look-badge--base">Base identity</span>
+                </div>
+                <div class="still-meta">
+                    <span class="still-num">{{ c.name }}</span>
+                    <div class="muted" style="margin-top:4px;font-size:12px;">
+                        {% if c.role %}{{ c.role }}{% endif %}
+                        {% if c.age_range %} · {{ c.age_range }}{% endif %}
+                    </div>
+                    {% if c.ref_prompt %}
+                    <details style="margin-top:6px;">
+                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
+                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ c.ref_prompt }}</div>
+                    </details>
+                    {% endif %}
+                    {% if c.ref_error %}<span class="still-err">{{ c.ref_error[:140] }}</span>{% endif %}
+                    <form method="post"
+                          action="{{ url_for('references_regenerate', project_id=project.id, kind='character', entity_id=c.id) }}"
+                          style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <textarea name="prompt" rows="2" placeholder="Optional: override prompt before regenerating"
+                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;"></textarea>
+                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">Regenerate</button>
+                    </form>
+                    <form method="post" enctype="multipart/form-data"
+                          action="{{ url_for('references_upload', project_id=project.id, kind='character', entity_id=c.id) }}"
+                          class="ref-upload-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="file" name="plate" accept="image/*"
+                               id="plate-char-{{ c.id }}" class="ref-file-input"
+                               onchange="refAutoUpload(this)">
+                        <label for="plate-char-{{ c.id }}" class="btn-secondary ref-upload-label">↑ Upload photo</label>
+                        <span class="ref-upload-status" style="display:none;">Uploading…</span>
+                    </form>
+                </div>
+            </div>
+
+            {# ── Per-scene look plates ────────────────────────────── #}
+            {% for lk in c.looks %}
+            <div class="still-card still-{{ lk.ref_status }}">
+                <div class="still-img-wrap" style="position:relative;">
+                    {% if lk.ref_url %}
+                    <a href="{{ lk.ref_url }}" target="_blank" rel="noopener">
+                        <img src="{{ lk.ref_url }}" alt="{{ lk.cluster_label }} look" loading="lazy">
+                    </a>
+                    {% else %}
+                    <div class="still-placeholder">
+                        {% if lk.ref_status == 'failed' %}⚠ Failed{% elif lk.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    </div>
+                    {% endif %}
+                    <span class="look-badge look-badge--scene">{{ lk.cluster_label or lk.cluster_id }}</span>
+                </div>
+                <div class="still-meta">
+                    <span class="still-num" style="font-size:12px;">{{ lk.cluster_label or lk.cluster_id }}</span>
+                    {% if lk.wardrobe_text %}
+                    <div class="muted" style="margin-top:4px;font-size:11px;line-height:1.4;font-style:italic;">
+                        {{ lk.wardrobe_text[:120] }}{% if lk.wardrobe_text|length > 120 %}…{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if lk.ref_prompt %}
+                    <details style="margin-top:6px;">
+                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
+                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ lk.ref_prompt }}</div>
+                    </details>
+                    {% endif %}
+                    {% if lk.ref_error %}<span class="still-err">{{ lk.ref_error[:140] }}</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            </div>{# end stills-grid #}
+        </div>{# end char-section #}
+        {% endfor %}
+        {% endif %}
+
+        {% if locations %}
+        <h2 style="margin-top:24px;">Locations</h2>
+        <div class="stills-grid">
+            {% for l in locations %}
+            <div class="still-card still-{{ l.ref_status }}">
+                <div class="still-img-wrap">
+                    {% if l.ref_url %}
+                    <a href="{{ l.ref_url }}" target="_blank" rel="noopener">
+                        <img src="{{ l.ref_url }}" alt="{{ l.name }} plate" loading="lazy">
+                    </a>
+                    {% else %}
+                    <div class="still-placeholder">
+                        {% if l.ref_status == 'failed' %}⚠ Failed{% elif l.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="still-meta">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="still-num">{{ l.name }}</span>
+                        <span class="still-time">{{ l.entity_type }}</span>
+                    </div>
+                    <div class="muted" style="margin-top:6px;font-size:12px;line-height:1.4;">
+                        {% if l.geography %}{{ l.geography }} · {% endif %}
+                        {% if l.time_period %}{{ l.time_period }} · {% endif %}
+                        {% if l.architecture_style %}{{ l.architecture_style }}{% endif %}
+                    </div>
+                    {% if l.ref_prompt %}
+                    <details style="margin-top:6px;">
+                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
+                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ l.ref_prompt }}</div>
+                    </details>
+                    {% endif %}
+                    {% if l.ref_error %}
+                    <span class="still-err">{{ l.ref_error[:140] }}</span>
+                    {% endif %}
+
+                    <form method="post"
+                          action="{{ url_for('references_regenerate', project_id=project.id, kind='location', entity_id=l.id) }}"
+                          style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <textarea name="prompt" rows="2" placeholder="Optional: override the prompt before regenerating"
+                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;"></textarea>
+                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">Regenerate plate</button>
+                    </form>
+
+                    <form method="post" enctype="multipart/form-data"
+                          action="{{ url_for('references_upload', project_id=project.id, kind='location', entity_id=l.id) }}"
+                          class="ref-upload-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="file" name="plate" accept="image/*"
+                               id="plate-loc-{{ l.id }}" class="ref-file-input"
+                               onchange="refAutoUpload(this)">
+                        <label for="plate-loc-{{ l.id }}" class="btn-secondary ref-upload-label">
+                            ↑ Upload my own photo
+                        </label>
+                        <span class="ref-upload-status" style="display:none;">Uploading…</span>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="stage-actions" style="margin-top:24px;">
+            <form method="post" action="{{ url_for('references_approve', project_id=project.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if pending_count %}
+                <button type="submit" class="btn-stage-primary" disabled
+                        title="Approve every plate before continuing">
+                    Approve & render {{ project.styled_timeline|length }} stills →
+                </button>
+                <p class="muted" style="margin-top:8px;font-size:12px;">
+                    {{ pending_count }} plate(s) still need attention. Regenerate or upload before continuing.
+                </p>
+                {% else %}
+                <button type="submit" class="btn-stage-primary">
+                    Approve & render {{ project.styled_timeline|length }} stills →
+                </button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+.ref-failed-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: rgba(168,50,50,.15);
+    border: 1px solid rgba(168,50,50,.4);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    color: #ff8080;
+}
+.ref-retry-btn {
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 6px 14px;
+    border-color: #a83232 !important;
+    color: #ff8080 !important;
+    flex-shrink: 0;
+}
+.char-section {
+    margin-bottom: 28px;
+}
+.char-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #2a2f38;
+}
+.char-section-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e0e6ef;
+}
+.look-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+.look-badge--base {
+    background: rgba(200,241,53,.18);
+    color: #c8f135;
+    border: 1px solid rgba(200,241,53,.35);
+}
+.look-badge--scene {
+    background: rgba(100,180,255,.16);
+    color: #88c8ff;
+    border: 1px solid rgba(100,180,255,.32);
+}
+.ref-upload-form {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ref-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+.ref-upload-label {
+    display: inline-block;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 6px 10px;
+    text-align: center;
+    border: 1px dashed #555;
+    border-radius: 6px;
+    background: transparent;
+    color: #9aa6b2;
+    transition: border-color .15s, color .15s, background .15s;
+}
+.ref-upload-label:hover {
+    border-color: #c8f135;
+    color: #c8f135;
+    background: rgba(200,241,53,.05);
+}
+.ref-upload-label.uploading {
+    border-color: #555;
+    color: #555;
+    cursor: default;
+}
+.ref-upload-status {
+    font-size: 11px;
+    color: #9aa6b2;
+    text-align: center;
+    animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+</style>
+<script>
+const _PID  = {{ project.id | tojson }};
+const _CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+async function retryAllFailedRefs() {
+    const btn = document.querySelector('.ref-retry-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Queuing…'; }
+    try {
+        const resp = await fetch('/project/' + _PID + '/retry/all_failed_refs', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': _CSRF }
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            const total = (data.characters || 0) + (data.locations || 0) + (data.looks || 0);
+            if (btn) btn.textContent = total + ' queued — reload in ~30s';
+            setTimeout(() => location.reload(), 30000);
+        } else {
+            if (btn) { btn.disabled = false; btn.textContent = '↺ Retry All Failed'; }
+            alert('Error: ' + (data.error || 'unknown'));
+        }
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = '↺ Retry All Failed'; }
+        console.error(e);
+    }
+}
+
+function refAutoUpload(input) {
+    if (!input.files || !input.files.length) return;
+    var form  = input.closest('form');
+    var label = form.querySelector('.ref-upload-label');
+    var status = form.querySelector('.ref-upload-status');
+    var fname = input.files[0].name;
+    label.textContent = fname.length > 28 ? fname.slice(0,25) + '\u2026' : fname;
+    label.classList.add('uploading');
+    status.style.display = 'block';
+    form.submit();
+}
+</script>
+{% endblock %}

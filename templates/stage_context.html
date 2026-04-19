@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% set active_stage = 'context_review' %}
+{% block title %}{{ project.name }} — Context Engine · Qaivid{% endblock %}
+{% block content %}
+{% set cp = project.context_packet or {} %}
+{% set speaker = cp.speaker or {} %}
+{% set addressee = cp.addressee or {} %}
+{% set world = cp.world_assumptions or {} %}
+{% set arc = cp.emotional_arc or {} %}
+{% set motivation = cp.motivation or {} %}
+{% set scores = cp.confidence_scores or {} %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+    {% include '_style_profile_badge.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 1 — Context Engine</span>
+            <h1>5W Context Packet</h1>
+            <p class="stage-sub">
+                The engine has read the lyrics with literary, emotional, and cultural depth.
+                Review the analysis below. Override any field the AI got wrong, then
+                proceed to build the storyboard.
+            </p>
+        </div>
+
+        {% if cp.core_theme or cp.dramatic_premise or cp.narrative_spine %}
+        <div class="ctx-block ctx-full" style="margin-bottom:18px;">
+            <h3>Core reading</h3>
+            {% if cp.core_theme %}
+            <div class="ctx-kv"><span class="ctx-k">Theme</span><span class="ctx-v">{{ cp.core_theme }}</span></div>
+            {% endif %}
+            {% if cp.dramatic_premise %}
+            <div class="ctx-kv"><span class="ctx-k">Premise</span><span class="ctx-v">{{ cp.dramatic_premise }}</span></div>
+            {% endif %}
+            {% if cp.narrative_spine %}
+            <div class="ctx-kv"><span class="ctx-k">Spine</span><span class="ctx-v">{{ cp.narrative_spine }}</span></div>
+            {% endif %}
+            <div class="ctx-kv"><span class="ctx-k">Language</span><span class="ctx-v">{{ cp.language or "—" }}</span></div>
+            <div class="ctx-kv"><span class="ctx-k">Mode</span><span class="ctx-v">{{ cp.narrative_mode or "—" }}</span></div>
+        </div>
+        {% endif %}
+
+        <div class="ctx-grid">
+            <div class="ctx-block">
+                <h3>WHO — Speaker</h3>
+                <div class="ctx-kv"><span class="ctx-k">Identity</span><span class="ctx-v">{{ speaker.identity or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Gender</span><span class="ctx-v">{{ speaker.gender or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Age range</span><span class="ctx-v">{{ speaker.age_range or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Social role</span><span class="ctx-v">{{ speaker.social_role or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Emotional state</span><span class="ctx-v">{{ speaker.emotional_state or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Relation to addressee</span><span class="ctx-v">{{ speaker.relationship_to_addressee or "—" }}</span></div>
+            </div>
+
+            <div class="ctx-block">
+                <h3>WHO — Addressee</h3>
+                <div class="ctx-kv"><span class="ctx-k">Identity</span><span class="ctx-v">{{ addressee.identity or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Relationship</span><span class="ctx-v">{{ addressee.relationship or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Presence</span><span class="ctx-v">{{ addressee.presence or "—" }}</span></div>
+            </div>
+
+            <div class="ctx-block">
+                <h3>WHERE — World DNA</h3>
+                <div class="ctx-kv"><span class="ctx-k">Geography</span><span class="ctx-v">{{ world.geography or cp.location_dna or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Era</span><span class="ctx-v">{{ world.era or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Season</span><span class="ctx-v">{{ world.season or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Characteristic time</span><span class="ctx-v">{{ world.characteristic_time or world.time_of_day or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Architecture</span><span class="ctx-v">{{ world.architecture_style or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Characteristic setting</span><span class="ctx-v">{{ world.characteristic_setting or world.domestic_setting or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Social context</span><span class="ctx-v">{{ world.social_context or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Economic context</span><span class="ctx-v">{{ world.economic_context or "—" }}</span></div>
+            </div>
+
+            <div class="ctx-block">
+                <h3>WHEN — Emotional Arc</h3>
+                <div class="ctx-kv"><span class="ctx-k">Opening</span><span class="ctx-v">{{ arc.opening or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Development</span><span class="ctx-v">{{ arc.development or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Climax</span><span class="ctx-v">{{ arc.climax or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Resolution</span><span class="ctx-v">{{ arc.resolution or "—" }}</span></div>
+            </div>
+
+            <div class="ctx-block ctx-full">
+                <h3>WHY — Motivation</h3>
+                <div class="ctx-kv"><span class="ctx-k">Inciting cause</span><span class="ctx-v">{{ motivation.inciting_cause or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Underlying desire</span><span class="ctx-v">{{ motivation.underlying_desire or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Stakes</span><span class="ctx-v">{{ motivation.stakes or "—" }}</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Obstacle</span><span class="ctx-v">{{ motivation.obstacle or "—" }}</span></div>
+            </div>
+
+            <div class="ctx-block ctx-full">
+                <h3>WHAT — Visual Motifs</h3>
+                {% for motif in (cp.motifs or []) %}
+                    {% set indices = (cp.motif_map or {}).get(motif) %}
+                    <span class="ctx-tag">{{ motif }}{% if indices %} ({{ indices|length }}×){% endif %}</span>
+                {% else %}
+                <span class="ctx-v">None identified</span>
+                {% endfor %}
+            </div>
+
+            {% if cp.literary_devices %}
+            <div class="ctx-block ctx-full">
+                <h3>Literary devices</h3>
+                {% for d in cp.literary_devices %}<span class="ctx-tag">{{ d }}</span>{% endfor %}
+            </div>
+            {% endif %}
+
+            {% if cp.entities %}
+            <div class="ctx-block ctx-full">
+                <h3>Entities detected</h3>
+                {% for ent in cp.entities %}
+                    <span class="ctx-tag">{{ ent.name or ent }}{% if ent.type %} · {{ ent.type }}{% endif %}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if cp.visual_constraints %}
+            <div class="ctx-block ctx-full">
+                <h3>Visual constraints</h3>
+                <ul style="margin:6px 0 0 18px; padding:0;">
+                {% for c in cp.visual_constraints %}<li class="ctx-v">{{ c }}</li>{% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if cp.restrictions %}
+            <div class="ctx-block ctx-full">
+                <h3>Restrictions (avoid)</h3>
+                <ul style="margin:6px 0 0 18px; padding:0;">
+                {% for r in cp.restrictions %}<li class="ctx-v">⛔ {{ r }}</li>{% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if scores %}
+            <div class="ctx-block ctx-full">
+                <h3>Confidence</h3>
+                <div class="ctx-kv"><span class="ctx-k">Overall</span><span class="ctx-v">{{ "%.0f"|format((scores.overall or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Cultural</span><span class="ctx-v">{{ "%.0f"|format((scores.cultural or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Emotional</span><span class="ctx-v">{{ "%.0f"|format((scores.emotional or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Speaker</span><span class="ctx-v">{{ "%.0f"|format((scores.speaker or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Narrative mode</span><span class="ctx-v">{{ "%.0f"|format((scores.narrative_mode or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Motivation</span><span class="ctx-v">{{ "%.0f"|format((scores.motivation or 0) * 100) }}%</span></div>
+            </div>
+            {% endif %}
+
+            {% if cp.ambiguity_flags %}
+            <div class="ctx-block ctx-full">
+                <h3>Ambiguity flags</h3>
+                {% for flag in cp.ambiguity_flags %}
+                    {% if flag is mapping %}
+                    <div class="ctx-flag">⚠ <strong>{{ flag.field }}</strong> — {{ flag.reason }}{% if flag.confidence is defined %} (conf {{ "%.0f"|format(flag.confidence * 100) }}%){% endif %}</div>
+                    {% else %}
+                    <div class="ctx-flag">⚠ {{ flag }}</div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="ctx-line-preview">
+            <h3>Line-by-line reading <span class="ctx-override-hint">({{ (cp.line_meanings or [])|length }} lines)</span></h3>
+            <table class="ctx-lm-table">
+                <thead>
+                    <tr>
+                        <th>#</th><th>Line</th><th>Reading</th><th>Mode</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for lm in (cp.line_meanings or []) %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td style="max-width:240px;">{{ lm.text or lm.line or "—" }}</td>
+                    <td style="font-size:13px; line-height:1.5;">
+                        {% if lm.literal_meaning %}<div><span style="opacity:.6;">literal:</span> {{ lm.literal_meaning }}</div>{% endif %}
+                        {% if lm.implied_meaning %}<div><span style="opacity:.6;">implied:</span> {{ lm.implied_meaning }}</div>{% endif %}
+                        {% if lm.emotional_meaning %}<div><span style="opacity:.6;">feeling:</span> {{ lm.emotional_meaning }}</div>{% endif %}
+                        {% if lm.cultural_meaning %}<div><span style="opacity:.6;">cultural:</span> {{ lm.cultural_meaning }}</div>{% endif %}
+                        {% if not (lm.literal_meaning or lm.implied_meaning or lm.emotional_meaning or lm.cultural_meaning) %}{{ lm.meaning or "—" }}{% endif %}
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <span class="ctx-tag">{{ lm.visualization_mode or lm.expression_mode or "—" }}</span>
+                        {% if lm.repeat_status == "repeat" %}<span class="ctx-tag" style="opacity:.6;">repeat</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <form method="post" action="{{ url_for('advance_stage_2', project_id=project.id) }}"
+              class="ctx-override-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <h3>Overrides <span class="ctx-override-hint">(leave blank to keep AI values)</span></h3>
+            <div class="ctx-override-grid">
+                <label>
+                    Speaker name
+                    <input type="text" name="speaker_name"
+                           placeholder="{{ speaker.identity or 'e.g. Drake' }}">
+                </label>
+                <label>
+                    Location
+                    <input type="text" name="location"
+                           placeholder="{{ world.geography or cp.location_dna or 'e.g. Lagos, Nigeria' }}">
+                </label>
+                <label>
+                    Era
+                    <input type="text" name="era"
+                           placeholder="{{ world.era or 'e.g. contemporary 2024' }}">
+                </label>
+                <label>
+                    Style preset
+                    <select name="style_preset">
+                        <option value="cinematic_natural">Cinematic Natural</option>
+                        <option value="noir">Noir</option>
+                        <option value="cyberpunk">Cyberpunk</option>
+                        <option value="golden_hour">Golden Hour</option>
+                        <option value="documentary">Documentary</option>
+                        <option value="high_contrast">High Contrast</option>
+                    </select>
+                </label>
+            </div>
+            <h3 style="margin-top:18px;">WHY overrides <span class="ctx-override-hint">(refine the emotional engine of the song)</span></h3>
+            <div class="ctx-override-grid">
+                <label>
+                    Inciting cause
+                    <input type="text" name="motivation_inciting_cause"
+                           placeholder="{{ motivation.inciting_cause or 'what triggered this song' }}">
+                </label>
+                <label>
+                    Underlying desire
+                    <input type="text" name="motivation_underlying_desire"
+                           placeholder="{{ motivation.underlying_desire or 'what the speaker ultimately wants' }}">
+                </label>
+                <label>
+                    Stakes
+                    <input type="text" name="motivation_stakes"
+                           placeholder="{{ motivation.stakes or 'what is at risk' }}">
+                </label>
+                <label>
+                    Obstacle
+                    <input type="text" name="motivation_obstacle"
+                           placeholder="{{ motivation.obstacle or 'what stands in the way' }}">
+                </label>
+            </div>
+            <div class="stage-actions">
+                <button type="submit" class="btn-stage-primary">Continue to JARVIS Dialogue →</button>
+                <a href="{{ url_for('project_detail', project_id=project.id) }}"
+                   class="btn-stage">Refresh</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

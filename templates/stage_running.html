@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — Processing · Qaivid{% endblock %}
+{% block content %}
+<div class="stage-wrap">
+    <div class="stage-spinner-card">
+        <div class="stage-header">
+            <span class="stage-badge">{{ project.name }}</span>
+            <h2>{{ project.progress.label or "Processing…" }}</h2>
+        </div>
+
+        {% if project.status == "failed" %}
+        <div class="stage-error-block">
+            <p class="stage-error-title">Pipeline failed</p>
+            <pre class="stage-error-pre">{{ project.error or "Unknown error." }}</pre>
+            <a href="{{ url_for('index') }}" class="btn-stage">← Back to Studio</a>
+        </div>
+        {% else %}
+        <div class="stage-spinner"></div>
+        <p class="stage-hint">This page refreshes automatically…</p>
+        {% endif %}
+    </div>
+</div>
+{% if project.status != "failed" %}
+<script>setTimeout(() => location.reload(), 3500);</script>
+{% endif %}
+{% endblock %}

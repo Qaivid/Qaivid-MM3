@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% set active_stage = 'assumptions_review' %}
+{% block title %}{{ project.name }} — JARVIS Dialogue · Qaivid{% endblock %}
+{% block content %}
+{% set cp = project.context_packet or {} %}
+{% set surfaced = cp.surfaced_assumptions or [] %}
+{% set locked = cp.locked_assumptions or {} %}
+{% set pending = cp._pending_overrides or {} %}
+{% set scores = cp.confidence_scores or {} %}
+{% set motivation = cp.motivation or {} %}
+{# Compose the same one-line "why this song exists" summary the storyboard prompt sees,
+   so the user can sanity-check JARVIS's emotional read before locking assumptions. #}
+{% set _why_bits = [] %}
+{% if motivation.inciting_cause %}{% set _ = _why_bits.append('because ' ~ motivation.inciting_cause.rstrip('.')) %}{% endif %}
+{% if motivation.underlying_desire %}{% set _ = _why_bits.append('the speaker wants ' ~ motivation.underlying_desire.rstrip('.')) %}{% endif %}
+{% if motivation.obstacle %}{% set _ = _why_bits.append('but ' ~ motivation.obstacle.rstrip('.')) %}{% endif %}
+{% if motivation.stakes %}{% set _ = _why_bits.append('with ' ~ motivation.stakes.rstrip('.') ~ ' at stake') %}{% endif %}
+{% set why_summary = (_why_bits | join('; ') ~ '.') if _why_bits else '' %}
+{# WHY field metadata: (field_key, label, prefix, suffix, placeholder) used both
+   to render the dedicated motivation panel below and to filter the same fields
+   out of the generic surfaced-assumptions table so users don't see two sets of
+   controls for the same lock. #}
+{% set _why_fields = [
+    ('inciting_cause', 'Inciting cause', 'because ', '', 'what triggered this song'),
+    ('underlying_desire', 'Underlying desire', 'the speaker wants ', '', 'what the speaker ultimately wants'),
+    ('obstacle', 'Obstacle', 'but ', '', 'what stands in the way'),
+    ('stakes', 'Stakes', 'with ', ' at stake', 'what is at risk'),
+] %}
+{% set _why_lock_keys = ['motivation_inciting_cause', 'motivation_underlying_desire',
+                        'motivation_stakes', 'motivation_obstacle'] %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 2 — JARVIS Dialogue</span>
+            <h1>Surfaced Assumptions</h1>
+            <p class="stage-sub">
+                Before locking in the storyboard, JARVIS surfaces the inferences it made
+                while reading the lyrics. For each one you can <strong>accept</strong> the
+                inference, <strong>override</strong> it with your own value, or
+                <strong>reject</strong> it as too uncertain. Rejected items become
+                ambiguity flags that downstream stages will treat with care.
+            </p>
+        </div>
+
+        {% if pending %}
+        <div class="ctx-block ctx-full" style="margin-bottom:18px;">
+            <h3>Your stage-1 overrides (will be applied)</h3>
+            {% for k, v in pending.items() %}
+            <div class="ctx-kv"><span class="ctx-k">{{ k }}</span><span class="ctx-v">{{ v }}</span></div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('advance_stage_2b', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="ctx-block ctx-full" style="margin-bottom:18px;">
+                <h3>WHY — Motivation
+                    {% if scores.motivation is defined %}
+                    <span class="ctx-override-hint">(motivation confidence: {{ "%.0f"|format((scores.motivation or 0) * 100) }}%)</span>
+                    {% endif %}
+                </h3>
+                <p class="ctx-override-hint" style="margin:4px 0 12px 0;">
+                    This is JARVIS's read of <em>why this song exists</em> — the emotional engine
+                    the storyboard will be built around. Accept each field as-is, override it with
+                    your own wording, or reject it (storyboard will treat it as ambiguous).
+                    The one-line preview below is exactly what the storyboard prompt will see.
+                </p>
+                <p id="why-preview"
+                   style="margin:6px 0 14px 0; padding:10px 12px; font-style:italic;
+                          background:rgba(255,255,255,0.04); border-left:3px solid #888;
+                          border-radius:4px; min-height:1.4em;">
+                    {{ why_summary or '(no motivation surfaced yet)' }}
+                </p>
+                <table class="ctx-lm-table" style="margin-top:6px;">
+                    <thead>
+                        <tr>
+                            <th style="width:18%;">Field</th>
+                            <th style="width:32%;">JARVIS's value</th>
+                            <th style="width:50%;">Your decision</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for fkey, flabel, fprefix, fsuffix, fph in _why_fields %}
+                        {% set lock_key = 'motivation_' ~ fkey %}
+                        {% set engine_val = motivation.get(fkey) or '' %}
+                        {% set locked_val = locked.get(lock_key) or '' %}
+                        {% set is_overridden = (locked_val and locked_val != engine_val) %}
+                        {# Default action: override if user previously overrode, else accept. #}
+                        {% set default_action = 'override' if is_overridden else 'accept' %}
+                    <tr data-why-row="{{ fkey }}"
+                        data-prefix="{{ fprefix }}"
+                        data-suffix="{{ fsuffix }}">
+                        <td><strong>{{ flabel }}</strong></td>
+                        <td data-why-engine="{{ engine_val }}">{{ engine_val or '—' }}</td>
+                        <td>
+                            <label style="display:block; font-size:12px;">
+                                <input type="radio" name="why_action_{{ fkey }}" value="accept"
+                                       data-why-radio="{{ fkey }}"
+                                       {% if default_action == 'accept' %}checked{% endif %}>
+                                Accept
+                            </label>
+                            <label style="display:block; font-size:12px; margin-top:4px;">
+                                <input type="radio" name="why_action_{{ fkey }}" value="override"
+                                       data-why-radio="{{ fkey }}"
+                                       {% if default_action == 'override' %}checked{% endif %}>
+                                Override:
+                                <input type="text" name="why_value_{{ fkey }}"
+                                       data-why-input="{{ fkey }}"
+                                       placeholder="{{ fph }}"
+                                       value="{% if is_overridden %}{{ locked_val }}{% endif %}"
+                                       style="width:240px; font-size:12px;">
+                            </label>
+                            <label style="display:block; font-size:12px; margin-top:4px;">
+                                <input type="radio" name="why_action_{{ fkey }}" value="reject"
+                                       data-why-radio="{{ fkey }}">
+                                Reject (mark ambiguous)
+                            </label>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {# Hide the four motivation_* fields from the generic surfaced table:
+               they're already handled by the dedicated WHY panel above. #}
+            {% set _surfaced_non_why = [] %}
+            {% for item in surfaced %}
+                {% if (item.field or '') not in _why_lock_keys %}
+                    {% set _ = _surfaced_non_why.append(item) %}
+                {% endif %}
+            {% endfor %}
+
+            {% if _surfaced_non_why %}
+            <div class="ctx-block ctx-full">
+                <h3>JARVIS surfaced {{ _surfaced_non_why|length }} other assumption(s)</h3>
+                <table class="ctx-lm-table" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th style="width:18%;">Field</th>
+                            <th style="width:28%;">Inferred value</th>
+                            <th style="width:14%;">Confidence</th>
+                            <th>Reason</th>
+                            <th style="width:24%;">Your decision</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in surfaced %}
+                        {% set i = loop.index0 %}
+                        {% set field = item.field or '—' %}
+                        {% if field not in _why_lock_keys %}
+                        {% set value = item.value or '—' %}
+                        {% set conf  = item.confidence if item.confidence is defined else 0 %}
+                        {% set reason = item.reason or '' %}
+                        {% set already_locked = (field in locked) %}
+                    <tr>
+                        <td><strong>{{ field }}</strong></td>
+                        <td>{{ value }}</td>
+                        <td>{{ "%.0f"|format(conf * 100) }}%</td>
+                        <td style="font-size:12px; opacity:.85;">{{ reason }}</td>
+                        <td>
+                            <label style="display:block; font-size:12px;">
+                                <input type="radio" name="action_{{ i }}" value="accept"
+                                       {% if not already_locked or locked.get(field) == value %}checked{% endif %}>
+                                Accept
+                            </label>
+                            <label style="display:block; font-size:12px; margin-top:4px;">
+                                <input type="radio" name="action_{{ i }}" value="override"
+                                       {% if already_locked and locked.get(field) and locked.get(field) != value %}checked{% endif %}>
+                                Override:
+                                <input type="text" name="value_{{ i }}"
+                                       placeholder="your value"
+                                       value="{% if already_locked and locked.get(field) != value %}{{ locked.get(field) }}{% endif %}"
+                                       style="width:140px; font-size:12px;">
+                            </label>
+                            <label style="display:block; font-size:12px; margin-top:4px;">
+                                <input type="radio" name="action_{{ i }}" value="reject">
+                                Reject (mark ambiguous)
+                            </label>
+                        </td>
+                    </tr>
+                        {% endif %}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="ctx-block ctx-full">
+                <h3>No other assumptions to review</h3>
+                <p class="ctx-v">JARVIS did not surface any other low-confidence inferences beyond the WHY block above. You can proceed straight to the storyboard.</p>
+            </div>
+            {% endif %}
+
+            {# Keep accept votes for any motivation_* entries surfaced in the list,
+               so they pass through advance_stage_2b harmlessly (the dedicated WHY
+               panel writes the canonical lock). #}
+            {% for item in surfaced %}
+                {% if (item.field or '') in _why_lock_keys %}
+                <input type="hidden" name="action_{{ loop.index0 }}" value="accept">
+                {% endif %}
+            {% endfor %}
+
+            {% if scores %}
+            <div class="ctx-block ctx-full" style="margin-top:14px;">
+                <h3>Engine confidence</h3>
+                <div class="ctx-kv"><span class="ctx-k">Overall</span><span class="ctx-v">{{ "%.0f"|format((scores.overall or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Cultural</span><span class="ctx-v">{{ "%.0f"|format((scores.cultural or 0) * 100) }}%</span></div>
+                <div class="ctx-kv"><span class="ctx-k">Speaker</span><span class="ctx-v">{{ "%.0f"|format((scores.speaker or 0) * 100) }}%</span></div>
+            </div>
+            {% endif %}
+
+            <div class="stage-actions" style="margin-top:18px;">
+                <button type="submit" class="btn-stage-primary">Lock In &amp; Build Storyboard →</button>
+                <a href="{{ url_for('project_detail', project_id=project.id, at='context_review') }}"
+                   class="btn-stage">← Back to Context</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    var preview = document.getElementById('why-preview');
+    if (!preview) return;
+    var rows = document.querySelectorAll('tr[data-why-row]');
+    if (!rows.length) return;
+
+    function stripTrailingPeriod(s) {
+        return (s || '').replace(/\.+\s*$/, '').trim();
+    }
+
+    function recompute() {
+        var bits = [];
+        rows.forEach(function (row) {
+            var key = row.getAttribute('data-why-row');
+            var prefix = row.getAttribute('data-prefix') || '';
+            var suffix = row.getAttribute('data-suffix') || '';
+            var engineCell = row.querySelector('[data-why-engine]');
+            var engineVal = engineCell ? (engineCell.getAttribute('data-why-engine') || '') : '';
+            var checked = row.querySelector('input[type=radio]:checked');
+            var action = checked ? checked.value : 'accept';
+            var input = row.querySelector('input[data-why-input]');
+            var overrideVal = input ? (input.value || '').trim() : '';
+            var chosen = '';
+            if (action === 'accept') {
+                chosen = engineVal;
+            } else if (action === 'override') {
+                chosen = overrideVal || engineVal;
+            } else {
+                return; // rejected — skip
+            }
+            chosen = stripTrailingPeriod(chosen);
+            if (!chosen) return;
+            bits.push(prefix + chosen + suffix);
+        });
+        preview.textContent = bits.length ? (bits.join('; ') + '.') : '(no motivation locked yet)';
+    }
+
+    rows.forEach(function (row) {
+        row.querySelectorAll('input[type=radio]').forEach(function (r) {
+            r.addEventListener('change', recompute);
+        });
+        var input = row.querySelector('input[data-why-input]');
+        if (input) {
+            input.addEventListener('input', function () {
+                var ovRadio = row.querySelector('input[type=radio][value=override]');
+                if (ovRadio && input.value.trim()) ovRadio.checked = true;
+                recompute();
+            });
+        }
+    });
+
+    recompute();
+})();
+</script>
+{% endblock %}

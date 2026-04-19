@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% set active_stage = 'style_review' %}
+{% block title %}{{ project.name }} — Style Profile · Qaivid{% endblock %}
+{% block content %}
+{% set suggestions = project.style_suggestions or [] %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Style Profile</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">JARVIS has analysed the content and suggested the following visual directions. Select one to lock the cinematic DNA for this project — or use the manual picker below.</p>
+            {% if is_repick %}
+            <div class="repick-banner">
+                <strong>You're changing your Style Profile.</strong>
+                Your audio analysis is kept as-is. Picking a new style here will
+                re-run the Context Engine, Storyboard and Timeline against the
+                new style — your existing storyboard will be replaced.
+            </div>
+            {% endif %}
+        </div>
+
+        <form method="post" action="{{ url_for('advance_stage_style', project_id=project.id) }}" id="style-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="production_style_id" id="prod-id-input" value="{{ suggestions[0].production.id if suggestions else 'split_narrative_performance' }}">
+            <input type="hidden" name="cinematic_style_id" id="cin-id-input" value="{{ suggestions[0].cinematic.id if suggestions else 'cinematic_natural' }}">
+
+            {% if suggestions %}
+            <div class="style-suggestions-grid">
+                {% for s in suggestions %}
+                <div class="style-card {% if loop.first %}style-card--selected{% endif %}"
+                     data-prod-id="{{ s.production.id }}"
+                     data-cin-id="{{ s.cinematic.id }}"
+                     onclick="selectSuggestion(this)">
+                    <div class="style-card-header">
+                        <span class="style-badge style-badge--prod">{{ s.production.label }}</span>
+                        <span class="style-badge style-badge--cin">{{ s.cinematic.label }}</span>
+                        {% if loop.first %}
+                        <span class="style-badge style-badge--ai">JARVIS Top Pick</span>
+                        {% endif %}
+                    </div>
+                    <p class="style-justification">{{ s.justification or s.cinematic.description[:180] }}</p>
+                    <div class="style-dims">
+                        <div class="style-dim">
+                            <span class="style-dim-label">Production</span>
+                            <span class="style-dim-val">{{ s.production.label }}</span>
+                            <span class="style-dim-desc">{{ s.production.description[:100] }}…</span>
+                        </div>
+                        <div class="style-dim">
+                            <span class="style-dim-label">Cinematic</span>
+                            <span class="style-dim-val">{{ s.cinematic.label }}</span>
+                            <span class="style-dim-desc">{{ s.cinematic.description[:100] }}…</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="style-manual-section">
+                <h3 class="style-manual-title">Manual Override</h3>
+                <p class="style-manual-sub">Pick any Production + Cinematic combination from the full registry.</p>
+                <div class="style-manual-grid">
+                    <div class="style-select-group">
+                        <label class="style-select-label" for="manual-prod">Production Style</label>
+                        <select id="manual-prod" class="style-select" onchange="applyManual()">
+                            {% for ps in all_production_styles %}
+                            <option value="{{ ps.id }}" {% if suggestions and ps.id == suggestions[0].production.id %}selected{% endif %}>{{ ps.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="style-select-group">
+                        <label class="style-select-label" for="manual-cin">Cinematic Style</label>
+                        <select id="manual-cin" class="style-select" onchange="applyManual()">
+                            {% for cs in all_cinematic_styles %}
+                            <option value="{{ cs.id }}" {% if suggestions and cs.id == suggestions[0].cinematic.id %}selected{% endif %}>{{ cs.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stage-actions" style="margin-top:2rem;">
+                {% if is_repick %}
+                <a href="{{ url_for('project_detail', project_id=project.id) }}" class="repick-cancel" style="margin-right:.75rem;">Cancel</a>
+                <button type="submit" class="btn-stage-primary">Apply New Style &amp; Re-run Storyboard →</button>
+                {% else %}
+                <button type="submit" class="btn-stage-primary">Lock Style &amp; Run Context Engine →</button>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.style-suggestions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
+.style-card {
+    background: var(--surface-2, #1a1a2e);
+    border: 2px solid var(--border, #333);
+    border-radius: 12px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+}
+.style-card:hover {
+    border-color: var(--accent, #6c63ff);
+}
+.style-card--selected {
+    border-color: var(--accent, #6c63ff);
+    box-shadow: 0 0 0 3px rgba(108,99,255,.25);
+}
+.style-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-bottom: .75rem;
+}
+.style-badge {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    padding: .2rem .55rem;
+    border-radius: 4px;
+}
+.style-badge--prod { background: rgba(108,99,255,.2); color: #a89fff; }
+.style-badge--cin  { background: rgba(255,177,66,.15); color: #ffb142; }
+.style-badge--ai   { background: rgba(0,220,130,.15);  color: #00dc82; }
+.style-justification {
+    font-size: .88rem;
+    color: var(--text-muted, #aaa);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+.style-dims { display: flex; flex-direction: column; gap: .6rem; }
+.style-dim { background: rgba(255,255,255,.04); border-radius: 6px; padding: .6rem .75rem; }
+.style-dim-label { font-size: .65rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted, #777); display: block; margin-bottom: .2rem; }
+.style-dim-val { font-size: .9rem; font-weight: 600; color: var(--text, #e5e5e5); display: block; margin-bottom: .2rem; }
+.style-dim-desc { font-size: .78rem; color: var(--text-muted, #999); }
+
+.style-manual-section { margin-top: 2rem; border-top: 1px solid var(--border, #333); padding-top: 1.5rem; }
+.style-manual-title { font-size: 1rem; font-weight: 600; margin-bottom: .25rem; }
+.style-manual-sub { font-size: .85rem; color: var(--text-muted, #aaa); margin-bottom: 1rem; }
+.style-manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 600px) { .style-manual-grid { grid-template-columns: 1fr; } }
+.style-select-group { display: flex; flex-direction: column; gap: .4rem; }
+.style-select-label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted, #aaa); }
+.style-select { background: var(--surface-2, #1a1a2e); border: 1px solid var(--border, #444); color: var(--text, #e5e5e5); border-radius: 6px; padding: .6rem .75rem; font-size: .9rem; }
+
+.repick-banner {
+    margin-top: 1rem;
+    padding: .85rem 1rem;
+    border-radius: 8px;
+    background: rgba(255,177,66,.1);
+    border: 1px solid rgba(255,177,66,.35);
+    color: #ffce85;
+    font-size: .9rem;
+    line-height: 1.5;
+}
+.repick-banner strong { color: #ffb142; display: block; margin-bottom: .15rem; }
+.repick-cancel { color: var(--text-muted, #aaa); text-decoration: underline; font-size: .9rem; }
+.repick-cancel:hover { color: var(--text, #e5e5e5); }
+.sb-restyle-row { font-size: .9rem; }
+.sb-restyle-link { color: #ffb142; font-weight: 600; text-decoration: none; margin-left: .35rem; }
+.sb-restyle-link:hover { text-decoration: underline; }
+</style>
+
+<script>
+function selectSuggestion(el) {
+    document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
+    el.classList.add('style-card--selected');
+    document.getElementById('prod-id-input').value = el.dataset.prodId;
+    document.getElementById('cin-id-input').value  = el.dataset.cinId;
+    document.getElementById('manual-prod').value = el.dataset.prodId;
+    document.getElementById('manual-cin').value  = el.dataset.cinId;
+}
+
+function applyManual() {
+    const prodId = document.getElementById('manual-prod').value;
+    const cinId  = document.getElementById('manual-cin').value;
+    document.getElementById('prod-id-input').value = prodId;
+    document.getElementById('cin-id-input').value  = cinId;
+    // Deselect any AI suggestion card that no longer matches
+    document.querySelectorAll('.style-card').forEach(c => {
+        if (c.dataset.prodId === prodId && c.dataset.cinId === cinId) {
+            c.classList.add('style-card--selected');
+        } else {
+            c.classList.remove('style-card--selected');
+        }
+    });
+}
+</script>
+{% endblock %}

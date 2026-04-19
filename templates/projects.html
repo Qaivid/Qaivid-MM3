@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}My Projects · Qaivid{% endblock %}
+{% block content %}
+<section class="proj-page">
+    <div class="proj-page-header">
+        <div>
+            <h1>My Projects</h1>
+            <p class="muted">Pick up where you left off, or kick off a new video.</p>
+        </div>
+        <a href="{{ url_for('new_project') }}" class="btn-primary">+ New Project</a>
+    </div>
+
+    {% if not api_key_set or not fal_set %}
+    <div class="warning" style="margin-bottom:18px;">
+        Heads up — {% if not api_key_set %}OPENAI_API_KEY{% endif %}{% if not api_key_set and not fal_set %} and {% endif %}{% if not fal_set %}FAL_API_KEY{% endif %} not set. Add in Replit secrets to enable generation.
+    </div>
+    {% endif %}
+
+    {% if projects %}
+    <div class="proj-card-grid">
+        {% for p in projects %}
+        {% set m = p.progress_meta %}
+        <div class="proj-card proj-status-{{ p.status }}">
+            <div class="proj-card-head">
+                <a href="{{ url_for('project_detail', project_id=p.id) }}" class="proj-card-title">
+                    <strong>{{ p.name }}</strong>
+                </a>
+                <span class="proj-card-stage proj-stage-{{ p.stage or 'new' }}">
+                    Step {{ m.step }}/{{ m.total }} · {{ m.label }}
+                </span>
+            </div>
+            <div class="proj-card-meta">
+                <span>{{ p.genre }}</span>
+                {% if p.shot_count %}<span>· {{ p.shot_count }} shots</span>{% endif %}
+                <span>· status <strong>{{ p.status }}</strong></span>
+            </div>
+            <div class="proj-progress-bar">
+                <div class="proj-progress-fill" style="width: {{ ((m.step / m.total) * 100)|round(0) }}%;"></div>
+            </div>
+            <div class="proj-card-actions">
+                <a href="{{ url_for('project_detail', project_id=p.id) }}" class="btn-stage btn-stage-primary">
+                    {% if p.status == 'complete' %}Open{% elif p.status == 'running' or p.status == 'queued' %}View progress{% else %}Resume →{% endif %}
+                </a>
+                <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}"
+                      onsubmit="return confirm('Delete this project and all its assets?');" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-stage btn-stage-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <span class="empty-emoji">◌</span>
+        <p>No projects yet.</p>
+        <a href="{{ url_for('new_project') }}" class="btn-primary">+ Create your first project</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
