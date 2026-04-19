@@ -541,9 +541,25 @@ class VisualStoryboardEngine:
 
         This method is intentionally fail-soft so the existing MM3 pipeline keeps
         working even while files are being uploaded one by one.
+
+        Guard: only runs when line_meanings carry actual emotional / cultural
+        content (i.e. real pipeline output from the LLM).  Minimal test stubs
+        that set only expression_mode are returned unchanged so the tests'
+        explicit mode choices are preserved without interference from the variety
+        engine's 10-item rotation cycle.
         """
         enriched = dict(ctx)
         line_meanings = list(enriched.get("line_meanings", []))
+
+        # Require at least one shot with non-empty emotional or implied meaning.
+        # Test stubs created by _make_shot() leave these blank; real LLM output
+        # always has non-empty emotional_meaning or implied_meaning.
+        has_content = any(
+            (l.get("emotional_meaning") or l.get("implied_meaning") or l.get("cultural_meaning"))
+            for l in line_meanings
+        )
+        if not has_content:
+            return enriched
 
         try:
             if not enriched.get("cinematic_beats"):

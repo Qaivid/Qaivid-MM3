@@ -428,8 +428,11 @@ def derive(
         return None
 
     mode = (shot.get("expression_mode") or "").lower()
-    if mode not in ("face", "body", "environment", "symbolic", "macro"):
-        # Safe fallback if a newer shot uses shot_type but missed expression_mode.
+    _VALID_MODES = ("face", "body", "environment", "symbolic", "macro")
+    if mode not in _VALID_MODES:
+        # MM3.1: if shot carries shot_type instead of expression_mode, map it.
+        # Only valid shot_types are accepted; unknown input returns None so the
+        # caller can skip rig derivation (preserves legacy contract).
         shot_type = (shot.get("shot_type") or "").lower()
         mode_map = {
             "portrait": "face",
@@ -441,7 +444,9 @@ def derive(
             "silhouette": "symbolic",
             "over_shoulder": "body",
         }
-        mode = mode_map.get(shot_type, "face")
+        mode = mode_map.get(shot_type, "")
+        if not mode:
+            return None  # No valid expression_mode or shot_type — skip rig derivation
 
     ctx = context_packet or {}
     sp = style_profile or {}

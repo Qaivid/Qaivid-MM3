@@ -32,12 +32,20 @@ DEFAULT_NEGATIVE = (
     "amateur photography, bad composition"
 )
 
-# ── Phrases to strip — pipeline-internal directives that should not reach
-#    the image model.  Cinematic intelligence fields (Function, Performance,
-#    Arc beat, Motif handling) are intentionally KEPT so the model understands
-#    the shot's intent. ─────────────────────────────────────────────────────
+# ── Phrases to strip — director/system instructions that must not reach
+#    the image model as literal text.  These labels appear in legacy
+#    visual_prompts (LLM-generated) and user overrides; they are
+#    pipeline metadata, not visual descriptions.
+#
+#    Note: MM3.1 cinematic beat data (behaviour, arc position, motif) is
+#    carried in STRUCTURED fields (shot_event, cinematic_beat dicts), NOT
+#    as "Performance: …" text labels.  So stripping these patterns does
+#    NOT discard any MM3.1 intelligence — it only removes the old-format
+#    label syntax that the image model cannot render.
 _INSTRUCTION_PATTERNS = [
     r"Maintain (?:strict )?character continuity[^.]*\.",
+    r"Performance:[^.]*\.",
+    r"Function:[^.]*\.",
     r"Repetition logic:[^.]*\.",
     r"Ambiguity handling:[^.]*\.",
     r"Relevant ambiguity notes:[^.]*\.",
@@ -45,10 +53,14 @@ _INSTRUCTION_PATTERNS = [
     r"Hard restrictions[^:]*:[^.]*\.",
     r"Visual constraints:[^.]*\.",
     r"Continuity:[^.]*\.",
+    r"Motif handling:[^.]*\.",
     r"Cultural subtext to preserve:[^.]*\.",
     r"Why this song exists:[^.]*\.",
     r"Spine anchor:[^.]*\.",
+    r"Dramatic premise:[^.]*\.",
     r"Treatment:[^.]*\.",
+    r"Central metaphor[^:]*:[^.]*\.",
+    r"Arc beat[^:]*:[^.]*\.",
     r"Style notes:[^.]*\.",
     r"Rendering notes:[^.]*\.",
     r"Transition behavior:[^.]*\.",
@@ -56,9 +68,6 @@ _INSTRUCTION_PATTERNS = [
     r"Speaker identity context:[^.]*\.",
     r"Addressee context:[^.]*\.",
     r"Intensity:[^.]*\.",
-    # NOTE: Performance, Function, Arc beat, Central metaphor, Dramatic premise,
-    # and Motif handling are intentionally NOT stripped — they give the image
-    # model context about what the shot must convey.
 ]
 _INSTRUCTION_RE = re.compile("|".join(_INSTRUCTION_PATTERNS), re.IGNORECASE)
 
