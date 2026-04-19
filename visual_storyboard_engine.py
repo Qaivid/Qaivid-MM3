@@ -314,22 +314,25 @@ class VisualStoryboardEngine:
             else:
                 self._shots_since_env_cutaway = 0
 
-            frame_directive, frame_idx = self._pick_frame(mode)
-            framing_bias = self._derive_framing_bias(mode, frame_idx)
-
-            # MM3.1: when the beat engine supplies a camera_motivation or
-            # camera_plan, place it FIRST so it is the primary composition
-            # signal.  The lookup-table frame_directive becomes a secondary
-            # lens/DoF suggestion appended after the beat-driven directive.
-            # When no shot_event exists (test stubs, legacy projects) the
-            # table directive is used as-is, preserving original behaviour.
+            # MM3.1 beat-driven framing architecture:
+            # Primary source: camera_motivation / camera_plan from shot_event.
+            # Fallback only: static rotation table (_FACE_FRAMES etc.) when no
+            # beat signal is available (test stubs, legacy projects).
+            # The rotation counter is ALWAYS advanced for variety tracking.
             _cam_motive = (
                 shot_event.get("camera_motivation")
                 or shot_event.get("camera_plan")
                 or ""
             ).strip()
+            _table_directive, frame_idx = self._pick_frame(mode)  # advance counter
+            framing_bias = self._derive_framing_bias(mode, frame_idx)
             if _cam_motive:
-                frame_directive = f"{_cam_motive}; {frame_directive}"
+                # Beat-driven: the shot_event signal is the sole directive.
+                # The static-table string is discarded; counter already advanced.
+                frame_directive = _cam_motive
+            else:
+                # Fallback: static framing rotation (no beat signal present)
+                frame_directive = _table_directive
 
             if pending_cutaway:
                 frame_directive = (
@@ -492,13 +495,17 @@ class VisualStoryboardEngine:
         "symbolic":    0.10,
     }
 
-    # Canonical shot_type string per expression_mode (mirrors ShotVarietyEngine)
+    # Canonical shot_type labels per expression_mode.
+    # Values must round-trip through _SHOT_TYPE_TO_MODE (above) — i.e. every
+    # value here must appear as a key there so the reverse lookup is stable.
+    # "wide_environment" and "silhouette" are the representative canonical
+    # varieties for their respective modes, matching the variety taxonomy.
     _MODE_TO_SHOT_TYPE: Dict[str, str] = {
         "face":        "portrait",
         "body":        "movement",
-        "environment": "environment",
+        "environment": "wide_environment",
         "macro":       "object_detail",
-        "symbolic":    "symbolic",
+        "symbolic":    "silhouette",
     }
 
     # Canonical framing directive per expression_mode — applied when the

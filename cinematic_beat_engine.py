@@ -247,6 +247,15 @@ class CinematicBeatEngine:
             emotion=emotion,
         )
 
+        lyric_relation_type = self._infer_lyric_relation_type(
+            line=line,
+            expression_mode=expression_mode,
+            repeat_status=repeat_status,
+            function=function,
+            visual_contrast=visual_contrast,
+            intensity=intensity,
+        )
+
         return {
             "beat_id": f"beat_{self._safe_int(line.get('line_index'), index + 1)}",
             "shot_index": self._safe_int(line.get("line_index"), index + 1),
@@ -269,6 +278,7 @@ class CinematicBeatEngine:
             "continuity_focus": continuity_focus,
             "freshness_tags": freshness_tags,
             "style_hints": self._extract_style_hints(style_profile),
+            "lyric_relation_type": lyric_relation_type,
             "confidence": self._estimate_confidence(
                 line=line,
                 emotion=emotion,
@@ -500,6 +510,42 @@ class CinematicBeatEngine:
         if repeat_status == "repeat":
             return f"{base}, but with evolved emotional pressure from the earlier recurrence"
         return base
+
+    def _infer_lyric_relation_type(
+        self,
+        line: Dict[str, Any],
+        expression_mode: str,
+        repeat_status: str,
+        function: str,
+        visual_contrast: str,
+        intensity: float,
+    ) -> str:
+        """Classify how the visual strategy relates to the lyric text.
+
+        Returns one of: literal | metaphor | contrast | amplify | symbol | echo
+
+        - echo:     repeated section where the visual echoes earlier imagery
+        - symbol:   shot uses abstract / displaced visual language
+        - contrast: the visual provides emotional counterpoint to the lyric
+        - amplify:  visual intensifies the lyric's emotional weight
+        - metaphor: interpretive / subtext-driven treatment
+        - literal:  visual depicts what the lyric describes directly
+        """
+        if repeat_status == "repeat":
+            return "echo"
+        if expression_mode == "symbolic":
+            return "symbol"
+        if visual_contrast and any(
+            kw in visual_contrast for kw in ("against", "contrast", "opposite")
+        ):
+            return "contrast"
+        if intensity >= 0.75 or function in (
+            "chorus_reveal", "emotional_climax", "build_release"
+        ):
+            return "amplify"
+        if function in ("narrative_turn", "metaphor_development", "thematic_anchor"):
+            return "metaphor"
+        return "literal"
 
     def _infer_camera_motive(
         self,
