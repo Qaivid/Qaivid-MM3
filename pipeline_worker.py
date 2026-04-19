@@ -1503,25 +1503,47 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         #           → GenericShotValidator.validate_sequence()  [mark+rewrite weak shots]
         #           → ShotVarietyEngine.assign_shot_types()     [enforce target distribution]
         #           → _enforce_variety_caps() post-pass         [hard caps face≤25%, body≤35%]
-        # Task #105 — if timed_lyrics were stored from Stage 0 but all timestamps
-        # are 0 (Gemini-only transcription, Whisper failed), generate approximate
-        # timestamps by distributing lines evenly over audio_data duration_seconds.
-        if timed_lyrics:
-            has_real_ts = any(
-                float(t.get("end") or 0) > float(t.get("start") or 0)
-                for t in timed_lyrics
-            )
-            if not has_real_ts:
-                _audio_dur = float(audio_data_blob.get("duration_seconds") or 0)
-                if _audio_dur > 0:
+        # Task #105 — ensure timed_lyrics always carries valid timestamps before
+        # passing to the orchestrator.  Two fallback cases:
+        # (a) timed_lyrics is empty/None (Whisper was skipped, or pre-#105 project):
+        #     derive lyric lines from the stored transcript text and distribute
+        #     them evenly over audio_data duration_seconds.
+        # (b) timed_lyrics is non-empty but all have start==end==0 (Gemini-only
+        #     transcription, Whisper segments failed): fill timestamps evenly.
+        _audio_dur = float(audio_data_blob.get("duration_seconds") or 0)
+        if _audio_dur > 0:
+            if not timed_lyrics:
+                _lines = [l.strip() for l in text.splitlines() if l.strip()]
+                if _lines:
+                    _n = len(_lines)
+                    _step = _audio_dur / _n
+                    timed_lyrics = [
+                        {
+                            "text": _lines[_i],
+                            "start": round(_i * _step, 3),
+                            "end": round((_i + 1) * _step, 3),
+                        }
+                        for _i in range(_n)
+                    ]
+                    logger.info(
+                        "Stage 2: no lyrics_timed in DB; approximated timestamps "
+                        "for %d transcript lines (%.1fs / %d = %.2fs each)",
+                        _n, _audio_dur, _n, _step,
+                    )
+            else:
+                has_real_ts = any(
+                    float(t.get("end") or 0) > float(t.get("start") or 0)
+                    for t in timed_lyrics
+                )
+                if not has_real_ts:
                     _n = len(timed_lyrics)
                     _step = _audio_dur / _n
                     for _i, _t in enumerate(timed_lyrics):
                         _t["start"] = round(_i * _step, 3)
                         _t["end"] = round((_i + 1) * _step, 3)
                     logger.info(
-                        "Stage 2: generated approximate timestamps for %d lyric lines "
-                        "(%.1fs / %d = %.2fs each)",
+                        "Stage 2: timed_lyrics had no real timestamps; "
+                        "distributed %d lines evenly (%.1fs / %d = %.2fs each)",
                         _n, _audio_dur, _n, _step,
                     )
 

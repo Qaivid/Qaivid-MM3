@@ -39,8 +39,22 @@ class RhythmicAssemblyEngine:
 
         timeline: List[Dict[str, Any]] = []
         current_timestamp = 0.0
+        any_lyric_anchor_used = False
 
         for i, shot in enumerate(validated_storyboard):
+            # ── Per-shot lyric anchor (Task #105) ─────────────────────────────
+            # When Whisper timestamps are available for this shot, snap the
+            # lyric start to the nearest beat and advance current_timestamp to
+            # that position.  The monotonic max() prevents going backwards if a
+            # previous accumulated sum is already ahead (e.g. dense lyric lines).
+            lyric_ts = shot.get("lyric_start_seconds")
+            if lyric_ts is not None:
+                raw_snap = round(
+                    round(float(lyric_ts) / beat_duration) * beat_duration, 3
+                )
+                current_timestamp = max(raw_snap, current_timestamp)
+                any_lyric_anchor_used = True
+
             shot_intensity = self._clamp_float(
                 shot.get("intensity", self.DEFAULT_INTENSITY),
                 self.DEFAULT_INTENSITY,
@@ -123,76 +137,50 @@ class RhythmicAssemblyEngine:
 
             current_timestamp += synced_duration
 
-        # ── Lyric-anchor mode (Task #105) ─────────────────────────────────────
-        # When shots carry Whisper-derived lyric_start_seconds, anchor each
-        # shot's start_time directly to the lyric timestamp instead of
-        # relying on the accumulated beat-formula sum.  Durations become the
-        # gaps between consecutive lyric anchors, guaranteeing that the
-        # visual timeline is synchronised with actual vocal phrasing.
-        # When ≥50% of shots have anchors we commit to anchor mode and skip
-        # the proportional normalization pass (which would overwrite start times).
-        n_anchors = sum(
-            1 for s in validated_storyboard
-            if s.get("lyric_start_seconds") is not None
-        )
-        use_lyric_anchors = timeline and n_anchors >= len(validated_storyboard) * 0.5
-
-        if use_lyric_anchors:
+        # ── Lyric-anchor gap pass (Task #105) ─────────────────────────────────
+        # When any shots were anchored to Whisper timestamps, recompute each
+        # shot's duration as the gap to the next shot's start_time (at least
+        # one beat wide).  This eliminates any gaps or overlaps introduced by
+        # the beat-formula duration on anchored shots.  The proportional
+        # normalization pass (Task #104) is skipped because the anchors already
+        # establish the correct temporal span.
+        if any_lyric_anchor_used and timeline:
+            n_anchors = sum(
+                1 for s in validated_storyboard
+                if s.get("lyric_start_seconds") is not None
+            )
             logger.info(
-                "Lyric-anchor mode: %d/%d shots anchored to Whisper timestamps",
+                "Lyric-anchor gap pass: %d/%d shots anchored to Whisper timestamps",
                 n_anchors, len(validated_storyboard),
             )
-            # Build a monotonically non-decreasing list of start times.
-            # Beat-snap each lyric timestamp; never go backwards past the
-            # minimum gap (min_shot_duration) from the previous shot.
-            anchor_starts: List[float] = []
-            prev_end = 0.0
-            for s in validated_storyboard:
-                lts = s.get("lyric_start_seconds")
-                if lts is not None:
-                    raw = float(lts)
-                    snapped = round(round(raw / beat_duration) * beat_duration, 3)
-                    start = max(snapped, prev_end)
-                else:
-                    start = prev_end
-                anchor_starts.append(start)
-                prev_end = start + self.min_shot_duration
-
-            # Assign durations as gaps between consecutive anchor starts.
-            for i, entry in enumerate(timeline):
-                start = anchor_starts[i]
-                if i + 1 < len(anchor_starts):
-                    dur = max(self.min_shot_duration,
-                              round(anchor_starts[i + 1] - start, 3))
-                else:
-                    dur = (
-                        max(self.min_shot_duration, round(audio_duration - start, 3))
-                        if audio_duration > 0
-                        else entry["duration"]
-                    )
-                entry["start_time"] = round(start, 3)
-                entry["duration"] = round(dur, 3)
-                entry["end_time"] = round(start + dur, 3)
-                entry["start_beat"] = round(start / beat_duration)
-                entry["bar_index"] = int(start // bar_duration) + 1
-                entry["lyric_anchored"] = True
-
-            # Reconcile last shot against audio_duration.
-            if audio_duration > 0 and timeline:
-                last = timeline[-1]
+            for j in range(len(timeline) - 1):
+                gap = timeline[j + 1]["start_time"] - timeline[j]["start_time"]
+                dur = max(beat_duration, round(gap, 3))
+                timeline[j]["duration"] = round(dur, 3)
+                timeline[j]["end_time"] = round(timeline[j]["start_time"] + dur, 3)
+                timeline[j]["lyric_anchored"] = True
+            # Last shot: fill to audio_duration when known; else keep beat formula.
+            last = timeline[-1]
+            last["lyric_anchored"] = True
+            if audio_duration > 0:
+                last["duration"] = max(
+                    beat_duration, round(audio_duration - last["start_time"], 3)
+                )
+                last["end_time"] = round(last["start_time"] + last["duration"], 3)
+                # Absorb any beat-snap residual.
                 residual = round(audio_duration - last["end_time"], 3)
                 if abs(residual) > 0.05:
-                    adjusted = max(self.min_shot_duration,
-                                   round(last["duration"] + residual, 3))
-                    last["duration"] = adjusted
-                    last["end_time"] = round(last["start_time"] + adjusted, 3)
+                    last["duration"] = max(
+                        beat_duration, round(last["duration"] + residual, 3)
+                    )
+                    last["end_time"] = round(last["start_time"] + last["duration"], 3)
                     logger.debug(
-                        "Lyric-anchor reconciliation: residual=%.3fs applied to last shot",
+                        "Lyric-anchor reconciliation: residual=%.3fs absorbed by last shot",
                         residual,
                     )
             return timeline
 
-        # ── Audio-duration normalization (non-anchor mode) ────────────────────
+        # ── Audio-duration normalization (non-anchor mode, Task #104) ─────────
         # If the accumulated shot durations don't cover the full audio track,
         # scale them proportionally so they fill the audio exactly.  Beat-snap
         # is re-applied after scaling so the rhythm relationship is preserved,
