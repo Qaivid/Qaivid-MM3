@@ -2976,16 +2976,45 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                 fill_mode = settings.get("fill_mode", "crop")
                 if fill_mode == "blur-fill":
                     # Two-layer composite: blurred crop background + fitted foreground
-                    colour_node = f",{colour_expr}" if colour_expr else ""
-                    fc = (
-                        f"[0:v]split=2[_bg][_fg];"
-                        f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-                        f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
-                        f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
-                        f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
-                        f"[_blurred][_padded]overlay=0:0[_composed];"
-                        f"[_composed]{kb_expr}{colour_node}[vout]"
-                    )
+                    alpha = filter_intensity / 100.0
+                    if colour_expr and 0.0 < alpha < 1.0:
+                        # Partial intensity: blend after compose
+                        colour_node = (
+                            f"[_composed]split=2[_co][_cf];"
+                            f"[_cf]{colour_expr}[_cfilt];"
+                            f"[_co][_cfilt]blend=all_expr='A*{1-alpha:.6f}+B*{alpha:.6f}'[vkb];"
+                            f"[vkb]"
+                        )
+                        fc = (
+                            f"[0:v]split=2[_bg][_fg];"
+                            f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                            f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
+                            f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
+                            f"[_blurred][_padded]overlay=0:0[_composed];"
+                            f"{colour_node}{kb_expr}[vout]"
+                        )
+                    elif colour_expr and alpha > 0:
+                        colour_node = f",{colour_expr}"
+                        fc = (
+                            f"[0:v]split=2[_bg][_fg];"
+                            f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                            f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
+                            f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
+                            f"[_blurred][_padded]overlay=0:0[_composed];"
+                            f"[_composed]{kb_expr}{colour_node}[vout]"
+                        )
+                    else:
+                        fc = (
+                            f"[0:v]split=2[_bg][_fg];"
+                            f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                            f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
+                            f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
+                            f"[_blurred][_padded]overlay=0:0[_composed];"
+                            f"[_composed]{kb_expr}[vout]"
+                        )
                     cmd = [
                         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
                         "-loop", "1", "-i", str(still_path),
@@ -3003,19 +3032,40 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                         f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
                         f"crop={out_w}:{out_h}"
                     )
-                    vf_chain = f"{scale_pad},{kb_expr}"
-                    if colour_expr:
-                        vf_chain = f"{vf_chain},{colour_expr}"
-                    cmd = [
-                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-                        "-loop", "1", "-i", str(still_path),
-                        "-vf", vf_chain,
-                        "-t", str(dur),
-                        "-r", str(shot_fps),
-                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
-                        "-pix_fmt", "yuv420p", "-an",
-                        str(out_clip),
-                    ]
+                    alpha = filter_intensity / 100.0
+                    if colour_expr and 0.0 < alpha < 1.0:
+                        # Partial intensity: use filter_complex blend
+                        fc_crop = (
+                            f"[0:v]{scale_pad},{kb_expr}[zoomed];"
+                            f"[zoomed]split=2[_orig][_tofilt];"
+                            f"[_tofilt]{colour_expr}[_filt];"
+                            f"[_orig][_filt]blend=all_expr='A*{1-alpha:.6f}+B*{alpha:.6f}'[vout]"
+                        )
+                        cmd = [
+                            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                            "-loop", "1", "-i", str(still_path),
+                            "-filter_complex", fc_crop,
+                            "-map", "[vout]",
+                            "-t", str(dur),
+                            "-r", str(shot_fps),
+                            "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                            "-pix_fmt", "yuv420p", "-an",
+                            str(out_clip),
+                        ]
+                    else:
+                        vf_chain = f"{scale_pad},{kb_expr}"
+                        if colour_expr and alpha > 0:
+                            vf_chain = f"{vf_chain},{colour_expr}"
+                        cmd = [
+                            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                            "-loop", "1", "-i", str(still_path),
+                            "-vf", vf_chain,
+                            "-t", str(dur),
+                            "-r", str(shot_fps),
+                            "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                            "-pix_fmt", "yuv420p", "-an",
+                            str(out_clip),
+                        ]
                 subprocess.run(cmd, check=True, capture_output=True)
                 processed_clips.append(out_clip)
 

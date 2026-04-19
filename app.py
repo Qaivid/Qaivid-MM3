@@ -1928,7 +1928,7 @@ def advance_stage_5(project_id: str):
 
 # ── Post Production Routes (Task #100) ───────────────────────────────────────
 
-ALLOWED_LOGO = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_LOGO = {".png"}        # spec: PNG-only overlay slots
 ALLOWED_SRT  = {".srt", ".vtt"}
 
 

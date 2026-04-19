@@ -357,7 +357,7 @@
             <span class="pp-logo-uploaded" id="logo-fn-{{ slot_id }}"></span>
           </div>
           <div class="pp-upload-area">
-            <input type="file" accept="image/png,image/jpeg,image/webp"
+            <input type="file" accept="image/png"
                    id="logo-file-{{ slot_id }}" style="display:none;"
                    onchange="ppUploadLogo('{{ slot_id }}', this)">
             <button class="pp-upload-btn" onclick="document.getElementById('logo-file-{{ slot_id }}').click()">
@@ -838,17 +838,27 @@
   }, {{ config | tojson }});
 
   /* ── Restore controls from cfg ────────────────────────────────────────*/
+  /* ── ASS colour → CSS hex ────────────────────────────────────────────── */
+  function assToHex(ass) {
+    if (!ass) return '#ffffff';
+    const s = ass.replace(/^&[Hh]/,'');
+    const m = s.match(/^([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+    if (!m) return '#ffffff';
+    return '#' + m[4] + m[3] + m[2]; // AABBGGRR → #RRGGBB
+  }
+
   function restoreControls() {
     setVal('ctrl-kb-mode', cfg.ken_burns_mode || 'zoom-in');
     setVal('ctrl-transition', cfg.transition || 'crossfade');
     setVal('ctrl-trans-dur', cfg.transition_duration || 0.8);
     ppRangeVal('trans-dur', cfg.transition_duration || 0.8, 's');
     setVal('ctrl-quality', cfg.quality || '1080p');
-    setVal('ctrl-filt-intensity', cfg.filter_intensity || 100);
-    ppRangeVal('filt-intensity', cfg.filter_intensity || 100, '%');
+    setVal('ctrl-filt-intensity', cfg.filter_intensity !== undefined ? cfg.filter_intensity : 100);
+    ppRangeVal('filt-intensity', cfg.filter_intensity !== undefined ? cfg.filter_intensity : 100, '%');
 
     if (cfg.colour_filter) ppSelectFilter(cfg.colour_filter, true);
     if (cfg.aspect_ratio)  ppSelectAR(cfg.aspect_ratio, true);
+    if (cfg.fill_mode)     ppSelectFill(cfg.fill_mode);
 
     const s = cfg.subtitle_style || {};
     setVal('ctrl-sub-font', s.font || 'Arial');
@@ -858,12 +868,44 @@
     ppRangeVal('sub-outline', s.outline || 1.5, 'px');
     setVal('ctrl-sub-shadow', s.shadow || 0);
     ppRangeVal('sub-shadow', s.shadow || 0, 'px');
-    setVal('ctrl-sub-y', 90);
-    ppRangeVal('sub-y', 90, '%');
+
+    // Vertical position (margin_v → y%)
+    if (s.margin_v !== undefined) {
+      const yPct = Math.min(100, Math.max(0, 100 - Math.round(s.margin_v / 10.8)));
+      setVal('ctrl-sub-y', yPct);
+      ppRangeVal('sub-y', yPct, '%');
+    }
+    // Horizontal position + alignment
+    if (s.alignment !== undefined) setVal('ctrl-sub-align', s.alignment);
+    if (s.margin_l  !== undefined) { setVal('ctrl-sub-marginl', s.margin_l); ppRangeVal('sub-marginl', s.margin_l, 'px'); }
+    if (s.margin_r  !== undefined) { setVal('ctrl-sub-marginr', s.margin_r); ppRangeVal('sub-marginr', s.margin_r, 'px'); }
+
+    // Subtitle colours (ASS → CSS hex)
+    if (s.primary_colour) setVal('ctrl-sub-color', assToHex(s.primary_colour));
+    if (s.back_colour)    setVal('ctrl-sub-bg',    assToHex(s.back_colour));
+
+    // Subtitle animation
+    if (s.animation) setVal('ctrl-sub-anim', s.animation);
 
     if (cfg.srt_r2_key) {
       document.getElementById('srt-filename').textContent = '✓ Subtitle file loaded';
     }
+
+    // Restore logo controls for already-uploaded logos
+    ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
+      const logo = (cfg.logos || {})[slot];
+      if (!logo || !logo.r2_key) return;
+      const ctrl = document.getElementById('logo-ctrl-' + slot);
+      if (ctrl) ctrl.style.display = '';
+      const fn = document.getElementById('logo-fn-' + slot);
+      if (fn && logo.filename) fn.textContent = '✓ ' + logo.filename;
+      if (logo.width    !== undefined) { setVal('ctrl-logo-w-' + slot, logo.width); ppRangeVal('logo-w-' + slot, logo.width, 'px'); }
+      if (logo.height   !== undefined) { setVal('ctrl-logo-h-' + slot, logo.height); ppLogoHVal(slot, logo.height); }
+      if (logo.opacity  !== undefined) { const pct=Math.round(logo.opacity*100); setVal('ctrl-logo-op-' + slot, pct); ppRangeVal('logo-op-' + slot, pct, '%'); }
+      if (logo.x_offset !== undefined) { setVal('ctrl-logo-x-' + slot, logo.x_offset); ppRangeVal('logo-x-' + slot, logo.x_offset, 'px'); }
+      if (logo.y_offset !== undefined) { setVal('ctrl-logo-y-' + slot, logo.y_offset); ppRangeVal('logo-y-' + slot, logo.y_offset, 'px'); }
+    });
+
     // per-shot KB badges
     Object.keys(cfg.per_shot_kb || {}).forEach(idx => ppUpdateKBBadge(parseInt(idx)));
     // per-shot durations
