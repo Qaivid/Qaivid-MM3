@@ -313,6 +313,41 @@ def _camera_plan_clause(shot: dict) -> str:
     return _trim("Camera behaviour: " + ", ".join(bits), 120)
 
 
+_VERB_SIGNALS = re.compile(
+    r"\b(walks?|stands?|sits?|holds?|lifts?|drops?|turns?|looks?|reaches?|"
+    r"moves?|pauses?|stares?|leans?|touches?|pulls?|pushes?|runs?|falls?|"
+    r"steps?|crosses?|waits?|watches?|raises?|bows?|presses?|"
+    r"traces?|grips?|freezes?|slows?|breathes?|starts?|stops?|grabs?|"
+    r"slips?|breaks?|folds?|wraps?|checks?|sweeps?|opens?|closes?|"
+    r"gazes?|glances?|kneels?|collapses?|throws?|catches?|carries?|"
+    r"rests?|catches?|drifts?|settles?|hangs?|floats?|fills?|casts?|"
+    r"draws?|pulls?|shifts?|ripples?|glows?|lies?|leans?|faces?)\b",
+    re.IGNORECASE,
+)
+
+_VERB_FALLBACKS: Dict[str, str] = {
+    "face":        "turns face slightly away, eyes holding an unspoken thought",
+    "body":        "pauses mid-movement, weight shifting as something catches attention",
+    "environment": "light shifts across an empty space, carrying the mood of recent absence",
+    "macro":       "object catches available light, drawing focus to its worn surface",
+    "symbolic":    "silhouette stands at threshold between shadow and light",
+}
+
+
+def _has_verb(text: str) -> bool:
+    """Return True if the composed text contains at least one action verb."""
+    return bool(_VERB_SIGNALS.search(text))
+
+
+def _inject_verb_fallback(body: str, shot: dict) -> str:
+    """If body has no verb, prepend a fallback action sentence for the shot's mode."""
+    if _has_verb(body):
+        return body
+    mode = (shot.get("expression_mode") or shot.get("llm_expression_mode") or "face").lower()
+    fallback = _VERB_FALLBACKS.get(mode, _VERB_FALLBACKS["face"])
+    return f"{fallback.capitalize()}. {body}".strip()
+
+
 def compose_image_prompt(
     shot: dict,
     *,
@@ -403,6 +438,11 @@ def compose_image_prompt(
     body = _clean_text(body)
     body = re.sub(r"\.\.+", ".", body)
     body = re.sub(r"\s+", " ", body).strip()
+
+    # Verb validator: every still prompt must contain a concrete action verb.
+    # If none is found, a mode-appropriate fallback action is prepended so
+    # Flux always receives a verb-led description rather than a mood noun.
+    body = _inject_verb_fallback(body, shot)
 
     prompt = _attach_envelope(
         body,

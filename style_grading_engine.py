@@ -260,6 +260,8 @@ class StyleGradingEngine:
                     "shot_event": shot.get("shot_event"),
                     "shot_type": shot.get("shot_type", ""),
                     "shot_validation": shot.get("shot_validation"),
+                    "llm_expression_mode": shot.get("llm_expression_mode", ""),
+                    "variety_cap_reclassified": shot.get("variety_cap_reclassified", False),
                 }
             )
 

@@ -71,6 +71,18 @@ class VisualStoryboardEngine:
     _ENV_FRAMING_BIAS  = ("wide", "medium", "medium", "low_angle", "tracking", "wide")
     _SYMBOLIC_FRAMING_BIAS = ("detail", "evocative", "evocative", "evocative", "detail", "evocative")
 
+    # MM3.1 — shot_type (from ShotVarietyEngine) → expression_mode override
+    _SHOT_TYPE_TO_MODE: Dict[str, str] = {
+        "portrait":         "face",
+        "movement":         "body",
+        "over_shoulder":    "body",
+        "wide_environment": "environment",
+        "empty_frame":      "environment",
+        "object_detail":    "macro",
+        "reflection":       "symbolic",
+        "silhouette":       "symbolic",
+    }
+
     # =========================================================================
     # BODY LANGUAGE LOOKUP
     # =========================================================================
@@ -285,6 +297,13 @@ class VisualStoryboardEngine:
             self._prev_was_repeat = (shot["repeat_status"] == "repeat")
 
             mode = shot["expression_mode"]
+            # MM3.1: if the variety engine assigned a shot_type, let it drive
+            # expression_mode so framing tables actually enforce variety.
+            # Falls back to the GPT-4o expression_mode when shot_event is absent.
+            _variety_type = shot_event.get("shot_type", "")
+            if _variety_type and _variety_type in self._SHOT_TYPE_TO_MODE:
+                mode = self._SHOT_TYPE_TO_MODE[_variety_type]
+
             pending_cutaway = (
                 self._shots_since_env_cutaway >= 4
                 and mode in ("environment", "symbolic")
@@ -380,7 +399,8 @@ class VisualStoryboardEngine:
                     "function": shot["function"],
                     "repeat_status": shot["repeat_status"],
                     "intensity": shot["intensity"],
-                    "expression_mode": shot["expression_mode"],
+                    "expression_mode": mode,
+                    "llm_expression_mode": shot["expression_mode"],
                     "genre": ctx["input_type"],
                     "location_dna": ctx["location_dna"],
                     "visual_prompt": visual_prompt,
@@ -422,6 +442,51 @@ class VisualStoryboardEngine:
                     },
                 }
             )
+
+        return self._enforce_variety_caps(storyboard)
+
+    # =========================================================================
+    # MM3.1 VARIETY CAP ENFORCER
+    # =========================================================================
+
+    _VARIETY_CAPS: Dict[str, float] = {
+        "face":        0.30,
+        "body":        0.45,
+        "environment": 0.40,
+        "macro":       0.35,
+        "symbolic":    0.25,
+    }
+
+    _FALLBACK_ROTATION: List[str] = [
+        "body", "environment", "macro", "symbolic", "body", "environment",
+    ]
+
+    def _enforce_variety_caps(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Post-pass: if any expression_mode exceeds its cap, reclassify excess
+        shots to underrepresented categories.  Only fires when the variety
+        engine is active (shot_type present); otherwise returns storyboard as-is.
+        """
+        if not storyboard or not any(s.get("shot_type") for s in storyboard):
+            return storyboard
+
+        total = len(storyboard)
+        counts: Dict[str, int] = {m: 0 for m in self._VARIETY_CAPS}
+        for s in storyboard:
+            m = s.get("expression_mode", "face")
+            if m in counts:
+                counts[m] += 1
+
+        rotation_idx = 0
+        for s in storyboard:
+            m = s.get("expression_mode", "face")
+            cap = self._VARIETY_CAPS.get(m, 1.0)
+            if m in counts and counts[m] / total > cap:
+                new_mode = self._FALLBACK_ROTATION[rotation_idx % len(self._FALLBACK_ROTATION)]
+                rotation_idx += 1
+                counts[m] -= 1
+                counts[new_mode] = counts.get(new_mode, 0) + 1
+                s["expression_mode"] = new_mode
+                s["variety_cap_reclassified"] = True
 
         return storyboard
 
