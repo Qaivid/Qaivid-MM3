@@ -75,8 +75,8 @@
              id="pp-thumb-{{ shot.shot_index }}"
              data-idx="{{ shot.shot_index }}"
              data-dur="{{ shot.duration or 4.0 }}"
-             onclick="ppJumpTo({{ loop.index0 }})"
-             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s">
+             onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
+             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s — click to configure Ken Burns">
           {% if shot.url %}
           <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
           {% else %}
@@ -195,11 +195,55 @@
         <div class="pp-ctrl-group">
           <label class="pp-ctrl-label">Font</label>
           <select class="pp-ctrl-select" id="ctrl-sub-font" onchange="ppConfigChange(); ppSubPreview()">
-            <option>Arial</option><option>Georgia</option><option>Impact</option>
-            <option>Verdana</option><option>Trebuchet MS</option><option>Courier New</option>
-            <option>Times New Roman</option><option>Comic Sans MS</option>
-            <option>Palatino</option><option>Garamond</option>
-            <option>Franklin Gothic Medium</option><option>Gill Sans</option>
+            <optgroup label="Sans-Serif">
+              <option>Arial</option>
+              <option>Verdana</option>
+              <option>Trebuchet MS</option>
+              <option>Franklin Gothic Medium</option>
+              <option>Gill Sans</option>
+              <option>Calibri</option>
+              <option>Segoe UI</option>
+              <option>Tahoma</option>
+              <option>Century Gothic</option>
+              <option>Futura</option>
+            </optgroup>
+            <optgroup label="Serif">
+              <option>Georgia</option>
+              <option>Times New Roman</option>
+              <option>Palatino</option>
+              <option>Garamond</option>
+              <option>Book Antiqua</option>
+              <option>Baskerville</option>
+              <option>Didot</option>
+            </optgroup>
+            <optgroup label="Display / Impact">
+              <option>Impact</option>
+              <option>Anton</option>
+              <option>Bebas Neue</option>
+              <option>Black Han Sans</option>
+              <option>Oswald</option>
+            </optgroup>
+            <optgroup label="Monospace">
+              <option>Courier New</option>
+              <option>Consolas</option>
+              <option>Lucida Console</option>
+            </optgroup>
+            <optgroup label="Casual">
+              <option>Comic Sans MS</option>
+              <option>Marker Felt</option>
+            </optgroup>
+            <optgroup label="Multilingual (Noto)">
+              <option value="Noto Sans">Noto Sans (Latin + CJK)</option>
+              <option value="Noto Serif">Noto Serif (Latin + CJK)</option>
+              <option value="Noto Sans JP">Noto Sans JP (Japanese)</option>
+              <option value="Noto Sans KR">Noto Sans KR (Korean)</option>
+              <option value="Noto Sans SC">Noto Sans SC (Simplified Chinese)</option>
+              <option value="Noto Sans TC">Noto Sans TC (Traditional Chinese)</option>
+              <option value="Noto Sans Arabic">Noto Sans Arabic</option>
+              <option value="Noto Sans Devanagari">Noto Sans Devanagari (Hindi)</option>
+              <option value="Noto Sans Hebrew">Noto Sans Hebrew</option>
+              <option value="Noto Sans Thai">Noto Sans Thai</option>
+            </optgroup>
           </select>
         </div>
 
@@ -262,6 +306,7 @@
             <option value="typewriter">Typewriter</option>
             <option value="slide-up">Slide Up</option>
             <option value="pop">Pop</option>
+            <option value="karaoke">Karaoke (word-by-word colour highlight)</option>
           </select>
         </div>
 
@@ -298,12 +343,41 @@
                        oninput="ppRangeVal('logo-w-{{ slot_id }}',this.value,'px'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
               </div>
               <div>
+                <label class="pp-ctrl-label">Height (auto=-1)
+                  <span class="pp-ctrl-val" id="val-logo-h-{{ slot_id }}">auto</span>
+                </label>
+                <input type="range" class="pp-range" id="ctrl-logo-h-{{ slot_id }}"
+                       min="-1" max="400" step="10" value="-1"
+                       oninput="ppLogoHVal('{{ slot_id }}',this.value); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+            </div>
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
                 <label class="pp-ctrl-label">Opacity
                   <span class="pp-ctrl-val" id="val-logo-op-{{ slot_id }}">90%</span>
                 </label>
                 <input type="range" class="pp-range" id="ctrl-logo-op-{{ slot_id }}"
                        min="0" max="100" step="5" value="90"
                        oninput="ppRangeVal('logo-op-{{ slot_id }}',this.value,'%'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+              <div></div>
+            </div>
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">X Offset
+                  <span class="pp-ctrl-val" id="val-logo-x-{{ slot_id }}">0px</span>
+                </label>
+                <input type="range" class="pp-range" id="ctrl-logo-x-{{ slot_id }}"
+                       min="-200" max="200" step="5" value="0"
+                       oninput="ppRangeVal('logo-x-{{ slot_id }}',this.value,'px'); ppConfigChange()">
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Y Offset
+                  <span class="pp-ctrl-val" id="val-logo-y-{{ slot_id }}">0px</span>
+                </label>
+                <input type="range" class="pp-range" id="ctrl-logo-y-{{ slot_id }}"
+                       min="-200" max="200" step="5" value="0"
+                       oninput="ppRangeVal('logo-y-{{ slot_id }}',this.value,'px'); ppConfigChange()">
               </div>
             </div>
           </div>
@@ -353,6 +427,19 @@
                     onclick="ppSelectAR('{{ ar }}')">{{ arl }}</button>
             {% endfor %}
           </div>
+        </div>
+
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Fill Mode</label>
+          <div class="pp-ar-grid">
+            <button class="pp-ar-chip active" data-fill="crop" onclick="ppSelectFill('crop')">
+              Crop to fill
+            </button>
+            <button class="pp-ar-chip" data-fill="blur-fill" onclick="ppSelectFill('blur-fill')">
+              Blur fill (letterbox)
+            </button>
+          </div>
+          <p class="pp-ctrl-hint">Blur fill adds blurred edges instead of cropping when the still doesn't match the target ratio.</p>
         </div>
 
         <div class="pp-ctrl-group">
@@ -706,6 +793,7 @@
     colour_filter: 'original',
     filter_intensity: 100,
     aspect_ratio: '16:9',
+    fill_mode: 'crop',
     quality: '1080p',
     logos: {},
     srt_r2_key: '',
@@ -764,7 +852,31 @@
     dirty = true;
     document.getElementById('btn-save').classList.add('dirty');
   }
-  window.ppConfigChange = function() { syncCfgFromControls(); markDirty(); ppApplyFilterPreview(); ppUpdateKBPreview(); };
+  /* ── Debounced autosave ─────────────────────────────────────────────── */
+  let _autosaveTimer = null;
+  function scheduleAutosave() {
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(async () => {
+      if (!dirty) return;
+      syncCfgFromControls();
+      await fetch(`/project/${PID}/postprod/save`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
+        body: JSON.stringify(cfg),
+      });
+      dirty = false;
+      const btn = document.getElementById('btn-save');
+      btn.classList.remove('dirty');
+    }, 1500);
+  }
+
+  window.ppConfigChange = function() {
+    syncCfgFromControls();
+    markDirty();
+    ppApplyFilterPreview();
+    ppUpdateKBPreview();
+    scheduleAutosave();
+  };
 
   function syncCfgFromControls() {
     cfg.ken_burns_mode        = document.getElementById('ctrl-kb-mode').value;
@@ -774,15 +886,31 @@
     cfg.quality               = document.getElementById('ctrl-quality').value;
 
     const s = cfg.subtitle_style || {};
-    s.font      = document.getElementById('ctrl-sub-font').value;
-    s.font_size = parseInt(document.getElementById('ctrl-sub-size').value);
-    s.outline   = parseFloat(document.getElementById('ctrl-sub-outline').value);
-    s.shadow    = parseFloat(document.getElementById('ctrl-sub-shadow').value);
-    const yPct  = parseInt(document.getElementById('ctrl-sub-y').value);
-    s.margin_v  = Math.round((100 - yPct) * 10.8); // approx pixels from bottom
+    s.font       = document.getElementById('ctrl-sub-font').value;
+    s.font_size  = parseInt(document.getElementById('ctrl-sub-size').value);
+    s.outline    = parseFloat(document.getElementById('ctrl-sub-outline').value);
+    s.shadow     = parseFloat(document.getElementById('ctrl-sub-shadow').value);
+    const yPct   = parseInt(document.getElementById('ctrl-sub-y').value);
+    s.margin_v   = Math.round((100 - yPct) * 10.8);
     s.primary_colour = hexToAss(document.getElementById('ctrl-sub-color').value);
     s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, 128);
+    s.animation  = document.getElementById('ctrl-sub-anim')?.value || 'none';
     cfg.subtitle_style = s;
+
+    // Logo controls (height, x_offset, y_offset per slot)
+    ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
+      if (!cfg.logos || !cfg.logos[slot]) return;
+      const w  = document.getElementById(`ctrl-logo-w-${slot}`);
+      const h  = document.getElementById(`ctrl-logo-h-${slot}`);
+      const op = document.getElementById(`ctrl-logo-op-${slot}`);
+      const x  = document.getElementById(`ctrl-logo-x-${slot}`);
+      const y  = document.getElementById(`ctrl-logo-y-${slot}`);
+      if (w)  cfg.logos[slot].width    = parseInt(w.value);
+      if (h)  cfg.logos[slot].height   = parseInt(h.value);
+      if (op) cfg.logos[slot].opacity  = parseInt(op.value) / 100;
+      if (x)  cfg.logos[slot].x_offset = parseInt(x.value);
+      if (y)  cfg.logos[slot].y_offset = parseInt(y.value);
+    });
   }
 
   function hexToAss(hex, alpha) {
@@ -925,6 +1053,12 @@
 
   window.ppUpdateKBPreview = function() { renderShot(); };
 
+  window.ppThumbClick = function(shotIdx, listIdx) {
+    // Jump to the shot AND open its Ken Burns popover
+    ppJumpTo(listIdx);
+    ppOpenKBPop(shotIdx);
+  };
+
   window.ppPrev = function() { ppJumpTo(currentIdx - 1); };
   window.ppNext = function() { ppJumpTo(currentIdx + 1); };
 
@@ -1058,6 +1192,21 @@
     if (kbImg) kbImg.style.filter = baseCss ? `${baseCss} opacity(${intens})` : '';
     const label = document.getElementById('pp-filter-preview-label');
     if (label) label.textContent = filt.replace(/-/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+  };
+
+  /* ── Fill mode ──────────────────────────────────────────────────────── */
+  window.ppSelectFill = function(mode) {
+    cfg.fill_mode = mode;
+    document.querySelectorAll('[data-fill]').forEach(c => {
+      c.classList.toggle('active', c.dataset.fill === mode);
+    });
+    markDirty(); scheduleAutosave();
+  };
+
+  /* ── Logo height display helper ─────────────────────────────────────── */
+  window.ppLogoHVal = function(slot, v) {
+    const el = document.getElementById('val-logo-h-' + slot);
+    if (el) el.textContent = parseInt(v) === -1 ? 'auto' : v + 'px';
   };
 
   /* ── Aspect ratio ───────────────────────────────────────────────────── */

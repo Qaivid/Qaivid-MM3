@@ -2767,6 +2767,95 @@ def _kb_expr(mode: Optional[str], shot_fps: int, shot_dur: float) -> str:
     return f"{base}:d={n_frames}:fps={shot_fps}:s=1920x1080"
 
 
+def _srt_time_to_cs(t: str) -> int:
+    """Convert SRT timestamp string to centiseconds."""
+    import re as _re
+    m = _re.match(r'(\d+):(\d+):(\d+),(\d+)', t)
+    if not m:
+        return 0
+    h, mi, s, ms = m.groups()
+    return (int(h) * 3600 + int(mi) * 60 + int(s)) * 100 + int(ms) // 10
+
+
+def _srt_time_to_ass(t: str) -> str:
+    """Convert SRT timestamp to ASS time format (H:MM:SS.cc)."""
+    import re as _re
+    m = _re.match(r'(\d+):(\d+):(\d+),(\d+)', t)
+    if not m:
+        return "0:00:00.00"
+    h, mi, s, ms = m.groups()
+    return f"{int(h)}:{mi}:{s}.{ms[:2]}"
+
+
+def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
+    """Convert an SRT file to ASS format with word-by-word karaoke fill timing."""
+    import re as _re
+    content = srt_bytes.decode("utf-8", errors="replace")
+
+    font      = style.get("font", "Arial")
+    font_size = int(style.get("font_size", 24))
+    primary_c = style.get("primary_colour", "&H00FFFFFF")
+    outline   = float(style.get("outline", 1.5))
+    shadow    = float(style.get("shadow", 0))
+    margin_v  = int(style.get("margin_v", 40))
+
+    # Strip the leading &H from colour to get BBGGRR hex
+    def _c(col: str) -> str:
+        return col.lstrip("&H").lstrip("&h")
+
+    ass_header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "PlayResX: 1920\n"
+        "PlayResY: 1080\n"
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,"
+        " BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle,"
+        " BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,{font},{font_size},"
+        f"&H{_c(primary_c)},&H0000FFFF,&H00000000,&H80000000,"
+        f"0,0,0,0,100,100,0,0,1,{outline:.1f},{shadow:.1f},2,10,10,{margin_v},1\n"
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+
+    blocks = _re.split(r'\n\n+', content.strip())
+    event_lines: list[str] = []
+
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        parts = block.split("\n", 2)
+        if len(parts) < 3:
+            continue
+        _, timecode, text_raw = parts[0], parts[1], parts[2]
+
+        m = _re.match(
+            r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})',
+            timecode,
+        )
+        if not m:
+            continue
+
+        dur_cs = max(1, _srt_time_to_cs(m.group(2)) - _srt_time_to_cs(m.group(1)))
+        clean  = _re.sub(r'<[^>]+>', '', text_raw.replace("\n", " ")).strip()
+        words  = clean.split()
+        if not words:
+            continue
+
+        per_word_cs = max(1, dur_cs // len(words))
+        kar_text = "".join(f"{{\\kf{per_word_cs}}}{w} " for w in words).rstrip()
+
+        s_time = _srt_time_to_ass(m.group(1))
+        e_time = _srt_time_to_ass(m.group(2))
+        event_lines.append(f"Dialogue: 0,{s_time},{e_time},Default,,0,0,0,,{kar_text}")
+
+    return ass_header + "\n".join(event_lines) + "\n"
+
+
 def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
     """Background job: assembles approved stills into a polished quick video MP4."""
     import shutil
@@ -2873,25 +2962,50 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                 n_frames  = max(1, int(shot_fps * dur))
                 out_clip  = work_dir / f"clip_{i:04d}.mp4"
 
-                # scale + pad to fill chosen aspect ratio, then apply Ken Burns
-                scale_pad = (
-                    f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-                    f"crop={out_w}:{out_h}"
-                )
-                vf_chain = f"{scale_pad},{kb_expr}"
-                if colour_expr:
-                    vf_chain = f"{vf_chain},{colour_expr}"
-
-                cmd = [
-                    ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-                    "-loop", "1", "-i", str(still_path),
-                    "-vf", vf_chain,
-                    "-t", str(dur),
-                    "-r", str(shot_fps),
-                    "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
-                    "-pix_fmt", "yuv420p", "-an",
-                    str(out_clip),
-                ]
+                # scale + fill to chosen aspect ratio, then apply Ken Burns
+                fill_mode = settings.get("fill_mode", "crop")
+                if fill_mode == "blur-fill":
+                    # Two-layer composite: blurred crop background + fitted foreground
+                    colour_node = f",{colour_expr}" if colour_expr else ""
+                    fc = (
+                        f"[0:v]split=2[_bg][_fg];"
+                        f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                        f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
+                        f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                        f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
+                        f"[_blurred][_padded]overlay=0:0[_composed];"
+                        f"[_composed]{kb_expr}{colour_node}[vout]"
+                    )
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-loop", "1", "-i", str(still_path),
+                        "-filter_complex", fc,
+                        "-map", "[vout]",
+                        "-t", str(dur),
+                        "-r", str(shot_fps),
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-pix_fmt", "yuv420p", "-an",
+                        str(out_clip),
+                    ]
+                else:
+                    # Default: crop to fill
+                    scale_pad = (
+                        f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                        f"crop={out_w}:{out_h}"
+                    )
+                    vf_chain = f"{scale_pad},{kb_expr}"
+                    if colour_expr:
+                        vf_chain = f"{vf_chain},{colour_expr}"
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-loop", "1", "-i", str(still_path),
+                        "-vf", vf_chain,
+                        "-t", str(dur),
+                        "-r", str(shot_fps),
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-pix_fmt", "yuv420p", "-an",
+                        str(out_clip),
+                    ]
                 subprocess.run(cmd, check=True, capture_output=True)
                 processed_clips.append(out_clip)
 
@@ -2998,14 +3112,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                 logo_inputs = []
                 logo_idx = 1
 
-                slot_positions = {
-                    "top-left":     ("20", "20"),
-                    "top-right":    ("main_w-overlay_w-20", "20"),
-                    "bottom-left":  ("20", "main_h-overlay_h-20"),
-                    "bottom-right": ("main_w-overlay_w-20", "main_h-overlay_h-20"),
-                }
-
-                valid_logos: list[tuple[str, dict, str, str]] = []
+                valid_logos: list[tuple[str, dict, str]] = []
                 for slot, logo_cfg in logo_slots.items():
                     r2_key = (logo_cfg or {}).get("r2_key", "")
                     if not r2_key:
@@ -3014,8 +3121,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                         logo_data = r2_storage.download_bytes(r2_key)
                         logo_path = work_dir / f"logo_{slot}.png"
                         logo_path.write_bytes(logo_data)
-                        pos = slot_positions.get(slot, ("20", "20"))
-                        valid_logos.append((slot, logo_cfg, str(logo_path), pos))
+                        valid_logos.append((slot, logo_cfg, str(logo_path)))
                     except Exception:
                         logger.warning("Quick video: could not download logo for slot %s", slot)
 
@@ -3023,20 +3129,41 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     logo_out = work_dir / "with_logos.mp4"
                     cmd_parts = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
                                  "-i", str(current_video)]
-                    for _slot, _cfg, logo_path, _pos in valid_logos:
+                    for _slot, _cfg, logo_path in valid_logos:
                         cmd_parts += ["-i", logo_path]
 
+                    # Per-slot corner base positions (expressions use overlay_w/overlay_h after scale)
+                    _corner_x = {
+                        "top-left":     "20",
+                        "top-right":    "main_w-overlay_w-20",
+                        "bottom-left":  "20",
+                        "bottom-right": "main_w-overlay_w-20",
+                    }
+                    _corner_y = {
+                        "top-left":     "20",
+                        "top-right":    "20",
+                        "bottom-left":  "main_h-overlay_h-20",
+                        "bottom-right": "main_h-overlay_h-20",
+                    }
                     overlay_filter = ""
                     prev = "[0:v]"
-                    for li, (_slot, logo_cfg, _lp, pos) in enumerate(valid_logos):
-                        opacity = float((logo_cfg or {}).get("opacity", 0.9))
-                        width   = int((logo_cfg or {}).get("width", 120))
+                    for li, (_slot, logo_cfg, _lp) in enumerate(valid_logos):
+                        opacity   = float((logo_cfg or {}).get("opacity", 0.9))
+                        width     = int((logo_cfg or {}).get("width", 120))
+                        height    = int((logo_cfg or {}).get("height", -1))  # -1 = auto
+                        x_offset  = int((logo_cfg or {}).get("x_offset", 0))
+                        y_offset  = int((logo_cfg or {}).get("y_offset", 0))
+                        cx        = _corner_x.get(_slot, "20")
+                        cy        = _corner_y.get(_slot, "20")
+                        # Build offset-adjusted position expression
+                        ox = f"({cx})+({x_offset})" if x_offset else cx
+                        oy = f"({cy})+({y_offset})" if y_offset else cy
                         lbl_in  = f"[{li+1}:v]"
                         lbl_out = f"[ov{li}]" if li < len(valid_logos) - 1 else "[vfinal]"
                         overlay_filter += (
-                            f"{lbl_in}scale={width}:-1[ls{li}];"
+                            f"{lbl_in}scale={width}:{height}[ls{li}];"
                             f"[ls{li}]format=rgba,colorchannelmixer=aa={opacity:.2f}[la{li}];"
-                            f"{prev}[la{li}]overlay={pos[0]}:{pos[1]}{lbl_out};"
+                            f"{prev}[la{li}]overlay={ox}:{oy}{lbl_out};"
                         )
                         prev = lbl_out
 
@@ -3089,34 +3216,46 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             if srt_r2_key and r2_storage.r2_available():
                 try:
                     srt_data = r2_storage.download_bytes(srt_r2_key)
-                    srt_path = work_dir / "subtitles.srt"
-                    srt_path.write_bytes(srt_data)
+                    sub_style  = settings.get("subtitle_style") or {}
+                    animation  = sub_style.get("animation", "none")
 
-                    sub_style = settings.get("subtitle_style") or {}
-                    font_name  = sub_style.get("font", "Arial")
-                    font_size  = int(sub_style.get("font_size", 24))
-                    primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
-                    outline_c  = sub_style.get("outline_colour", "&H00000000")
-                    back_c     = sub_style.get("back_colour", "&H80000000")
-                    bold       = int(sub_style.get("bold", 0))
-                    outline    = float(sub_style.get("outline", 1.5))
-                    shadow     = float(sub_style.get("shadow", 0))
-                    alignment  = int(sub_style.get("alignment", 2))
-                    margin_v   = int(sub_style.get("margin_v", 40))
+                    if animation == "karaoke":
+                        # Convert SRT → ASS with karaoke word-by-word fill timing
+                        ass_content = _srt_to_ass_karaoke(srt_data, sub_style)
+                        sub_path = work_dir / "subtitles.ass"
+                        sub_path.write_text(ass_content, encoding="utf-8")
+                        sub_filter = f"ass={sub_path.as_posix()}"
+                    else:
+                        srt_path = work_dir / "subtitles.srt"
+                        srt_path.write_bytes(srt_data)
 
-                    force_style = (
-                        f"FontName={font_name},FontSize={font_size},"
-                        f"PrimaryColour={primary_c},OutlineColour={outline_c},"
-                        f"BackColour={back_c},Bold={bold},"
-                        f"Outline={outline},Shadow={shadow},"
-                        f"Alignment={alignment},MarginV={margin_v}"
-                    )
+                        font_name  = sub_style.get("font", "Arial")
+                        font_size  = int(sub_style.get("font_size", 24))
+                        primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
+                        outline_c  = sub_style.get("outline_colour", "&H00000000")
+                        back_c     = sub_style.get("back_colour", "&H80000000")
+                        bold       = int(sub_style.get("bold", 0))
+                        outline    = float(sub_style.get("outline", 1.5))
+                        shadow     = float(sub_style.get("shadow", 0))
+                        alignment  = int(sub_style.get("alignment", 2))
+                        margin_v   = int(sub_style.get("margin_v", 40))
+
+                        force_style = (
+                            f"FontName={font_name},FontSize={font_size},"
+                            f"PrimaryColour={primary_c},OutlineColour={outline_c},"
+                            f"BackColour={back_c},Bold={bold},"
+                            f"Outline={outline},Shadow={shadow},"
+                            f"Alignment={alignment},MarginV={margin_v}"
+                        )
+                        sub_filter = (
+                            f"subtitles={srt_path.as_posix()}:force_style='{force_style}'"
+                        )
 
                     subtitled = work_dir / "subtitled.mp4"
                     cmd = [
                         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
                         "-i", str(current_video),
-                        "-vf", f"subtitles={srt_path.as_posix()}:force_style='{force_style}'",
+                        "-vf", sub_filter,
                         "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
                         "-c:a", "copy", str(subtitled),
                     ]
