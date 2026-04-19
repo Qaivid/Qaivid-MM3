@@ -522,19 +522,18 @@ class CinematicBeatEngine:
     ) -> str:
         """Classify how the visual strategy relates to the lyric text.
 
-        Returns one of: literal | metaphor | contrast | amplify | symbol | echo
-
-        - echo:     repeated section where the visual echoes earlier imagery
-        - symbol:   shot uses abstract / displaced visual language
-        - contrast: the visual provides emotional counterpoint to the lyric
-        - amplify:  visual intensifies the lyric's emotional weight
-        - metaphor: interpretive / subtext-driven treatment
-        - literal:  visual depicts what the lyric describes directly
+        Canonical MM3.1 enum:
+          literal     — visual depicts what the lyric describes directly
+          indirect    — interpretive / subtext-driven treatment
+          symbolic    — shot uses abstract / displaced visual language
+          contrast    — visual provides emotional counterpoint to the lyric
+          memory      — repeated section echoing earlier imagery
+          performance — high-intensity amplification of the lyric's emotion
         """
         if repeat_status == "repeat":
-            return "echo"
+            return "memory"
         if expression_mode == "symbolic":
-            return "symbol"
+            return "symbolic"
         if visual_contrast and any(
             kw in visual_contrast for kw in ("against", "contrast", "opposite")
         ):
@@ -542,9 +541,9 @@ class CinematicBeatEngine:
         if intensity >= 0.75 or function in (
             "chorus_reveal", "emotional_climax", "build_release"
         ):
-            return "amplify"
+            return "performance"
         if function in ("narrative_turn", "metaphor_development", "thematic_anchor"):
-            return "metaphor"
+            return "indirect"
         return "literal"
 
     def _infer_camera_motive(
