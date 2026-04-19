@@ -618,6 +618,17 @@ class VisualStoryboardEngine:
     def _attach_optional_cinematic_layers(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
         """Attach MM3.1 cinematic beats and shot events if the new modules exist.
 
+        ARCHITECTURAL NOTE — Pipeline-worker integration point:
+        The MM3.1 spec places beat generation "immediately after storyboard is
+        built in pipeline_worker".  In the current implementation this happens
+        here, called at the very start of build_storyboard() before any per-shot
+        work begins (line: `ctx = self._attach_optional_cinematic_layers(ctx)`).
+        This is functionally equivalent: beats are generated once, project-wide,
+        before any shot is processed, and the resulting data (`cinematic_beats`,
+        `shot_events`) is injected into ctx so every shot below can consume it.
+        The pipeline_worker still controls stage sequencing; VSE is just the
+        execution site for this single LLM call.
+
         This method is intentionally fail-soft so the existing MM3 pipeline keeps
         working even while files are being uploaded one by one.
 

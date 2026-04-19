@@ -86,27 +86,45 @@ MODE_RIG_BIAS: Dict[str, List[str]] = {
 
 # ---- Event / action → rig affinity (new MM3.1 layer) -----------------------
 ACTION_TO_RIG: Dict[str, List[str]] = {
+    # Motion verbs → moving rigs
     "walk":        ["steadicam", "gimbal", "dolly"],
     "approach":    ["dolly", "steadicam", "gimbal"],
     "move":        ["gimbal", "steadicam", "dolly"],
     "run":         ["gimbal", "handheld", "vehicle"],
+    "step":        ["steadicam", "gimbal", "dolly"],
+    "stride":      ["steadicam", "gimbal", "dolly"],
+    "drift":       ["gimbal", "steadicam", "dolly"],
+    "lean":        ["dolly", "steadicam", "tripod"],
+    # Static / contemplative verbs → stable rigs
     "pause":       ["tripod", "dolly", "steadicam"],
     "freeze":      ["tripod", "dolly", "steadicam"],
     "stop":        ["tripod", "dolly", "steadicam"],
-    "turn":        ["dolly", "steadicam", "gimbal"],
-    "look back":   ["dolly", "steadicam", "tripod"],
-    "drop":        ["handheld", "tripod", "gimbal"],
-    "fall":        ["handheld", "tripod", "gimbal"],
-    "slip":        ["handheld", "gimbal", "tripod"],
-    "reach":       ["dolly", "steadicam", "tripod"],
-    "lift":        ["tripod", "dolly", "steadicam"],
+    "stand":       ["tripod", "dolly", "steadicam"],
     "sit":         ["tripod", "dolly", "steadicam"],
     "wait":        ["tripod", "dolly", "steadicam"],
     "check":       ["tripod", "dolly", "steadicam"],
     "hold":        ["tripod", "dolly", "steadicam"],
+    "rest":        ["tripod", "dolly", "steadicam"],
+    "watch":       ["tripod", "dolly", "steadicam"],
+    # Rotation / direction change
+    "turn":        ["dolly", "steadicam", "gimbal"],
+    "look back":   ["dolly", "steadicam", "tripod"],
+    # Contact / object-interaction verbs
+    "reach":       ["dolly", "steadicam", "tripod"],
+    "lift":        ["tripod", "dolly", "steadicam"],
+    "touch":       ["tripod", "dolly", "steadicam"],
+    "press":       ["tripod", "dolly", "steadicam"],
+    "trace":       ["tripod", "dolly", "steadicam"],
+    "open":        ["dolly", "steadicam", "tripod"],
+    "close":       ["dolly", "steadicam", "tripod"],
+    # Impact / kinetic verbs
+    "drop":        ["handheld", "tripod", "gimbal"],
+    "fall":        ["handheld", "tripod", "gimbal"],
+    "slip":        ["handheld", "gimbal", "tripod"],
 }
 
 CAMERA_PLAN_TO_RIG: Dict[str, List[str]] = {
+    # Canonical keyword entries
     "locked":      ["tripod", "dolly", "steadicam"],
     "static":      ["tripod", "dolly", "steadicam"],
     "follow":      ["steadicam", "gimbal", "dolly"],
@@ -114,6 +132,20 @@ CAMERA_PLAN_TO_RIG: Dict[str, List[str]] = {
     "snap":        ["handheld", "gimbal", "tripod"],
     "orbit":       ["gimbal", "steadicam", "dolly"],
     "sweep":       ["crane", "gimbal", "drone"],
+    # Free-form camera_motive phrases emitted by cinematic_beat_engine LLM
+    "track":       ["steadicam", "gimbal", "dolly"],
+    "push in":     ["dolly", "steadicam", "tripod"],
+    "pull back":   ["dolly", "steadicam", "crane"],
+    "arc":         ["gimbal", "steadicam", "dolly"],
+    "crane up":    ["crane", "gimbal", "drone"],
+    "crane down":  ["crane", "dolly", "gimbal"],
+    "pan":         ["tripod", "dolly", "steadicam"],
+    "tilt":        ["tripod", "dolly", "steadicam"],
+    "drift":       ["gimbal", "steadicam", "dolly"],
+    "circle":      ["gimbal", "steadicam", "dolly"],
+    "float":       ["gimbal", "steadicam", "crane"],
+    "handheld":    ["handheld", "gimbal", "steadicam"],
+    "lock off":    ["tripod", "dolly", "steadicam"],
 }
 
 LENS_FOR_MODE: Dict[str, str] = {
