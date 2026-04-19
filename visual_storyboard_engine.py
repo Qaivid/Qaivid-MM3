@@ -468,10 +468,32 @@ class VisualStoryboardEngine:
         "symbolic":    0.10,
     }
 
+    # Canonical shot_type string per expression_mode (mirrors ShotVarietyEngine)
+    _MODE_TO_SHOT_TYPE: Dict[str, str] = {
+        "face":        "portrait",
+        "body":        "movement",
+        "environment": "environment",
+        "macro":       "object_detail",
+        "symbolic":    "symbolic",
+    }
+
+    # Canonical framing directive per expression_mode — applied when the
+    # cap enforcer reclassifies a shot so the visual framing changes too.
+    _MODE_TO_FRAMING_DIRECTIVE: Dict[str, str] = {
+        "face":        "medium close-up, slightly below eye line, soft focus on expression",
+        "body":        "full body in frame, dynamic angle, movement through negative space",
+        "environment": "wide establishing shot, static or slow pan, environment as subject",
+        "macro":       "extreme close-up, shallow depth of field, detail fills frame",
+        "symbolic":    "silhouette mid-shot, backlit, subject abstracted in space",
+    }
+
     def _enforce_variety_caps(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Post-pass: reclassify any over-cap shots to the most underrepresented
-        category.  Only fires when the variety engine is active (shot_type
-        present on at least one shot); otherwise returns storyboard as-is.
+        category, updating expression_mode, shot_type, and framing_directive
+        together so the visual signal (not just metadata) changes.
+
+        Only fires when the variety engine is active (shot_type present on at
+        least one shot); otherwise returns storyboard as-is.
         """
         if not storyboard or not any(s.get("shot_type") for s in storyboard):
             return storyboard
@@ -502,7 +524,10 @@ class VisualStoryboardEngine:
             if best_mode != m:
                 counts[m] -= 1
                 counts[best_mode] = counts.get(best_mode, 0) + 1
+                # Update expression_mode + its derived visual fields together
                 s["expression_mode"] = best_mode
+                s["shot_type"] = self._MODE_TO_SHOT_TYPE.get(best_mode, best_mode)
+                s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(best_mode, "")
                 s["variety_cap_reclassified"] = True
 
         return storyboard

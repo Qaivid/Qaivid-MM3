@@ -1510,6 +1510,22 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         raw_storyboard = pre_result.get("storyboard") or []
         raw_timeline = pre_result.get("timeline") or []
 
+        # MM3.1 beat-engine verification — log how many shots received beat enrichment.
+        # Shots without cinematic_beat fall back to legacy emotion-only prompting.
+        _n_beats = sum(1 for s in raw_timeline if s.get("cinematic_beat"))
+        _n_variety = sum(1 for s in raw_timeline if s.get("shot_type"))
+        if _n_beats or _n_variety:
+            logger.info(
+                "[MM3.1] project=%s storyboard=%d shots | beats=%d variety=%d",
+                project_id, len(raw_timeline), _n_beats, _n_variety,
+            )
+        else:
+            logger.warning(
+                "[MM3.1] project=%s: no cinematic beats or shot_types found — "
+                "running in legacy mode (cinematic_beat_engine modules may be missing)",
+                project_id,
+            )
+
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Applying style grading…"}, stage="running_2")
 

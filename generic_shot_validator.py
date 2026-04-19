@@ -50,18 +50,29 @@ class GenericShotValidator:
 
     # ── Detection ─────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _get_env(event: Dict) -> str:
+        """Canonical environment field resolver — ShotEventBuilder emits
+        `environment_interaction`; some callers use `environment_usage`.
+        Both are treated as equivalent; whichever is non-empty wins.
+        """
+        return (
+            (event.get("environment_usage") or "")
+            or (event.get("environment_interaction") or "")
+        ).strip()
+
     def is_generic(self, event: Dict) -> bool:
         """Return True if the shot lacks sufficient cinematic specificity.
 
         A shot is generic if:
         - action is absent or shorter than 3 words (no concrete behaviour)
         - action contains a known empty-phrase pattern
-        - environment_usage is absent (no spatial grounding)
+        - environment_usage / environment_interaction is absent (no spatial grounding)
         """
         action = (event.get("action") or event.get("subject_action") or "").strip()
         contrast = (event.get("visual_contrast") or "").strip()
         camera = (event.get("camera_motivation") or "").strip()
-        env_usage = (event.get("environment_usage") or "").strip()
+        env_field = self._get_env(event)
 
         # Absent or skeletal action
         if not action or len(action.split()) < 3:
@@ -73,8 +84,8 @@ class GenericShotValidator:
             if pattern in text_blob:
                 return True
 
-        # No spatial grounding
-        if not env_usage:
+        # No spatial grounding in either env field
+        if not env_field:
             return True
 
         return False
@@ -84,28 +95,29 @@ class GenericShotValidator:
     def rewrite_generic(self, event: Dict) -> Dict:
         """Patch a generic event in-place with mode-appropriate fallbacks.
 
-        - Overwrites a weak/absent `action` with a verb-bearing fallback.
-        - Fills a missing `environment_usage` with a spatial-grounding fallback.
-        The original fields are preserved under `_original_action` /
-        `_original_environment_usage` for debugging.
+        - Overwrites a weak/absent `action` (and its `subject_action` alias)
+          with a verb-bearing fallback.
+        - Fills missing environment spatial grounding in BOTH canonical fields
+          (`environment_usage` and `environment_interaction`) so whichever the
+          downstream caller reads, it gets a non-empty value.
+        Original values are preserved under `_original_*` keys for debugging.
         """
         mode = (event.get("expression_mode") or "face").lower()
 
         # --- action fallback ---
         action = (event.get("action") or event.get("subject_action") or "").strip()
         if not action or len(action.split()) < 3:
-            original = action
             fallback = _FALLBACK_ACTIONS.get(mode, _DEFAULT_FALLBACK_ACTION)
-            event["_original_action"] = original
+            event["_original_action"] = action
             event["action"] = fallback
             event["subject_action"] = fallback
 
-        # --- environment_usage fallback ---
-        env_usage = (event.get("environment_usage") or "").strip()
-        if not env_usage:
+        # --- environment fallback (both alias fields) ---
+        if not self._get_env(event):
             fallback_env = _FALLBACK_ENV_USAGE.get(mode, _DEFAULT_FALLBACK_ENV)
             event["_original_environment_usage"] = ""
             event["environment_usage"] = fallback_env
+            event["environment_interaction"] = fallback_env  # alias
 
         return event
 
