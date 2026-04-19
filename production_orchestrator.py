@@ -141,6 +141,7 @@ class ProductionOrchestrator:
         user_image_url: Optional[str] = None,
         pre_analysis: Optional[Dict[str, Any]] = None,
         style_profile: Optional[Dict[str, Any]] = None,
+        creative_brief: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         text = self._validate_text(text)
         genre = self._validate_genre(genre)
@@ -158,6 +159,12 @@ class ProductionOrchestrator:
             style_profile=style_profile,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
+
+        # If the caller supplies a user-locked Creative Brief (Task #69), splice
+        # it into the freshly-generated context_packet so director_note /
+        # central_metaphor are not lost when the storyboard rebuilds context.
+        if creative_brief:
+            context_packet["creative_brief"] = creative_brief
 
         storyboard = self.storyboard_engine.build_storyboard(
             context_packet, style_profile=style_profile
