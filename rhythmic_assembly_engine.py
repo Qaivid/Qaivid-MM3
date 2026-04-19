@@ -146,6 +146,26 @@ class RhythmicAssemblyEngine:
                     s["bar_index"] = int(ts // bar_duration) + 1
                     ts += snapped
 
+                # ── Final reconciliation: absorb residual into last shot ──────
+                # Beat-snapping can cause the total to drift by up to one beat.
+                # Apply the residual to the last shot so the sum is within ±0.1s
+                # of audio_duration (still respects min_shot_duration).
+                if timeline:
+                    total_snapped = sum(s["duration"] for s in timeline)
+                    residual = round(audio_duration - total_snapped, 3)
+                    if abs(residual) > 0.05:
+                        last = timeline[-1]
+                        adjusted = max(
+                            self.min_shot_duration,
+                            round(last["duration"] + residual, 3),
+                        )
+                        last["duration"] = adjusted
+                        last["end_time"] = round(last["start_time"] + adjusted, 3)
+                        logger.debug(
+                            "Timeline reconciliation: residual=%.3fs applied to last shot",
+                            residual,
+                        )
+
         return timeline
 
     def _validate_storyboard(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
