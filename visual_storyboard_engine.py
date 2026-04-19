@@ -317,6 +317,20 @@ class VisualStoryboardEngine:
             frame_directive, frame_idx = self._pick_frame(mode)
             framing_bias = self._derive_framing_bias(mode, frame_idx)
 
+            # MM3.1: when the beat engine supplies a camera_motivation or
+            # camera_plan, place it FIRST so it is the primary composition
+            # signal.  The lookup-table frame_directive becomes a secondary
+            # lens/DoF suggestion appended after the beat-driven directive.
+            # When no shot_event exists (test stubs, legacy projects) the
+            # table directive is used as-is, preserving original behaviour.
+            _cam_motive = (
+                shot_event.get("camera_motivation")
+                or shot_event.get("camera_plan")
+                or ""
+            ).strip()
+            if _cam_motive:
+                frame_directive = f"{_cam_motive}; {frame_directive}"
+
             if pending_cutaway:
                 frame_directive = (
                     "wide establishing cutaway — breathe the space before "
@@ -339,8 +353,18 @@ class VisualStoryboardEngine:
                     derive as _cine_derive,
                     motion_prompt_from_block as _cine_motion,
                 )
+                # MM3.1: merge shot_event + effective shot_type/expression_mode
+                # into the shot payload so cinematography_engine._event_payload()
+                # can see camera_plan/camera_motivation/action for action-driven
+                # rig selection (not just legacy emotion-mode lookup).
+                _derive_payload = {
+                    **shot,
+                    "shot_event":     shot_event,
+                    "shot_type":      _variety_type or shot.get("shot_type", ""),
+                    "expression_mode": mode,
+                }
                 cinematography = _cine_derive(
-                    shot, ctx, self._active_style_profile,
+                    _derive_payload, ctx, self._active_style_profile,
                     prev_block=(self._cine_history[-1] if self._cine_history else None),
                     recent_blocks=self._cine_history[-4:],
                 )

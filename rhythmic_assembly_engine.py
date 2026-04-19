@@ -105,6 +105,10 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": shot.get("motion_prompt", ""),
                     "framing_directive": shot.get("framing_directive", ""),
                     "composition_note": shot.get("composition_note", ""),
+                    # MM3.1 — structured cinematography rig block from
+                    # cinematography_engine.derive(); must survive assembly
+                    # so style_grading_engine and shot_prompt_composer can read it.
+                    "cinematography": shot.get("cinematography"),
                 }
             )
 
@@ -147,6 +151,8 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": str(shot.get("motion_prompt", "")).strip(),
                     "framing_directive": str(shot.get("framing_directive", "")).strip(),
                     "composition_note": str(shot.get("composition_note", "")).strip(),
+                    # MM3.1 — preserve cinematography rig block
+                    "cinematography": shot.get("cinematography"),
                 }
             )
 
