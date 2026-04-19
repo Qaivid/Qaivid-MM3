@@ -575,16 +575,20 @@ class VisualStoryboardEngine:
                 s["shot_type"] = self._MODE_TO_SHOT_TYPE.get(best_mode, best_mode)
                 s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(best_mode, "")
                 s["variety_cap_reclassified"] = True
-                # Re-derive cinematography so rig/motion align with the new mode
+                # Re-derive cinematography so rig/motion align with the new mode.
+                # Import is done here (not at module level) to mirror the
+                # lazy-import pattern used in build_storyboard and avoid
+                # any circular-import risk.
                 if ctx is not None:
                     try:
+                        from cinematography_engine import derive as _local_cine_derive
                         derive_payload = {
                             "expression_mode": best_mode,
                             "intensity":       s.get("intensity", 0.5),
                             "meaning":         s.get("emotional_meaning", ""),
                             "shot_type":       s["shot_type"],
                         }
-                        new_cine = _cine_derive(
+                        new_cine = _local_cine_derive(
                             derive_payload,
                             ctx,
                             self._active_style_profile,

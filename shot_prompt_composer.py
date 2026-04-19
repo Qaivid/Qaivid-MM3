@@ -351,6 +351,43 @@ def _inject_verb_fallback(body: str, shot: dict) -> str:
     return f"{fallback.capitalize()}. {body}".strip()
 
 
+# ── Prompt-level environment interaction guarantee ────────────────────────────
+# Mirrors _inject_verb_fallback: if the final body contains no spatial grounding
+# (no Setting/Environment/location keyword), append a mode-appropriate phrase.
+# This catches legacy/no-event shots that passed validation but never had an
+# environment_usage field.
+
+_ENV_SIGNALS = re.compile(
+    r"\b(setting|environment|surround|space|room|street|courtyard|corridor|"
+    r"field|forest|alley|doorway|window|ground|wall|floor|ceiling|water|"
+    r"light\s+spill|shadow|horizon|landscape|interior|exterior|location|"
+    r"background|architecture|texture|surface)\b",
+    re.IGNORECASE,
+)
+
+_ENV_FALLBACKS: Dict[str, str] = {
+    "face":        "The surrounding space holds quiet tension",
+    "body":        "The character occupies and interacts with the surrounding space",
+    "environment": "The space itself carries the weight of the scene",
+    "macro":       "The object's detail anchors the viewer within the physical environment",
+    "symbolic":    "The character's form echoes the surrounding architecture",
+}
+
+
+def _has_env_grounding(text: str) -> bool:
+    """Return True if the text already references a setting or spatial context."""
+    return bool(_ENV_SIGNALS.search(text))
+
+
+def _inject_env_fallback(body: str, shot: dict) -> str:
+    """If body lacks spatial grounding, append a mode-appropriate environment clause."""
+    if _has_env_grounding(body):
+        return body
+    mode = (shot.get("expression_mode") or shot.get("llm_expression_mode") or "face").lower()
+    fallback = _ENV_FALLBACKS.get(mode, _ENV_FALLBACKS["face"])
+    return f"{body} {fallback}.".strip()
+
+
 def compose_image_prompt(
     shot: dict,
     *,
@@ -451,6 +488,11 @@ def compose_image_prompt(
     # If none is found, a mode-appropriate fallback action is prepended so
     # Flux always receives a verb-led description rather than a mood noun.
     body = _inject_verb_fallback(body, shot)
+
+    # Environment grounding validator: every still prompt must reference a
+    # spatial setting or environment interaction.  If none is present (legacy
+    # path / no shot_event), append a mode-appropriate environment clause.
+    body = _inject_env_fallback(body, shot)
 
     prompt = _attach_envelope(
         body,
