@@ -1188,14 +1188,14 @@
     if (mode) { cfg.per_shot_kb[idx] = mode; }
     else { delete cfg.per_shot_kb[idx]; }
     ppUpdateKBBadge(idx);
-    markDirty();
+    markDirty(); scheduleAutosave();
   };
 
   window.ppClearShotKB = function(idx) {
     delete cfg.per_shot_kb[idx];
     ppUpdateKBBadge(idx);
     document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
-    markDirty();
+    markDirty(); scheduleAutosave();
   };
 
   function ppUpdateKBBadge(idx) {
@@ -1229,7 +1229,7 @@
       const shot = SHOTS.find(s => s.idx === idx);
       badge.textContent = (shot ? shot.dur : 4.0).toFixed(1) + 's';
     }
-    markDirty();
+    markDirty(); scheduleAutosave();
   };
 
   /* ── Filter preview ─────────────────────────────────────────────────── */
@@ -1383,7 +1383,7 @@
     if (d.ok) {
       cfg.srt_r2_key = d.r2_key;
       document.getElementById('srt-filename').textContent = '✓ ' + fname;
-      markDirty();
+      markDirty(); scheduleAutosave();
     } else {
       alert('Upload failed: ' + d.error);
     }
@@ -1405,8 +1405,9 @@
       document.getElementById('logo-fn-' + slot).textContent = '✓ ' + fname;
       const ctrl = document.getElementById('logo-ctrl-' + slot);
       if (ctrl) ctrl.style.display = '';
+      cfg.logos[slot].filename = fname;
       if (d.preview_url) ppLogoPreview(slot, d.preview_url);
-      markDirty();
+      markDirty(); scheduleAutosave();
     } else {
       alert('Upload failed: ' + d.error);
     }

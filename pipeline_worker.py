@@ -3335,8 +3335,10 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
 
             with _db() as conn, conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE projects SET quick_video_url=%s, updated_at=NOW() WHERE id=%s",
-                    (final_url, project_id),
+                    "UPDATE projects SET quick_video_url=%s, "
+                    "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
+                    "updated_at=NOW() WHERE id=%s",
+                    (final_url, _json.dumps({"generating": False, "quick_video_error": None}), project_id),
                 )
                 conn.commit()
 
@@ -3352,7 +3354,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             cur.execute(
                 "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
                 "WHERE id=%s",
-                (_json.dumps({"quick_video_error": f"ffmpeg failed: {stderr}"}), project_id),
+                (_json.dumps({"generating": False, "quick_video_error": f"ffmpeg failed: {stderr}"}), project_id),
             )
             conn.commit()
     except Exception as exc:
@@ -3361,7 +3363,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             cur.execute(
                 "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
                 "WHERE id=%s",
-                (_json.dumps({"quick_video_error": str(exc)[:400]}), project_id),
+                (_json.dumps({"generating": False, "quick_video_error": str(exc)[:400]}), project_id),
             )
             conn.commit()
 
