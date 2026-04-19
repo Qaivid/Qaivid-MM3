@@ -2997,17 +2997,21 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     logger.warning("Quick video: ffprobe duration failed — stills will not be extended",
                                    exc_info=True)
 
-            # ── Proportionally scale stills to fill the full audio track ──────
-            # Audio is source of truth — never touch it, only stretch/compress
-            # each still's duration so the total exactly matches audio_dur.
+            # ── Legacy fallback: proportional scale for old projects ──────────
+            # New storyboards produced by the fixed RhythmicAssemblyEngine
+            # already store correct durations (sum == audio_duration_seconds),
+            # so this block should be a no-op for those.  For existing projects
+            # whose styled_timeline was built before the fix, we still scale so
+            # the quick video covers the full audio track.
             if audio_dur > 0.1:
                 total_stills_dur = sum(d for _, _, d in local_stills)
                 if total_stills_dur > 0 and abs(total_stills_dur - audio_dur) > 0.5:
                     scale = audio_dur / total_stills_dur
                     local_stills = [(idx, path, max(0.5, dur * scale))
                                     for idx, path, dur in local_stills]
-                    logger.info(
-                        "Quick video: scaled stills %.1fs → %.1fs (audio) ×%.3f for project %s",
+                    logger.warning(
+                        "Quick video: legacy duration mismatch — scaled stills %.1fs → %.1fs "
+                        "(audio) ×%.3f for project %s. Re-run storyboard stage to fix permanently.",
                         total_stills_dur, audio_dur, scale, project_id,
                     )
 

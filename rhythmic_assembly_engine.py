@@ -13,7 +13,7 @@ class RhythmicAssemblyEngine:
     DEFAULT_BPM = 120.0
     DEFAULT_BEATS_PER_BAR = 4
     DEFAULT_MIN_SHOT_DURATION = 1.5
-    DEFAULT_MAX_SHOT_DURATION = 6.0
+    DEFAULT_MAX_SHOT_DURATION = 12.0
     DEFAULT_INTENSITY = 0.5
 
     def __init__(self):
@@ -32,6 +32,7 @@ class RhythmicAssemblyEngine:
         bpm = validated_audio["bpm"]
         beats_per_bar = validated_audio["beats_per_bar"]
         intensity_curve = validated_audio["intensity_curve"]
+        audio_duration = validated_audio["duration_seconds"]
 
         beat_duration = 60.0 / bpm
         bar_duration = beat_duration * beats_per_bar
@@ -119,6 +120,32 @@ class RhythmicAssemblyEngine:
 
             current_timestamp += synced_duration
 
+        # ── Audio-duration normalization ──────────────────────────────────────
+        # If the accumulated shot durations don't cover the full audio track,
+        # scale them proportionally so they fill the audio exactly.  Beat-snap
+        # is re-applied after scaling so the rhythm relationship is preserved,
+        # then start/end/beat fields are recalculated from a fresh cumulative walk.
+        if audio_duration > 0 and timeline:
+            total_assigned = sum(s["duration"] for s in timeline)
+            if total_assigned > 0 and abs(total_assigned - audio_duration) > 0.5:
+                scale = audio_duration / total_assigned
+                logger.info(
+                    "Timeline duration normalization: %.1fs → %.1fs (audio) ×%.3f for %d shots",
+                    total_assigned, audio_duration, scale, len(timeline),
+                )
+                ts = 0.0
+                for s in timeline:
+                    scaled = s["duration"] * scale
+                    # Snap to beat grid, keep above minimum
+                    snapped = self._snap_duration_to_beat(scaled, beat_duration)
+                    snapped = max(self.min_shot_duration, snapped)
+                    s["duration"] = round(snapped, 3)
+                    s["start_time"] = round(ts, 3)
+                    s["end_time"] = round(ts + snapped, 3)
+                    s["start_beat"] = round(ts / beat_duration)
+                    s["bar_index"] = int(ts // bar_duration) + 1
+                    ts += snapped
+
         return timeline
 
     def _validate_storyboard(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -193,10 +220,19 @@ class RhythmicAssemblyEngine:
         for item in intensity_curve:
             cleaned_curve.append(self._extract_curve_intensity(item))
 
+        duration_seconds = 0.0
+        try:
+            duration_seconds = float(audio_data.get("duration_seconds") or 0)
+        except (TypeError, ValueError):
+            pass
+        if duration_seconds < 0:
+            duration_seconds = 0.0
+
         return {
             "bpm": bpm,
             "beats_per_bar": beats_per_bar,
             "intensity_curve": cleaned_curve,
+            "duration_seconds": duration_seconds,
         }
 
     def _calculate_duration(

@@ -842,14 +842,21 @@ def project_detail(project_id: str):
         # Compute total stills duration vs audio duration for display
         total_stills_dur = round(sum(s.get("duration") or 0 for s in timeline), 1)
         audio_data = project.get("audio_data") or {}
-        beat_times = audio_data.get("beat_times") or []
-        bpm = audio_data.get("bpm") or 0
-        if beat_times and bpm:
-            beat_interval = 60.0 / bpm
-            audio_dur = round(beat_times[-1] + beat_interval, 1)
+        # Use duration_seconds directly from audio_data (set by AudioProcessor.extract_features)
+        # Fall back to estimate from beat_times if duration_seconds is missing (legacy projects)
+        audio_dur_raw = audio_data.get("duration_seconds") or 0.0
+        if audio_dur_raw:
+            audio_dur = round(float(audio_dur_raw), 1)
         else:
-            audio_dur = 0.0
+            beat_times = audio_data.get("beat_times") or []
+            bpm = audio_data.get("bpm") or 0
+            if beat_times and bpm:
+                beat_interval = 60.0 / bpm
+                audio_dur = round(beat_times[-1] + beat_interval, 1)
+            else:
+                audio_dur = 0.0
         # Scale factor applied to per-shot durations when generating quick video
+        # For new projects (fixed assembly engine) this should be ~1.0
         scale = round(audio_dur / total_stills_dur, 3) if total_stills_dur > 0 and audio_dur > 0 else 1.0
 
         return render_template(

@@ -47,11 +47,16 @@
 
     <!-- ── Timing summary ───────────────────────────────────── -->
     {% if audio_dur and audio_dur > 0 %}
-    <div class="sc-timing-bar {% if dur_scale and dur_scale > 1.05 %}sc-timing-warn{% else %}sc-timing-ok{% endif %}">
+    {% set _timing_ok = dur_scale and dur_scale >= 0.98 and dur_scale <= 1.02 %}
+    <div class="sc-timing-bar {% if _timing_ok %}sc-timing-ok{% else %}sc-timing-warn{% endif %}">
       <span>🎵 Audio: <strong>{{ "%.1f"|format(audio_dur) }}s</strong></span>
       <span>🖼 Stills total: <strong>{{ "%.1f"|format(total_stills_dur) }}s</strong></span>
-      {% if dur_scale and dur_scale != 1.0 %}
-      <span>⚖ Quick video scales each shot <strong>×{{ "%.2f"|format(dur_scale) }}</strong> to match audio</span>
+      {% if _timing_ok %}
+      <span>✓ Shot durations match audio length</span>
+      {% elif dur_scale %}
+      <span>⚠ Stills cover <strong>{{ "%.0f"|format(total_stills_dur / audio_dur * 100) }}%</strong> of audio —
+        quick video will scale ×{{ "%.2f"|format(dur_scale) }}.
+        Re-run Storyboard to fix permanently.</span>
       {% endif %}
     </div>
     {% endif %}
@@ -305,6 +310,14 @@
 }
 .sc-shot-num { font-weight: 600; font-size: 12px; color: #cfd6df; }
 .sc-timing   { font-size: 10px; margin-left: auto; }
+.sc-timing-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 14px; margin: 6px 0 10px; border-radius: 8px;
+  font-size: 12px; border: 1px solid;
+}
+.sc-timing-bar strong { font-weight: 700; }
+.sc-timing-ok  { background: rgba(34,197,94,.07); border-color: rgba(34,197,94,.25); color: #86efac; }
+.sc-timing-warn{ background: rgba(245,166,35,.07); border-color: rgba(245,166,35,.3);  color: #fbbf24; }
 .sc-badge-upload {
   font-size: 9px; padding: 1px 5px;
   background: rgba(200,241,53,.15); color: #c8f135;

@@ -11,7 +11,7 @@ A web-based SaaS that turns lyrics, poems, scripts, and stories into beat-synced
   - `audio_processor.py` - extracts BPM, beats, segments, energy from audio
   - `unified_context_engine_master.py` - GPT-4o context extraction (theme, speaker, location)
   - `visual_storyboard_engine.py` - generates visual prompts per beat; MM3.1 adds cinematic beat enrichment via `_attach_optional_cinematic_layers()`
-  - `rhythmic_assembly_engine.py` - assembles a beat-synced timeline
+  - `rhythmic_assembly_engine.py` - assembles a beat-synced timeline; normalizes shot durations to match `audio_data.duration_seconds` (Task #104 fix — ensures timeline covers full audio, not just lyric-line subset)
   - `style_grading_engine.py` - applies cinematic style profiles; passes through MM3.1 fields
   - `asset_export_module.py` - exports JSON for downstream tooling
   - `production_orchestrator.py` - coordinates all engines end-to-end (context→storyboard→timeline)
