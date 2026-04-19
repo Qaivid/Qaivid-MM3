@@ -1547,8 +1547,13 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                             "Stage 2: could not persist fallback lyrics_timed (%s)", _e
                         )
             else:
+                def _safe_float(v: object) -> float:
+                    try:
+                        return float(v or 0)
+                    except (TypeError, ValueError):
+                        return 0.0
                 has_real_ts = any(
-                    float(t.get("end") or 0) > float(t.get("start") or 0)
+                    _safe_float(t.get("end")) > _safe_float(t.get("start"))
                     for t in timed_lyrics
                 )
                 if not has_real_ts:

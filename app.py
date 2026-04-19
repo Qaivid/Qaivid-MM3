@@ -781,10 +781,54 @@ def project_detail(project_id: str):
     if stage == "context_review":
         with db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT lyrics_timed FROM projects WHERE id=%s", (project_id,)
+                "SELECT lyrics_timed, text, audio_data FROM projects WHERE id=%s",
+                (project_id,),
             )
             _lrow = cur.fetchone()
         lyrics_timed = list((_lrow or {}).get("lyrics_timed") or []) if _lrow else []
+
+        # Fallback: generate approximate timestamps for projects that were
+        # transcribed before Task #105 (Whisper skipped or pre-#105 records).
+        # This runs before rendering so the Timed Lyrics panel is visible at
+        # the Context review step, not only after re-running the storyboard.
+        if not lyrics_timed and _lrow:
+            _text = (_lrow.get("text") or "").strip()
+            _audio_data = dict(_lrow.get("audio_data") or {})
+            _audio_dur = 0.0
+            try:
+                _audio_dur = float(_audio_data.get("duration_seconds") or 0)
+            except (TypeError, ValueError):
+                pass
+            if _audio_dur > 0 and _text:
+                _lines = [l.strip() for l in _text.splitlines() if l.strip()]
+                if _lines:
+                    _n = len(_lines)
+                    _step = _audio_dur / _n
+                    lyrics_timed = [
+                        {
+                            "text": _lines[_i],
+                            "start": round(_i * _step, 3),
+                            "end": round((_i + 1) * _step, 3),
+                        }
+                        for _i in range(_n)
+                    ]
+                    try:
+                        with db() as _conn, _conn.cursor() as _cur:
+                            _cur.execute(
+                                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+                                "lyrics_timed JSONB;"
+                            )
+                            _cur.execute(
+                                "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
+                                (Json(lyrics_timed), project_id),
+                            )
+                            _conn.commit()
+                    except Exception as _e:
+                        import logging as _log
+                        _log.getLogger(__name__).warning(
+                            "context_review: could not persist fallback lyrics_timed (%s)", _e
+                        )
+
         return render_template("stage_context.html", project=project,
                                lyrics_timed=lyrics_timed)
 

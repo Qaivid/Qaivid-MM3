@@ -176,8 +176,11 @@ class ProductionOrchestrator:
             for i, lm in enumerate(line_meanings):
                 if i < n_timed:
                     ts = timed_lyrics[i]
-                    start_s = float(ts.get("start") or 0.0)
-                    end_s = float(ts.get("end") or 0.0)
+                    try:
+                        start_s = float(ts.get("start") or 0.0)
+                        end_s = float(ts.get("end") or 0.0)
+                    except (TypeError, ValueError):
+                        continue
                     if end_s > start_s:
                         lm["lyric_start_seconds"] = start_s
                         lm["lyric_end_seconds"] = end_s
