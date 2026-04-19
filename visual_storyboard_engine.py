@@ -891,6 +891,18 @@ class VisualStoryboardEngine:
             if not isinstance(item, dict):
                 item = {}
 
+            # Safe-parse lyric timestamps from Whisper (Task #105).
+            _lts_raw = item.get("lyric_start_seconds")
+            _lte_raw = item.get("lyric_end_seconds")
+            try:
+                _lts = float(_lts_raw) if _lts_raw is not None else None
+            except (TypeError, ValueError):
+                _lts = None
+            try:
+                _lte = float(_lte_raw) if _lte_raw is not None else None
+            except (TypeError, ValueError):
+                _lte = None
+
             repaired_lines.append(
                 {
                     "line_index": self._safe_int(item.get("line_index"), i),
@@ -906,6 +918,9 @@ class VisualStoryboardEngine:
                     "expression_mode": self._repair_expression_mode(item.get("expression_mode")),
                     "visualization_mode": self._repair_visualization_mode(item.get("visualization_mode")),
                     "visual_suitability": self._repair_visual_suitability(item.get("visual_suitability")),
+                    # Whisper lyric timestamps — preserved through validation (Task #105)
+                    "lyric_start_seconds": _lts,
+                    "lyric_end_seconds":   _lte,
                 }
             )
 
