@@ -161,3 +161,69 @@ def test_action_to_rig_keywords_covered_by_fallback_actions():
         assert matches_verb_re, (
             f"Fallback action for mode={mode!r} does not match _ACTION_VERB_RE: {action!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# (d) shot_type → expression_mode derivation (ShotEventBuilder compat)
+# ---------------------------------------------------------------------------
+
+
+def test_shot_type_portrait_uses_face_fallback():
+    """When expression_mode is absent but shot_type='portrait', rewrite must use face fallback."""
+    from generic_shot_validator import _FALLBACK_ACTIONS
+    event = {
+        "shot_type": "portrait",
+        "action": "",
+        "environment_usage": "sunlit corner of a room",
+    }
+    validator.rewrite_generic(event)
+    face_fallback = _FALLBACK_ACTIONS["face"]
+    assert event["action"] == face_fallback, (
+        f"portrait shot_type must use face fallback, got: {event['action']!r}"
+    )
+
+
+def test_shot_type_wide_environment_uses_environment_fallback():
+    """When expression_mode is absent but shot_type='wide_environment', use environment fallback."""
+    from generic_shot_validator import _FALLBACK_ACTIONS
+    event = {
+        "shot_type": "wide_environment",
+        "action": "",
+        "environment_usage": "open field at dusk",
+    }
+    validator.rewrite_generic(event)
+    env_fallback = _FALLBACK_ACTIONS["environment"]
+    assert event["action"] == env_fallback, (
+        f"wide_environment shot_type must use environment fallback, got: {event['action']!r}"
+    )
+
+
+def test_shot_type_silhouette_uses_symbolic_fallback():
+    """When expression_mode is absent but shot_type='silhouette', use symbolic fallback."""
+    from generic_shot_validator import _FALLBACK_ACTIONS
+    event = {
+        "shot_type": "silhouette",
+        "action": "",
+        "environment_usage": "backlit doorway",
+    }
+    validator.rewrite_generic(event)
+    symbolic_fallback = _FALLBACK_ACTIONS["symbolic"]
+    assert event["action"] == symbolic_fallback, (
+        f"silhouette shot_type must use symbolic fallback, got: {event['action']!r}"
+    )
+
+
+def test_expression_mode_takes_priority_over_shot_type():
+    """If both expression_mode and shot_type present, expression_mode wins."""
+    from generic_shot_validator import _FALLBACK_ACTIONS
+    event = {
+        "expression_mode": "macro",
+        "shot_type": "portrait",       # would map to face — must NOT win
+        "action": "",
+        "environment_usage": "wooden surface texture",
+    }
+    validator.rewrite_generic(event)
+    macro_fallback = _FALLBACK_ACTIONS["macro"]
+    assert event["action"] == macro_fallback, (
+        f"expression_mode must override shot_type; expected macro fallback, got: {event['action']!r}"
+    )

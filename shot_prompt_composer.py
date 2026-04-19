@@ -410,6 +410,7 @@ def compose_image_prompt(
     if user_override and user_override.strip():
         body = _clean_text(user_override)
         body = _inject_verb_fallback(body, shot)
+        body = _inject_env_fallback(body, shot)
         prompt = _attach_envelope(
             body,
             cine_prefix,

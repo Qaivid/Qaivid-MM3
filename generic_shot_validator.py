@@ -54,6 +54,20 @@ _FALLBACK_ENV_USAGE: Dict[str, str] = {
 }
 _DEFAULT_FALLBACK_ENV = "character occupies and interacts with the surrounding space"
 
+# Reverse-map: shot_type labels emitted by shot_variety_engine → expression_mode.
+# Keeps GenericShotValidator mode-correct even when ShotEventBuilder has not
+# populated expression_mode directly onto the event dict.
+_SHOT_TYPE_TO_MODE: Dict[str, str] = {
+    "portrait":         "face",
+    "movement":         "body",
+    "over_shoulder":    "body",
+    "wide_environment": "environment",
+    "empty_frame":      "environment",
+    "object_detail":    "macro",
+    "reflection":       "symbolic",
+    "silhouette":       "symbolic",
+}
+
 
 class GenericShotValidator:
     def __init__(self):
@@ -119,7 +133,13 @@ class GenericShotValidator:
           downstream caller reads, it gets a non-empty value.
         Original values are preserved under `_original_*` keys for debugging.
         """
-        mode = (event.get("expression_mode") or "face").lower()
+        # Derive expression_mode from shot_type when the event was produced by
+        # ShotEventBuilder (which does not copy expression_mode onto the event).
+        mode = (
+            event.get("expression_mode")
+            or _SHOT_TYPE_TO_MODE.get((event.get("shot_type") or "").lower())
+            or "face"
+        ).lower()
 
         # --- action fallback ---
         # Rewrite when action is: absent, < 3 words, OR verb-less (even if
