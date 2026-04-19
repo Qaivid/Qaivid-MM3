@@ -15,8 +15,11 @@ MM3.1 design decision:
   whether a rewrite occurred.
 """
 
+import logging
 import re
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # ── Verb-presence check — every valid subject_action must start with a verb ───
 # Matches common action verbs at the start of the action string (case-insensitive).
@@ -153,11 +156,18 @@ class GenericShotValidator:
           and a spatial environment_usage (required by shot_prompt_composer).
         - Never removes events — list length is preserved for index alignment.
         """
+        rewrite_count = 0
         for event in events:
             generic = self.is_generic(event)
             event["is_generic"] = generic
             event["is_valid"] = not generic
             if generic:
                 self.rewrite_generic(event)
+                rewrite_count += 1
+        if rewrite_count:
+            logger.info(
+                "generic_shot_validator: rewrote %d/%d events (verb enforcement + env backfill)",
+                rewrite_count, len(events),
+            )
 
         return events

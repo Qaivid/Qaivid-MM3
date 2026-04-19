@@ -478,7 +478,7 @@ class VisualStoryboardEngine:
                 }
             )
 
-        return self._enforce_variety_caps(storyboard)
+        return self._enforce_variety_caps(storyboard, ctx)
 
     # =========================================================================
     # MM3.1 VARIETY CAP ENFORCER
@@ -526,10 +526,15 @@ class VisualStoryboardEngine:
         "symbolic":    "silhouette mid-shot, backlit, subject abstracted in space",
     }
 
-    def _enforce_variety_caps(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enforce_variety_caps(
+        self,
+        storyboard: List[Dict[str, Any]],
+        ctx: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """Post-pass: reclassify any over-cap shots to the most underrepresented
-        category, updating expression_mode, shot_type, and framing_directive
-        together so the visual signal (not just metadata) changes.
+        category, updating expression_mode, shot_type, framing_directive, AND
+        re-deriving the cinematography/motion_prompt so rig/motion stay aligned
+        with the new category.
 
         Only fires when the variety engine is active (shot_type present on at
         least one shot); otherwise returns storyboard as-is.
@@ -544,6 +549,7 @@ class VisualStoryboardEngine:
             if m in counts:
                 counts[m] += 1
 
+        reclassified_count = 0
         for s in storyboard:
             m = s.get("expression_mode", "face")
             cap = self._VARIETY_CAPS.get(m, 1.0)
@@ -563,11 +569,41 @@ class VisualStoryboardEngine:
             if best_mode != m:
                 counts[m] -= 1
                 counts[best_mode] = counts.get(best_mode, 0) + 1
+                reclassified_count += 1
                 # Update expression_mode + its derived visual fields together
                 s["expression_mode"] = best_mode
                 s["shot_type"] = self._MODE_TO_SHOT_TYPE.get(best_mode, best_mode)
                 s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(best_mode, "")
                 s["variety_cap_reclassified"] = True
+                # Re-derive cinematography so rig/motion align with the new mode
+                if ctx is not None:
+                    try:
+                        derive_payload = {
+                            "expression_mode": best_mode,
+                            "intensity":       s.get("intensity", 0.5),
+                            "meaning":         s.get("emotional_meaning", ""),
+                            "shot_type":       s["shot_type"],
+                        }
+                        new_cine = _cine_derive(
+                            derive_payload,
+                            ctx,
+                            self._active_style_profile,
+                        )
+                        if new_cine:
+                            s["cinematography"] = new_cine
+                            s["motion_prompt"] = self._build_motion_prompt(
+                                best_mode,
+                                s.get("arc_position", 0),
+                                s,
+                            )
+                    except Exception:
+                        pass  # leave existing cinematography intact on failure
+
+        if reclassified_count:
+            logger.info(
+                "variety_caps: reclassified %d/%d shots to enforce distribution targets",
+                reclassified_count, total,
+            )
 
         return storyboard
 
