@@ -449,22 +449,29 @@ class VisualStoryboardEngine:
     # MM3.1 VARIETY CAP ENFORCER
     # =========================================================================
 
+    # Target distribution (MM3.1 spec): face≈20%, body≈30%, env≈20%, macro≈20%, symbolic≈10%
+    # Caps are set 5pp above target to absorb natural variation without over-correcting.
     _VARIETY_CAPS: Dict[str, float] = {
-        "face":        0.30,
-        "body":        0.45,
-        "environment": 0.40,
-        "macro":       0.35,
-        "symbolic":    0.25,
+        "face":        0.25,   # target 20%
+        "body":        0.35,   # target 30%
+        "environment": 0.25,   # target 20%
+        "macro":       0.25,   # target 20%
+        "symbolic":    0.15,   # target 10%
     }
 
-    _FALLBACK_ROTATION: List[str] = [
-        "body", "environment", "macro", "symbolic", "body", "environment",
-    ]
+    # Ideal target fractions used for underrepresented-category selection
+    _VARIETY_TARGETS: Dict[str, float] = {
+        "face":        0.20,
+        "body":        0.30,
+        "environment": 0.20,
+        "macro":       0.20,
+        "symbolic":    0.10,
+    }
 
     def _enforce_variety_caps(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Post-pass: if any expression_mode exceeds its cap, reclassify excess
-        shots to underrepresented categories.  Only fires when the variety
-        engine is active (shot_type present); otherwise returns storyboard as-is.
+        """Post-pass: reclassify any over-cap shots to the most underrepresented
+        category.  Only fires when the variety engine is active (shot_type
+        present on at least one shot); otherwise returns storyboard as-is.
         """
         if not storyboard or not any(s.get("shot_type") for s in storyboard):
             return storyboard
@@ -476,16 +483,26 @@ class VisualStoryboardEngine:
             if m in counts:
                 counts[m] += 1
 
-        rotation_idx = 0
         for s in storyboard:
             m = s.get("expression_mode", "face")
             cap = self._VARIETY_CAPS.get(m, 1.0)
-            if m in counts and counts[m] / total > cap:
-                new_mode = self._FALLBACK_ROTATION[rotation_idx % len(self._FALLBACK_ROTATION)]
-                rotation_idx += 1
+            if m not in counts or counts[m] / total <= cap:
+                continue
+            # Find the most underrepresented category (furthest below its target)
+            best_mode = m
+            best_deficit = -1.0
+            for candidate, target in self._VARIETY_TARGETS.items():
+                if candidate == m:
+                    continue
+                current_frac = counts.get(candidate, 0) / total
+                deficit = target - current_frac
+                if deficit > best_deficit:
+                    best_deficit = deficit
+                    best_mode = candidate
+            if best_mode != m:
                 counts[m] -= 1
-                counts[new_mode] = counts.get(new_mode, 0) + 1
-                s["expression_mode"] = new_mode
+                counts[best_mode] = counts.get(best_mode, 0) + 1
+                s["expression_mode"] = best_mode
                 s["variety_cap_reclassified"] = True
 
         return storyboard

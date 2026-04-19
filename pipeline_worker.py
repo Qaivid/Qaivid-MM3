@@ -1487,7 +1487,16 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
 
         orchestrator = ProductionOrchestrator(api_key)
 
-        # Run storyboard + assembly + style using the orchestrator's staged methods
+        # Run storyboard + assembly + style using the orchestrator's staged methods.
+        # MM3.1 Cinematic Beat Engine integration point:
+        #   ProductionOrchestrator.run_to_timeline()
+        #     → VisualStoryboardEngine.build_storyboard()
+        #       → _attach_optional_cinematic_layers()
+        #           → CinematicBeatEngine.generate_beats()      [emotion→behaviour]
+        #           → BehaviourMapper + ShotEventBuilder        [behaviour→events]
+        #           → GenericShotValidator.validate_sequence()  [mark+rewrite weak shots]
+        #           → ShotVarietyEngine.assign_shot_types()     [enforce target distribution]
+        #           → _enforce_variety_caps() post-pass         [hard caps face≤25%, body≤35%]
         # Task #69 — pass the user-locked Creative Brief so the orchestrator
         # splices it into its freshly-regenerated context_packet (otherwise
         # director_note/central_metaphor would be lost when the storyboard

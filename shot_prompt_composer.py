@@ -32,11 +32,12 @@ DEFAULT_NEGATIVE = (
     "amateur photography, bad composition"
 )
 
-# ── Phrases to strip — director/system instructions, not visual prose ─
+# ── Phrases to strip — pipeline-internal directives that should not reach
+#    the image model.  Cinematic intelligence fields (Function, Performance,
+#    Arc beat, Motif handling) are intentionally KEPT so the model understands
+#    the shot's intent. ─────────────────────────────────────────────────────
 _INSTRUCTION_PATTERNS = [
     r"Maintain (?:strict )?character continuity[^.]*\.",
-    r"Performance:[^.]*\.",
-    r"Function:[^.]*\.",
     r"Repetition logic:[^.]*\.",
     r"Ambiguity handling:[^.]*\.",
     r"Relevant ambiguity notes:[^.]*\.",
@@ -44,14 +45,10 @@ _INSTRUCTION_PATTERNS = [
     r"Hard restrictions[^:]*:[^.]*\.",
     r"Visual constraints:[^.]*\.",
     r"Continuity:[^.]*\.",
-    r"Motif handling:[^.]*\.",
     r"Cultural subtext to preserve:[^.]*\.",
     r"Why this song exists:[^.]*\.",
     r"Spine anchor:[^.]*\.",
-    r"Dramatic premise:[^.]*\.",
     r"Treatment:[^.]*\.",
-    r"Central metaphor[^:]*:[^.]*\.",
-    r"Arc beat[^:]*:[^.]*\.",
     r"Style notes:[^.]*\.",
     r"Rendering notes:[^.]*\.",
     r"Transition behavior:[^.]*\.",
@@ -59,6 +56,9 @@ _INSTRUCTION_PATTERNS = [
     r"Speaker identity context:[^.]*\.",
     r"Addressee context:[^.]*\.",
     r"Intensity:[^.]*\.",
+    # NOTE: Performance, Function, Arc beat, Central metaphor, Dramatic premise,
+    # and Motif handling are intentionally NOT stripped — they give the image
+    # model context about what the shot must convey.
 ]
 _INSTRUCTION_RE = re.compile("|".join(_INSTRUCTION_PATTERNS), re.IGNORECASE)
 
