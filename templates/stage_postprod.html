@@ -45,6 +45,13 @@
   <!-- ── Studio split layout ───────────────────────────────────────────── -->
   <div class="pp-studio">
 
+    <!-- Hidden audio player (synced to stills preview) -->
+    {% if audio_url %}
+    <audio id="pp-audio" preload="auto" style="display:none">
+      <source src="{{ audio_url }}" type="audio/mpeg">
+    </audio>
+    {% endif %}
+
     <!-- Left: preview + thumbnail strip -->
     <div class="pp-preview-col">
       <div class="pp-preview-frame" id="pp-preview-frame">
@@ -573,20 +580,20 @@
 
 /* ── Studio layout ───────────────────────────────────────────────────── */
 .pp-studio {
-  display: grid; grid-template-columns: 1fr 290px; gap: 16px; align-items: start;
+  display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; align-items: start;
 }
 @media (max-width: 900px) { .pp-studio { grid-template-columns: 1fr; } }
 
 /* ── Preview ─────────────────────────────────────────────────────────── */
-.pp-preview-col { display: flex; flex-direction: column; gap: 10px; }
+.pp-preview-col { display: flex; flex-direction: column; gap: 10px; max-width: 700px; }
 .pp-preview-frame {
   background: #000; border-radius: 10px; overflow: hidden;
   aspect-ratio: 16/9; position: relative;
-  border: 1px solid #2a2a38;
+  border: 1px solid #2a2a38; max-height: 400px;
 }
-.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 600px; }
-.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1; }
-.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3; }
+.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 400px; }
+.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-height: 400px; }
+.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-height: 400px; }
 
 .pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
 .pp-kb-img  {
@@ -1096,6 +1103,16 @@
   let playTimer  = null;
   let playing    = false;
 
+  const ppAudio = document.getElementById('pp-audio');
+
+  function ppElapsedAt(idx) {
+    return SHOTS.slice(0, idx).reduce((a, s) => a + (cfg.per_shot_duration[s.idx] || s.dur), 0);
+  }
+  function ppAudioSeek(secs) {
+    if (!ppAudio) return;
+    try { ppAudio.currentTime = Math.max(0, secs); } catch(e) {}
+  }
+
   window.ppJumpTo = function(i) {
     if (i < 0 || i >= SHOTS.length) return;
     currentIdx = i;
@@ -1104,8 +1121,8 @@
     const shot = SHOTS[i];
     const thumb = document.getElementById('pp-thumb-' + shot.idx);
     if (thumb) { thumb.classList.add('active'); thumb.scrollIntoView({block:'nearest',inline:'center'}); }
-    // close all popovers
     document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+    if (playing && ppAudio) ppAudioSeek(ppElapsedAt(currentIdx));
   };
 
   function renderShot() {
@@ -1118,20 +1135,19 @@
     wrap.className = 'pp-kb-wrap';
     if (kbMode !== 'static' && kbMode !== 'random') {
       wrap.style.setProperty('--kb-dur', (cfg.per_shot_duration[shot.idx] || shot.dur) + 's');
-      void wrap.offsetWidth; // force reflow to restart animation
+      void wrap.offsetWidth;
       wrap.classList.add('kb-' + kbMode);
     }
-    const dur = cfg.per_shot_duration[shot.idx] || shot.dur;
-    const elapsed = SHOTS.slice(0, currentIdx).reduce((a,s) => a + (cfg.per_shot_duration[s.idx] || s.dur), 0);
+    const elapsed = ppElapsedAt(currentIdx);
+    const total   = SHOTS.reduce((a,s) => a+(cfg.per_shot_duration[s.idx]||s.dur),0);
     document.getElementById('pp-time-display').textContent =
-      elapsed.toFixed(1) + 's / ' + SHOTS.reduce((a,s) => a+(cfg.per_shot_duration[s.idx]||s.dur),0).toFixed(1) + 's';
+      elapsed.toFixed(1) + 's / ' + total.toFixed(1) + 's';
     ppSubPreview();
   }
 
   window.ppUpdateKBPreview = function() { renderShot(); };
 
   window.ppThumbClick = function(shotIdx, listIdx) {
-    // Jump to the shot AND open its Ken Burns popover
     ppJumpTo(listIdx);
     ppOpenKBPop(shotIdx);
   };
@@ -1143,8 +1159,11 @@
     const btn = document.getElementById('pp-play-btn');
     if (playing) {
       clearTimeout(playTimer); playing = false; btn.textContent = '▶';
+      if (ppAudio) ppAudio.pause();
     } else {
-      playing = true; btn.textContent = '⏸'; ppAutoAdvance();
+      playing = true; btn.textContent = '⏸';
+      if (ppAudio) { ppAudioSeek(ppElapsedAt(currentIdx)); ppAudio.play().catch(()=>{}); }
+      ppAutoAdvance();
     }
   };
 
@@ -1153,8 +1172,19 @@
     const shot = SHOTS[currentIdx];
     const dur  = (cfg.per_shot_duration[shot.idx] || shot.dur) * 1000;
     playTimer = setTimeout(() => {
-      if (currentIdx < SHOTS.length - 1) { ppJumpTo(currentIdx + 1); ppAutoAdvance(); }
-      else { playing = false; document.getElementById('pp-play-btn').textContent = '▶'; }
+      if (currentIdx < SHOTS.length - 1) {
+        currentIdx++;
+        renderShot();
+        document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
+        const s2 = SHOTS[currentIdx];
+        const th = document.getElementById('pp-thumb-' + s2.idx);
+        if (th) { th.classList.add('active'); th.scrollIntoView({block:'nearest',inline:'center'}); }
+        ppAutoAdvance();
+      } else {
+        playing = false;
+        document.getElementById('pp-play-btn').textContent = '▶';
+        if (ppAudio) ppAudio.pause();
+      }
     }, dur);
   }
 

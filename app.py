@@ -1961,6 +1961,18 @@ def postprod_page(project_id: str):
     quick_video_url = _asset_url(project.get("quick_video_url")) if project.get("quick_video_url") else None
     total_duration = sum(s.get("duration") or 0 for s in timeline)
 
+    # Construct audio preview URL from the uploaded audio file
+    audio_url = None
+    audio_filename = project.get("audio_filename")
+    if audio_filename:
+        try:
+            import r2_storage as _r2
+            if _r2.r2_available():
+                raw_url = _r2.public_url_for(f"projects/{project_id}/uploads/{audio_filename}")
+                audio_url = url_for("r2proxy", url=raw_url, _external=False)
+        except Exception:
+            pass
+
     return render_template(
         "stage_postprod.html",
         project=project,
@@ -1968,6 +1980,7 @@ def postprod_page(project_id: str):
         config=config,
         quick_video_url=quick_video_url,
         total_duration=round(total_duration, 1),
+        audio_url=audio_url,
     )
 
 
