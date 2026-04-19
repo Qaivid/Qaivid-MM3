@@ -2963,6 +2963,61 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             if not local_stills:
                 raise RuntimeError("Could not download any ready stills.")
 
+            # ── Fetch audio early to measure its duration ──────────────────────
+            audio_local: Optional[Path] = None
+            audio_filename = row.get("audio_filename")
+            if audio_filename:
+                candidate = PROJECTS_ROOT / project_id / "uploads" / audio_filename
+                if candidate.is_file():
+                    audio_local = candidate
+                elif r2_storage.r2_available():
+                    try:
+                        data = r2_storage.download_bytes(
+                            f"projects/{project_id}/uploads/{audio_filename}"
+                        )
+                        candidate.parent.mkdir(parents=True, exist_ok=True)
+                        candidate.write_bytes(data)
+                        audio_local = candidate
+                    except Exception:
+                        logger.warning("Quick video: could not fetch audio for project %s", project_id)
+
+            # ── Measure audio duration via ffprobe ─────────────────────────────
+            audio_dur: float = 0.0
+            if audio_local:
+                _ffprobe = Path(ffmpeg).with_name("ffprobe")
+                try:
+                    _probe = subprocess.run(
+                        [str(_ffprobe), "-v", "quiet", "-show_entries",
+                         "format=duration", "-of", "default=noprint_wrappers=1:nokey=1",
+                         str(audio_local)],
+                        capture_output=True, text=True, check=True,
+                    )
+                    audio_dur = float(_probe.stdout.strip())
+                except Exception:
+                    logger.warning("Quick video: ffprobe duration failed — stills will not be extended",
+                                   exc_info=True)
+
+            # ── Loop / extend stills to cover the full audio track ─────────────
+            # Audio is source of truth: cycle stills until they fill audio_dur.
+            if audio_dur > 0.1:
+                total_stills_dur = sum(d for _, _, d in local_stills)
+                if total_stills_dur < audio_dur - 0.1:
+                    extended: list[tuple[int, Path, float]] = []
+                    remaining = audio_dur
+                    guard = 0
+                    while remaining > 0.05 and guard < 10_000:
+                        for idx, path, base_dur in local_stills:
+                            if remaining <= 0.05:
+                                break
+                            extended.append((idx, path, min(base_dur, remaining)))
+                            remaining -= min(base_dur, remaining)
+                            guard += 1
+                    local_stills = extended
+                    logger.info(
+                        "Quick video: stills extended from %.1fs → %.1fs (audio) for project %s",
+                        total_stills_dur, audio_dur, project_id,
+                    )
+
             # ── Build per-shot processed clips ────────────────────────────────
             processed_clips: list[Path] = []
             colour_expr = _COLOUR_FILTERS.get(colour_filter, "")
