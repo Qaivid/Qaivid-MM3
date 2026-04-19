@@ -286,7 +286,7 @@
                         <a class="btn-primary" href="{{ url_for('project_export', project_id=project.id) }}">Download JSON</a>
                     </span>
                     <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}"
-                          onsubmit="return confirm('Delete this project and all its images? This cannot be undone.') && confirm('Are you absolutely sure? Every reference image, still, video clip and JSON for this project will be permanently removed.');">
+                          onsubmit="return confirm('Delete this project and all its images? This cannot be undone.');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn-danger">Delete project</button>
                     </form>

@@ -1,0 +1,563 @@
+Context Intelligence
+
+Meaning Analysis
+Content Type
+
+song
+
+Narrative Mode
+
+symbolic
+
+Core Theme
+
+The enduring pain of separation and longing for a lost beloved.
+
+Dramatic Premise
+
+A woman laments the deep sorrow and emptiness left by her beloved's departure.
+
+Narrative Spine
+
+The speaker reflects on the emotional devastation caused by her beloved's absence, expressing how her life has been rendered hollow and unfulfilled. She recounts the daily reminders of her loss and the enduring hope for reunion.
+
+Speaker
+
+identity
+a woman lamenting her lost beloved
+gender
+female
+age range
+middle
+social role
+beloved
+emotional state
+longing and sorrowful
+relationship to addressee
+beloved
+Addressee
+
+identity
+the departed beloved
+relationship
+beloved
+Emotional Arc
+
+opening→longingmedium
+development→achemedium
+climax→private_breakdownhigh
+resolution→resignationmedium
+Confidence
+
+overall
+85%
+cultural
+90%
+emotional
+85%
+speaker
+90%
+narrative_mode
+80%
+World Building
+
+Culture & Setting
+Override
+Build Scenes
+World Assumptions
+
+geography
+rural Punjab
+era
+unspecified
+season
+winter
+time of day
+unspecified
+social context
+traditional rural society
+economic context
+agrarian
+architecture style
+rural Punjabi homes
+domestic setting
+courtyard
+Cultural Setting
+
+culture pack
+punjabi_rural_lament
+pack name
+Punjabi Rural Lament
+visual palette
+mustard yellow
+terracotta
+deep green
+white cotton
+restrictions
+avoid modern urban settings
+avoid western furniture
+maintain modesty in female depiction
+common misinterpretations
+Do not literalize 'pardes' as just 'foreign country' — it means emotional exile
+Charkha is not just a spinning wheel — it symbolizes devotion and waiting
+Motif Map
+
+waiting
+lines: 0, 60
+absence
+lines: 11, 31, 47, 50
+domestic_routine
+lines: 25, 50
+silence
+lines: 12, 23, 42, 43
+memory_warmth
+lines: 7, 46, 61
+winter_light
+lines: 10
+fading_presence
+lines: 40
+threshold
+lines: 50
+unfinished_objects
+lines: 14, 15
+Line-by-Line Interpretation
+
+ਹੇ
+
+absorbed
+Literal: Oh
+Implied: A sigh of deep sorrow and longing.
+Emotional: longing
+Cultural: A traditional expression of lament.
+ਜੀਵਨ ਜੋਗਿਆ ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ
+
+direct
+Literal: Life-giver, you have destroyed me.
+Implied: The beloved's absence has left her life empty.
+Emotional: ache
+Cultural: The beloved is seen as the source of life.
+ਇੰਨੇ ਮੇਰੇ ਹੰਝੂ ਨਹੀਂ ਸੀ
+
+indirect
+Literal: I didn't have so many tears.
+Implied: Her sorrow is beyond what she imagined.
+Emotional: restraint
+Cultural: Tears as a symbol of deep sorrow.
+ਜਿੰਨਾਂ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+absorbed
+Literal: As much as you made me cry.
+Implied: Her beloved's departure has caused immense grief.
+Emotional: ache
+Cultural: Crying as a cultural expression of grief.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ ਵੇ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ ਵੇ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਮੈਂ ਮਰਵੇ ਦੇ ਫੁੱਲ ਵਰਗੀ ਸੀ
+
+direct
+Literal: I was like a withered flower.
+Implied: Her life feels lifeless and devoid of joy.
+Emotional: numbness
+Cultural: Flowers symbolize life and beauty, their withering symbolizes loss.
+ਧੁੱਪਾਂ ਦੀ ਸ਼ੁਦਾਈ
+
+symbolic
+Literal: Longing for the sun.
+Implied: She yearns for warmth and life.
+Emotional: longing
+Cultural: Sunlight as a metaphor for hope and life.
+ਤੂੰ ਪੋਹ ਮਾਂਹ ਦੇ ਸੂਰਜ ਵਾਂਗੂੰ
+
+symbolic
+Literal: You are like the winter sun.
+Implied: The beloved is distant and cold.
+Emotional: longing
+Cultural: Winter sun as a symbol of distant warmth.
+ਮੈਥੋਂ ਜਾਨ ਛੁੜਾਈ
+
+direct
+Literal: You freed yourself from me.
+Implied: The beloved has left her alone.
+Emotional: hollowness
+Cultural: Separation as a form of liberation for the beloved.
+ਨਾ ਮੇਰੀ ਕੋਈ ਸੱਧਰ ਸਿੰਝੀ
+
+indirect
+Literal: No one understood my call.
+Implied: Her cries for help went unheard.
+Emotional: silence
+Cultural: Isolation in her grief.
+ਨਾ ਕੋਈ ਰੀਝ ਮੁਕਾਈ
+
+indirect
+Literal: No desires were fulfilled.
+Implied: Her life remains unfulfilled.
+Emotional: resignation
+Cultural: Unfulfilled desires as a symbol of incomplete life.
+ਨਾ ਮੈਂ ਚੱਜ ਦੇ ਲੀੜੇ ਪਾਏ
+
+symbolic
+Literal: I did not weave the threads of life.
+Implied: She did not achieve what she hoped for.
+Emotional: resignation
+Cultural: Weaving as a metaphor for creating life.
+ਨਾ ਝਾਂਜਰ ਛਣਕਾਈ
+
+symbolic
+Literal: I did not jingle the anklets.
+Implied: Her life lacked joy and celebration.
+Emotional: numbness
+Cultural: Anklets as a symbol of joy and festivity.
+ਦਰਦ ਵਿਛੋੜਾ ਦੇ ਕੇ ਮੈਨੂੰ
+
+direct
+Literal: Giving me the pain of separation.
+Implied: The beloved's departure has caused deep pain.
+Emotional: ache
+Cultural: Separation as a profound source of pain.
+ਲੂਣਾ ਪਾਣੀ ਲਾਇਆ ਤੂੰ
+
+direct
+Literal: You applied salt to my wounds.
+Implied: The beloved's actions have intensified her pain.
+Emotional: ache
+Cultural: Salt in wounds as a metaphor for exacerbated pain.
+ਜੀਵਨ ਜੋਗਿਆ ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ
+
+direct
+Literal: Life-giver, you have destroyed me.
+Implied: The beloved's absence has left her life empty.
+Emotional: ache
+Cultural: The beloved is seen as the source of life.
+ਇੰਨੇ ਮੇਰੇ ਹੰਝੂ ਨਹੀਂ ਸੀ
+
+indirect
+Literal: I didn't have so many tears.
+Implied: Her sorrow is beyond what she imagined.
+Emotional: restraint
+Cultural: Tears as a symbol of deep sorrow.
+ਜਿੰਨਾਂ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+absorbed
+Literal: As much as you made me cry.
+Implied: Her beloved's departure has caused immense grief.
+Emotional: ache
+Cultural: Crying as a cultural expression of grief.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ ਵੇ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕੀ ਦੱਸਾਂ ਮੈਂ ਤੈਨੂੰ ਕਿਹੜਾ ਕਿਹੜਾ ਖਾਣ ਨੂੰ ਪੈਂਦਾ
+
+indirect
+Literal: What should I tell you about what I have to endure?
+Implied: Her life is filled with hardships.
+Emotional: resignation
+Cultural: Endurance of hardships as a part of life.
+ਕਰਦੀਆਂ ਕੰਧਾਂ ਡੰਗਦੀਆਂ ਮੈਨੂੰ
+
+symbolic
+Literal: The walls seem to sting me.
+Implied: Her environment feels hostile and suffocating.
+Emotional: hollowness
+Cultural: Walls as a metaphor for confinement.
+ਵੇਹੜਾ ਖਾਣ ਨੂੰ ਪੈਂਦਾ
+
+symbolic
+Literal: The courtyard seems to consume me.
+Implied: Her home feels empty and oppressive.
+Emotional: hollowness
+Cultural: Courtyard as a symbol of domestic life.
+ਚਿੜੀਆਂ ਚੱਚ ਚੱਚ ਵੇਂਦੀਆਂ ਮੈਨੂੰ
+
+symbolic
+Literal: The chirping birds mock me.
+Implied: Even nature seems to taunt her loneliness.
+Emotional: ache
+Cultural: Birds as a symbol of freedom and life.
+ਬੱਦਤਰ ਰੋ ਰੋ ਵੱਸਦੇ
+
+indirect
+Literal: The worst of times dwell in tears.
+Implied: Her life is consumed by sorrow.
+Emotional: ache
+Cultural: Tears as a constant companion in grief.
+ਦਿਨ ਨੇ ਸੂਰਜ ਦਿੰਦਾ ਮੈਣੇ
+
+symbolic
+Literal: The day gives me the sun.
+Implied: Life continues despite her sorrow.
+Emotional: resignation
+Cultural: Sun as a symbol of life and continuity.
+ਰਾਤ ਨੂੰ ਤਾਰੇ ਹੱਸਦੇ
+
+symbolic
+Literal: The stars laugh at night.
+Implied: Her loneliness is highlighted by the indifferent universe.
+Emotional: ache
+Cultural: Stars as distant observers of human sorrow.
+ਕਿਹੜੇ ਮੌਤ ਦੇ ਖੂਹ ਵਿੱਚ ਸੁੱਟ ਕੇ
+
+symbolic
+Literal: Which well of death have you thrown me into?
+Implied: Her life feels like a living death.
+Emotional: hollowness
+Cultural: Well as a metaphor for deep despair.
+ਮੈਥੋਂ ਹੱਥ ਛੁੜਾਇਆ ਤੂੰ
+
+direct
+Literal: You let go of my hand.
+Implied: The beloved has abandoned her.
+Emotional: hollowness
+Cultural: Letting go as a symbol of abandonment.
+ਜੀਵਨ ਜੋਗਿਆ ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ
+
+direct
+Literal: Life-giver, you have destroyed me.
+Implied: The beloved's absence has left her life empty.
+Emotional: ache
+Cultural: The beloved is seen as the source of life.
+ਇੰਨੇ ਮੇਰੇ ਹੰਝੂ ਨਹੀਂ ਸੀ
+
+indirect
+Literal: I didn't have so many tears.
+Implied: Her sorrow is beyond what she imagined.
+Emotional: restraint
+Cultural: Tears as a symbol of deep sorrow.
+ਜਿੰਨਾਂ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+absorbed
+Literal: As much as you made me cry.
+Implied: Her beloved's departure has caused immense grief.
+Emotional: ache
+Cultural: Crying as a cultural expression of grief.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ ਵੇ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਜ਼ਿੰਦਗੀ ਚਾਰ ਦਿਹਾੜੇ ਅੜਿਆ
+
+indirect
+Literal: Life is stuck for four days.
+Implied: Her life feels stagnant and unchanging.
+Emotional: resignation
+Cultural: Stagnation as a metaphor for unfulfilled life.
+ਢਾਈ ਤੇ ਕੱਟ ਗਏ ਕੱਲੇ
+
+indirect
+Literal: Two and a half have passed alone.
+Implied: She has spent a significant time in loneliness.
+Emotional: loneliness
+Cultural: Time as a measure of enduring loneliness.
+ਕਿਹੜੀਆਂ ਸੰਗਲਾਂ ਪੈ ਗਈਆਂ ਤੈਨੂੰ
+
+indirect
+Literal: What chains have bound you?
+Implied: She wonders what has kept her beloved away.
+Emotional: longing
+Cultural: Chains as a metaphor for constraints.
+ਭੁੱਲ ਗਿਆ ਛਾਪਾਂ ਛੱਲੇ
+
+symbolic
+Literal: Forgot the footprints and anklets.
+Implied: The beloved has forgotten their shared past.
+Emotional: ache
+Cultural: Footprints as a symbol of past journeys together.
+ਹੱਸ ਹੱਸ ਮੋਰੇ ਬੋਲ ਸ਼ਰੀਕਾਂ
+
+symbolic
+Literal: Laughing, the companions speak.
+Implied: Others seem to move on while she is stuck.
+Emotional: loneliness
+Cultural: Laughter as a contrast to her sorrow.
+ਹੁਣ ਨਹੀਂ ਜਾਂਦੇ ਚੱਲੇ
+
+indirect
+Literal: Now the journeys don't happen.
+Implied: Her life lacks movement and change.
+Emotional: resignation
+Cultural: Journeys as a metaphor for life experiences.
+ਵੇਲੇ ਨੇ ਵੇਲਾ ਦੱਸਿਆ
+
+indirect
+Literal: Time has told its time.
+Implied: Time has revealed the truth of her situation.
+Emotional: resignation
+Cultural: Time as a revealer of truths.
+ਆਪਣੇ ਛੰਦ ਗਏ ਪੱਲੇ
+
+symbolic
+Literal: Our rhythms have gone astray.
+Implied: Their lives are no longer in sync.
+Emotional: ache
+Cultural: Rhythms as a metaphor for harmony in relationships.
+ਮਰਨ ਤੋਂ ਪਹਿਲਾਂ ਮਿਲ ਜਾਏ ਤੇ
+
+indirect
+Literal: If we meet before death.
+Implied: She hopes for a reunion before it's too late.
+Emotional: fading_hope
+Cultural: Meeting as a symbol of reconciliation.
+ਹੋ ਜਾਏ ਬੱਲੇ ਬੱਲੇ
+
+symbolic
+Literal: There will be joy.
+Implied: A reunion would bring immense happiness.
+Emotional: fading_hope
+Cultural: Joy as a cultural expression of celebration.
+ਸਾਡੀਆਂ ਨਾ ਆਈ ਤੈਨੂੰ
+
+direct
+Literal: You didn't come to us.
+Implied: The beloved has not returned.
+Emotional: ache
+Cultural: Absence as a constant reminder of loss.
+ਕਿਹੜੀਆਂ ਪੱਟੀਆਂ ਪੜ੍ਹਿਆ
+
+indirect
+Literal: What pages did you read?
+Implied: She wonders what has kept him away.
+Emotional: longing
+Cultural: Reading as a metaphor for understanding.
+ਕਿਹੜੇ ਬੱਤੜੇ ਪੈ ਗਿਆ ਤੂੰ ਜੋ
+
+indirect
+Literal: What evil has befallen you?
+Implied: She is concerned about what keeps him away.
+Emotional: concern
+Cultural: Evil as a metaphor for misfortune.
+ਮੁੜ ਵੇਹੜੇ ਨਾ ਵੜਿਆ
+
+direct
+Literal: You did not return to the courtyard.
+Implied: He has not come back home.
+Emotional: ache
+Cultural: Courtyard as a symbol of home and belonging.
+ਕਿੰਨੇ ਚੇਤਰ ਲੰਘ ਗਏ ਸੱਖਣੇ
+
+symbolic
+Literal: How many springs have passed empty.
+Implied: Time has passed without renewal or joy.
+Emotional: resignation
+Cultural: Spring as a symbol of renewal and life.
+ਫਸਲ ਵਸਾਖ ਨਾ ਚੜ੍ਹਿਆ
+
+symbolic
+Literal: The crop of spring did not rise.
+Implied: Her life has not seen growth or prosperity.
+Emotional: resignation
+Cultural: Crops as a metaphor for growth and prosperity.
+ਮੈਨੂੰ ਹਿਜ਼ਰ ਫ਼ਿਰਾਕਾਂ ਵਾਲੇ
+
+indirect
+Literal: Those who are separated by distance.
+Implied: She feels the pain of separation.
+Emotional: ache
+Cultural: Separation as a profound source of pain.
+ਕਿਸ ਚੱਕਰ ਵਿੱਚ ਪਾਇਆ ਤੂੰ
+
+indirect
+Literal: What cycle have you put me in?
+Implied: Her life feels like an endless loop of sorrow.
+Emotional: hollowness
+Cultural: Cycle as a metaphor for repetitive suffering.
+ਜੀਵਨ ਜੋਗਿਆ ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ
+
+direct
+Literal: Life-giver, you have destroyed me.
+Implied: The beloved's absence has left her life empty.
+Emotional: ache
+Cultural: The beloved is seen as the source of life.
+ਇੰਨੇ ਮੇਰੇ ਹੰਝੂ ਨਹੀਂ ਸੀ
+
+indirect
+Literal: I didn't have so many tears.
+Implied: Her sorrow is beyond what she imagined.
+Emotional: restraint
+Cultural: Tears as a symbol of deep sorrow.
+ਜਿੰਨਾਂ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+absorbed
+Literal: As much as you made me cry.
+Implied: Her beloved's departure has caused immense grief.
+Emotional: ache
+Cultural: Crying as a cultural expression of grief.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ ਵੇ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਕਿੰਨਾ ਮੈਨੂੰ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+ਆ
+
+absorbed
+Literal: Come
+Implied: A plea for the beloved to return.
+Emotional: longing
+Cultural: A traditional call for reunion.
+ਕਿੰਨਾ ਰਵਾਇਆ ਤੂੰ
+
+symbolic
+Literal: How much you made me cry.
+Implied: The depth of her sorrow is reiterated.
+Emotional: ache
+Cultural: Repetition emphasizes the intensity of emotion.
+Restrictions
+
+avoid excessive focus on crying faces
+
+do not literalize metaphors

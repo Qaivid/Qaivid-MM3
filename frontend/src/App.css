@@ -1,0 +1,29 @@
+/* App-level styles */
+.dark {
+  color-scheme: dark;
+}
+
+/* Resizable panel handles */
+[data-panel-group-direction="horizontal"] > [data-resize-handle] {
+  width: 4px;
+  background: #1F1F24;
+  transition: background-color 200ms ease;
+}
+[data-panel-group-direction="horizontal"] > [data-resize-handle]:hover {
+  background: #D4AF37;
+}
+
+/* Scene/Shot card film-slate style */
+.film-slate {
+  position: relative;
+  border-left: 3px solid #D4AF37;
+}
+.film-slate::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg, #D4AF37 0%, #C85A17 100%);
+}

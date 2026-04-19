@@ -141,14 +141,12 @@ class ProductionOrchestrator:
         user_image_url: Optional[str] = None,
         pre_analysis: Optional[Dict[str, Any]] = None,
         style_profile: Optional[Dict[str, Any]] = None,
-        creative_brief: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         text = self._validate_text(text)
         genre = self._validate_genre(genre)
         audio_analytics = self._validate_optional_dict(audio_analytics)
         pre_analysis = self._validate_optional_dict(pre_analysis)
         style_profile = self._validate_optional_dict(style_profile)
-        creative_brief = self._validate_optional_dict(creative_brief)
 
         if user_image_url:
             self.storyboard_engine.inject_user_reference(user_image_url)
@@ -160,12 +158,6 @@ class ProductionOrchestrator:
             style_profile=style_profile,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
-
-        # Task #69 — splice the user-locked Creative Brief into the freshly
-        # regenerated context_packet so the storyboard's continuity prompt
-        # carries the chosen treatment, central metaphor, and director's note.
-        if creative_brief:
-            context_packet["creative_brief"] = creative_brief
 
         storyboard = self.storyboard_engine.build_storyboard(
             context_packet, style_profile=style_profile

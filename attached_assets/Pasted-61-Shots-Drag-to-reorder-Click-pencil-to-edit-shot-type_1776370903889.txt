@@ -1,0 +1,1179 @@
+61 Shots
+Drag to reorder. Click pencil to edit shot type, camera, action, lighting.
+
+
+generic (image)
+Generate Prompts
+Scene 1
+Chorus
+
+Shot 1
+close-up
+6s
+
+Mainu maar mukaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 2
+extreme-close-up
+3.6s
+
+Inne mere hanju nayi si
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries longing, no face in frame
+
+Emotion: longing
+
+Shot 3
+extreme-close-up
+3.6s
+
+Jinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 4
+medium
+6s
+
+Kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+subject seen from behind or in profile — slumped shoulders, still hands, the way she sits at the threshold; face not the focus (ache)
+
+Emotion: ache
+
+Shot 5
+extreme-close-up
+3.6s
+
+Vey kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 6
+wide
+6s
+
+Kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying ache
+
+Emotion: ache
+
+Shot 7
+extreme-close-up
+3.6s
+
+Vey kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+Scene 2
+Verse
+
+Shot 1
+medium-close
+5.4s
+
+Main marve de phull vargi si
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 5.4s
+Action
+a remembered moment — softer, warmer light than the present scene, gentle gesture between two people (memory_warmth)
+
+Emotion: memory_warmth
+
+Shot 2
+wide
+6s
+
+Dhupaan di shudayi
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (numbness); space, light, weather do the work
+
+Emotion: numbness
+
+Shot 3
+wide
+6s
+
+Dhupo maah de suraj vaangu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (longing); space, light, weather do the work
+
+Emotion: longing
+
+Shot 4
+wide
+6s
+
+Methon jaan chhudayi
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: hollowness
+
+Shot 5
+wide
+6s
+
+Na meri koi sadar sinji
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: fading_hope
+
+Shot 6
+wide
+6s
+
+Na koi reejh mukayi
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying resignation
+
+Emotion: resignation
+
+Shot 7
+medium
+6s
+
+Na main chajj de leede paaye
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+She hasn't engaged in routine domestic activities.
+
+Emotion: quiet_routine
+
+Shot 8
+extreme-close-up
+3.6s
+
+Na chanjhre chhankaayi
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries silence, no face in frame
+
+Emotion: silence
+
+Shot 9
+close-up
+6s
+
+Dard vichhoda de ke mainu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 10
+extreme-close-up
+3.6s
+
+Loona paani laaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+Scene 3
+Chorus
+
+Shot 1
+close-up
+6s
+
+Mainu maar mukaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 2
+extreme-close-up
+3.6s
+
+Inne mere hanju nayi si
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries longing, no face in frame
+
+Emotion: longing
+
+Shot 3
+extreme-close-up
+3.6s
+
+Jinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 4
+medium-close
+5.4s
+
+Kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 5.4s
+Action
+a remembered moment — softer, warmer light than the present scene, gentle gesture between two people (ache)
+
+Emotion: ache
+
+Shot 5
+extreme-close-up
+3.6s
+
+Vey kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+Scene 4
+Verse
+
+Shot 1
+wide
+6s
+
+Ki dassan main tainu kehda
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying silence
+
+Emotion: silence
+
+Shot 2
+extreme-close-up
+3.6s
+
+Kehda khaan nu painda
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries numbness, no face in frame
+
+Emotion: numbness
+
+Shot 3
+wide
+6s
+
+Kandiya kandhan dangdiyan mainu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (suspended_time); space, light, weather do the work
+
+Emotion: suspended_time
+
+Shot 4
+extreme-close-up
+3.6s
+
+Veda khaan nu painda
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries numbness, no face in frame
+
+Emotion: numbness
+
+Shot 5
+wide
+6s
+
+Chidiyan chach chach vekhdiyaan mainu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (public_composure); space, light, weather do the work
+
+Emotion: public_composure
+
+Shot 6
+extreme-close-up
+3.6s
+
+Bhattar ro ro vasde
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 7
+wide
+6s
+
+Dinne suraj denda mehne
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (suspended_time); space, light, weather do the work
+
+Emotion: suspended_time
+
+Shot 8
+wide
+6s
+
+Raat nu taare hassde
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (public_composure); space, light, weather do the work
+
+Emotion: public_composure
+
+Shot 9
+wide
+6s
+
+Kehde maut de khooh vich sutt ke
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (private_breakdown); space, light, weather do the work
+
+Emotion: private_breakdown
+
+Shot 10
+wide
+6s
+
+Methon hath chhudaaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: hollowness
+Scene 5
+Chorus
+
+Shot 1
+close-up
+6s
+
+Mainu maar mukaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 2
+extreme-close-up
+3.6s
+
+Inne mere hanju nayi si
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries longing, no face in frame
+
+Emotion: longing
+
+Shot 3
+extreme-close-up
+3.6s
+
+Jinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 4
+wide
+6s
+
+Kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: ache
+
+Shot 5
+extreme-close-up
+3.6s
+
+Vey kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+Scene 6
+Verse
+
+Shot 1
+wide
+6s
+
+Zindagi char dehaade adeya
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying resignation
+
+Emotion: resignation
+
+Shot 2
+wide
+6s
+
+Dhai te kat gaye kalle
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (resignation); space, light, weather do the work
+
+Emotion: resignation
+
+Shot 3
+wide
+6s
+
+Kehdiyan sanglaan pai gaiyan tainu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying longing
+
+Emotion: longing
+
+Shot 4
+medium-close
+5.4s
+
+Bhull gaya chhaa paan chhalle
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 5.4s
+Action
+a remembered moment — softer, warmer light than the present scene, gentle gesture between two people (ache)
+
+Emotion: ache
+
+Shot 5
+wide
+6s
+
+Hass hass maare bol shariqan
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (public_composure); space, light, weather do the work
+
+Emotion: public_composure
+
+Shot 6
+medium
+6s
+
+Hun nayi jaande challe
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+subject seen from behind or in profile — slumped shoulders, still hands, the way she sits at the threshold; face not the focus (public_composure)
+
+Emotion: public_composure
+
+Shot 7
+wide
+6s
+
+Vele ne vela dassiya
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (dawn_lucidity); space, light, weather do the work
+
+Emotion: dawn_lucidity
+
+Shot 8
+wide
+6s
+
+Apne chhand gaye palle
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: hollowness
+
+Shot 9
+medium-close
+5.4s
+
+Maran ton pehla mil jaaye te
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 5.4s
+Action
+a remembered moment — softer, warmer light than the present scene, gentle gesture between two people (fading_hope)
+
+Emotion: fading_hope
+
+Shot 10
+medium-close
+5.4s
+
+Ho jaaye balle balle
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 5.4s
+Action
+a remembered moment — softer, warmer light than the present scene, gentle gesture between two people (tenderness)
+
+Emotion: tenderness
+
+Shot 11
+wide
+6s
+
+Sadiyan agge na aayi te
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (suspended_time); space, light, weather do the work
+
+Emotion: suspended_time
+
+Shot 12
+wide
+6s
+
+Kehdiyaan pattiyan padeya
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying dawn_lucidity
+
+Emotion: dawn_lucidity
+
+Shot 13
+wide
+6s
+
+Kehde pattdi pai gaya tu jo
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying longing
+
+Emotion: longing
+
+Shot 14
+wide
+6s
+
+Mud velle na vadeya
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+the empty place where someone used to be — a simple home with a courtyard, traces of presence (an unworn shawl, two cups but one untouched), no figure
+
+Emotion: ache
+
+Shot 15
+wide
+6s
+
+Kinne chetar langh gaye sukkne
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+no person in frame — a simple home with a courtyard carrying the emotion (resignation); space, light, weather do the work
+
+Emotion: resignation
+
+Shot 16
+extreme-close-up
+3.6s
+
+Fasal vasakh na chadeya
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries resignation, no face in frame
+
+Emotion: resignation
+
+Shot 17
+close-up
+6s
+
+Mainu hijar firaaqan vaale
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 18
+wide
+6s
+
+Kis chakkar vich paya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying suspended_time
+
+Emotion: suspended_time
+Scene 7
+Chorus
+
+Shot 1
+close-up
+6s
+
+Mainu maar mukaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+close on subject's face — ache held quietly; small involuntary movement (a swallow, a blink), no theatrical crying unless intensity is HIGH
+
+Emotion: ache
+
+Shot 2
+extreme-close-up
+3.6s
+
+Inne mere hanju nayi si
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries longing, no face in frame
+
+Emotion: longing
+
+Shot 3
+extreme-close-up
+3.6s
+
+Jinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 4
+wide
+6s
+
+Kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 6.0s
+Action
+stillness in a simple home with a courtyard — held breath, no movement, ambient quiet conveying ache
+
+Emotion: ache
+
+Shot 5
+extreme-close-up
+3.6s
+
+Vey kinna mainu ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache
+
+Shot 6
+extreme-close-up
+3.6s
+
+Vey kinna ruvaya tu
+
+Height:
+eye-level
+Camera:
+static
+Light:
+natural ambient light, balanced exposure
+Motion:
+no camera movement, hold for 3.6s
+Action
+tight focus on an object she has been holding — its stillness carries ache, no face in frame
+
+Emotion: ache

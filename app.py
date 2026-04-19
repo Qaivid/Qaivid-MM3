@@ -46,9 +46,6 @@ from pipeline_worker import (
     set_shot_uploaded_image,
     kick_single_shot,
     kick_all_pending_shots,
-    seed_video_rows_pending,
-    kick_single_video,
-    kick_all_pending_videos,
 )
 from auth import (
     DuplicateEmailError,
@@ -840,30 +837,6 @@ def project_detail(project_id: str):
             shots.append(p)
         return render_template("stills_control.html", project=project, shots=shots)
 
-    if stage == "videos_control":
-        shot_assets = _get_shot_assets(project_id)
-        video_assets = _get_video_assets(project_id)
-        timeline = project.get("styled_timeline") or []
-        video_by_idx = {v["shot_index"]: v for v in video_assets}
-        shots = []
-        for a in shot_assets:
-            tl_shot = next(
-                (s for s in timeline
-                 if (s.get("shot_index") or s.get("timeline_index")) == a["shot_index"]),
-                {},
-            )
-            p = _shot_payload(a, tl_shot)
-            vid = video_by_idx.get(a["shot_index"], {})
-            p["video_status"] = vid.get("status", "pending")
-            p["video_url"] = _asset_url(vid.get("file_path"))
-            p["video_error"] = vid.get("error")
-            # Motion prompt: DB value overrides timeline default
-            tl_motion = (tl_shot.get("motion_prompt") or "").strip()
-            db_motion  = (a.get("motion_prompt") or "").strip()
-            p["motion_prompt"] = db_motion or tl_motion
-            shots.append(p)
-        return render_template("videos_control.html", project=project, shots=shots)
-
     if stage == "stills_review":
         shot_assets = _get_shot_assets(project_id)
         refs_raw = _get_refs(project_id)
@@ -1183,47 +1156,11 @@ def advance_stage_2b(project_id: str):
     locked: dict = dict(cp.get("locked_assumptions") or {})
     flags = list(cp.get("ambiguity_flags") or [])
 
-    # Task #68 — WHY panel: a dedicated section on the JARVIS Dialogue screen
-    # renders accept/override/reject controls for the four motivation fields,
-    # regardless of whether they were surfaced as low-confidence. Process those
-    # first and skip any matching entries in surfaced_assumptions so the same
-    # lock isn't written twice from two different controls.
-    motivation_engine = (cp.get("motivation") or {}) if isinstance(cp.get("motivation"), dict) else {}
-    _why_keys = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
-    for fkey in _why_keys:
-        lock_key = f"motivation_{fkey}"
-        action = (request.form.get(f"why_action_{fkey}") or "").strip()
-        if not action:
-            continue  # field wasn't rendered (e.g. older client) — leave existing lock alone
-        override_value = (request.form.get(f"why_value_{fkey}") or "").strip()
-        if action == "reject":
-            flags.append({
-                "field": lock_key,
-                "reason": "User rejected this motivation field as ambiguous during JARVIS Dialogue.",
-                "confidence": 0.0,
-            })
-            locked.pop(lock_key, None)
-            continue
-        if action == "override" and override_value:
-            chosen = override_value
-        else:
-            chosen = motivation_engine.get(fkey)
-        if chosen:
-            locked[lock_key] = str(chosen).strip()
-        else:
-            # Accept with no engine value (and no override) is treated as
-            # "nothing to lock" — clear any stale lock so we don't keep
-            # asserting an old value the user implicitly cleared.
-            locked.pop(lock_key, None)
-
     for i, item in enumerate(surfaced):
         if not isinstance(item, dict):
             continue
         field = item.get("field")
         if not field:
-            continue
-        # WHY fields are owned by the dedicated panel above — don't double-process.
-        if field in {f"motivation_{k}" for k in _why_keys}:
             continue
         action = (request.form.get(f"action_{i}") or "accept").strip()
         override_value = (request.form.get(f"value_{i}") or "").strip()
@@ -1904,8 +1841,7 @@ def stills_upload_one(project_id: str, shot_index: int):
 @app.route("/project/<project_id>/stills/approve", methods=["POST"])
 @login_required
 def stills_approve(project_id: str):
-    """User approved all stills — park at videos_control so they can trigger
-    video generation manually (nothing renders until they ask)."""
+    """User approved all stills — advance to video generation."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
@@ -1913,89 +1849,14 @@ def stills_approve(project_id: str):
         cur.execute(
             "UPDATE projects SET status=%s, stage=%s, updated_at=NOW() "
             " WHERE id=%s AND stage='stills_control' AND status='awaiting_review'",
-            ("awaiting_review", "videos_control", project_id),
+            ("queued", "queued", project_id),
         )
         advanced = cur.rowcount == 1
         conn.commit()
     if not advanced:
         flash("Cannot advance — project is not at the stills review step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    seed_video_rows_pending(project_id)
-    return redirect(url_for("project_detail", project_id=project_id))
-
-
-def _videos_control_guard(project_id: str):
-    """Return project if it is at the videos_control stage, else abort."""
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(404)
-    if project.get("stage") != "videos_control":
-        abort(403)
-    return project
-
-
-@app.route("/project/<project_id>/videos/status.json")
-@login_required
-def videos_status_json(project_id: str):
-    """Live status of all video_assets rows — used by polling JS."""
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(404)
-    if project.get("stage") not in ("videos_control",):
-        abort(403)
-    videos = _get_video_assets(project_id)
-    return jsonify({
-        "videos": [
-            {
-                "shot_index": v["shot_index"],
-                "status": v["status"],
-                "url": _asset_url(v.get("file_path")),
-                "error": v.get("error"),
-            }
-            for v in videos
-        ]
-    })
-
-
-@app.route("/project/<project_id>/videos/generate/<int:shot_index>", methods=["POST"])
-@login_required
-def videos_generate_one(project_id: str, shot_index: int):
-    """Kick video generation for a single shot (AJAX — returns JSON)."""
-    _videos_control_guard(project_id)
-    kick_single_video(project_id, shot_index)
-    return jsonify({"ok": True, "shot_index": shot_index})
-
-
-@app.route("/project/<project_id>/videos/generate-all", methods=["POST"])
-@login_required
-def videos_generate_all(project_id: str):
-    """Kick video generation for all pending/failed shots (AJAX — returns JSON)."""
-    _videos_control_guard(project_id)
-    force_raw = (request.values.get("force") or "").strip().lower()
-    force = force_raw in ("1", "true", "yes", "on")
-    kick_all_pending_videos(project_id, force=force)
-    return jsonify({"ok": True, "force": force})
-
-
-@app.route("/project/<project_id>/videos/approve", methods=["POST"])
-@login_required
-def videos_approve(project_id: str):
-    """User approved all video clips — kick final assembly (Stage 5)."""
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(404)
-    with db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "UPDATE projects SET status=%s, stage=%s, error=NULL, updated_at=NOW() "
-            " WHERE id=%s AND stage='videos_control' AND status='awaiting_review'",
-            ("queued", "queued", project_id),
-        )
-        advanced = cur.rowcount == 1
-        conn.commit()
-    if not advanced:
-        flash("Cannot advance — project is not at the video review step.", "error")
-        return redirect(url_for("project_detail", project_id=project_id))
-    kick_stage_5(project_id)
+    kick_stage_4(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 

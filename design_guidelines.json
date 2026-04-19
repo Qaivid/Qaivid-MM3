@@ -1,0 +1,107 @@
+{
+  "theme": "dark",
+  "archetype": "5 (Jewel & Luxury) combined with 4 (Swiss & High-Contrast)",
+  "vibe": "Professional cinematographic planning tool. Culturally grounded, emotionally accurate, and dense for power users.",
+  "colors": {
+    "background": {
+      "app": "#0A0A0C",
+      "panel": "#141417",
+      "surface": "#1E1E24",
+      "surface_hover": "#27272E"
+    },
+    "text": {
+      "primary": "#F3F4F6",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A",
+      "inverse": "#0A0A0C"
+    },
+    "brand": {
+      "primary": "#D4AF37",
+      "primary_hover": "#F1C40F",
+      "accent": "#C85A17"
+    },
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "info": "#3B82F6"
+    },
+    "border": {
+      "default": "#27272A",
+      "focus": "#D4AF37",
+      "subtle": "#1F1F24"
+    }
+  },
+  "typography": {
+    "font_families": {
+      "heading": "Cormorant Garamond, serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "rules": {
+      "headings": "Use Cormorant Garamond for poetic/script inputs and project titles to evoke cultural depth. Use Manrope for UI panel headers and technical labels.",
+      "tracking": "Use tracking-tight for large headings. Use tracking-widest uppercase for panel overlines (e.g., text-[10px] tracking-widest text-secondary).",
+      "banned_fonts": ["Inter", "Space Grotesk"]
+    }
+  },
+  "layout_and_spacing": {
+    "strategy": "Control Room Grid (Dense Dashboard)",
+    "architecture": "Multi-panel UI. Use a horizontal scrolling flex layout or react-resizable-panels to fit the 5 core modules: Understanding, Context, Scene Outline, Shot List, Generation.",
+    "spacing_scale": {
+      "panel_gap": "gap-4",
+      "card_padding": "p-4",
+      "section_margin": "mb-8"
+    },
+    "borders_and_radii": {
+      "radius": "rounded-lg for panels, rounded-md for inner cards. NO aggressive rounding.",
+      "borders": "1px solid border-default. Rely on borders instead of shadows in dark mode."
+    }
+  },
+  "components": {
+    "panels": "Use dark flat surfaces (bg-[#141417]) with a 1px border. DO NOT use heavy drop shadows.",
+    "scene_and_shot_cards": "Kanban style or stacked cards. Use subtle hover states (bg-surface_hover translate-y-[-2px] transition-all).",
+    "inputs": "Shadcn components heavily customized. Dark backgrounds, high-contrast text.",
+    "buttons": "Primary CTAs should use bg-[#D4AF37] text-inverse. Secondary buttons use transparent backgrounds with border-default.",
+    "data_testid": "MANDATORY: All interactive elements (buttons, inputs, tabs, cards) MUST have descriptive data-testid attributes in kebab-case."
+  },
+  "motion_and_interaction": {
+    "hover_states": "Always explicitly set text color on hover. Example: hover:bg-[#27272E] hover:text-white.",
+    "transitions": "Use short, crisp transitions. transition-all duration-200 ease-in-out.",
+    "loading": "Use a subtle glowing trace or opacity pulse. No chaotic spinners."
+  },
+  "media": {
+    "guidelines": "Images must have dark overlays (bg-black/40) if text is placed over them. Use these images for project covers or scene visualization placeholders.",
+    "image_urls": [
+      {
+        "category": "project_cover_manuscript",
+        "url": "https://images.unsplash.com/photo-1720701574961-320111f1181c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwxfHx1cmR1JTIwbWFudXNjcmlwdHxlbnwwfHx8fDE3NzYzMTM2ODZ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Urdu manuscript for cultural context input covers"
+      },
+      {
+        "category": "project_cover_cinematic",
+        "url": "https://images.unsplash.com/photo-1751445535640-9acbf06eac44?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxjaW5lbWF0aWMlMjBzb3V0aCUyMGFzaWFuJTIwZmlsbXxlbnwwfHx8fDE3NzYzMTM2NzV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Traditional South Asian gate for location context"
+      },
+      {
+        "category": "scene_placeholder_1",
+        "url": "https://images.unsplash.com/photo-1603457617581-f9d3d390699e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwxfHxjaW5lbWF0aWMlMjBzb3V0aCUyMGFzaWF8ZW58MHx8fHwxNzc2MzEzNjg2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Cinematic aerial night shot for wide scene cards"
+      },
+      {
+        "category": "scene_placeholder_2",
+        "url": "https://images.unsplash.com/photo-1698533188477-5fd401563eaa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwzfHxkYXJrJTIwZmlsbSUyMHN0dWRpb3xlbnwwfHx8fDE3NzYzMTM2ODZ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Dark film studio/garage for interior shot cards"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "1. Setup Tailwind using the precise hex codes provided in the 'colors' object. Map them to CSS variables.",
+    "2. Use 'Manrope' for the main application sans-serif font, and 'Cormorant Garamond' for the poetic input viewer and major project titles. DO NOT use Inter.",
+    "3. Build a multi-panel layout using flex/grid. Consider using 'react-resizable-panels' for the 5 core engines (Understanding, Context, Scene, Shot, Generation) so power users can adjust screen real estate.",
+    "4. DO NOT use teal or purple-blue gradients. Stick to the Cinematic Gold/Terracotta and Deep Slate palette.",
+    "5. Use Shadcn components for all inputs, dropdowns, and buttons. Customize the borders to be 1px solid #27272A.",
+    "6. Scene and Shot cards must look like professional film slates or storyboards, not generic SaaS cards. Include overlines with tight tracking.",
+    "7. MANDATORY: Every interactive element must include a 'data-testid' attribute.",
+    "8. Use the provided Unsplash URLs for project thumbnails and scene visualization placeholders."
+  ]
+}

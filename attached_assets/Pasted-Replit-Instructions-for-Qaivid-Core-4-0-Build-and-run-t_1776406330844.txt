@@ -1,0 +1,233 @@
+Replit Instructions for Qaivid Core 4.0
+
+Build and run this as a Python backend project first. Do not redesign the architecture. Keep the file names and imports exactly aligned with the uploaded files.
+
+Goal
+
+Set up the Qaivid pre-production pipeline so it runs end-to-end:
+
+audio analysis
+context extraction
+storyboard generation
+rhythmic assembly
+style grading
+export to JSON
+
+This is a pipeline app, not a chatbot.
+
+Required file structure
+
+Keep these exact file names in the root:
+
+main.py
+production_orchestrator.py
+unified_context_engine_master.py
+visual_storyboard_engine.py
+rhythmic_assembly_engine.py
+style_grading_engine.py
+asset_export_module.py
+audio_processor.py
+requirements.txt
+.env
+README.md
+Environment
+
+Create .env and read:
+
+OPENAI_API_KEY=your_key_here
+Dependencies
+
+Install from requirements.txt.
+
+Expected packages:
+
+openai
+librosa
+numpy
+python-dotenv
+flask
+
+If any audio dependency issues appear in Replit, fix them in the Replit environment rather than changing the Python architecture.
+
+What the app should do right now
+1. main.py
+
+Use this as the entry point.
+
+It should:
+
+load .env
+initialize ProductionOrchestrator
+optionally run AudioProcessor if sample.mp3 exists
+build pre_analysis from audio
+run full production
+print summary
+export qaivid_export.json
+
+Do not replace this with a chat app.
+
+2. audio_processor.py
+
+This is Stage 0.
+
+It should:
+
+load local audio file
+extract bpm
+extract intensity curve
+extract beat times
+return structured audio analytics
+3. unified_context_engine_master.py
+
+This is Stage 1.
+
+It should:
+
+use OpenAI
+apply structured 5W-style context analysis
+return a stable JSON packet
+preserve schema validation and repair
+
+Do not simplify this into a raw prompt wrapper.
+
+4. visual_storyboard_engine.py
+
+This is Stage 2.
+
+It should:
+
+consume the context packet
+generate shot objects
+preserve fidelity lock behavior
+preserve continuity data
+5. rhythmic_assembly_engine.py
+
+This is Stage 3.
+
+It should:
+
+consume storyboard shots
+consume audio analytics
+build beat-aware timeline entries
+return structured timeline objects
+6. style_grading_engine.py
+
+This is Stage 4.
+
+It should:
+
+consume the timeline
+apply style metadata
+output styled_visual_prompt
+7. production_orchestrator.py
+
+This is Stage 5.
+
+It should:
+
+coordinate all engines in order
+support full production run
+return a structured package containing:
+context packet
+storyboard
+timeline
+styled timeline
+summary
+8. asset_export_module.py
+
+This is Stage 6.
+
+It should:
+
+export final JSON
+generate API payloads
+generate EDL text
+Immediate task for Replit
+
+Make the uploaded project run successfully with minimal changes.
+
+Required checks
+fix import/path issues only if necessary
+keep filenames consistent with imports
+ensure main.py runs without syntax/import errors
+ensure missing sample.mp3 does not crash the whole app
+if no audio file exists, run with empty audio_data = {} and pre_analysis = {}
+keep async handling correct with asyncio.run(main())
+Expected run command
+python main.py
+Expected output
+
+When run successfully, the project should:
+
+print a production summary in terminal
+create qaivid_export.json
+Important implementation rules
+Do not rename files unless absolutely necessary
+Do not convert to another stack
+Do not replace the architecture with a single monolithic file
+Do not reduce the engines to placeholders
+Do not remove async from the context/orchestrator flow
+Do not turn this into a chatbot UI
+If building a simple UI
+
+Only after backend works.
+
+Build a very simple Flask dashboard with these zones:
+
+Input area
+text input
+audio upload
+optional reference image URL or upload placeholder
+Context review
+
+Show:
+
+input type
+narrative mode
+location DNA
+speaker
+emotional arc
+Timeline review
+
+Show:
+
+shot list
+start time
+duration
+meaning
+styled prompt
+Export area
+
+Buttons or views for:
+
+JSON export
+API payload preview
+EDL preview
+
+Keep UI simple. Backend correctness first.
+
+Debugging priorities
+
+If something fails, debug in this order:
+
+imports
+env loading
+OpenAI client initialization
+async execution
+audio file handling
+JSON export
+Final success condition
+
+The project is successful when:
+
+python main.py runs
+the orchestrator completes end-to-end
+qaivid_export.json is generated
+no engine is replaced with dummy logic
+Optional improvement after base setup
+
+Once working, add:
+
+Flask endpoint to upload text/audio
+preview of styled_timeline
+download button for exported JSON

@@ -1,0 +1,153 @@
+Storyboard
+
+7 Scenes
+Drag to reorder. Click pencil to edit in place.
+
+Build Shots
+
+Scene 1
+Chorus — establish world and emotional entry — emotional anchor / refrain
+present
+
+a simple home with a courtyard
+unspecified
+restraint building to ache
+Function: establish world and emotional entry — emotional anchor / refrain
+
+Haa
+Haa
+Haa
+Jeevan jogeya
+Mainu maar mukaya tu
+Inne mere hanju nayi si
+Jinna mainu ruvaya tu
+Kinna mainu ruvaya tu
+Vey kinna mainu ruvaya tu
+Kinna mainu ruvaya tu
+Vey kinna mainu ruvaya tu
+
+
+Scene 2
+Verse — develop and deepen — narrative progression
+symbolic
+
+a simple home with a courtyard
+unspecified
+memory_warmth building to ache
+Function: develop and deepen — narrative progression
+
+Main marve de phull vargi si
+Dhupaan di shudayi
+Dhupo maah de suraj vaangu
+Methon jaan chhudayi
+Na meri koi sadar sinji
+Na koi reejh mukayi
+Na main chajj de leede paaye
+Na chanjhre chhankaayi
+Dard vichhoda de ke mainu
+Loona paani laaya tu
+
+scene_expression_mode auto-rotated from 'object' to 'environment' to prevent visual repetition with previous scene
+
+
+Scene 3
+Chorus — develop and deepen — emotional anchor / refrain
+present
+
+a simple home with a courtyard
+unspecified
+longing to ache
+Function: develop and deepen — emotional anchor / refrain
+
+Jeevan jogeya
+Mainu maar mukaya tu
+Inne mere hanju nayi si
+Jinna mainu ruvaya tu
+Kinna mainu ruvaya tu
+Vey kinna mainu ruvaya tu
+
+
+Scene 4
+Verse — develop and deepen — narrative progression
+symbolic
+
+a simple home with a courtyard
+unspecified
+silence building to hollowness
+Function: develop and deepen — narrative progression
+
+Ki dassan main tainu kehda
+Kehda khaan nu painda
+Kandiya kandhan dangdiyan mainu
+Veda khaan nu painda
+Chidiyan chach chach vekhdiyaan mainu
+Bhattar ro ro vasde
+Dinne suraj denda mehne
+Raat nu taare hassde
+Kehde maut de khooh vich sutt ke
+Methon hath chhudaaya tu
+
+
+Scene 5
+Chorus — develop and deepen — emotional anchor / refrain
+present
+
+a simple home with a courtyard
+unspecified
+longing to ache
+Function: develop and deepen — emotional anchor / refrain
+
+Jeevan jogeya
+Mainu maar mukaya tu
+Inne mere hanju nayi si
+Jinna mainu ruvaya tu
+Kinna mainu ruvaya tu
+Vey kinna mainu ruvaya tu
+
+
+Scene 6
+Verse — develop and deepen — narrative progression
+symbolic
+
+a simple home with a courtyard
+unspecified
+resignation building to suspended_time
+Function: develop and deepen — narrative progression
+
+Zindagi char dehaade adeya
+Dhai te kat gaye kalle
+Kehdiyan sanglaan pai gaiyan tainu
+Bhull gaya chhaa paan chhalle
+Hass hass maare bol shariqan
+Hun nayi jaande challe
+Vele ne vela dassiya
+Apne chhand gaye palle
+Maran ton pehla mil jaaye te
+Ho jaaye balle balle
+Sadiyan agge na aayi te
+Kehdiyaan pattiyan padeya
+Kehde pattdi pai gaya tu jo
+Mud velle na vadeya
+Kinne chetar langh gaye sukkne
+Fasal vasakh na chadeya
+Mainu hijar firaaqan vaale
+Kis chakkar vich paya tu
+
+
+Scene 7
+Chorus — resolve or leave open — emotional anchor / refrain
+present
+
+a simple home with a courtyard
+unspecified
+longing building to restraint
+Function: resolve or leave open — emotional anchor / refrain
+
+Jeevan jogeya
+Mainu maar mukaya tu
+Inne mere hanju nayi si
+Jinna mainu ruvaya tu
+Kinna mainu ruvaya tu
+Vey kinna mainu ruvaya tu
+Haa
+Vey kinna ruvaya tu

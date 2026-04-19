@@ -105,10 +105,6 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": shot.get("motion_prompt", ""),
                     "framing_directive": shot.get("framing_directive", ""),
                     "composition_note": shot.get("composition_note", ""),
-                    # Cinematography rig block (Task #69) — preserve so
-                    # downstream stages (style grading, UI badges, video
-                    # generator) can read the structured rig/lens metadata.
-                    "cinematography": shot.get("cinematography"),
                 }
             )
 
@@ -151,9 +147,6 @@ class RhythmicAssemblyEngine:
                     "motion_prompt": str(shot.get("motion_prompt", "")).strip(),
                     "framing_directive": str(shot.get("framing_directive", "")).strip(),
                     "composition_note": str(shot.get("composition_note", "")).strip(),
-                    # Cinematography rig block (Task #69) — preserve through
-                    # storyboard validation so it survives into the timeline.
-                    "cinematography": shot.get("cinematography"),
                 }
             )
 
