@@ -39,20 +39,24 @@ class RhythmicAssemblyEngine:
 
         timeline: List[Dict[str, Any]] = []
         current_timestamp = 0.0
+        prev_shot_start = 0.0   # tracks start (not end) of the previous shot
         any_lyric_anchor_used = False
 
         for i, shot in enumerate(validated_storyboard):
             # ── Per-shot lyric anchor (Task #105) ─────────────────────────────
             # When Whisper timestamps are available for this shot, snap the
-            # lyric start to the nearest beat and advance current_timestamp to
-            # that position.  The monotonic max() prevents going backwards if a
-            # previous accumulated sum is already ahead (e.g. dense lyric lines).
+            # lyric start to the nearest beat and use it directly as this
+            # shot's start time.  Monotonic protection guards only against the
+            # *start* of the previous shot (not its end), so the lyric anchor
+            # is preserved even when accumulated beat-formula durations have
+            # run ahead of the lyric position.  The gap pass (below) resolves
+            # any resulting overlaps between consecutive shots.
             lyric_ts = shot.get("lyric_start_seconds")
             if lyric_ts is not None:
                 raw_snap = round(
                     round(float(lyric_ts) / beat_duration) * beat_duration, 3
                 )
-                current_timestamp = max(raw_snap, current_timestamp)
+                current_timestamp = max(raw_snap, prev_shot_start)
                 any_lyric_anchor_used = True
 
             shot_intensity = self._clamp_float(
@@ -135,6 +139,7 @@ class RhythmicAssemblyEngine:
                 }
             )
 
+            prev_shot_start = current_timestamp   # record this shot's start before advancing
             current_timestamp += synced_duration
 
         # ── Lyric-anchor gap pass (Task #105) ─────────────────────────────────
