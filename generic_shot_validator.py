@@ -15,7 +15,21 @@ MM3.1 design decision:
   whether a rewrite occurred.
 """
 
+import re
 from typing import Dict, List, Optional
+
+# ── Verb-presence check — every valid subject_action must start with a verb ───
+# Matches common action verbs at the start of the action string (case-insensitive).
+# This enforces the engine-level guarantee that mirrors shot_prompt_composer's
+# _inject_verb_fallback: if the engine produces a verb-less action, it is
+# caught here and overwritten with a mode-appropriate fallback.
+_ACTION_VERB_RE = re.compile(
+    r"^\s*(turns?|stands?|sits?|pauses?|reaches?|walks?|moves?|steps?|looks?|"
+    r"presses?|holds?|lifts?|drops?|shifts?|rests?|waits?|watches?|checks?|"
+    r"folds?|leans?|opens?|closes?|crosses?|traces?|touches?|catches?|"
+    r"light\s+shifts?|shadow\s+falls?|silhouette\s+stands?|fingers?\s+trace)",
+    re.IGNORECASE,
+)
 
 # ── Mode-appropriate fallback actions (verb-bearing) ──────────────────────────
 _FALLBACK_ACTIONS: Dict[str, str] = {
@@ -74,8 +88,8 @@ class GenericShotValidator:
         camera = (event.get("camera_motivation") or "").strip()
         env_field = self._get_env(event)
 
-        # Absent or skeletal action
-        if not action or len(action.split()) < 3:
+        # Absent, skeletal, or verb-less action
+        if not action or len(action.split()) < 3 or not _ACTION_VERB_RE.match(action):
             return True
 
         # Known filler phrases

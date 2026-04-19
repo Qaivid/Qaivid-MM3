@@ -173,8 +173,9 @@ class CinematicBeatEngine:
         lines = ctx["line_meanings"]
         total = len(lines)
 
-        # Stage 1: attempt project-level LLM synthesis
-        llm_overrides = self._synthesize_beats_llm(lines, style_profile)
+        # Stage 1: attempt project-level LLM synthesis (full context passed so
+        # the model understands motifs, world rules, characters, and cultural context)
+        llm_overrides = self._synthesize_beats_llm(lines, style_profile, ctx)
 
         # Stage 2: build heuristic beats (always — LLM fills gaps, doesn't replace)
         beats: List[Dict[str, Any]] = []
@@ -212,14 +213,17 @@ class CinematicBeatEngine:
         self,
         lines: List[Dict[str, Any]],
         style_profile: Dict[str, Any],
+        ctx: Optional[Dict[str, Any]] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """Single Gemini call to synthesize beat overrides for all lines.
 
+        Receives the full context packet (ctx) so the model understands:
+        motifs, world assumptions, character/speaker identity, cultural context,
+        and arc position — enabling narrative-aware beat assignment across the
+        entire song rather than line-by-line heuristic lookup.
+
         Returns a list of partial beat dicts (same length as lines) on success,
         or None on any failure — caller uses heuristic beats as-is in that case.
-
-        This is a project-level call (one per build, not per line) that allows
-        the LLM to understand the arc across all lines before assigning beats.
         """
         try:
             import json
@@ -228,31 +232,58 @@ class CinematicBeatEngine:
             if not gemini_key:
                 return None
 
+            ctx = ctx or {}
             style_mood = (style_profile or {}).get("mood", "cinematic")
             style_genre = (style_profile or {}).get("genre", "narrative")
+
+            # Extract rich context dimensions for the prompt
+            world = ctx.get("world_assumptions") or {}
+            speaker = ctx.get("speaker") or {}
+            motifs = ctx.get("motifs") or ctx.get("recurring_motifs") or []
+            cultural_context = (
+                ctx.get("cultural_context")
+                or ctx.get("cultural_subtext")
+                or world.get("social_context", "")
+            )
+            location = world.get("geography") or world.get("location") or ""
+            era = world.get("era") or world.get("time_period") or ""
+            character_desc = (
+                speaker.get("identity") or speaker.get("gender") or ""
+            )
+            motivation = ctx.get("motivation") or {}
+            dramatic_premise = ctx.get("dramatic_premise") or motivation.get("inciting_cause") or ""
+
+            world_context = "; ".join(filter(None, [location, era, cultural_context]))
+            motifs_str = ", ".join(str(m) for m in motifs[:5]) if motifs else "none specified"
 
             lines_summary = "\n".join(
                 f"{l.get('line_index', i + 1)}. [{l.get('expression_mode', 'body')}] "
                 f'"{l.get("text", "")}" '
                 f"emotion:{l.get('emotional_meaning', '')} "
-                f"implied:{l.get('implied_meaning', '')}"
+                f"implied:{l.get('implied_meaning', '')} "
+                f"cultural:{l.get('cultural_meaning', '')}"
                 for i, l in enumerate(lines)
             )
 
             prompt = (
                 f"You are a cinematography director synthesising beat intelligence "
-                f"for a music video.\n"
+                f"for a music video.\n\n"
                 f"Style: {style_mood}, {style_genre}.\n"
+                f"World context: {world_context or 'unspecified'}.\n"
+                f"Character: {character_desc or 'unspecified'}.\n"
+                f"Recurring motifs: {motifs_str}.\n"
+                f"Dramatic premise: {dramatic_premise or 'unspecified'}.\n"
                 f"Total shots: {len(lines)}\n\n"
                 f"Shot list (one per line):\n{lines_summary}\n\n"
                 f"For each shot output a JSON object with these keys:\n"
                 f"  lyric_relation_type: one of literal|indirect|symbolic|contrast|memory|performance\n"
-                f"  subject_action: concrete physical action (starts with a verb)\n"
+                f"  subject_action: concrete physical action that starts with a verb\n"
                 f"  trigger_event: what event / stimulus causes this beat\n"
                 f"  camera_motive: single camera motivation directive\n"
                 f"  shot_function: one of opening|build|climax|release|echo|close\n"
                 f"  visual_contrast: inner vs outer tension (one sentence)\n"
-                f"\nConsider the full arc across all shots before deciding.\n"
+                f"\nConsider world context, character, motifs, and the full arc "
+                f"across all shots before deciding each beat.\n"
                 f"Return ONLY a JSON array of exactly {len(lines)} objects. "
                 f"No commentary, no markdown."
             )
