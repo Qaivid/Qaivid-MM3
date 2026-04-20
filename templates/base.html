@@ -17,11 +17,11 @@
             {% if current_user %}
                 <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">My Projects</a>
                 <a href="{{ url_for('new_project') }}" class="nav-link nav-cta {% if request.endpoint == 'new_project' %}active{% endif %}">+ New Project</a>
-                <a href="{{ url_for('account') }}" class="nav-link {% if request.endpoint == 'account' %}active{% endif %}">Account</a>
                 {% if current_user.is_admin %}
                     <a href="{{ url_for('admin') }}" class="nav-link nav-admin {% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">&#9881; Admin</a>
                 {% endif %}
                 <span class="nav-user" title="Signed in as {{ current_user.email }}">{{ current_user.email }}{% if current_user.is_admin %} <span class="nav-admin-pill">ADMIN</span>{% endif %}{% if current_user.plan and current_user.plan != 'free' %} <span class="nav-plan-pill nav-plan-{{ current_user.plan }}">{{ current_user.plan | upper }}</span>{% endif %}</span>
+                <a href="{{ url_for('account') }}" class="nav-link {% if request.endpoint == 'account' %}active{% endif %}">Account</a>
                 <form action="{{ url_for('logout') }}" method="post" class="nav-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="nav-link-btn">Sign out</button>
