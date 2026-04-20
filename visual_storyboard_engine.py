@@ -393,24 +393,27 @@ class VisualStoryboardEngine:
                 motion_prompt = _cine_motion(cinematography) or motion_prompt
             motion_prompt = self._override_motion_prompt_with_event(motion_prompt, shot_event)
 
-            # Track visual_props from original (non-repeat) lines so subsequent
-            # chorus repeats can show imagery drawn from the preceding verse,
-            # making each chorus pass visually distinct.
+            # --- Per-shot visual_props tracking ---
+            # Scoped accumulation: reset the verse-props pool on the first original
+            # line that follows a repeat block so carry-over reflects only the most
+            # recent verse, not the entire song history.
             shot_vp = [str(p) for p in (shot.get("visual_props") or []) if p]
+            if shot["repeat_status"] == "original" and self._prev_was_repeat:
+                self._last_verse_props = []  # new verse block begins; start fresh
             if shot["repeat_status"] == "original" and shot_vp:
-                # Rolling window: keep the last 12 props from recent verses
+                # Accumulate per-verse: rolling cap of 12 to cover multi-prop verses
                 self._last_verse_props = (self._last_verse_props + shot_vp)[-12:]
-            # For repeat shots, surface the verse carry-over props if the line
-            # itself has no distinctive visual_props of its own.
-            # Use _chorus_count to rotate which 4-prop window is emphasised so
-            # each chorus pass shows visually distinct lyric imagery.
-            if shot["repeat_status"] == "repeat" and not shot_vp and self._last_verse_props:
+
+            # Chorus differentiation: for repeat shots, compute a rotating 4-prop
+            # window from the preceding verse pool regardless of whether the repeat
+            # line itself has its own visual_props.  The two sources are MERGED in
+            # _build_environment_prompt so chorus props + verse carry-over appear
+            # together — giving each chorus pass a unique visual emphasis cluster.
+            if shot["repeat_status"] == "repeat" and self._last_verse_props:
                 pool = self._last_verse_props
                 window_size = 4
-                # Shift the window by (chorus_count * window_size) mod pool length
-                # so each chorus repetition emphasises a different cluster of props.
+                # _chorus_count is 1-indexed; (count-1) * window shifts each pass
                 offset = ((self._chorus_count - 1) * window_size) % len(pool)
-                # Wrap-around slice across the circular pool
                 indices = [(offset + j) % len(pool) for j in range(min(window_size, len(pool)))]
                 verse_carry_props = [pool[i] for i in indices]
             else:
@@ -1214,19 +1217,45 @@ class VisualStoryboardEngine:
         # lyric line — extracted by the context engine and translated to English.
         # These take priority over generic scene props because they come directly
         # from the lyrics that this exact shot is illustrating.
-        effective_vp: List[str] = list(line_visual_props or [])
-        if not effective_vp and verse_carry_props:
-            # Chorus repeat: no line-specific props, so carry forward imagery
-            # accumulated from the preceding verse so this chorus looks distinct
-            # from earlier or later chorus passes.
-            effective_vp = list(verse_carry_props)
+        #
+        # For repeat (chorus) shots, verse_carry_props is a rotating window of
+        # props from the preceding verse block.  We MERGE both sources so the
+        # shot features both the chorus's own imagery AND a unique carry-over
+        # cluster — making each chorus pass visually distinct from others.
+        own_vp = list(line_visual_props or [])
+        carry_vp = list(verse_carry_props or [])
+        # Deduplicate while preserving order: own props first, then carry-overs
+        seen: set = set()
+        effective_vp: List[str] = []
+        for p in own_vp + carry_vp:
+            if p not in seen:
+                seen.add(p)
+                effective_vp.append(p)
         if effective_vp:
-            parts.append(
-                f"LYRIC IMAGERY MANDATE — this shot MUST visually feature: "
-                f"{', '.join(effective_vp)}. "
-                "These elements were named literally in the lyric line. "
-                "Do not omit them or replace them with generic substitutes."
-            )
+            if carry_vp and own_vp:
+                # Mixed: chorus imagery + verse carry-over — label both sources
+                parts.append(
+                    f"LYRIC IMAGERY MANDATE — this shot MUST visually feature: "
+                    f"{', '.join(own_vp)} (from the lyric line itself). "
+                    f"Additionally incorporate these visual elements from the preceding verse "
+                    f"to differentiate this chorus pass: {', '.join(carry_vp)}. "
+                    "Do not collapse them into generic substitutes."
+                )
+            elif own_vp:
+                parts.append(
+                    f"LYRIC IMAGERY MANDATE — this shot MUST visually feature: "
+                    f"{', '.join(own_vp)}. "
+                    "These elements were named literally in the lyric line. "
+                    "Do not omit them or replace them with generic substitutes."
+                )
+            else:
+                # Chorus repeat only: verse carry-over for differentiation
+                parts.append(
+                    f"CHORUS REPEAT DIFFERENTIATION — this is a repeated chorus; "
+                    f"set it apart from other chorus passes by prominently incorporating: "
+                    f"{', '.join(carry_vp)}. "
+                    "Draw these visual elements into the scene or character action."
+                )
 
         if place_entities:
             parts.append(f"Relevant place cues: {', '.join(place_entities[:5])}.")
