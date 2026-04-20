@@ -129,8 +129,8 @@ def _entity_names(context_packet: Dict[str, Any]) -> List[str]:
     return out[:12]
 
 
-def _system_prompt() -> str:
-    return (
+def _system_prompt(cultural_grounding: str = "") -> str:
+    base = (
         "You are a senior music-video director crafting immersive, story-rich "
         "creative treatments for a song. You return strict JSON only.\n\n"
         "MANDATORY RULES — every variant MUST follow all of these:\n"
@@ -167,6 +167,47 @@ def _system_prompt() -> str:
         "Never repeat the same treatment twice. Cast members must come from the "
         "supplied entity list."
     )
+    if cultural_grounding:
+        base += (
+            "\n\nCULTURAL ARCHITECTURE MANDATE — this overrides any generic "
+            "defaults you might otherwise apply:\n"
+            + cultural_grounding
+        )
+    return base
+
+
+def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
+    """Build a culture-specific grounding block from the active culture pack.
+
+    The pack is already stored in context_packet by the context engine.
+    Returns an empty string when no pack is active or the pack has no
+    visual specifics worth injecting.
+    """
+    pack = context_packet.get("culture_pack") or {}
+    if not pack:
+        return ""
+
+    world_defaults = pack.get("world_defaults") or {}
+    restrictions: List[str] = list(pack.get("visual_restrictions") or [])
+    misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
+
+    arch = str(world_defaults.get("architecture_style") or "").strip()
+    setting = str(world_defaults.get("characteristic_setting") or
+                  world_defaults.get("domestic_setting") or "").strip()
+
+    parts: List[str] = []
+    if arch:
+        parts.append(f"Required architecture: {arch}")
+    if setting:
+        parts.append(f"Required setting vocabulary: {setting}")
+    if restrictions:
+        parts.append("Visual restrictions (every location must comply):\n"
+                     + "\n".join(f"  - {r}" for r in restrictions))
+    if misinterps:
+        parts.append("Common misinterpretations to avoid:\n"
+                     + "\n".join(f"  - {m}" for m in misinterps))
+
+    return "\n\n".join(parts)
 
 
 def _user_prompt(
@@ -208,20 +249,34 @@ def _user_prompt(
 
     lyric_block = ""
     if lyrics or lyrics_timed:
-        sections = _section_lyrics(lyrics or "", lyrics_timed)
+        clean_lyrics = (lyrics or "").strip()
+        sections = _section_lyrics(clean_lyrics, lyrics_timed)
         formatted = _format_lyric_sections(sections)
+        parts: List[str] = []
+        if clean_lyrics:
+            parts.append(
+                "Full song text (all lyrics in original language — use for "
+                "overall tone, recurring imagery, and dominant setting cues):\n\n"
+                + clean_lyrics
+            )
         if formatted.strip():
-            lyric_block = (
-                "\n\nSong lyrics divided by beat section — "
-                "derive each scene's location from the imagery in the "
-                "corresponding section below. Read the words literally:\n\n"
+            parts.append(
+                "Lyrics divided by beat section — each scene assigned to a "
+                "beat_range MUST derive its 'location' from the concrete images, "
+                "places, and objects in the lines for that section. Read them "
+                "literally. Two different songs will produce two different sets "
+                "of locations because their lyrics describe different worlds:\n\n"
                 + formatted
-                + "\n\nIMPORTANT: Each scene's 'location' field MUST reflect "
-                "the concrete images, places, and objects mentioned in the "
-                "lyric lines for that beat section. The architecture_style and "
-                "characteristic_setting in world_assumptions define what the "
-                "built environment looks like — every location description must "
-                "be consistent with those materials and spatial vocabulary."
+            )
+        if parts:
+            lyric_block = (
+                "\n\n"
+                + "\n\n---\n\n".join(parts)
+                + "\n\nIMPORTANT: The architecture_style and characteristic_setting "
+                "in world_assumptions define the exact built-environment vocabulary "
+                "for this song's world. Every location description must use those "
+                "specific materials and spatial terms — never override them with "
+                "generic substitutes."
             )
 
     return (
@@ -396,6 +451,7 @@ async def generate_variants(
 
     try:
         client = AsyncOpenAI(api_key=api_key)
+        cultural_grounding = _build_cultural_grounding(context_packet or {})
         user_content = (
             _user_prompt(context_packet, sp, entity_names, lyrics, lyrics_timed)
             + f"\n\nProduce exactly {n} variants."
@@ -405,7 +461,7 @@ async def generate_variants(
             response_format={"type": "json_object"},
             temperature=0.9,
             messages=[
-                {"role": "system", "content": _system_prompt()},
+                {"role": "system", "content": _system_prompt(cultural_grounding)},
                 {"role": "user",   "content": user_content},
             ],
         )
