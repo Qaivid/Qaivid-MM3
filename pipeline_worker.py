@@ -1042,36 +1042,115 @@ def _transcribe_hybrid(audio_path: Path, openai_key: str, project_id: str) -> tu
     return text, timed
 
 
-def _align_lines_to_segments(lines: list[str], segs: list[dict]) -> list[dict]:
-    """Map each Gemini lyric line onto Whisper's timestamped segments.
+def _word_bag(text: str) -> set:
+    """Return a set of lowercase unicode words from text.
 
-    If counts match: 1:1 mapping (perfect — Gemini text + Whisper timing).
-    If Gemini has FEWER lines than Whisper segments: bucket Whisper segments
-    into N groups and merge each bucket's time range under one Gemini line.
-    If Gemini has MORE lines than Whisper segments: split each Whisper segment's
-    time range proportionally across the Gemini lines that fall in its bucket.
+    Works for any script (Gurmukhi, Devanagari, Latin, etc.) because
+    re.UNICODE is used and \\w matches characters in all Unicode word classes.
+    """
+    import re
+    return set(re.findall(r'\w+', text.lower(), re.UNICODE))
+
+
+def _overlap_score(a: set, b: set) -> float:
+    """Jaccard word-overlap between two word bags. Returns 0.0 if either is empty."""
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
+
+
+def _align_lines_to_segments(lines: list[str], segs: list[dict]) -> list[dict]:
+    """Map each Gemini lyric line onto Whisper's timestamped segments using
+    forward-greedy word-overlap alignment.
+
+    Why: Whisper gives correct timestamps for every segment including the
+    pre-lyric instrumental offset (e.g. first vocal at 45s, not 0s).
+    Gemini may produce a different number of lines. The old proportional
+    fallback smeared lines evenly, ignoring actual word positions. This
+    replacement finds the Whisper segment where each Gemini line's words
+    actually appear and borrows its timestamps directly.
+
+    Algorithm:
+    1. Fast path: counts match → 1:1 assignment (unchanged).
+    2. Otherwise: forward-greedy Jaccard matching.
+       For each Gemini line, scan Whisper segments from the current
+       pointer forward (monotone — time never goes backwards). Pick the
+       segment with the highest word overlap above a minimum threshold.
+       Advance the pointer past that segment.
+    3. Unmatched lines (humming, pure melody, no word overlap found):
+       timestamps are interpolated linearly between the nearest matched
+       neighbours, bounded by the Whisper timeline endpoints.
     """
     n_lines = len(lines)
     n_segs = len(segs)
     if n_lines == 0 or n_segs == 0:
         return [{"start": 0.0, "end": 0.0, "text": l} for l in lines]
 
+    # Fast path: perfect count match — Gemini text + Whisper timing 1:1
     if n_lines == n_segs:
         return [
             {"start": segs[i]["start"], "end": segs[i]["end"], "text": lines[i]}
             for i in range(n_lines)
         ]
 
-    # Use the full vocal time range as the canvas
-    t0 = segs[0]["start"]
-    t1 = segs[-1]["end"]
-    span = max(t1 - t0, 0.001)
+    # Pre-compute word bags for all Whisper segments and all Gemini lines
+    seg_bags = [_word_bag(s["text"]) for s in segs]
+    line_bags = [_word_bag(l) for l in lines]
+
+    # Forward-greedy matching — matched[i] = index into segs, or None
+    matched: list = [None] * n_lines
+    seg_ptr = 0  # monotone pointer — never goes backwards
+
+    for i, lb in enumerate(line_bags):
+        if not lb:
+            continue  # empty / humming line — will interpolate
+        best_score = 0.0
+        best_seg_idx = None
+        for j in range(seg_ptr, n_segs):
+            score = _overlap_score(lb, seg_bags[j])
+            if score > best_score:
+                best_score = score
+                best_seg_idx = j
+        if best_score >= 0.1 and best_seg_idx is not None:
+            matched[i] = best_seg_idx
+            seg_ptr = best_seg_idx + 1  # consume this segment, advance
+
+    # Build output list; unmatched entries carry None timestamps for now
+    t_first = segs[0]["start"]
+    t_last = segs[-1]["end"]
 
     out: list[dict] = []
     for i, line in enumerate(lines):
-        s = t0 + span * (i / n_lines)
-        e = t0 + span * ((i + 1) / n_lines)
-        out.append({"start": round(s, 3), "end": round(e, 3), "text": line})
+        if matched[i] is not None:
+            seg = segs[matched[i]]
+            out.append({"start": seg["start"], "end": seg["end"], "text": line})
+        else:
+            out.append({"start": None, "end": None, "text": line})
+
+    # Build anchor list from matched entries plus boundary sentinels
+    anchors = [(-1, t_first, t_first)]
+    for i in range(n_lines):
+        if out[i]["start"] is not None:
+            anchors.append((i, out[i]["start"], out[i]["end"]))
+    anchors.append((n_lines, t_last, t_last))
+
+    # Interpolate each run of consecutive unmatched lines between its anchors
+    for k in range(len(anchors) - 1):
+        a_idx, _, a_end = anchors[k]
+        b_idx, b_start, _ = anchors[k + 1]
+        gap = [i for i in range(a_idx + 1, b_idx) if out[i]["start"] is None]
+        if not gap:
+            continue
+        span = max(b_start - a_end, 0.001)
+        n_gap = len(gap)
+        for pos, i in enumerate(gap):
+            s = a_end + span * (pos / n_gap)
+            e = a_end + span * ((pos + 1) / n_gap)
+            out[i]["start"] = round(s, 3)
+            out[i]["end"] = round(e, 3)
+
     return out
 
 
