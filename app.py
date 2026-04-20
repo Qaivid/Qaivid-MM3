@@ -428,7 +428,7 @@ STAGE_LABELS = {
     "audio_review": "Acoustic Audit",
     "style_review": "Style Profile",
     "context_review": "Context Engine",
-    "assumptions_review": "JARVIS Dialogue",
+    "assumptions_review": "METAMAN Dialogue",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
     "references_review": "References",
@@ -1224,7 +1224,7 @@ def restyle_project(project_id: str):
 @app.route("/project/<project_id>/advance/2", methods=["POST"])
 @login_required
 def advance_stage_2(project_id: str):
-    """User approved the 5W context — open the JARVIS Surfaced-Assumptions Dialogue.
+    """User approved the 5W context — open the METAMAN Surfaced-Assumptions Dialogue.
 
     No worker is kicked here. Free-text overrides + style preset are stashed
     in context_packet so the dialogue stage can finalize them. The actual
@@ -1243,7 +1243,7 @@ def advance_stage_2(project_id: str):
     cp["_pending_overrides"] = {k: v for k, v in overrides.items() if v}
 
     # WHY overrides — persist directly into the motivation block so the
-    # storyboard prompt + JARVIS dialogue see the user's edits immediately.
+    # storyboard prompt + METAMAN dialogue see the user's edits immediately.
     motivation = dict(cp.get("motivation") or {})
     _why_keys = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
     _changed = False
@@ -1254,7 +1254,7 @@ def advance_stage_2(project_id: str):
             _changed = True
     if _changed:
         # The user explicitly refined the WHY block — bump confidence so the
-        # JARVIS dialogue stops surfacing motivation as low-confidence.
+        # METAMAN dialogue stops surfacing motivation as low-confidence.
         try:
             _prev_conf = float(motivation.get("confidence") or 0.0)
         except (TypeError, ValueError):
@@ -1276,7 +1276,7 @@ def advance_stage_2(project_id: str):
 @app.route("/project/<project_id>/advance/2b", methods=["POST"])
 @login_required
 def advance_stage_2b(project_id: str):
-    """User completed the JARVIS Dialogue — apply locked_assumptions, kick Storyboard."""
+    """User completed the METAMAN Dialogue — apply locked_assumptions, kick Storyboard."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
@@ -1302,7 +1302,7 @@ def advance_stage_2b(project_id: str):
             locked.pop(lock_key, None)
             flags.append({
                 "field": lock_key,
-                "reason": "Marked as ambiguous by user during JARVIS Dialogue.",
+                "reason": "Marked as ambiguous by user during METAMAN Dialogue.",
                 "confidence": 0.0,
             })
         else:
@@ -1329,7 +1329,7 @@ def advance_stage_2b(project_id: str):
         if action == "reject":
             flags.append({
                 "field": field,
-                "reason": "Marked as ambiguous by user during JARVIS Dialogue.",
+                "reason": "Marked as ambiguous by user during METAMAN Dialogue.",
                 "confidence": 0.0,
             })
             locked.pop(field, None)
@@ -1406,7 +1406,7 @@ def _apply_locked_assumptions_inplace(cp: dict, locked: dict) -> None:
     if locked.get("narrative_mode"):
         cp["narrative_mode"] = str(locked["narrative_mode"]).strip()
     # WHY block — mirror motivation_<field> locks back into cp["motivation"]
-    # so JARVIS-Dialogue overrides for surfaced motivation assumptions actually
+    # so METAMAN-Dialogue overrides for surfaced motivation assumptions actually
     # show up in the storyboard prompt.
     motivation = dict(cp.get("motivation") or {})
     _changed_mot = False

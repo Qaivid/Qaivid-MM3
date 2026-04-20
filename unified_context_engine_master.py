@@ -1765,7 +1765,7 @@ REQUIREMENTS:
         add("narrative_mode", data.get("narrative_mode", ""), conf.get("narrative_mode", 0.7), "Inferred from semantic mode and structure.")
 
         # WHY block — surface motivation only when confidence is low enough that
-        # the user should review it on the JARVIS Dialogue screen.
+        # the user should review it on the METAMAN Dialogue screen.
         motivation = data.get("motivation", {}) if isinstance(data.get("motivation"), dict) else {}
         m_conf = self._repair_confidence(motivation.get("confidence") or conf.get("motivation"))
         if m_conf < 0.75:
@@ -1816,7 +1816,7 @@ REQUIREMENTS:
         # Precedence for motivation confidence:
         #   1. confidence_scores.motivation if explicitly set by the LLM or by
         #      a downstream override (e.g. user resolved motivation in the
-        #      JARVIS Dialogue, which bumps confidence_scores.motivation to 0.9)
+        #      METAMAN Dialogue, which bumps confidence_scores.motivation to 0.9)
         #   2. fall back to motivation.confidence stored by _repair_motivation
         #   3. finally fall back to overall confidence
         motivation_block = data.get("motivation") if isinstance(data.get("motivation"), dict) else {}

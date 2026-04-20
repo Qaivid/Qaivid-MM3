@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active_stage = 'assumptions_review' %}
-{% block title %}{{ project.name }} — JARVIS Dialogue · Qaivid{% endblock %}
+{% block title %}{{ project.name }} — METAMAN Dialogue · Qaivid{% endblock %}
 {% block content %}
 {% set cp = project.context_packet or {} %}
 {% set surfaced = cp.surfaced_assumptions or [] %}
@@ -9,7 +9,7 @@
 {% set scores = cp.confidence_scores or {} %}
 {% set motivation = cp.motivation or {} %}
 {# Compose the same one-line "why this song exists" summary the storyboard prompt sees,
-   so the user can sanity-check JARVIS's emotional read before locking assumptions. #}
+   so the user can sanity-check METAMAN's emotional read before locking assumptions. #}
 {% set _why_bits = [] %}
 {% if motivation.inciting_cause %}{% set _ = _why_bits.append('because ' ~ motivation.inciting_cause.rstrip('.')) %}{% endif %}
 {% if motivation.underlying_desire %}{% set _ = _why_bits.append('the speaker wants ' ~ motivation.underlying_desire.rstrip('.')) %}{% endif %}
@@ -21,10 +21,10 @@
 
     <div class="stage-card">
         <div class="stage-header">
-            <span class="stage-badge">Stage 2 — JARVIS Dialogue</span>
+            <span class="stage-badge">Stage 2 — METAMAN Dialogue</span>
             <h1>Surfaced Assumptions</h1>
             <p class="stage-sub">
-                Before locking in the storyboard, JARVIS surfaces the inferences it made
+                Before locking in the storyboard, METAMAN surfaces the inferences it made
                 while reading the lyrics. For each one you can <strong>accept</strong> the
                 inference, <strong>override</strong> it with your own value, or
                 <strong>reject</strong> it as too uncertain. Rejected items become
@@ -66,7 +66,7 @@
 
             {% if surfaced %}
             <div class="ctx-block ctx-full">
-                <h3>JARVIS surfaced {{ surfaced|length }} assumption(s)</h3>
+                <h3>METAMAN surfaced {{ surfaced|length }} assumption(s)</h3>
                 <table class="ctx-lm-table" style="margin-top:10px;">
                     <thead>
                         <tr>
@@ -118,7 +118,7 @@
             {% else %}
             <div class="ctx-block ctx-full">
                 <h3>No assumptions to review</h3>
-                <p class="ctx-v">JARVIS did not surface any low-confidence inferences for this project. You can proceed straight to the storyboard.</p>
+                <p class="ctx-v">METAMAN did not surface any low-confidence inferences for this project. You can proceed straight to the storyboard.</p>
             </div>
             {% endif %}
 

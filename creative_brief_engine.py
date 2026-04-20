@@ -1,6 +1,6 @@
 """Creative Brief Engine — generate 2–4 director treatment variants.
 
-Sits between JARVIS Dialogue and Storyboard. Consumes the locked
+Sits between METAMAN Dialogue and Storyboard. Consumes the locked
 context_packet (5W incl. WHY) and the chosen style_profile and returns a
 list of treatment variants the user picks from before storyboarding.
 
