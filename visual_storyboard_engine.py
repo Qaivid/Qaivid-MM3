@@ -1271,13 +1271,13 @@ class VisualStoryboardEngine:
                 )
 
         if place_entities:
-            parts.append(f"Relevant place cues: {', '.join(place_entities[:5])}.")
+            parts.append(f"Relevant place cues: {', '.join(place_entities)}.")
 
         if shot["expression_mode"] == "symbolic" and symbol_entities:
-            parts.append(f"Symbolic environment cues may draw from: {', '.join(symbol_entities[:5])}.")
+            parts.append(f"Symbolic environment cues may draw from: {', '.join(symbol_entities)}.")
 
         if motifs:
-            parts.append(f"Keep atmosphere compatible with recurring motifs such as {', '.join(motifs[:5])}.")
+            parts.append(f"Keep atmosphere compatible with recurring motifs such as {', '.join(motifs)}.")
 
         if shot["cultural_meaning"]:
             parts.append(f"Cultural subtext to preserve: {shot['cultural_meaning']}.")
