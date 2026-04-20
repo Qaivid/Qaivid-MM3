@@ -1410,8 +1410,11 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         _raw_sp = dict(row.get("style_profile") or {})
         style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
 
-        # Fetch lyrics so scene locations can be derived from actual song imagery
-        lyrics_text = str(row.get("transcript") or "").strip() or None
+        # Fetch lyrics so scene locations can be derived from actual song imagery.
+        # Some legacy projects populate only `text` (not `transcript`).
+        lyrics_text = (
+            str(row.get("transcript") or row.get("text") or "").strip() or None
+        )
         lyrics_timed_raw = row.get("lyrics_timed")
         lyrics_timed = (
             list(lyrics_timed_raw) if isinstance(lyrics_timed_raw, list) else None

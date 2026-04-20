@@ -251,7 +251,7 @@ def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
     """
     pack = context_packet.get("culture_pack") or {}
 
-    if pack:
+    if pack and isinstance(pack, dict):
         world_defaults = pack.get("world_defaults") or {}
         restrictions: List[str] = list(pack.get("visual_restrictions") or [])
         misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
