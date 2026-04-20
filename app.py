@@ -750,6 +750,12 @@ def project_detail(project_id: str):
     else:
         stage = routing_stage
 
+    # If actual_stage is still the raw 'failed' string and a recovery stage
+    # was determined, use the recovery stage so the wizard pills get a valid
+    # index and render as clickable links rather than dead spans.
+    if actual_stage == "failed" and recovery_stage:
+        actual_stage = recovery_stage
+
     project["_viewing_as_admin"] = viewing_as_admin
     project["_owner_email"] = owner_email
     project["_actual_stage"] = actual_stage
