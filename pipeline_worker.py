@@ -1026,28 +1026,39 @@ def _merge_words_to_lines(lines: list[str], words: list[dict]) -> list[dict]:
 
 
 def _transcribe_hybrid(audio_path: Path, openai_key: str, project_id: str) -> tuple[str, list[dict]]:
-    """Hybrid Gemini + Whisper transcription.
+    """Hybrid Gemini-timed + Whisper-anchored transcription.
 
-    Strategy (mirrors Qaivid 1.0):
+    Strategy:
     1. Measure exact audio duration with mutagen.
-    2. Whisper with word-level granularity: gives {start,end} for every
-       recognised vocal word.  Because Whisper skips silence, its word list
-       starts at the first actual vocal — instrumental intros are preserved
-       automatically.
-    3. Gemini: plain-text lyric lines (accurate multilingual text).
-    4. Merge: proportional word-position mapping — Gemini line i → Whisper
-       word at position i/N.  This is identical to the Qaivid 1.0 approach
-       and correctly handles any length of pre-lyric intro.
-    5. Fallback: if word-level fails, fall back to segment-level alignment.
+    2. Gemini (PRIMARY): transcribe lyrics WITH per-line timestamps.
+       Gemini hears the actual audio so its per-line timing is accurate —
+       respecting varying durations (e.g. a 34-second sustained note vs a
+       3-second rapid-fire line).  Prompt includes exact duration as a hard
+       constraint to prevent timestamp compression.
+    3. Whisper word-level (ANCHOR): run in parallel to detect the true vocal
+       start time.  Because Whisper skips silence, word[0].start = first
+       actual vocal moment.  If Gemini's first timestamp drifts by >3 s from
+       Whisper's first word, shift ALL Gemini timestamps to match.
+    4. Duration guard: if Gemini's last timestamp is <80 % of actual song
+       length, rescale all timestamps proportionally.
+    5. Fallbacks:
+       - If Gemini timed call fails: fall back to Gemini plain-text + Whisper
+         proportional word mapping.
+       - If Whisper also fails: use Gemini plain-text with no timing.
 
     Returns (plain_text, timed_lines).  On failure returns ("", []).
     """
-    # Step 1 — exact duration
+    # Step 1 — exact duration (used as constraint for Gemini and rescaling guard)
     exact_dur = _get_audio_duration(audio_path)
 
-    # Step 2 — Whisper word-level timestamps (primary) + segment-level (fallback)
-    whisper_words: list[dict] = []   # [{start, end}, ...]  — words only
-    whisper_segs: list[dict] = []    # [{start, end, text}, ...] — fallback
+    # Step 2 — Gemini timed transcription (primary path)
+    timed_from_gemini: list[dict] | None = _transcribe_gemini_timed(
+        audio_path, project_id, exact_dur
+    )
+
+    # Step 3 — Whisper word-level timestamps (anchor + fallback timing)
+    whisper_words: list[dict] = []
+    whisper_segs: list[dict] = []
     try:
         from openai import OpenAI as _OpenAI
         _oai = _OpenAI(api_key=openai_key)
@@ -1058,68 +1069,106 @@ def _transcribe_hybrid(audio_path: Path, openai_key: str, project_id: str) -> tu
                 response_format="verbose_json",
                 timestamp_granularities=["word", "segment"],
             )
-
-        # Word-level (primary)
         for w in (getattr(_tr, "words", None) or []):
-            s = float(getattr(w, "start", 0.0) or 0.0)
-            e = float(getattr(w, "end",   0.0) or 0.0)
-            whisper_words.append({"start": s, "end": e})
-
-        # Segment-level (fallback)
+            whisper_words.append({
+                "start": float(getattr(w, "start", 0.0) or 0.0),
+                "end":   float(getattr(w, "end",   0.0) or 0.0),
+            })
         for seg in (getattr(_tr, "segments", None) or []):
             t = (getattr(seg, "text", "") or "").strip()
-            if not t:
-                continue
-            whisper_segs.append({
-                "start": float(getattr(seg, "start", 0.0) or 0.0),
-                "end":   float(getattr(seg, "end",   0.0) or 0.0),
-                "text":  t,
-            })
-
-        logger.info(
-            "Whisper: %d words, %d segments for project=%s",
-            len(whisper_words), len(whisper_segs), project_id,
-        )
+            if t:
+                whisper_segs.append({
+                    "start": float(getattr(seg, "start", 0.0) or 0.0),
+                    "end":   float(getattr(seg, "end",   0.0) or 0.0),
+                    "text":  t,
+                })
+        logger.info("Whisper: %d words, %d segs for project=%s",
+                    len(whisper_words), len(whisper_segs), project_id)
     except Exception as exc:
         logger.warning("Whisper extraction failed (%s)", exc)
 
-    # Step 3 — Gemini lyric text
+    # ── PRIMARY PATH: Gemini produced timed lines ─────────────────────────
+    if timed_from_gemini is not None and len(timed_from_gemini) > 0:
+        timed = timed_from_gemini
+
+        # Step 3a — Instrumental-intro offset correction
+        # If Gemini's first timestamp is too early vs Whisper's first vocal word
+        if whisper_words:
+            whisper_first = whisper_words[0]["start"]
+            gemini_first  = timed[0]["start"]
+            offset = whisper_first - gemini_first
+            # Apply shift only when the discrepancy is significant (>3 s)
+            if abs(offset) > 3.0:
+                logger.info(
+                    "Offset correction: shifting Gemini timestamps by %.2fs "
+                    "(Gemini first=%.2fs, Whisper first=%.2fs) for project=%s",
+                    offset, gemini_first, whisper_first, project_id,
+                )
+                timed = [
+                    {
+                        "start": round(max(0.0, t["start"] + offset), 3),
+                        "end":   round(max(0.0, t["end"]   + offset), 3),
+                        "text":  t["text"],
+                    }
+                    for t in timed
+                ]
+
+        # Step 3b — Duration compression guard
+        if exact_dur and exact_dur > 0 and timed:
+            last_start = timed[-1]["start"]
+            if last_start > 0 and last_start < exact_dur * 0.80:
+                # Rescale start times proportionally; keep end = next start
+                scale = exact_dur / last_start
+                logger.info(
+                    "Rescaling Gemini timestamps ×%.3f "
+                    "(last lyric at %.1fs, actual %.1fs) for project=%s",
+                    scale, last_start, exact_dur, project_id,
+                )
+                timed = [
+                    {"start": round(t["start"] * scale, 3),
+                     "end":   round(t["end"]   * scale, 3),
+                     "text":  t["text"]}
+                    for t in timed
+                ]
+                # Clamp last end to actual duration
+                timed[-1]["end"] = round(exact_dur, 3)
+
+        text = "\n".join(t["text"] for t in timed if t["text"])
+        logger.info(
+            "Hybrid (Gemini-timed): %d lines, first=%.2fs, last=%.2fs for project=%s",
+            len(timed), timed[0]["start"], timed[-1]["start"], project_id,
+        )
+        return text, timed
+
+    # ── FALLBACK: Gemini plain-text + Whisper proportional word mapping ───
+    logger.warning("Gemini timed failed — falling back to plain-text + Whisper merge for project=%s", project_id)
+
     gemini_lines: list[str] = []
     gtxt = _transcribe_with_gemini(audio_path, project_id)
     if gtxt:
         gemini_lines = [l.strip() for l in gtxt.splitlines() if l.strip()]
 
-    # No usable output from either provider
     if not gemini_lines and not whisper_words and not whisper_segs:
         return "", []
 
-    # Only Whisper succeeded — use its (possibly mangled) text
     if not gemini_lines:
         if whisper_segs:
             return "\n".join(s["text"] for s in whisper_segs), whisper_segs
         return "", []
 
-    # Only Gemini succeeded — no timing available
     if not whisper_words and not whisper_segs:
-        text = "\n".join(gemini_lines)
         timed = [{"start": 0.0, "end": 0.0, "text": l} for l in gemini_lines]
-        return text, timed
+        return "\n".join(gemini_lines), timed
 
-    # Step 4 — Merge: prefer word-level, fall back to segment-level
     if whisper_words:
         timed = _merge_words_to_lines(gemini_lines, whisper_words)
-        logger.info(
-            "Hybrid (word-level): %d Whisper words + %d Gemini lines → %d timed lines for project=%s",
-            len(whisper_words), len(gemini_lines), len(timed), project_id,
-        )
     else:
         timed = _align_lines_to_segments(gemini_lines, whisper_segs)
-        logger.info(
-            "Hybrid (segment fallback): %d segs + %d lines → %d timed lines for project=%s",
-            len(whisper_segs), len(gemini_lines), len(timed), project_id,
-        )
 
     text = "\n".join(t["text"] for t in timed if t["text"])
+    logger.info(
+        "Hybrid (fallback word-map): %d lines for project=%s", len(timed), project_id,
+    )
     return text, timed
 
 
@@ -1235,17 +1284,163 @@ def _align_lines_to_segments(lines: list[str], segs: list[dict]) -> list[dict]:
     return out
 
 
-def _transcribe_with_gemini(audio_path: Path, project_id: str) -> str:
-    """Use Gemini 2.0 Flash to transcribe a song into properly segmented lyric lines.
+def _parse_gemini_ts(ts: str) -> float:
+    """Parse M:SS.mmm timestamp string → seconds. Returns 0.0 on failure."""
+    import re
+    clean = ts.replace("[", "").replace("]", "").strip()
+    m = re.match(r"^(\d+):(\d{2})(?:[.,](\d+))?$", clean)
+    if not m:
+        return 0.0
+    mins = int(m.group(1))
+    secs = int(m.group(2))
+    frac = (m.group(3) or "0").ljust(3, "0")[:3]
+    return mins * 60 + secs + int(frac) / 1000.0
 
-    Gemini handles multilingual audio (Punjabi/Hindi/etc.) far better than Whisper,
-    and naturally produces lyric lines instead of one giant paragraph.
-    Returns "" on failure so the caller can fall back to Whisper.
+
+def _transcribe_gemini_timed(
+    audio_path: Path,
+    project_id: str,
+    exact_dur: float | None = None,
+) -> list[dict] | None:
+    """Ask Gemini to transcribe the song AND timestamp each lyric line.
+
+    Gemini listens to the actual audio so it can hear when each line is sung.
+    This gives accurate per-line timing that respects varying line durations
+    (e.g. a 34-second sustained note vs a 3-second rapid-fire line).
+
+    Returns a list of {"start": float, "end": float, "text": str} dicts,
+    or None on failure (caller can fall back to plain-text path).
     """
     try:
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
-            logger.warning("GEMINI_API_KEY not set — skipping Gemini transcription")
+            logger.warning("GEMINI_API_KEY not set — skipping Gemini timed transcription")
+            return None
+
+        from google import genai
+        import json, re
+
+        client = genai.Client(api_key=gemini_key)
+        uploaded = client.files.upload(file=str(audio_path))
+
+        dur_constraint = ""
+        if exact_dur and exact_dur > 0:
+            mins = int(exact_dur // 60)
+            secs = int(exact_dur % 60)
+            pct80 = exact_dur * 0.80
+            dur_constraint = (
+                f"\nAUDIO LENGTH CONSTRAINT (measured from file — this is exact):\n"
+                f"- Track is EXACTLY {exact_dur:.3f} seconds ({mins}m {secs:02d}s)\n"
+                f"- totalDurationSeconds MUST equal {exact_dur:.3f}\n"
+                f"- Your LAST lyric timestamp MUST be after {pct80:.1f}s\n"
+            )
+
+        prompt = (
+            "You are a professional audio transcriptionist specialising in music lyrics.\n"
+            "An audio file is attached. Listen to the ENTIRE track from start to finish and "
+            "transcribe every lyric line with accurate timestamps.\n"
+            f"{dur_constraint}\n"
+            "Return ONLY this JSON (no markdown, no explanation):\n"
+            "{\n"
+            '  "lines": [\n'
+            '    {"timestamp": "M:SS.mmm", "text": "<exact lyric in original script>"}\n'
+            "  ],\n"
+            '  "totalDurationSeconds": <true full length>,\n'
+            '  "language": "<e.g. Punjabi>",\n'
+            '  "isInstrumental": false\n'
+            "}\n\n"
+            "RULES:\n"
+            "- timestamp format: M:SS.mmm  e.g. \"0:15.000\" or \"1:23.450\"\n"
+            "- One object per lyric line — do NOT group multiple lines\n"
+            "- Preserve ALL repeats (chorus, hook, ad-libs)\n"
+            "- Timestamps must be spread across the FULL duration\n"
+            "- Use the ORIGINAL script (Gurmukhi, Devanagari, Arabic, etc.) — no transliteration\n"
+            "- If purely instrumental with no vocals: isInstrumental=true, lines=[]\n"
+        )
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt, uploaded],
+        )
+
+        try:
+            client.files.delete(name=uploaded.name)
+        except Exception:
+            pass
+
+        raw = (response.text or "").strip()
+        if not raw:
+            logger.warning("Gemini timed: empty response for project=%s", project_id)
+            return None
+
+        # Strip markdown fences if present
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```\s*$", "", raw)
+        raw = raw.strip()
+        # Extract JSON object
+        start_idx = raw.find("{")
+        end_idx = raw.rfind("}")
+        if start_idx != -1 and end_idx > start_idx:
+            raw = raw[start_idx:end_idx + 1]
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            # Light repair: fix trailing commas
+            raw = re.sub(r",\s*([}\]])", r"\1", raw)
+            try:
+                parsed = json.loads(raw)
+            except Exception as e2:
+                logger.warning("Gemini timed: JSON parse failed (%s) for project=%s", e2, project_id)
+                return None
+
+        if parsed.get("isInstrumental"):
+            logger.info("Gemini timed: track is instrumental for project=%s", project_id)
+            return []
+
+        lines_raw = parsed.get("lines") or []
+        if not lines_raw:
+            logger.warning("Gemini timed: no lines returned for project=%s", project_id)
+            return None
+
+        # Parse timestamps into seconds
+        timed: list[dict] = []
+        for item in lines_raw:
+            ts_str = str(item.get("timestamp") or "0:00.000")
+            text = (item.get("text") or item.get("line") or "").strip()
+            if not text:
+                continue
+            timed.append({"start": _parse_gemini_ts(ts_str), "end": 0.0, "text": text})
+
+        if not timed:
+            return None
+
+        # Fill end timestamps (each line ends where the next begins)
+        for i in range(len(timed) - 1):
+            timed[i]["end"] = timed[i + 1]["start"]
+        # Last line: use totalDurationSeconds if available, else exact_dur, else +5s
+        total = float(parsed.get("totalDurationSeconds") or 0)
+        timed[-1]["end"] = total or exact_dur or (timed[-1]["start"] + 5.0)
+
+        logger.info(
+            "Gemini timed: %d lines, first=%.2fs, last=%.2fs for project=%s",
+            len(timed), timed[0]["start"], timed[-1]["start"], project_id,
+        )
+        return timed
+
+    except Exception as exc:
+        logger.warning("Gemini timed transcription failed (%s)", exc)
+        return None
+
+
+def _transcribe_with_gemini(audio_path: Path, project_id: str) -> str:
+    """Plain-text Gemini transcription fallback (no timestamps).
+
+    Used when timed transcription is unavailable. Returns "" on failure.
+    """
+    try:
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
             return ""
 
         from google import genai
@@ -1279,12 +1474,11 @@ def _transcribe_with_gemini(audio_path: Path, project_id: str) -> str:
 
         lines = [l.strip() for l in text.splitlines() if l.strip()]
         cleaned = "\n".join(lines)
-        logger.info("Gemini: %d chars, %d lines for project=%s",
-                    len(cleaned), len(lines), project_id)
+        logger.info("Gemini plain: %d lines for project=%s", len(lines), project_id)
         return cleaned
 
     except Exception as exc:
-        logger.warning("Gemini transcription failed (%s)", exc)
+        logger.warning("Gemini plain transcription failed (%s)", exc)
         return ""
 
 
