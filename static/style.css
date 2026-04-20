@@ -2570,11 +2570,7 @@ main:has(> .ws-grid) {
 }
 
 
-/* ══════════════════════════════════════════════════════════════════
-   LANDING PAGE — FULL SECTION STYLES
-   landing-main, lp-hero, lp-formats, lp-how, lp-features,
-   lp-output, lp-pricing, lp-cta-banner
-══════════════════════════════════════════════════════════════════ */
+/* ── LANDING PAGE SECTIONS ── */
 
 /* Reset for landing main wrapper */
 .landing-main {
@@ -2647,9 +2643,7 @@ main:has(> .ws-grid) {
     color: var(--muted);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   HERO
-══════════════════════════════════════════════════════════════ */
+/* ── HERO */ 
 .lp-hero {
     position: relative;
     min-height: 100vh;
@@ -2935,9 +2929,7 @@ main:has(> .ws-grid) {
     margin-top: 80px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   FORMATS BAR
-══════════════════════════════════════════════════════════════ */
+/* ── FORMATS BAR */ 
 .lp-formats {
     padding: 32px 0;
     border-top: 1px solid var(--border);
@@ -2974,9 +2966,7 @@ main:has(> .ws-grid) {
     padding: 6px 14px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   HOW IT WORKS
-══════════════════════════════════════════════════════════════ */
+/* ── HOW IT WORKS */ 
 .lp-how { background: rgba(255,255,255,0.015); }
 .lp-steps {
     display: flex;
@@ -3030,9 +3020,7 @@ main:has(> .ws-grid) {
     opacity: 0.5;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   FEATURE GRID
-══════════════════════════════════════════════════════════════ */
+/* ── FEATURE GRID */ 
 .lp-feature-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -3087,9 +3075,7 @@ main:has(> .ws-grid) {
     padding: 4px 10px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   EXAMPLE OUTPUT STORYBOARD
-══════════════════════════════════════════════════════════════ */
+/* ── EXAMPLE OUTPUT STORYBOARD */ 
 .lp-output { background: rgba(255,255,255,0.015); }
 .lp-output-cards {
     display: grid;
@@ -3235,9 +3221,7 @@ main:has(> .ws-grid) {
     padding: 3px 9px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   PRICING TEASER
-══════════════════════════════════════════════════════════════ */
+/* ── PRICING TEASER */ 
 .lp-plan-cards {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -3317,9 +3301,7 @@ main:has(> .ws-grid) {
 .lp-plan-features .lp-plan-no { opacity: 0.45; }
 .lp-plan-features li:not(.lp-plan-no) { color: var(--text); }
 
-/* ══════════════════════════════════════════════════════════════
-   FINAL CTA BANNER
-══════════════════════════════════════════════════════════════ */
+/* ── FINAL CTA BANNER */ 
 .lp-cta-banner { padding: 120px 0; }
 .lp-cta-banner-inner {
     text-align: center;
@@ -3341,9 +3323,7 @@ main:has(> .ws-grid) {
     margin-bottom: 40px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   LANDING PAGE RESPONSIVE
-══════════════════════════════════════════════════════════════ */
+/* ── LANDING PAGE RESPONSIVE */ 
 @media (max-width: 900px) {
     .lp-hero-inner { grid-template-columns: 1fr; gap: 60px; }
     .lp-hero-visual { order: -1; }
@@ -3368,3 +3348,12 @@ main:has(> .ws-grid) {
     .lp-trust { gap: 16px; }
     .lp-formats .lp-section-inner { flex-direction: column; align-items: flex-start; gap: 16px; }
 }
+
+.lp-pricing-full-link {
+    color: var(--cyan);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: 600;
+    transition: opacity 0.15s;
+}
+.lp-pricing-full-link:hover { opacity: 0.75; }
