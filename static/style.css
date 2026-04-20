@@ -2619,15 +2619,6 @@ main:has(> .ws-grid) {
 }
 
 /* ── EYEBROW / MONOSPACE helpers ─────────────────────────────── */
-.eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-}
 .lp-eyebrow {
     color: var(--cyan);
     margin-bottom: 20px;
@@ -2705,7 +2696,7 @@ main:has(> .ws-grid) {
     flex-wrap: wrap;
     margin-bottom: 40px;
 }
-.btn-primary {
+.landing-main .btn-primary {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -2720,11 +2711,13 @@ main:has(> .ws-grid) {
     padding: 12px 20px;
     transition: all 0.2s;
     letter-spacing: 0.01em;
+    box-shadow: none;
 }
-.btn-primary:hover { background: #c8f535; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(212,255,58,0.28); }
-.btn-primary-lg { padding: 16px 32px; font-size: 15px; border-radius: 12px; }
-.btn-primary-block { display: block; width: 100%; text-align: center; justify-content: center; padding: 14px 24px; }
-.btn-ghost {
+.landing-main .btn-primary::after { content: none; }
+.landing-main .btn-primary:hover { background: #c8f535; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(212,255,58,0.28); }
+.landing-main .btn-primary-lg { padding: 16px 32px; font-size: 15px; border-radius: 12px; }
+.landing-main .btn-primary-block { display: block; width: 100%; text-align: center; justify-content: center; padding: 14px 24px; }
+.landing-main .btn-ghost {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -2738,10 +2731,11 @@ main:has(> .ws-grid) {
     text-decoration: none;
     padding: 12px 20px;
     transition: all 0.2s;
+    align-self: auto;
 }
-.btn-ghost:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); }
-.btn-ghost-lg { padding: 16px 32px; font-size: 15px; border-radius: 12px; }
-.btn-ghost-block { display: block; width: 100%; text-align: center; justify-content: center; padding: 14px 24px; }
+.landing-main .btn-ghost:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color: var(--text); }
+.landing-main .btn-ghost-lg { padding: 16px 32px; font-size: 15px; border-radius: 12px; }
+.landing-main .btn-ghost-block { display: block; width: 100%; text-align: center; justify-content: center; padding: 14px 24px; }
 
 .lp-trust {
     display: flex;
