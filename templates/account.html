@@ -5,6 +5,7 @@
     <div class="account-card">
         <h1>Account</h1>
 
+        <!-- ── Profile ─────────────────────────────── -->
         <div class="account-section">
             <h2>Profile</h2>
             <div class="account-row">
@@ -17,6 +18,7 @@
             </div>
         </div>
 
+        <!-- ── Subscription ────────────────────────── -->
         <div class="account-section">
             <h2>Subscription</h2>
             <div class="account-row">
@@ -43,15 +45,76 @@
                 <span class="account-value">{{ user.project_count | default(0) }} / 3</span>
             </div>
             {% endif %}
+            <div class="account-plan-actions">
+                {% if user.plan == 'free' %}
+                    <a href="{{ url_for('billing.pricing') }}" class="btn-primary">Upgrade plan</a>
+                {% else %}
+                    <a href="{{ url_for('billing.portal') }}" class="btn-ghost">Manage billing</a>
+                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-sm">View plans</a>
+                {% endif %}
+            </div>
         </div>
 
-        <div class="account-actions">
-            {% if user.plan == 'free' %}
-                <a href="{{ url_for('billing.pricing') }}" class="btn-primary">Upgrade plan →</a>
-            {% else %}
-                <a href="{{ url_for('billing.pricing') }}" class="btn-ghost">View plans</a>
-            {% endif %}
+        <!-- ── Change password ─────────────────────── -->
+        <div class="account-section">
+            <h2>Change password</h2>
+            <form method="post" action="{{ url_for('account_change_password') }}" class="account-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="account-form-row">
+                    <label for="current_password">Current password</label>
+                    <input type="password" id="current_password" name="current_password"
+                           autocomplete="current-password" required>
+                </div>
+                <div class="account-form-row">
+                    <label for="new_password">New password</label>
+                    <input type="password" id="new_password" name="new_password"
+                           autocomplete="new-password" minlength="8" required>
+                    <span class="account-hint">Minimum 8 characters</span>
+                </div>
+                <div class="account-form-row">
+                    <label for="confirm_password">Confirm new password</label>
+                    <input type="password" id="confirm_password" name="confirm_password"
+                           autocomplete="new-password" minlength="8" required>
+                </div>
+                <button type="submit" class="btn-secondary">Update password</button>
+            </form>
+        </div>
+
+        <!-- ── Danger zone ─────────────────────────── -->
+        <div class="account-section account-danger-section">
+            <h2>Danger zone</h2>
+            <div class="account-danger-row">
+                <div>
+                    <div class="account-danger-title">Delete my account</div>
+                    <div class="account-danger-desc">Permanently removes your account and all projects. This cannot be undone.</div>
+                </div>
+                <button type="button" class="btn-danger" onclick="document.getElementById('delete-modal').showModal()">
+                    Delete account
+                </button>
+            </div>
         </div>
     </div>
 </section>
+
+<!-- ── Delete confirmation modal ───────────── -->
+<dialog id="delete-modal" class="delete-modal">
+    <div class="delete-modal-inner">
+        <h2>Delete your account?</h2>
+        <p>This will permanently delete your account, all projects, and generated assets. There is no undo.</p>
+        <form method="post" action="{{ url_for('account_delete') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="account-form-row">
+                <label for="delete_password">Enter your password to confirm</label>
+                <input type="password" id="delete_password" name="delete_password"
+                       autocomplete="current-password" required>
+            </div>
+            <div class="delete-modal-actions">
+                <button type="button" class="btn-ghost" onclick="document.getElementById('delete-modal').close()">
+                    Cancel
+                </button>
+                <button type="submit" class="btn-danger">Yes, delete my account</button>
+            </div>
+        </form>
+    </div>
+</dialog>
 {% endblock %}

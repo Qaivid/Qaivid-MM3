@@ -118,6 +118,28 @@ def verify_password(user: dict, password: str) -> bool:
     return check_password_hash(user.get("password_hash") or "", password)
 
 
+def get_user_password_hash(user_id: int) -> Optional[str]:
+    """Return only the password_hash for the given user (for current-password verification)."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        return row["password_hash"] if row else None
+
+
+def update_user_password(user_id: int, new_password: str) -> None:
+    pw_hash = generate_password_hash(new_password)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, user_id))
+        conn.commit()
+
+
+def delete_user(user_id: int) -> None:
+    """Permanently delete a user. Cascade on projects/assets is handled by FK constraints."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+
+
 # --- session glue ------------------------------------------------------------
 
 def login_user(user: dict) -> None:

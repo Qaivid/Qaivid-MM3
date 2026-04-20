@@ -170,6 +170,30 @@ def cancel():
     return redirect(url_for("billing.pricing"))
 
 
+@billing_bp.route("/billing/portal")
+@login_required
+def portal():
+    """Redirect the user to the Stripe Customer Portal to manage their subscription."""
+    stripe = _stripe()
+    user = current_user()
+    customer_id = (user or {}).get("stripe_customer_id")
+
+    if not stripe or not customer_id:
+        flash("No active subscription found. Upgrade from the pricing page.", "info")
+        return redirect(url_for("billing.pricing"))
+
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=request.host_url.rstrip("/") + url_for("account"),
+        )
+        return redirect(session.url)
+    except Exception as exc:
+        logger.error("Stripe portal session error: %s", exc)
+        flash("Could not open billing portal — please try again.", "error")
+        return redirect(url_for("account"))
+
+
 # ---------------------------------------------------------------------------
 # Stripe webhook
 # ---------------------------------------------------------------------------

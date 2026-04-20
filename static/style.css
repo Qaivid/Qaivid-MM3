@@ -3654,3 +3654,64 @@ main:has(> .ws-grid) {
 .plan-pro   { background: rgba(0,212,255,0.15); color: #00d4ff; }
 .plan-studio { background: rgba(212,255,58,0.15); color: var(--accent); }
 .account-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* ── Account page additions ───────────────────────────────── */
+.account-plan-actions { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.plan-studio { background: rgba(212,255,58,0.15); color: var(--lime); }
+
+.account-form { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
+.account-form-row { display: flex; flex-direction: column; gap: 6px; }
+.account-form-row label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+.account-hint { color: var(--muted); font-size: 12px; }
+
+.account-danger-section { border: 1px solid rgba(255,92,122,0.2); border-radius: var(--radius-sm); padding: 20px; }
+.account-danger-section h2 { color: var(--error); }
+.account-danger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.account-danger-title { font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 4px; }
+.account-danger-desc { color: var(--muted); font-size: 13px; }
+
+/* Delete confirmation modal */
+.delete-modal {
+    background: var(--bg-2);
+    border: 1px solid rgba(255,92,122,0.35);
+    border-radius: 20px;
+    padding: 0;
+    max-width: 480px;
+    width: calc(100% - 32px);
+    color: var(--text);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+}
+.delete-modal::backdrop {
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+}
+.delete-modal-inner { padding: 36px; display: flex; flex-direction: column; gap: 16px; }
+.delete-modal-inner h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0;
+    color: var(--error);
+}
+.delete-modal-inner p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0; }
+.delete-modal-inner form { display: flex; flex-direction: column; gap: 16px; }
+.delete-modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+.btn-ghost-sm { padding: 10px 18px; font-size: 13px; }
+
+@media (max-width: 600px) {
+    .account-card { padding: 24px 18px; }
+    .account-danger-row { flex-direction: column; align-items: flex-start; }
+}

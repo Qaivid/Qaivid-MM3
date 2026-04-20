@@ -17,6 +17,7 @@ from flask import (
 )
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
+from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 
@@ -55,10 +56,13 @@ from auth import (
     count_user_projects,
     create_user,
     current_user,
+    delete_user,
     get_user_by_email,
+    get_user_password_hash,
     login_required,
     login_user,
     logout_user,
+    update_user_password,
     verify_password,
 )
 import r2_storage
@@ -564,6 +568,48 @@ def account():
     if user.get("plan", "free") == "free":
         user["project_count"] = count_user_projects(user["id"])
     return render_template("account.html", user=user)
+
+
+@app.route("/account/change-password", methods=["POST"])
+@login_required
+def account_change_password():
+    user = current_user()
+    current_pw = request.form.get("current_password", "")
+    new_pw = request.form.get("new_password", "")
+    confirm_pw = request.form.get("confirm_password", "")
+
+    pw_hash = get_user_password_hash(user["id"])
+    if not pw_hash or not check_password_hash(pw_hash, current_pw):
+        flash("Current password is incorrect.", "error")
+        return redirect(url_for("account"))
+    if len(new_pw) < 8:
+        flash("New password must be at least 8 characters.", "error")
+        return redirect(url_for("account"))
+    if new_pw != confirm_pw:
+        flash("New passwords do not match.", "error")
+        return redirect(url_for("account"))
+
+    update_user_password(user["id"], new_pw)
+    flash("Password updated successfully.", "success")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/delete", methods=["POST"])
+@login_required
+def account_delete():
+    user = current_user()
+    password = request.form.get("delete_password", "")
+
+    pw_hash = get_user_password_hash(user["id"])
+    if not pw_hash or not check_password_hash(pw_hash, password):
+        flash("Incorrect password — account not deleted.", "error")
+        return redirect(url_for("account"))
+
+    uid = user["id"]
+    logout_user()
+    delete_user(uid)
+    flash("Your account has been permanently deleted.", "info")
+    return redirect(url_for("index"))
 
 
 @app.route("/generate", methods=["POST"])
