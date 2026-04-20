@@ -1387,7 +1387,8 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT context_packet, style_profile FROM projects WHERE id=%s",
+                "SELECT context_packet, style_profile, transcript, lyrics_timed "
+                "FROM projects WHERE id=%s",
                 (project_id,),
             )
             row = cur.fetchone()
@@ -1409,6 +1410,13 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         _raw_sp = dict(row.get("style_profile") or {})
         style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
 
+        # Fetch lyrics so scene locations can be derived from actual song imagery
+        lyrics_text = str(row.get("transcript") or "").strip() or None
+        lyrics_timed_raw = row.get("lyrics_timed")
+        lyrics_timed = (
+            list(lyrics_timed_raw) if isinstance(lyrics_timed_raw, list) else None
+        )
+
         _set_status(project_id, "running",
                     {"stage": "brief", "label": "Drafting director treatment variants…"},
                     stage="running_brief")
@@ -1419,6 +1427,8 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             context_packet=context_packet,
             style_profile=style_profile,
             n=3,
+            lyrics=lyrics_text,
+            lyrics_timed=lyrics_timed,
         ))
 
         creative_brief = dict(context_packet.get("creative_brief") or {})

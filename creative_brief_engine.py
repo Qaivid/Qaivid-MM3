@@ -34,6 +34,80 @@ _MODEL = "gpt-4o-mini"
 _MAX_VARIANTS = 4
 _MIN_VARIANTS = 2
 
+_BEAT_SECTIONS = ["intro", "verse1", "chorus", "verse2", "outro"]
+_BEAT_BOUNDARIES = [0.0, 0.15, 0.40, 0.62, 0.80, 1.0]
+
+
+def _section_lyrics(
+    lyrics_text: str,
+    lyrics_timed: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, List[str]]:
+    """Divide lyrics into beat sections.
+
+    When timed lyrics are available, uses timestamps relative to the last
+    line's timestamp to assign each line to a section.  Otherwise falls back
+    to positional proportioning over the raw lines.
+
+    Returns a dict keyed by section name (intro/verse1/chorus/verse2/outro),
+    each mapping to the list of lyric lines in that section.
+    """
+    sections: Dict[str, List[str]] = {s: [] for s in _BEAT_SECTIONS}
+
+    if lyrics_timed and isinstance(lyrics_timed, list) and len(lyrics_timed) > 1:
+        entries = [
+            e for e in lyrics_timed
+            if isinstance(e, dict) and str(e.get("text") or "").strip()
+        ]
+        if entries:
+            max_ts = max(
+                float(e.get("timestamp") or e.get("start") or 0.0)
+                for e in entries
+            )
+            if max_ts <= 0:
+                max_ts = float(len(entries))
+            for e in entries:
+                ts = float(e.get("timestamp") or e.get("start") or 0.0)
+                ratio = ts / max_ts
+                text = str(e.get("text") or "").strip()
+                for i, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
+                    if ratio <= boundary:
+                        sections[_BEAT_SECTIONS[i]].append(text)
+                        break
+                else:
+                    sections["outro"].append(text)
+            return sections
+
+    lines = [ln.strip() for ln in (lyrics_text or "").splitlines() if ln.strip()]
+    if not lines:
+        return sections
+    n = len(lines)
+    for i, line in enumerate(lines):
+        ratio = i / n
+        for j, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
+            if ratio < boundary:
+                sections[_BEAT_SECTIONS[j]].append(line)
+                break
+        else:
+            sections["outro"].append(line)
+    return sections
+
+
+def _format_lyric_sections(sections: Dict[str, List[str]]) -> str:
+    """Render sectioned lyrics as a human-readable block for the GPT prompt."""
+    parts: List[str] = []
+    labels = {
+        "intro":  "INTRO",
+        "verse1": "VERSE 1",
+        "chorus": "CHORUS",
+        "verse2": "VERSE 2",
+        "outro":  "OUTRO",
+    }
+    for key in _BEAT_SECTIONS:
+        lines = sections.get(key) or []
+        if lines:
+            parts.append(f"[{labels[key]}]\n" + "\n".join(lines))
+    return "\n\n".join(parts)
+
 
 def _entity_names(context_packet: Dict[str, Any]) -> List[str]:
     out: List[str] = []
@@ -63,60 +137,97 @@ def _system_prompt() -> str:
         "1. TELL A VISUAL STORY. Each treatment must have a clear narrative arc "
         "(beginning → middle → end), not just abstract emotions.\n"
         "2. USE 3-5 DISTINCT VISUAL LOCATIONS. No treatment may be set in a "
-        "single location. Each scene must specify a different, specific place "
-        "(e.g. 'open wheat field at golden hour', 'dimly lit village home', "
-        "'riverside at dusk', 'rooftop under night sky'). Variety is mandatory.\n"
-        "3. SHOW SECONDARY CHARACTERS. The beloved, a friend, or family member "
+        "single location. Each scene must specify a different, specific place. "
+        "Variety is mandatory.\n"
+        "3. LOCATIONS MUST COME FROM THE LYRICS. When a lyric block is supplied "
+        "for a beat section (intro/verse1/chorus/etc.), the scene assigned to "
+        "that beat section MUST derive its location from the concrete imagery, "
+        "objects, and settings mentioned in those specific lines. Read the words "
+        "literally — if a line mentions a field, a river, a doorway, a window, "
+        "a rooftop — that is the location. Do not invent generic defaults. Two "
+        "different songs should produce two different sets of locations because "
+        "their lyrics describe different things.\n"
+        "4. HONOUR THE ARCHITECTURE. The context packet supplies "
+        "architecture_style and characteristic_setting drawn from expert cultural "
+        "knowledge. Every location must be consistent with those descriptions — "
+        "use the specific materials, finishes, and spatial vocabulary given. "
+        "Never override them with generic substitutes.\n"
+        "5. SHOW SECONDARY CHARACTERS. The beloved, a friend, or family member "
         "must appear visually in at least two scenes — even as a memory, "
         "silhouette, or presence — not just referenced in text.\n"
-        "4. INCLUDE VISUAL PROPS AND OBJECTS. Each scene must specify 1-3 "
-        "culturally authentic props drawn from the song's own world "
-        "(e.g. a letter, a candle, a gate, a river stone, a worn photograph, "
-        "a piece of cloth, a musical instrument, a path, a window) "
-        "that carry symbolic weight. Choose props that belong to the "
-        "specific culture and geography of THIS song — do not default to "
-        "any single cultural tradition.\n"
-        "5. VARY TIME OF DAY. Different scenes should happen at different times "
+        "6. INCLUDE VISUAL PROPS AND OBJECTS. Each scene must specify 1-3 "
+        "culturally authentic props drawn from the song's own lyric world "
+        "that carry symbolic weight. Choose props that belong to the specific "
+        "culture and geography of THIS song — do not default to any single "
+        "cultural tradition.\n"
+        "7. VARY TIME OF DAY. Different scenes should happen at different times "
         "(dawn, morning, golden hour, dusk, night).\n"
-        "6. CONTRAST SCENE MOODS. Alternate between intimate/close and wide/open "
+        "8. CONTRAST SCENE MOODS. Alternate between intimate/close and wide/open "
         "settings so the video breathes visually.\n"
         "Never repeat the same treatment twice. Cast members must come from the "
         "supplied entity list."
     )
 
 
-def _user_prompt(context_packet: Dict[str, Any],
-                 style_profile: Dict[str, Any],
-                 entity_names: List[str]) -> str:
+def _user_prompt(
+    context_packet: Dict[str, Any],
+    style_profile: Dict[str, Any],
+    entity_names: List[str],
+    lyrics: Optional[str] = None,
+    lyrics_timed: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     spk = context_packet.get("speaker") or {}
     motivation = context_packet.get("motivation") or {}
     world = context_packet.get("world_assumptions") or {}
     cin = (style_profile or {}).get("cinematic") or {}
     prod = (style_profile or {}).get("production") or {}
     payload = {
-        "speaker_identity": spk.get("identity"),
-        "emotional_state": spk.get("emotional_state"),
-        "narrative_mode":  context_packet.get("narrative_mode"),
-        "location_dna":    context_packet.get("location_dna"),
-        "era":             context_packet.get("era"),
-        "motivation":      {
-            "inciting_cause":   motivation.get("inciting_cause"),
+        "speaker_identity":    spk.get("identity"),
+        "emotional_state":     spk.get("emotional_state"),
+        "narrative_mode":      context_packet.get("narrative_mode"),
+        "location_dna":        context_packet.get("location_dna"),
+        "era":                 context_packet.get("era"),
+        "motivation": {
+            "inciting_cause":    motivation.get("inciting_cause"),
             "underlying_desire": motivation.get("underlying_desire"),
             "stakes":            motivation.get("stakes"),
             "obstacle":          motivation.get("obstacle"),
         },
         "world_assumptions": {
-            "geography":          world.get("geography"),
-            "architecture_style": world.get("architecture_style"),
-            "social_layer":       world.get("social_layer"),
+            "geography":             world.get("geography"),
+            "architecture_style":    world.get("architecture_style"),
+            "characteristic_setting": world.get("characteristic_setting"),
+            "social_context":        world.get("social_context"),
+            "season":                world.get("season"),
+            "era":                   world.get("era"),
         },
-        "cinematic_style":   cin.get("name") or cin.get("id"),
-        "production_style":  prod.get("name") or prod.get("id"),
-        "available_cast":    entity_names,
+        "cinematic_style":  cin.get("name") or cin.get("id"),
+        "production_style": prod.get("name") or prod.get("id"),
+        "available_cast":   entity_names,
     }
+
+    lyric_block = ""
+    if lyrics or lyrics_timed:
+        sections = _section_lyrics(lyrics or "", lyrics_timed)
+        formatted = _format_lyric_sections(sections)
+        if formatted.strip():
+            lyric_block = (
+                "\n\nSong lyrics divided by beat section — "
+                "derive each scene's location from the imagery in the "
+                "corresponding section below. Read the words literally:\n\n"
+                + formatted
+                + "\n\nIMPORTANT: Each scene's 'location' field MUST reflect "
+                "the concrete images, places, and objects mentioned in the "
+                "lyric lines for that beat section. The architecture_style and "
+                "characteristic_setting in world_assumptions define what the "
+                "built environment looks like — every location description must "
+                "be consistent with those materials and spatial vocabulary."
+            )
+
     return (
         "Context for this song:\n"
         + json.dumps(payload, indent=2)
+        + lyric_block
         + "\n\nReturn JSON of the form:\n"
         + "{\n"
           '  "variants": [\n'
@@ -127,9 +238,9 @@ def _user_prompt(context_packet: Dict[str, Any],
           '      "scenes": [\n'
           '        {\n'
           '          "name": "Scene name",\n'
-          '          "beat_range": "intro|verse1|chorus|outro",\n'
+          '          "beat_range": "intro|verse1|chorus|verse2|outro",\n'
           '          "summary": "What happens visually in this scene (2-3 sentences)",\n'
-          '          "location": "Specific visual setting for THIS scene (e.g. open wheat field, village rooftop at dusk, riverside)",\n'
+          '          "location": "Specific visual setting drawn from the lyrics of this beat section",\n'
           '          "time_of_day": "dawn|morning|afternoon|golden_hour|dusk|night",\n'
           '          "props": ["prop1", "prop2"]\n'
           "        }\n"
@@ -267,8 +378,13 @@ async def generate_variants(
     context_packet: Dict[str, Any],
     style_profile: Optional[Dict[str, Any]] = None,
     n: int = 3,
+    lyrics: Optional[str] = None,
+    lyrics_timed: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Generate `n` (clamped 2–4) distinct creative-brief variants.
+
+    lyrics and lyrics_timed are used to derive scene-specific locations from
+    the actual imagery in the song rather than generic cultural defaults.
 
     Returns a tuple of (variants, used_fallback) where used_fallback is True
     when the LLM failed to produce enough valid variants and hardcoded defaults
@@ -280,14 +396,17 @@ async def generate_variants(
 
     try:
         client = AsyncOpenAI(api_key=api_key)
+        user_content = (
+            _user_prompt(context_packet, sp, entity_names, lyrics, lyrics_timed)
+            + f"\n\nProduce exactly {n} variants."
+        )
         resp = await client.chat.completions.create(
             model=_MODEL,
             response_format={"type": "json_object"},
             temperature=0.9,
             messages=[
                 {"role": "system", "content": _system_prompt()},
-                {"role": "user",   "content": _user_prompt(context_packet, sp, entity_names)
-                                                + f"\n\nProduce exactly {n} variants."},
+                {"role": "user",   "content": user_content},
             ],
         )
         raw = resp.choices[0].message.content or "{}"

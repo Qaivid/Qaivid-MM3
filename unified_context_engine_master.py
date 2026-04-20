@@ -1516,6 +1516,16 @@ REQUIREMENTS:
             wa.get("characteristic_setting")
             or wa.get("domestic_setting")
         )
+        # Culture pack is authoritative for visual specifics (architecture_style,
+        # characteristic_setting). The LLM always returns vague generics here
+        # ("Courtyard-oriented home") which are useless downstream. When the pack
+        # has specific values, use them unconditionally — they represent domain
+        # knowledge the LLM cannot reliably reproduce.
+        pack_arch = defaults.get("architecture_style", "")
+        pack_setting = (
+            defaults.get("characteristic_setting")
+            or defaults.get("domestic_setting", "")
+        )
         data["world_assumptions"] = {
             "geography": self._ensure_string(wa.get("geography"), defaults.get("geography", "Unspecified")),
             "era": self._ensure_string(wa.get("era"), "Unspecified"),
@@ -1523,10 +1533,13 @@ REQUIREMENTS:
             "characteristic_time": self._ensure_string(char_time, "Unspecified"),
             "social_context": self._ensure_string(wa.get("social_context"), "Unspecified"),
             "economic_context": self._ensure_string(wa.get("economic_context"), "Unspecified"),
-            "architecture_style": self._ensure_string(wa.get("architecture_style"), defaults.get("architecture_style", "Unspecified")),
-            "characteristic_setting": self._ensure_string(
-                char_setting,
-                defaults.get("characteristic_setting") or defaults.get("domestic_setting", "Unspecified")
+            "architecture_style": (
+                pack_arch if pack_arch
+                else self._ensure_string(wa.get("architecture_style"), "Unspecified")
+            ),
+            "characteristic_setting": (
+                pack_setting if pack_setting
+                else self._ensure_string(char_setting, "Unspecified")
             ),
         }
 
