@@ -280,10 +280,12 @@ class VisualStoryboardEngine:
         self._cine_history: List[Dict[str, Any]] = []
         self._cinematic_beats_by_index = self._index_by_line(ctx.get("cinematic_beats", []))
         self._shot_events_by_index = self._index_by_line(ctx.get("shot_events", []))
-        # Accumulates visual_props from the most recent block of original
-        # (non-repeat) lines so chorus repeats can draw varied imagery from
-        # the verse that immediately preceded them.
+        # Accumulates visual_props from the most recent verse block so chorus
+        # repeats can draw varied imagery from the preceding verse.
+        # Scoped: resets at each verse→original transition.
         self._last_verse_props: List[str] = []
+        # Scene name of the previous shot — used for scene-continuity detection.
+        self._prev_scene_name: str = ""
 
         storyboard: List[Dict[str, Any]] = []
         total_shots = len(ctx["line_meanings"])
@@ -298,8 +300,12 @@ class VisualStoryboardEngine:
             shot_event = self._shot_events_by_index.get(shot_index, {})
             arc_position = self._arc_position(shot_index, total_shots)
 
+            # Snapshot previous-repeat flag BEFORE updating it so downstream
+            # verse-pool reset logic can compare correctly.
+            _was_repeat = self._prev_was_repeat
+
             # Track chorus repeats for escalation offset
-            if shot["repeat_status"] == "repeat" and not self._prev_was_repeat:
+            if shot["repeat_status"] == "repeat" and not _was_repeat:
                 self._chorus_count += 1
                 if self._chorus_count > 1:
                     for mode in self._frame_counters:
@@ -393,23 +399,42 @@ class VisualStoryboardEngine:
                 motion_prompt = _cine_motion(cinematography) or motion_prompt
             motion_prompt = self._override_motion_prompt_with_event(motion_prompt, shot_event)
 
+            # Compute scene_override early so it can inform differentiation logic.
+            scene_override = self._scene_override_for(shot_index, total_shots)
+
             # --- Per-shot visual_props tracking ---
-            # Scoped accumulation: reset the verse-props pool on the first original
-            # line that follows a repeat block so carry-over reflects only the most
-            # recent verse, not the entire song history.
             shot_vp = [str(p) for p in (shot.get("visual_props") or []) if p]
-            if shot["repeat_status"] == "original" and self._prev_was_repeat:
+
+            # Scene continuity check: detect whether this shot is in the same scene
+            # as the previous one (secondary chorus-repeat signal that works even
+            # when lyric text varies slightly between chorus passes).
+            _current_scene_name = (scene_override or {}).get("scene_name", "")
+            _is_scene_repeat = (
+                bool(_current_scene_name)
+                and _current_scene_name == self._prev_scene_name
+            )
+            self._prev_scene_name = _current_scene_name
+
+            # A shot needs differentiation when it is:
+            #   (a) a repeat_status="repeat" line, OR
+            #   (b) in the same scene as the previous shot (scene continuity)
+            _needs_differentiation = (shot["repeat_status"] == "repeat") or _is_scene_repeat
+
+            # Scoped accumulation: reset the verse-props pool on the first original
+            # line that follows a repeat block — uses _was_repeat (snapshotted
+            # BEFORE _prev_was_repeat was overwritten) so the transition is caught.
+            if shot["repeat_status"] == "original" and _was_repeat:
                 self._last_verse_props = []  # new verse block begins; start fresh
             if shot["repeat_status"] == "original" and shot_vp:
-                # Accumulate per-verse: rolling cap of 12 to cover multi-prop verses
-                self._last_verse_props = (self._last_verse_props + shot_vp)[-12:]
+                # No cap: accumulate every prop from the verse so nothing is lost
+                self._last_verse_props = self._last_verse_props + shot_vp
 
-            # Chorus differentiation: for repeat shots, compute a rotating 4-prop
-            # window from the preceding verse pool regardless of whether the repeat
-            # line itself has its own visual_props.  The two sources are MERGED in
-            # _build_environment_prompt so chorus props + verse carry-over appear
-            # together — giving each chorus pass a unique visual emphasis cluster.
-            if shot["repeat_status"] == "repeat" and self._last_verse_props:
+            # Chorus differentiation: compute a rotating 4-prop window from the
+            # preceding verse pool for ALL shots that need differentiation,
+            # regardless of whether the shot itself has visual_props.
+            # The two sources are MERGED in _build_environment_prompt so each
+            # chorus pass gets both its own imagery and a unique carry-over cluster.
+            if _needs_differentiation and self._last_verse_props:
                 pool = self._last_verse_props
                 window_size = 4
                 # _chorus_count is 1-indexed; (count-1) * window shifts each pass
@@ -419,7 +444,6 @@ class VisualStoryboardEngine:
             else:
                 verse_carry_props = []
 
-            scene_override = self._scene_override_for(shot_index, total_shots)
             camera_prompt = self._build_camera_prompt(ctx, shot, frame_directive)
             camera_prompt = self._augment_camera_prompt(camera_prompt, shot_event)
 
