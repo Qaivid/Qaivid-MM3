@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import AsyncOpenAI
@@ -37,24 +38,64 @@ _MIN_VARIANTS = 2
 _BEAT_SECTIONS = ["intro", "verse1", "chorus", "verse2", "outro"]
 _BEAT_BOUNDARIES = [0.0, 0.15, 0.40, 0.62, 0.80, 1.0]
 
+# Matches lines like "[Chorus]", "[Verse 2]", "[Pre-Chorus]", "[Bridge]" etc.
+_SECTION_TAG_RE = re.compile(r'^\s*\[([^\]]+)\]\s*$')
+
 
 def _section_lyrics(
     lyrics_text: str,
     lyrics_timed: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, List[str]]:
-    """Divide lyrics into beat sections.
+    """Divide lyrics into sections.
 
-    When timed lyrics are available AND have usable temporal spread (i.e.
-    timestamps are not all zero / collapsed), uses timestamps relative to
-    the final timestamp to assign each line to a section.  Falls back to
-    positional proportioning otherwise — including the known all-zero case
-    produced by the Whisper fallback path.
+    Priority order:
+    1. Structural [Section] tags — if the lyrics contain bracket markers such
+       as [Chorus], [Verse], [Pre-Chorus], [Bridge], these are used directly
+       to group lines into named sections.  Repeated tags get numeric suffixes
+       (chorus, chorus_2, chorus_3; verse, verse_2, verse_3 etc.) so every
+       occurrence is a distinct section rather than collapsing into one.
+       This handles complex song structures with 3+ verses, multiple
+       pre-choruses, etc. without any cap.
+    2. Timestamp-based — when timed lyrics are available with meaningful
+       temporal spread, time boundaries map lines to the legacy 5-section set.
+    3. Positional — proportional distribution across the 5-section fallback.
 
-    Returns a dict keyed by section name (intro/verse1/chorus/verse2/outro),
-    each mapping to the list of lyric lines in that section.
+    Returns an ordered dict keyed by section name mapping to lyric lines.
+    No section is created with zero lines.
     """
-    sections: Dict[str, List[str]] = {s: [] for s in _BEAT_SECTIONS}
+    # --- Priority 1: structural [Section] tags ---
+    raw_lines = list((lyrics_text or "").splitlines())
+    if any(_SECTION_TAG_RE.match(ln) for ln in raw_lines):
+        sections: Dict[str, List[str]] = {}
+        tag_counts: Dict[str, int] = {}
+        current_key = "intro"
+        sections[current_key] = []
+        for ln in raw_lines:
+            m = _SECTION_TAG_RE.match(ln)
+            if m:
+                raw_tag = m.group(1).strip()
+                # Normalise to snake_case key, strip non-alnum
+                base_key = re.sub(r'\s+', '_', raw_tag.lower())
+                base_key = re.sub(r'[^a-z0-9_]', '', base_key)
+                if not base_key:
+                    continue
+                tag_counts[base_key] = tag_counts.get(base_key, 0) + 1
+                count = tag_counts[base_key]
+                # First occurrence uses bare key; subsequent add _2, _3 …
+                current_key = base_key if count == 1 else f"{base_key}_{count}"
+                if current_key not in sections:
+                    sections[current_key] = []
+            else:
+                text = ln.strip()
+                if text:
+                    sections[current_key].append(text)
+        # Drop any empty sections (e.g. intro had no lines before first tag)
+        sections = {k: v for k, v in sections.items() if v}
+        if sections:
+            return sections
 
+    # --- Priority 2: timestamp-based sectioning ---
+    fallback: Dict[str, List[str]] = {s: [] for s in _BEAT_SECTIONS}
     if lyrics_timed and isinstance(lyrics_timed, list) and len(lyrics_timed) > 1:
         entries = [
             e for e in lyrics_timed
@@ -67,56 +108,64 @@ def _section_lyrics(
             ]
             max_ts = max(timestamps)
             min_ts = min(timestamps)
-            # Only use timestamp-based sectioning when there is meaningful
-            # temporal spread.  If all timestamps are 0 (or nearly identical),
-            # the Whisper fallback produced a degenerate list — fall through
-            # to positional distribution below.
             if max_ts > 0 and (max_ts - min_ts) > 1.0:
                 for e, ts in zip(entries, timestamps):
                     ratio = ts / max_ts
                     text = str(e.get("text") or "").strip()
                     for i, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
                         if ratio <= boundary:
-                            sections[_BEAT_SECTIONS[i]].append(text)
+                            fallback[_BEAT_SECTIONS[i]].append(text)
                             break
                     else:
-                        sections["outro"].append(text)
-                return sections
-            # Degenerate timestamps — fall through to positional using text
-            # extracted from the timed entries so nothing is lost
+                        fallback["outro"].append(text)
+                return {k: v for k, v in fallback.items() if v}
+            # Degenerate timestamps — extract text and fall through
             lyrics_text = "\n".join(
                 str(e.get("text") or "").strip() for e in entries
             ) or lyrics_text
 
+    # --- Priority 3: positional distribution ---
     lines = [ln.strip() for ln in (lyrics_text or "").splitlines() if ln.strip()]
     if not lines:
-        return sections
+        return {k: v for k, v in fallback.items() if v}
     n = len(lines)
     for i, line in enumerate(lines):
         ratio = i / n
         for j, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
             if ratio < boundary:
-                sections[_BEAT_SECTIONS[j]].append(line)
+                fallback[_BEAT_SECTIONS[j]].append(line)
                 break
         else:
-            sections["outro"].append(line)
-    return sections
+            fallback["outro"].append(line)
+    return {k: v for k, v in fallback.items() if v}
 
 
 def _format_lyric_sections(sections: Dict[str, List[str]]) -> str:
-    """Render sectioned lyrics as a human-readable block for the GPT prompt."""
-    parts: List[str] = []
-    labels = {
+    """Render sectioned lyrics as a human-readable block for the GPT prompt.
+
+    Handles both the legacy 5-key set and the dynamic tag-derived keys that
+    _section_lyrics now produces (e.g. pre_chorus, verse_2, chorus_3, bridge).
+    Sections are rendered in their original insertion order.
+    """
+    _STATIC_LABELS: Dict[str, str] = {
         "intro":  "INTRO",
         "verse1": "VERSE 1",
         "chorus": "CHORUS",
         "verse2": "VERSE 2",
         "outro":  "OUTRO",
     }
-    for key in _BEAT_SECTIONS:
-        lines = sections.get(key) or []
-        if lines:
-            parts.append(f"[{labels[key]}]\n" + "\n".join(lines))
+    parts: List[str] = []
+    for key, lines in sections.items():
+        if not lines:
+            continue
+        if key in _STATIC_LABELS:
+            label = _STATIC_LABELS[key]
+        else:
+            # Convert snake_case key back to a readable heading.
+            # "pre_chorus_2" → "PRE-CHORUS 2", "verse_3" → "VERSE 3" etc.
+            label = re.sub(r'_(\d+)$', r' \1', key)  # trailing _N → space N
+            label = label.replace('_', '-').upper()
+        parts.append(f"[{label}]\n" + "\n".join(lines))
     return "\n\n".join(parts)
 
 
@@ -370,7 +419,7 @@ def _user_prompt(
           '      "scenes": [\n'
           '        {\n'
           '          "name": "Scene name",\n'
-          '          "beat_range": "intro|verse1|chorus|verse2|outro",\n'
+          '          "beat_range": "Name of the lyric section this scene covers (e.g. intro, verse1, chorus, pre-chorus, verse_2, bridge, chorus_3, outro — must match the actual structure of the provided lyrics)",\n'
           '          "summary": "What happens visually in this scene (2-3 sentences)",\n'
           '          "location": "Specific visual setting drawn from the lyrics of this beat section",\n'
           '          "time_of_day": "dawn|morning|afternoon|golden_hour|dusk|night",\n'
@@ -397,19 +446,19 @@ def _coerce_variant(raw: Any, idx: int) -> Optional[Dict[str, Any]]:
     scenes_in = raw.get("scenes") or []
     scenes: List[Dict[str, Any]] = []
     if isinstance(scenes_in, list):
-        for s in scenes_in[:8]:
+        for s in scenes_in:
             if isinstance(s, dict):
                 props_in = s.get("props") or []
                 scenes.append({
                     "name":       str(s.get("name") or "").strip()[:80],
-                    "beat_range": str(s.get("beat_range") or "").strip()[:60],
-                    "summary":    str(s.get("summary") or "").strip()[:400],
-                    "location":   str(s.get("location") or "").strip()[:200],
+                    "beat_range": str(s.get("beat_range") or "").strip()[:80],
+                    "summary":    str(s.get("summary") or "").strip()[:600],
+                    "location":   str(s.get("location") or "").strip()[:300],
                     "time_of_day": str(s.get("time_of_day") or "").strip()[:50],
-                    "props":      [str(p).strip() for p in (props_in if isinstance(props_in, list) else [])[:6] if p],
+                    "props":      [str(p).strip() for p in (props_in if isinstance(props_in, list) else []) if p],
                 })
     vl_in = raw.get("visual_locations") or []
-    visual_locations = [str(x).strip() for x in (vl_in if isinstance(vl_in, list) else []) if str(x).strip()][:8]
+    visual_locations = [str(x).strip() for x in (vl_in if isinstance(vl_in, list) else []) if str(x).strip()]
     cast_in = raw.get("cast_roster") or []
     cast = [str(x).strip() for x in cast_in if isinstance(x, (str, int))][:10]
     metaphor = str(raw.get("central_metaphor") or "").strip()

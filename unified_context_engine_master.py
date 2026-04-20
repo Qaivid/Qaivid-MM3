@@ -1140,7 +1140,8 @@ REQUIRED JSON SHAPE:
       "intensity": 0.5,
       "expression_mode": "face|body|environment|symbolic|macro",
       "visualization_mode": "direct|indirect|symbolic|absorbed|performance_only",
-      "visual_suitability": "high|medium|low"
+      "visual_suitability": "high|medium|low",
+      "visual_props": ["string — specific visual elements literally named in this line (e.g. 'marwa flower', 'ankle bells', 'weeping willow', 'brass pitcher', 'red dupatta'). Extract only from this line's text. Leave empty if the line contains no concrete objects or imagery."]
     }}
   ],
   "motifs": ["string"],
@@ -1331,6 +1332,7 @@ OPTIONAL PRE-ANALYSIS:
 REQUIREMENTS:
 - line_meanings must contain exactly one entry per indexed line, in order.
 - Fill literal_meaning, implied_meaning, emotional_meaning, and cultural_meaning for every line.
+- For visual_props: extract the concrete physical objects, plants, animals, garments, or natural phenomena named in that specific line. Translate them — a line in Punjabi mentioning "ਮਾਰਵਾ" should produce ["marwa flower"]. These become the direct visual elements in the image prompts, so be specific and literal. An empty array [] is correct when the line is purely abstract.
 - Choose visualization_mode honestly.
 - Mark repeated lines with repeat_status="repeat".
 - Keep narrative_spine compact and storyboard-friendly.
@@ -1615,6 +1617,13 @@ REQUIREMENTS:
             cultural = self._ensure_string(current.get("cultural_meaning"), "")
             combined = " | ".join(p for p in (implied, emotional, literal) if p) or "Literal or emotional meaning not clearly extracted."
 
+            # visual_props: list of concrete prop strings; repair to clean list
+            raw_vp = current.get("visual_props")
+            if isinstance(raw_vp, list):
+                visual_props = [str(x).strip() for x in raw_vp if str(x).strip()]
+            else:
+                visual_props = []
+
             repaired.append({
                 "line_index": idx,
                 "text": line["text"],
@@ -1629,6 +1638,7 @@ REQUIREMENTS:
                 "expression_mode": self._repair_expression_mode(current.get("expression_mode")),
                 "visualization_mode": self._repair_visualization_mode(current.get("visualization_mode")),
                 "visual_suitability": self._repair_visual_suitability(current.get("visual_suitability")),
+                "visual_props": visual_props,
             })
 
         return repaired

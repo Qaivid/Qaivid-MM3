@@ -280,6 +280,10 @@ class VisualStoryboardEngine:
         self._cine_history: List[Dict[str, Any]] = []
         self._cinematic_beats_by_index = self._index_by_line(ctx.get("cinematic_beats", []))
         self._shot_events_by_index = self._index_by_line(ctx.get("shot_events", []))
+        # Accumulates visual_props from the most recent block of original
+        # (non-repeat) lines so chorus repeats can draw varied imagery from
+        # the verse that immediately preceded them.
+        self._last_verse_props: List[str] = []
 
         storyboard: List[Dict[str, Any]] = []
         total_shots = len(ctx["line_meanings"])
@@ -389,13 +393,32 @@ class VisualStoryboardEngine:
                 motion_prompt = _cine_motion(cinematography) or motion_prompt
             motion_prompt = self._override_motion_prompt_with_event(motion_prompt, shot_event)
 
+            # Track visual_props from original (non-repeat) lines so subsequent
+            # chorus repeats can show imagery drawn from the preceding verse,
+            # making each chorus pass visually distinct.
+            shot_vp = [str(p) for p in (shot.get("visual_props") or []) if p]
+            if shot["repeat_status"] == "original" and shot_vp:
+                # Rolling window: keep the last 12 props from recent verses
+                self._last_verse_props = (self._last_verse_props + shot_vp)[-12:]
+            # For repeat shots, surface the verse carry-over props if the line
+            # itself has no distinctive visual_props of its own.
+            verse_carry_props = (
+                self._last_verse_props
+                if shot["repeat_status"] == "repeat" and not shot_vp
+                else []
+            )
+
             scene_override = self._scene_override_for(shot_index, total_shots)
             camera_prompt = self._build_camera_prompt(ctx, shot, frame_directive)
             camera_prompt = self._augment_camera_prompt(camera_prompt, shot_event)
 
             prompt_segments = {
                 "character": self._build_character_prompt(ctx, shot),
-                "environment": self._build_environment_prompt(ctx, shot, scene_override=scene_override),
+                "environment": self._build_environment_prompt(
+                    ctx, shot, scene_override=scene_override,
+                    line_visual_props=shot_vp,
+                    verse_carry_props=verse_carry_props,
+                ),
                 "action": action_prompt,
                 "performance": self._build_performance_prompt(ctx, shot, body_lang),
                 "camera": camera_prompt,
@@ -1086,6 +1109,8 @@ class VisualStoryboardEngine:
         ctx: Dict[str, Any],
         shot: Dict[str, Any],
         scene_override: Optional[Dict[str, Any]] = None,
+        line_visual_props: Optional[List[str]] = None,
+        verse_carry_props: Optional[List[str]] = None,
     ) -> str:
         # --- Two-namespace composition ---
         # global_frame: immutable cultural/geographic anchor from world_assumptions
@@ -1169,7 +1194,25 @@ class VisualStoryboardEngine:
                 parts.append(f"[Scene setting] Default scene setting: {fallback}.")
 
         if scene_props:
-            parts.append(f"Include or reference scene props: {', '.join(scene_props[:4])}.")
+            parts.append(f"Include scene props from the creative brief: {', '.join(scene_props)}.")
+
+        # Per-line visual props: concrete objects/elements named in this specific
+        # lyric line — extracted by the context engine and translated to English.
+        # These take priority over generic scene props because they come directly
+        # from the lyrics that this exact shot is illustrating.
+        effective_vp: List[str] = list(line_visual_props or [])
+        if not effective_vp and verse_carry_props:
+            # Chorus repeat: no line-specific props, so carry forward imagery
+            # accumulated from the preceding verse so this chorus looks distinct
+            # from earlier or later chorus passes.
+            effective_vp = list(verse_carry_props)
+        if effective_vp:
+            parts.append(
+                f"LYRIC IMAGERY MANDATE — this shot MUST visually feature: "
+                f"{', '.join(effective_vp)}. "
+                "These elements were named literally in the lyric line. "
+                "Do not omit them or replace them with generic substitutes."
+            )
 
         if place_entities:
             parts.append(f"Relevant place cues: {', '.join(place_entities[:5])}.")
