@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 
 from flask import (
     Blueprint,
-    current_app,
     flash,
     redirect,
     render_template,
@@ -21,7 +20,6 @@ from flask import (
 )
 
 from auth import (
-    count_user_projects,
     current_user,
     get_user_by_stripe_customer,
     login_required,
