@@ -1,13 +1,346 @@
 {% extends "base.html" %}
-{% block title %}Qaivid MetaMind 3.0 — AI music video studio{% endblock %}
+{% block title %}Qaivid MetaMind — AI Cinematic Music Video Studio{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+
 {% block content %}
-<section class="hero">
-    <div class="eyebrow">Live · Pipeline online</div>
-    <h1>So… <span class="accent">what have you got</span><br>to make a video?</h1>
-    <p>Lyrics, a poem, a script, a story, a doc, an ad — paste it in, throw in audio, and we'll spin up a beat-synced cinematic shot list with face-locked stills.</p>
-    <div style="margin-top:24px; display:flex; gap:12px; justify-content:center;">
-        <a href="{{ url_for('signup') }}" class="btn-primary">Sign up</a>
-        <a href="{{ url_for('login') }}" class="btn-stage">Sign in</a>
+
+{# ═══════════════════════════════════════════════════════════════
+   HERO
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-hero">
+    <div class="lp-hero-inner">
+        <div class="lp-hero-text">
+            <div class="eyebrow lp-eyebrow">AI Video Studio &nbsp;·&nbsp; Live Now</div>
+            <h1 class="lp-headline">
+                Your lyrics.<br>
+                Your music.<br>
+                <span class="lp-headline-accent">A cinematic video,<br>built frame by frame.</span>
+            </h1>
+            <p class="lp-sub">
+                Paste any lyrics, upload your audio — Qaivid transcribes in any language, maps every word to the beat, and produces a director-grade shot list with face-locked character stills. No video editing skills needed.
+            </p>
+            <div class="lp-ctas">
+                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">Create your first video</a>
+                <a href="#how-it-works" class="btn-ghost btn-ghost-lg">See how it works ↓</a>
+            </div>
+            <div class="lp-trust">
+                <div class="lp-trust-item">
+                    <span class="lp-trust-icon">🌍</span>
+                    <span>40+ languages</span>
+                </div>
+                <div class="lp-trust-item">
+                    <span class="lp-trust-icon">🎬</span>
+                    <span>8 shot types</span>
+                </div>
+                <div class="lp-trust-item">
+                    <span class="lp-trust-icon">⚡</span>
+                    <span>Beat-synced timing</span>
+                </div>
+                <div class="lp-trust-item">
+                    <span class="lp-trust-icon">🔒</span>
+                    <span>Face-locked stills</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="lp-hero-visual">
+            <div class="lp-mock-scene-stack">
+                {# Background cards for depth #}
+                <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-2"></div>
+                <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-1"></div>
+
+                {# Main featured mock storyboard card #}
+                <div class="lp-mock-card lp-mock-card-front">
+                    <div class="lp-mock-card-header">
+                        <div class="lp-mock-shot-num">Shot 03</div>
+                        <div class="lp-mock-time">
+                            <span class="lp-mono">0:32</span>
+                            <span class="lp-mono-muted">—</span>
+                            <span class="lp-mono">0:38</span>
+                        </div>
+                        <div class="lp-mock-badge lp-mock-badge-shot">CLOSE-UP</div>
+                    </div>
+
+                    <div class="lp-mock-still">
+                        <div class="lp-mock-still-inner">
+                            <div class="lp-mock-gradient-bg"></div>
+                            <div class="lp-mock-face-indicator">
+                                <div class="lp-mock-face-ring"></div>
+                                <div class="lp-mock-face-dot"></div>
+                            </div>
+                        </div>
+                        <div class="lp-mock-still-label">
+                            <span class="lp-mock-badge lp-mock-badge-ok">✓ STILL GENERATED</span>
+                        </div>
+                    </div>
+
+                    <div class="lp-mock-lyric">ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ</div>
+
+                    <div class="lp-mock-meta">
+                        <div class="lp-mock-meta-row">
+                            <span class="lp-mock-meta-label">FRAME</span>
+                            <span>ECU on tear-streaked cheek, catch-light visible</span>
+                        </div>
+                        <div class="lp-mock-meta-row">
+                            <span class="lp-mock-meta-label">MOTION</span>
+                            <span>Camera holds, shallow DOF push in</span>
+                        </div>
+                        <div class="lp-mock-meta-row">
+                            <span class="lp-mock-meta-label">MOOD</span>
+                            <span>Heartbreak · Longing · Release</span>
+                        </div>
+                    </div>
+
+                    <div class="lp-mock-tags">
+                        <span class="lp-mock-tag lp-mock-tag-violet">Verse 2</span>
+                        <span class="lp-mock-tag lp-mock-tag-pink">Emotional peak</span>
+                        <span class="lp-mock-tag lp-mock-tag-cyan">Punjabi</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Scroll gradient fade #}
+    <div class="lp-hero-fade"></div>
+</section>
+
+{# ═══════════════════════════════════════════════════════════════
+   LOGO / TRUST BAR (optional — shows the formats/genres supported)
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-formats">
+    <div class="lp-section-inner">
+        <p class="lp-formats-label">Works with any creative format</p>
+        <div class="lp-formats-pills">
+            <span class="lp-format-pill">🎵 Songs</span>
+            <span class="lp-format-pill">📜 Poems</span>
+            <span class="lp-format-pill">🎭 Scripts</span>
+            <span class="lp-format-pill">📖 Stories</span>
+            <span class="lp-format-pill">📺 Documentaries</span>
+            <span class="lp-format-pill">📣 Ads</span>
+        </div>
     </div>
 </section>
+
+{# ═══════════════════════════════════════════════════════════════
+   HOW IT WORKS
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-section lp-how" id="how-it-works">
+    <div class="lp-section-inner">
+        <div class="lp-section-eyebrow">How it works</div>
+        <h2 class="lp-section-title">From lyrics to cinematic shot list<br><span class="lp-title-accent">in three steps</span></h2>
+        <p class="lp-section-sub">No video editing. No design skills. No guesswork. Just paste, upload, and let the AI direct.</p>
+
+        <div class="lp-steps">
+            <div class="lp-step">
+                <div class="lp-step-num">01</div>
+                <div class="lp-step-body">
+                    <div class="lp-step-icon">🎤</div>
+                    <h3>Drop in your content</h3>
+                    <p>Paste your lyrics, poem, or script. Upload your audio file in any format (MP3, WAV, FLAC, M4A). Qaivid handles the rest — even if you only have one of the two.</p>
+                </div>
+            </div>
+            <div class="lp-step-connector"></div>
+            <div class="lp-step">
+                <div class="lp-step-num">02</div>
+                <div class="lp-step-body">
+                    <div class="lp-step-icon">🧠</div>
+                    <h3>AI builds your storyboard</h3>
+                    <p>The AI transcribes your audio in 40+ languages, reads the emotion and story, maps every lyric to its exact beat, and generates a full director-grade shot list — framing, motion cue, mood, and visual prompt for every scene.</p>
+                </div>
+            </div>
+            <div class="lp-step-connector"></div>
+            <div class="lp-step">
+                <div class="lp-step-num">03</div>
+                <div class="lp-step-body">
+                    <div class="lp-step-icon">🎬</div>
+                    <h3>Review, refine &amp; generate</h3>
+                    <p>Step through each scene, edit framing and meaning, approve your character reference plate — then generate face-locked cinematic stills for every shot in one click.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ═══════════════════════════════════════════════════════════════
+   FEATURE HIGHLIGHTS
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-section lp-features">
+    <div class="lp-section-inner">
+        <div class="lp-section-eyebrow">What makes it different</div>
+        <h2 class="lp-section-title">Built for directors,<br><span class="lp-title-accent">powered by AI</span></h2>
+
+        <div class="lp-feature-grid">
+            <div class="lp-feature-card lp-feature-lime">
+                <div class="lp-feature-glyph">🌍</div>
+                <h3>Speaks every language</h3>
+                <p>Punjabi, Hindi, Arabic, Urdu, French, Spanish, English — the transcription engine handles any script and any language with native-grade accuracy, preserving the original Gurmukhi, Devanagari, or Arabic characters exactly as sung.</p>
+                <div class="lp-feature-tag">40+ languages supported</div>
+            </div>
+
+            <div class="lp-feature-card lp-feature-cyan">
+                <div class="lp-feature-glyph">🥁</div>
+                <h3>Beat-synced shot timing</h3>
+                <p>Every lyric line is mapped to its exact timestamp in the audio — instrumental intros, long sustained notes, and rapid-fire bars are all handled correctly. Scenes start and end exactly where the music does.</p>
+                <div class="lp-feature-tag">Whisper + Gemini timing engine</div>
+            </div>
+
+            <div class="lp-feature-card lp-feature-violet">
+                <div class="lp-feature-glyph">🎭</div>
+                <h3>Face-locked character stills</h3>
+                <p>Upload a single reference photo of your artist or character. Every generated still uses that face, locked in — no drift between shots. The AI keeps your character visually consistent across the entire video.</p>
+                <div class="lp-feature-tag">PuLID face-lock technology</div>
+            </div>
+
+            <div class="lp-feature-card lp-feature-pink">
+                <div class="lp-feature-glyph">🎥</div>
+                <h3>Director-grade shot variety</h3>
+                <p>8 cinematic shot types, real framing directives (ECU, medium, wide, POV), camera motion cues, body language details, and mood tagging — every shot reads like it came from an actual director's shot list.</p>
+                <div class="lp-feature-tag">8 shot types · cinematic framing</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ═══════════════════════════════════════════════════════════════
+   EXAMPLE OUTPUT
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-section lp-output">
+    <div class="lp-section-inner">
+        <div class="lp-section-eyebrow">Example output</div>
+        <h2 class="lp-section-title">This is what your<br><span class="lp-title-accent">storyboard looks like</span></h2>
+        <p class="lp-section-sub">Every scene gets shot type, timing, framing directive, motion cue, lyric line, and a face-locked AI still — all in one panel.</p>
+
+        <div class="lp-output-cards">
+            <div class="lp-output-card">
+                <div class="lp-oc-header">
+                    <span class="lp-oc-num">01</span>
+                    <span class="lp-oc-time lp-mono">0:15 – 0:18</span>
+                    <span class="lp-oc-type">WIDE</span>
+                </div>
+                <div class="lp-oc-still lp-oc-still-wide">
+                    <div class="lp-oc-gradient lp-oc-g1"></div>
+                    <div class="lp-oc-label">INTRO · Wide establishing</div>
+                </div>
+                <div class="lp-oc-lyric">ਜੀਵਣ ਜੋਗਿਆ</div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">FRAME</span> Golden field, singer silhouetted against sky
+                </div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">MOTION</span> Slow push in from wide
+                </div>
+            </div>
+
+            <div class="lp-output-card lp-output-card-featured">
+                <div class="lp-oc-header">
+                    <span class="lp-oc-num">03</span>
+                    <span class="lp-oc-time lp-mono">0:27 – 0:35</span>
+                    <span class="lp-oc-type lp-oc-type-ecu">EXTREME CU</span>
+                </div>
+                <div class="lp-oc-still lp-oc-still-ecu">
+                    <div class="lp-oc-gradient lp-oc-g2"></div>
+                    <div class="lp-oc-face-ring"></div>
+                    <div class="lp-oc-label-alt">✓ STILL GENERATED</div>
+                </div>
+                <div class="lp-oc-lyric">ਇੰਨੇ ਮੇਰੇ ਹੰਝੂ ਨਹੀਂ ਸੀ</div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">FRAME</span> ECU on eyes — tears catching light
+                </div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">MOOD</span> Grief · Quiet devastation
+                </div>
+                <div class="lp-oc-badge">⭐ Emotional peak</div>
+            </div>
+
+            <div class="lp-output-card">
+                <div class="lp-oc-header">
+                    <span class="lp-oc-num">05</span>
+                    <span class="lp-oc-time lp-mono">0:41 – 0:46</span>
+                    <span class="lp-oc-type">MEDIUM</span>
+                </div>
+                <div class="lp-oc-still lp-oc-still-medium">
+                    <div class="lp-oc-gradient lp-oc-g3"></div>
+                    <div class="lp-oc-label">VERSE 1 · Medium shot</div>
+                </div>
+                <div class="lp-oc-lyric">ਕਿੰਨਾ ਮੈਨੂੰ ਰੁਵਾਇਆ ਤੂੰ</div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">FRAME</span> Singer centre frame, hands at chest
+                </div>
+                <div class="lp-oc-detail">
+                    <span class="lp-oc-dt">MOTION</span> Handheld drift, shallow focus
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ═══════════════════════════════════════════════════════════════
+   PRICING TEASER
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-section lp-pricing" id="pricing">
+    <div class="lp-section-inner">
+        <div class="lp-section-eyebrow">Simple pricing</div>
+        <h2 class="lp-section-title">Start free, scale when<br><span class="lp-title-accent">you need to</span></h2>
+        <p class="lp-section-sub">No credit card required. Create your first music video storyboard for free.</p>
+
+        <div class="lp-plan-cards">
+            <div class="lp-plan-card">
+                <div class="lp-plan-name">Free</div>
+                <div class="lp-plan-price">$0<span>/mo</span></div>
+                <div class="lp-plan-desc">Get started and see what the AI can do with your first projects.</div>
+                <ul class="lp-plan-features">
+                    <li>✓ 3 projects</li>
+                    <li>✓ Full storyboard pipeline</li>
+                    <li>✓ AI-generated stills</li>
+                    <li>✓ All languages</li>
+                    <li class="lp-plan-no">✗ No commercial licence</li>
+                </ul>
+                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Get started free</a>
+            </div>
+
+            <div class="lp-plan-card lp-plan-card-pro">
+                <div class="lp-plan-popular">Most popular</div>
+                <div class="lp-plan-name">Pro</div>
+                <div class="lp-plan-price">Coming soon<span></span></div>
+                <div class="lp-plan-desc">For creators who release music regularly and need unlimited horsepower.</div>
+                <ul class="lp-plan-features">
+                    <li>✓ Unlimited projects</li>
+                    <li>✓ Priority AI generation</li>
+                    <li>✓ Face-locked character stills</li>
+                    <li>✓ Commercial licence</li>
+                    <li>✓ All languages + custom styles</li>
+                </ul>
+                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-block">Start for free →</a>
+            </div>
+
+            <div class="lp-plan-card">
+                <div class="lp-plan-name">Studio</div>
+                <div class="lp-plan-price">Coming soon<span></span></div>
+                <div class="lp-plan-desc">For labels, agencies, and production houses with multiple artists.</div>
+                <ul class="lp-plan-features">
+                    <li>✓ Everything in Pro</li>
+                    <li>✓ Team seats</li>
+                    <li>✓ Custom style packs</li>
+                    <li>✓ API access</li>
+                    <li>✓ Dedicated support</li>
+                </ul>
+                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Talk to us</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ═══════════════════════════════════════════════════════════════
+   FINAL CTA
+══════════════════════════════════════════════════════════════════ #}
+<section class="lp-section lp-cta-banner">
+    <div class="lp-section-inner">
+        <div class="lp-cta-banner-inner">
+            <h2 class="lp-cta-banner-title">Your next music video<br>starts here.</h2>
+            <p class="lp-cta-banner-sub">No credit card. No setup. Just paste your lyrics and go.</p>
+            <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">Create your first video — it's free</a>
+        </div>
+    </div>
+</section>
+
 {% endblock %}

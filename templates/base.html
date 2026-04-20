@@ -42,11 +42,35 @@
         {% endif %}
     {% endwith %}
 
-    <main>
+    <main class="{% block main_class %}site-main{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 
-    <footer>Qaivid MetaMind 3.0 · pipeline-driven AI video studio</footer>
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <a class="brand footer-brand-link" href="{{ url_for('index') }}">Qaivid<span>MetaMind</span></a>
+                <p class="footer-tagline">Turn any lyrics, poem, or script into a<br>beat-synced cinematic music video — in minutes.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <div class="footer-col-title">Product</div>
+                    <a href="{{ url_for('signup') }}">Get started free</a>
+                    <a href="{{ url_for('login') }}">Sign in</a>
+                    <a href="#pricing">Pricing</a>
+                </div>
+                <div class="footer-col">
+                    <div class="footer-col-title">Legal</div>
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Cookie Policy</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>&copy; 2025 Qaivid MetaMind. All rights reserved.</span>
+        </div>
+    </footer>
 
     {% block extra_scripts %}{% endblock %}
 </body>
