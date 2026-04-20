@@ -1110,8 +1110,8 @@ REQUIRED JSON SHAPE:
     "characteristic_time": "string  (general emotional time-feel of the song, e.g. 'dawn', 'dusk', 'late night' — this is a cultural default, NOT the time of day for any specific shot; individual scene times are set by the creative brief)",
     "social_context": "string",
     "economic_context": "string",
-    "architecture_style": "string",
-    "characteristic_setting": "string  (broad cultural default setting for the whole song, e.g. 'courtyard-oriented home', 'countryside farmhouse' — NOT a scene-specific location; scene locations are set by the creative brief)"
+    "architecture_style": "string  (MANDATORY: describe in specific physical construction materials and visual form — NOT a generic label. Examples: for Punjabi village: 'kuchha mud-plastered walls, flat clay roof, blue-painted wooden doors and shutters, exterior staircase, smooth ochre plaster'; for French countryside: 'stone farmhouse, timber-frame shutters, slate roof'; for urban Seoul: 'glass and steel high-rise, neon-lit street level'. Never write just 'traditional' or 'rustic' or 'domestic' — always specify the material and construction type.)",
+    "characteristic_setting": "string  (MANDATORY: describe with specific physical environment details — NOT a generic category label. Examples: for Punjabi village: 'clean swept earthen courtyard, charpai in open air, terracotta matkas near entrance, mustard fields beyond the compound wall'; for French countryside: 'stone-walled farmyard, gravel path, vegetable garden, hay barn'; for urban Seoul: 'neon-lit alley, convenience store frontage, street stall'. Never write just 'courtyard-oriented home' or 'domestic interior' — always describe what is physically visible.)"
   }},
   "emotional_arc": {{
     "opening": "string",

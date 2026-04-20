@@ -1652,6 +1652,31 @@ class VisualStoryboardEngine:
                 if loc:
                     location_dna = f"{ctx['location_dna']} — {loc}"
 
+        # Punjab override — replace any vague stored values with specific kuchha
+        # architecture descriptions so the image model receives concrete visual
+        # material rather than generic "courtyard-oriented home" or
+        # "rural Punjabi domestic architecture".  These were the phrases causing
+        # Flux to default to Mughal/Nawabi ornate stonework.
+        _check = " ".join([
+            (location_dna or ""),
+            (world_assumptions.get("geography") or ""),
+            (world_assumptions.get("architecture_style") or ""),
+        ]).lower()
+        if "punjab" in _check:
+            world_assumptions = dict(world_assumptions)  # shallow copy, do not mutate ctx
+            world_assumptions["architecture_style"] = (
+                "kuchha mud-plastered village house — thick bare ochre/sand-toned mud walls, "
+                "flat clay rooftop with exterior stone or mud staircase, small deep-set windows, "
+                "heavy wooden door and shutters painted blue or turquoise, smooth plastered parapet; "
+                "NO ornate stonework, NO Mughal arches, NO brick or concrete"
+            )
+            world_assumptions["characteristic_setting"] = (
+                "clean swept earthen vehra (open courtyard) — packed bare mud floor, "
+                "charpai (rope-strung wooden bed) in open air, terracotta matkas near entrance, "
+                "mustard or wheat fields visible beyond the low compound wall, open sky above; "
+                "NO tile, NO paving stones, NO ornamental garden"
+            )
+
         return {
             "location_dna": location_dna,
             "place_entities": place_entities[:8],

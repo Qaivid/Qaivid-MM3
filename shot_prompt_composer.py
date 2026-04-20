@@ -32,6 +32,28 @@ DEFAULT_NEGATIVE = (
     "amateur photography, bad composition"
 )
 
+# Culture-specific negative additions keyed by a substring that must appear
+# (case-insensitive) in the assembled environment text to activate.
+_CULTURE_NEGATIVES: list[tuple[str, str]] = [
+    (
+        "punjab",
+        "Mughal arches, ornate stone colonnade, haveli ornamentation, intricate carved stonework, "
+        "Nawabi architecture, Lucknow haveli, arched gallery, decorative pillars, brick walls, "
+        "tiled courtyard, concrete floor, marble, ornamental garden, paved path, stone fountain, "
+        "studio set, Rajasthani facade, painted wall murals",
+    ),
+]
+
+
+def _culture_negative(env_text: str) -> str:
+    """Return additional negative-prompt terms for culture-specific location accuracy."""
+    low = env_text.lower()
+    extras: list[str] = []
+    for trigger, neg in _CULTURE_NEGATIVES:
+        if trigger in low:
+            extras.append(neg)
+    return ", ".join(extras)
+
 # ── Phrases to strip — pipeline-internal directives that must not reach the
 #    image model as literal text.
 #
