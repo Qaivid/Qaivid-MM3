@@ -1130,6 +1130,23 @@ class VisualStoryboardEngine:
         if location_dna and location_dna.lower() != "universal":
             parts.append("Use culturally faithful textures, materials, and regional domestic logic.")
 
+        # Punjabi-specific visual grounding — injected at prompt-build time so it applies
+        # even when the stored context packet predates the enriched culture pack.
+        _loc_lower = (location_dna or "").lower()
+        _arch_lower = (global_frame.get("architecture_style") or "").lower()
+        _geo_lower = (global_frame.get("geography") or "").lower()
+        if "punjab" in _loc_lower or "punjab" in _arch_lower or "punjab" in _geo_lower:
+            parts.append(
+                "PUNJABI LOCATION MANDATE: all exterior and courtyard shots must show authentic "
+                "kuchha (mud-plastered) village construction — thick bare ochre/sand-coloured mud walls, "
+                "clean swept earthen vehra (courtyard) with packed earth floor, flat clay rooftops with "
+                "exterior stone or mud staircases, small deep-set windows, heavy wooden doors and shutters "
+                "painted blue or turquoise, terracotta matkas (water pots), charpai (rope-strung wooden bed) "
+                "in the open courtyard, mustard or wheat fields visible beyond the compound wall. "
+                "Style reference: T-Series Punjabi folk / rural music video shoot. "
+                "Strictly NO concrete, tile, brick, Rajasthani ornamentation, or studio-dressed sets."
+            )
+
         # -- Scene frame (shot-specific, from creative brief) --
         if scene_location or scene_time or scene_name:
             # Anchor the scene location to the cultural/geographic root so the
