@@ -76,6 +76,9 @@ MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 30  # 30 days
 
 _secret = os.getenv("FLASK_SECRET_KEY")
 if not _secret:
