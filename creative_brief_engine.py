@@ -74,8 +74,10 @@ def _section_lyrics(
             m = _SECTION_TAG_RE.match(ln)
             if m:
                 raw_tag = m.group(1).strip()
-                # Normalise to snake_case key, strip non-alnum
-                base_key = re.sub(r'\s+', '_', raw_tag.lower())
+                # Normalise to snake_case key: treat whitespace AND hyphens as
+                # word separators before stripping remaining non-alnum chars.
+                # e.g. "Pre-Chorus" → "pre_chorus", "Verse 2" → "verse_2"
+                base_key = re.sub(r'[\s\-]+', '_', raw_tag.lower())
                 base_key = re.sub(r'[^a-z0-9_]', '', base_key)
                 if not base_key:
                     continue
