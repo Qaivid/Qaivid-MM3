@@ -976,69 +976,150 @@ def _run_async(coro):
 # Each stage runs as a background job, saves its output, then STOPS.
 # The user reviews the result and clicks "Continue" to advance to the next stage.
 
+def _get_audio_duration(audio_path: Path) -> float | None:
+    """Return exact audio duration in seconds using mutagen, or None on failure."""
+    try:
+        import mutagen
+        f = mutagen.File(str(audio_path))
+        if f and hasattr(f, "info") and hasattr(f.info, "length"):
+            dur = float(f.info.length)
+            logger.info("Audio duration from mutagen: %.3fs for %s", dur, audio_path.name)
+            return dur
+    except Exception as exc:
+        logger.warning("mutagen duration read failed (%s)", exc)
+    return None
+
+
+def _merge_words_to_lines(lines: list[str], words: list[dict]) -> list[dict]:
+    """Map Gemini lyric lines onto Whisper word-level timestamps proportionally.
+
+    Each line i is mapped to the Whisper word at proportional position
+    i / (N-1) × (W-1).  Because Whisper only emits words during actual vocals
+    (it skips silence and instrumental sections), word[0].start naturally
+    reflects the first vocal moment — preserving any instrumental intro offset
+    without any special-casing.
+
+    End timestamps are filled as the next line's start; the last line extends
+    to the last word's end time.
+    """
+    n = len(lines)
+    w = len(words)
+    if n == 0 or w == 0:
+        return [{"start": 0.0, "end": 0.0, "text": l} for l in lines]
+
+    out: list[dict] = []
+    for i, line in enumerate(lines):
+        ratio = i / max(n - 1, 1)
+        idx = min(round(ratio * (w - 1)), w - 1)
+        out.append({
+            "start": round(words[idx]["start"], 3),
+            "end":   0.0,
+            "text":  line,
+        })
+
+    # Fill end timestamps
+    for i in range(len(out) - 1):
+        out[i]["end"] = out[i + 1]["start"]
+    out[-1]["end"] = round(words[-1]["end"], 3)
+
+    return out
+
+
 def _transcribe_hybrid(audio_path: Path, openai_key: str, project_id: str) -> tuple[str, list[dict]]:
     """Hybrid Gemini + Whisper transcription.
 
-    - Whisper provides reliable segment boundaries with (start, end) timestamps,
-      especially for vocal phrasing (where one phrase ≈ one shot).
-    - Gemini provides accurate multilingual lyric text (Punjabi/Hindi/etc. that
-      Whisper mangles into garbage).
+    Strategy (mirrors Qaivid 1.0):
+    1. Measure exact audio duration with mutagen.
+    2. Whisper with word-level granularity: gives {start,end} for every
+       recognised vocal word.  Because Whisper skips silence, its word list
+       starts at the first actual vocal — instrumental intros are preserved
+       automatically.
+    3. Gemini: plain-text lyric lines (accurate multilingual text).
+    4. Merge: proportional word-position mapping — Gemini line i → Whisper
+       word at position i/N.  This is identical to the Qaivid 1.0 approach
+       and correctly handles any length of pre-lyric intro.
+    5. Fallback: if word-level fails, fall back to segment-level alignment.
 
-    We align them: take Whisper's segment count + timing as the structural backbone,
-    then map Gemini's correct lyric lines onto those segments. The result is a list
-    of timed lyric lines and a plain-text transcript with one accurate lyric per row.
-
-    Returns (plain_text, timed_lines) where timed_lines = [{"start", "end", "text"}, ...].
-    On failure, returns ("", []).
+    Returns (plain_text, timed_lines).  On failure returns ("", []).
     """
-    whisper_segs: list[dict] = []
+    # Step 1 — exact duration
+    exact_dur = _get_audio_duration(audio_path)
+
+    # Step 2 — Whisper word-level timestamps (primary) + segment-level (fallback)
+    whisper_words: list[dict] = []   # [{start, end}, ...]  — words only
+    whisper_segs: list[dict] = []    # [{start, end, text}, ...] — fallback
     try:
         from openai import OpenAI as _OpenAI
         _oai = _OpenAI(api_key=openai_key)
         with open(audio_path, "rb") as _af:
             _tr = _oai.audio.transcriptions.create(
-                model="whisper-1", file=_af, response_format="verbose_json",
+                model="whisper-1",
+                file=_af,
+                response_format="verbose_json",
+                timestamp_granularities=["word", "segment"],
             )
-        for s in (getattr(_tr, "segments", None) or []):
-            t = (getattr(s, "text", "") or "").strip()
+
+        # Word-level (primary)
+        for w in (getattr(_tr, "words", None) or []):
+            s = float(getattr(w, "start", 0.0) or 0.0)
+            e = float(getattr(w, "end",   0.0) or 0.0)
+            whisper_words.append({"start": s, "end": e})
+
+        # Segment-level (fallback)
+        for seg in (getattr(_tr, "segments", None) or []):
+            t = (getattr(seg, "text", "") or "").strip()
             if not t:
                 continue
             whisper_segs.append({
-                "start": float(getattr(s, "start", 0.0) or 0.0),
-                "end":   float(getattr(s, "end",   0.0) or 0.0),
+                "start": float(getattr(seg, "start", 0.0) or 0.0),
+                "end":   float(getattr(seg, "end",   0.0) or 0.0),
                 "text":  t,
             })
-        logger.info("Whisper: %d segments for project=%s", len(whisper_segs), project_id)
-    except Exception as exc:
-        logger.warning("Whisper segment extraction failed (%s)", exc)
 
+        logger.info(
+            "Whisper: %d words, %d segments for project=%s",
+            len(whisper_words), len(whisper_segs), project_id,
+        )
+    except Exception as exc:
+        logger.warning("Whisper extraction failed (%s)", exc)
+
+    # Step 3 — Gemini lyric text
     gemini_lines: list[str] = []
     gtxt = _transcribe_with_gemini(audio_path, project_id)
     if gtxt:
         gemini_lines = [l.strip() for l in gtxt.splitlines() if l.strip()]
 
     # No usable output from either provider
-    if not gemini_lines and not whisper_segs:
+    if not gemini_lines and not whisper_words and not whisper_segs:
         return "", []
 
     # Only Whisper succeeded — use its (possibly mangled) text
     if not gemini_lines:
-        text = "\n".join(s["text"] for s in whisper_segs)
-        return text, whisper_segs
+        if whisper_segs:
+            return "\n".join(s["text"] for s in whisper_segs), whisper_segs
+        return "", []
 
-    # Only Gemini succeeded — distribute lines uniformly over an unknown duration
-    if not whisper_segs:
+    # Only Gemini succeeded — no timing available
+    if not whisper_words and not whisper_segs:
         text = "\n".join(gemini_lines)
         timed = [{"start": 0.0, "end": 0.0, "text": l} for l in gemini_lines]
         return text, timed
 
-    # Both succeeded — align Gemini text onto Whisper's segment timing
-    timed = _align_lines_to_segments(gemini_lines, whisper_segs)
+    # Step 4 — Merge: prefer word-level, fall back to segment-level
+    if whisper_words:
+        timed = _merge_words_to_lines(gemini_lines, whisper_words)
+        logger.info(
+            "Hybrid (word-level): %d Whisper words + %d Gemini lines → %d timed lines for project=%s",
+            len(whisper_words), len(gemini_lines), len(timed), project_id,
+        )
+    else:
+        timed = _align_lines_to_segments(gemini_lines, whisper_segs)
+        logger.info(
+            "Hybrid (segment fallback): %d segs + %d lines → %d timed lines for project=%s",
+            len(whisper_segs), len(gemini_lines), len(timed), project_id,
+        )
+
     text = "\n".join(t["text"] for t in timed if t["text"])
-    logger.info(
-        "Hybrid transcript: %d Whisper segs + %d Gemini lines → %d aligned lines for project=%s",
-        len(whisper_segs), len(gemini_lines), len(timed), project_id,
-    )
     return text, timed
 
 
