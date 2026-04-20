@@ -3652,12 +3652,10 @@ main:has(> .ws-grid) {
 }
 .plan-free  { background: rgba(255,255,255,0.08); color: var(--muted); }
 .plan-pro   { background: rgba(0,212,255,0.15); color: #00d4ff; }
-.plan-studio { background: rgba(212,255,58,0.15); color: var(--accent); }
-.account-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.plan-studio { background: rgba(212,255,58,0.15); color: var(--lime); }
 
 /* ── Account page additions ───────────────────────────────── */
 .account-plan-actions { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
-.plan-studio { background: rgba(212,255,58,0.15); color: var(--lime); }
 
 .account-form { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
 .account-form-row { display: flex; flex-direction: column; gap: 6px; }

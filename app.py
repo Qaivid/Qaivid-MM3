@@ -565,7 +565,9 @@ def logout():
 @login_required
 def account():
     user = current_user()
-    if user.get("plan", "free") == "free":
+    if user.get("plan") not in ("pro", "studio"):
+        user["plan"] = "free"
+    if user["plan"] == "free":
         user["project_count"] = count_user_projects(user["id"])
     return render_template("account.html", user=user)
 
