@@ -402,11 +402,19 @@ class VisualStoryboardEngine:
                 self._last_verse_props = (self._last_verse_props + shot_vp)[-12:]
             # For repeat shots, surface the verse carry-over props if the line
             # itself has no distinctive visual_props of its own.
-            verse_carry_props = (
-                self._last_verse_props
-                if shot["repeat_status"] == "repeat" and not shot_vp
-                else []
-            )
+            # Use _chorus_count to rotate which 4-prop window is emphasised so
+            # each chorus pass shows visually distinct lyric imagery.
+            if shot["repeat_status"] == "repeat" and not shot_vp and self._last_verse_props:
+                pool = self._last_verse_props
+                window_size = 4
+                # Shift the window by (chorus_count * window_size) mod pool length
+                # so each chorus repetition emphasises a different cluster of props.
+                offset = ((self._chorus_count - 1) * window_size) % len(pool)
+                # Wrap-around slice across the circular pool
+                indices = [(offset + j) % len(pool) for j in range(min(window_size, len(pool)))]
+                verse_carry_props = [pool[i] for i in indices]
+            else:
+                verse_carry_props = []
 
             scene_override = self._scene_override_for(shot_index, total_shots)
             camera_prompt = self._build_camera_prompt(ctx, shot, frame_directive)
@@ -944,6 +952,12 @@ class VisualStoryboardEngine:
                     # Whisper lyric timestamps — preserved through validation (Task #105)
                     "lyric_start_seconds": _lts,
                     "lyric_end_seconds":   _lte,
+                    # Per-line visual props extracted by the context engine (e.g. "marwa flower",
+                    # "ankle bells") — carry through unchanged so prompt builders can inject them.
+                    "visual_props": [
+                        str(p).strip() for p in (item.get("visual_props") or [])
+                        if str(p).strip()
+                    ],
                 }
             )
 
@@ -1613,7 +1627,7 @@ class VisualStoryboardEngine:
                 "scene_name":  str(s.get("name") or "").strip(),
                 "location":    location,
                 "time_of_day": time_of_day,
-                "props":       [str(p).strip() for p in props[:6] if p],
+                "props":       [str(p).strip() for p in props if p],
                 "summary":     summary,
             })
         return result
