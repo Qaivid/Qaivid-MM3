@@ -557,6 +557,15 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/account")
+@login_required
+def account():
+    user = current_user()
+    if user.get("plan", "free") == "free":
+        user["project_count"] = count_user_projects(user["id"])
+    return render_template("account.html", user=user)
+
+
 @app.route("/generate", methods=["POST"])
 @login_required
 def generate():

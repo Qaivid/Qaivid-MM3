@@ -186,21 +186,18 @@ def webhook():
     sig = request.headers.get("Stripe-Signature", "")
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-    if webhook_secret:
-        try:
-            event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
-        except stripe.error.SignatureVerificationError:
-            logger.warning("Stripe webhook signature verification failed")
-            return "Bad signature", 400
-        except Exception as exc:
-            logger.error("Stripe webhook parse error: %s", exc)
-            return "Bad payload", 400
-    else:
-        import json
-        try:
-            event = json.loads(payload)
-        except Exception:
-            return "Bad payload", 400
+    if not webhook_secret:
+        logger.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not set — rejected")
+        return "Webhook secret not configured", 503
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
+    except stripe.error.SignatureVerificationError:
+        logger.warning("Stripe webhook signature verification failed")
+        return "Bad signature", 400
+    except Exception as exc:
+        logger.error("Stripe webhook parse error: %s", exc)
+        return "Bad payload", 400
 
     etype = event.get("type") or (event.get("object") or {}).get("type", "")
     obj = event.get("data", {}).get("object", {})

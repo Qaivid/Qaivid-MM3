@@ -99,6 +99,9 @@ def ensure_schema() -> None:
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         """)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ;")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id              TEXT PRIMARY KEY,

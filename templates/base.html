@@ -17,6 +17,7 @@
             {% if current_user %}
                 <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">My Projects</a>
                 <a href="{{ url_for('new_project') }}" class="nav-link nav-cta {% if request.endpoint == 'new_project' %}active{% endif %}">+ New Project</a>
+                <a href="{{ url_for('account') }}" class="nav-link {% if request.endpoint == 'account' %}active{% endif %}">Account</a>
                 {% if current_user.is_admin %}
                     <a href="{{ url_for('admin') }}" class="nav-link nav-admin {% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">&#9881; Admin</a>
                 {% endif %}

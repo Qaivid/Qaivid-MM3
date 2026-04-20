@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Account · Qaivid MetaMind{% endblock %}
+{% block content %}
+<section class="account-page">
+    <div class="account-card">
+        <h1>Account</h1>
+
+        <div class="account-section">
+            <h2>Profile</h2>
+            <div class="account-row">
+                <span class="account-label">Email</span>
+                <span class="account-value">{{ user.email }}</span>
+            </div>
+            <div class="account-row">
+                <span class="account-label">Member since</span>
+                <span class="account-value">{{ user.created_at.strftime('%B %d, %Y') if user.created_at else '—' }}</span>
+            </div>
+        </div>
+
+        <div class="account-section">
+            <h2>Subscription</h2>
+            <div class="account-row">
+                <span class="account-label">Current plan</span>
+                <span class="account-value">
+                    {% if user.plan == 'pro' %}
+                        <span class="plan-pill plan-pro">Pro</span>
+                    {% elif user.plan == 'studio' %}
+                        <span class="plan-pill plan-studio">Studio</span>
+                    {% else %}
+                        <span class="plan-pill plan-free">Free</span>
+                    {% endif %}
+                </span>
+            </div>
+            {% if user.plan_expires_at %}
+            <div class="account-row">
+                <span class="account-label">Renews / Expires</span>
+                <span class="account-value">{{ user.plan_expires_at.strftime('%B %d, %Y') }}</span>
+            </div>
+            {% endif %}
+            {% if user.plan == 'free' %}
+            <div class="account-row">
+                <span class="account-label">Projects used</span>
+                <span class="account-value">{{ user.project_count | default(0) }} / 3</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="account-actions">
+            {% if user.plan == 'free' %}
+                <a href="{{ url_for('billing.pricing') }}" class="btn-primary">Upgrade plan →</a>
+            {% else %}
+                <a href="{{ url_for('billing.pricing') }}" class="btn-ghost">View plans</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

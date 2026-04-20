@@ -3595,3 +3595,62 @@ main:has(> .ws-grid) {
     .pricing-card-pro { transform: none; }
     .pricing-faq-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Account page ─────────────────────────────────────────── */
+.account-page {
+    min-height: 70vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 60px 20px;
+}
+.account-card {
+    width: 100%;
+    max-width: 560px;
+    background: rgba(22,22,30,0.85);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+.account-card h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+    margin: 0;
+}
+.account-section h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 16px;
+}
+.account-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.account-row:last-child { border-bottom: none; }
+.account-label { color: var(--muted); font-size: 14px; }
+.account-value { color: var(--text); font-size: 14px; font-weight: 500; }
+.plan-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+.plan-free  { background: rgba(255,255,255,0.08); color: var(--muted); }
+.plan-pro   { background: rgba(0,212,255,0.15); color: #00d4ff; }
+.plan-studio { background: rgba(212,255,58,0.15); color: var(--accent); }
+.account-actions { display: flex; gap: 12px; flex-wrap: wrap; }
