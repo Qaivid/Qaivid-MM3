@@ -52,6 +52,7 @@ from auth import (
     DuplicateEmailError,
     admin_required,
     bootstrap_admin,
+    count_user_projects,
     create_user,
     current_user,
     get_user_by_email,
@@ -61,6 +62,7 @@ from auth import (
     verify_password,
 )
 import r2_storage
+from billing import billing_bp, FREE_PROJECT_LIMIT
 
 
 load_dotenv()
@@ -95,6 +97,10 @@ if not _secret:
 app.secret_key = _secret
 
 csrf = CSRFProtect(app)
+
+app.register_blueprint(billing_bp)
+# Exempt the Stripe webhook from CSRF — we verify via Stripe-Signature header instead
+csrf.exempt(app.view_functions["billing.webhook"])
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -480,6 +486,15 @@ def index():
 @app.route("/new")
 @login_required
 def new_project():
+    user = current_user()
+    if (user.get("plan", "free") == "free"
+            and count_user_projects(user["id"]) >= FREE_PROJECT_LIMIT):
+        flash(
+            f"Free plan is limited to {FREE_PROJECT_LIMIT} projects. "
+            "Upgrade to Pro for unlimited projects.",
+            "info",
+        )
+        return redirect(url_for("billing.pricing"))
     return render_template(
         "new_project.html",
         api_key_set=bool(_api_key()),
@@ -545,6 +560,16 @@ def logout():
 @app.route("/generate", methods=["POST"])
 @login_required
 def generate():
+    user = current_user()
+    if (user.get("plan", "free") == "free"
+            and count_user_projects(user["id"]) >= FREE_PROJECT_LIMIT):
+        flash(
+            f"Free plan is limited to {FREE_PROJECT_LIMIT} projects. "
+            "Upgrade to Pro for unlimited projects.",
+            "info",
+        )
+        return redirect(url_for("billing.pricing"))
+
     text = (request.form.get("text") or "").strip()
     genre = (request.form.get("genre") or "song").strip().lower()
     name = (request.form.get("name") or "Untitled").strip()
@@ -2383,6 +2408,7 @@ def admin():
         cur.execute(
             """
             SELECT u.id, u.email, u.is_admin, u.created_at,
+                   u.plan, u.plan_expires_at,
                    COUNT(p.id) AS project_count
             FROM users u
             LEFT JOIN projects p ON p.user_id = u.id

@@ -35,10 +35,51 @@ def _db():
 def get_user_by_id(user_id: int) -> Optional[dict]:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT id, email, is_admin, created_at FROM users WHERE id = %s",
+            "SELECT id, email, is_admin, created_at, "
+            "       plan, stripe_customer_id, plan_expires_at "
+            "FROM users WHERE id = %s",
             (user_id,),
         )
         return cur.fetchone()
+
+
+def update_user_plan(
+    user_id: int,
+    plan: str,
+    stripe_customer_id: Optional[str] = None,
+    plan_expires_at=None,
+) -> None:
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE users
+               SET plan = %s,
+                   stripe_customer_id = COALESCE(%s, stripe_customer_id),
+                   plan_expires_at = %s
+             WHERE id = %s
+            """,
+            (plan, stripe_customer_id, plan_expires_at, user_id),
+        )
+        conn.commit()
+
+
+def get_user_by_stripe_customer(customer_id: str) -> Optional[dict]:
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, email, is_admin, plan, stripe_customer_id, plan_expires_at "
+            "FROM users WHERE stripe_customer_id = %s",
+            (customer_id,),
+        )
+        return cur.fetchone()
+
+
+def count_user_projects(user_id: int) -> int:
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM projects WHERE user_id = %s",
+            (user_id,),
+        )
+        return (cur.fetchone() or {}).get("c", 0)
 
 
 def get_user_by_email(email: str) -> Optional[dict]:

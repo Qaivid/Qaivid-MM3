@@ -121,13 +121,19 @@
     <div class="admin-table-wrap">
         <table class="admin-table">
             <thead>
-                <tr><th>Email</th><th>Role</th><th>Projects</th><th>Joined</th><th>Actions</th></tr>
+                <tr><th>Email</th><th>Role</th><th>Plan</th><th>Projects</th><th>Joined</th><th>Actions</th></tr>
             </thead>
             <tbody>
                 {% for u in users %}
                 <tr>
                     <td>{{ u.email }}{% if u.id == current_user_id %} <span class="muted">(you)</span>{% endif %}</td>
                     <td>{% if u.is_admin %}<span class="status-pill status-ready">admin</span>{% else %}<span class="status-pill">user</span>{% endif %}</td>
+                    <td>
+                        {% set plan = u.plan or 'free' %}
+                        <span class="status-pill {% if plan == 'pro' %}status-running{% elif plan == 'studio' %}status-ready{% else %}status-new{% endif %}">
+                            {{ plan }}
+                        </span>
+                    </td>
                     <td>{{ u.project_count }}</td>
                     <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
                     <td class="admin-actions">

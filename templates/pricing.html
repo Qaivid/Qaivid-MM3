@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Pricing · Qaivid MetaMind{% endblock %}
+{% block content %}
+<section class="pricing-page">
+
+    <div class="pricing-hero">
+        <div class="eyebrow">Simple pricing</div>
+        <h1>Start free, scale when<br><span class="pricing-hero-accent">you need to</span></h1>
+        <p class="muted">No credit card required on the Free plan. Cancel anytime.</p>
+    </div>
+
+    <div class="pricing-grid">
+
+        {# FREE #}
+        <div class="pricing-card{% if current_plan == 'free' %} pricing-card-current{% endif %}">
+            {% if current_plan == 'free' %}
+            <div class="pricing-current-badge">Your current plan</div>
+            {% endif %}
+            <div class="pricing-plan-name">Free</div>
+            <div class="pricing-price">$0<span>/mo</span></div>
+            <p class="pricing-desc">Get started and explore the full pipeline with your first projects.</p>
+            <ul class="pricing-features">
+                <li>✓ 3 projects</li>
+                <li>✓ Full storyboard pipeline</li>
+                <li>✓ AI-generated stills</li>
+                <li>✓ All languages</li>
+                <li class="pricing-feature-no">✗ No commercial licence</li>
+            </ul>
+            {% if current_plan == 'free' %}
+            <div class="pricing-cta-placeholder">You're on this plan</div>
+            {% elif current_user %}
+            <div class="pricing-cta-placeholder">Included for all accounts</div>
+            {% else %}
+            <a href="{{ url_for('signup') }}" class="btn-ghost pricing-btn">Get started free</a>
+            {% endif %}
+        </div>
+
+        {# PRO #}
+        <div class="pricing-card pricing-card-pro{% if current_plan == 'pro' %} pricing-card-current{% endif %}">
+            <div class="pricing-popular">Most popular</div>
+            {% if current_plan == 'pro' %}
+            <div class="pricing-current-badge">Your current plan</div>
+            {% endif %}
+            <div class="pricing-plan-name">Pro</div>
+            <div class="pricing-price">$29<span>/mo</span></div>
+            <p class="pricing-desc">For creators who release music regularly and need unlimited power.</p>
+            <ul class="pricing-features">
+                <li>✓ Unlimited projects</li>
+                <li>✓ Priority AI generation</li>
+                <li>✓ Face-locked character stills</li>
+                <li>✓ Commercial licence</li>
+                <li>✓ All languages &amp; custom styles</li>
+            </ul>
+            {% if current_plan == 'pro' %}
+            <div class="pricing-cta-placeholder">
+                Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}
+            </div>
+            {% elif stripe_enabled %}
+            <form method="post" action="{{ url_for('billing.checkout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="plan" value="pro">
+                {% if current_user %}
+                <button type="submit" class="btn-primary pricing-btn">Upgrade to Pro →</button>
+                {% else %}
+                <a href="{{ url_for('signup') }}" class="btn-primary pricing-btn">Sign up to upgrade</a>
+                {% endif %}
+            </form>
+            {% else %}
+            <div class="pricing-coming-soon">Coming soon</div>
+            {% endif %}
+        </div>
+
+        {# STUDIO #}
+        <div class="pricing-card{% if current_plan == 'studio' %} pricing-card-current{% endif %}">
+            {% if current_plan == 'studio' %}
+            <div class="pricing-current-badge">Your current plan</div>
+            {% endif %}
+            <div class="pricing-plan-name">Studio</div>
+            <div class="pricing-price">$99<span>/mo</span></div>
+            <p class="pricing-desc">For labels, agencies, and production houses with multiple artists.</p>
+            <ul class="pricing-features">
+                <li>✓ Everything in Pro</li>
+                <li>✓ Team seats</li>
+                <li>✓ Custom style packs</li>
+                <li>✓ API access</li>
+                <li>✓ Dedicated support</li>
+            </ul>
+            {% if current_plan == 'studio' %}
+            <div class="pricing-cta-placeholder">
+                Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}
+            </div>
+            {% elif stripe_enabled %}
+            <form method="post" action="{{ url_for('billing.checkout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="plan" value="studio">
+                {% if current_user %}
+                <button type="submit" class="btn-primary pricing-btn">Upgrade to Studio →</button>
+                {% else %}
+                <a href="{{ url_for('signup') }}" class="btn-primary pricing-btn">Sign up to upgrade</a>
+                {% endif %}
+            </form>
+            {% else %}
+            <div class="pricing-coming-soon">Coming soon</div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <div class="pricing-faq">
+        <h2>Common questions</h2>
+        <div class="pricing-faq-grid">
+            <div class="pricing-faq-item">
+                <h3>Can I cancel anytime?</h3>
+                <p>Yes — cancel from your account settings at any time. Your plan stays active until the end of the billing period, then reverts to Free.</p>
+            </div>
+            <div class="pricing-faq-item">
+                <h3>What counts as a project?</h3>
+                <p>One project is one music video run — from lyrics upload through storyboard, stills, and final video assembly.</p>
+            </div>
+            <div class="pricing-faq-item">
+                <h3>What is the commercial licence?</h3>
+                <p>Pro and Studio users can release, sell, and monetise the videos generated by Qaivid without restriction.</p>
+            </div>
+            <div class="pricing-faq-item">
+                <h3>Do you offer annual billing?</h3>
+                <p>Monthly billing only at launch. Annual plans with a discount are coming soon — <a href="{{ url_for('signup') }}">sign up</a> to be notified.</p>
+            </div>
+        </div>
+    </div>
+
+</section>
+{% endblock %}

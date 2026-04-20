@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Payment successful · Qaivid MetaMind{% endblock %}
+{% block content %}
+<section class="billing-success-page">
+    <div class="billing-success-card">
+        <div class="billing-success-icon">🎬</div>
+        <h1>You're all set.</h1>
+        <p>Your plan has been activated. Unlimited projects and priority generation are now available on your account.</p>
+        <a href="{{ url_for('index') }}" class="btn-primary">Go to My Projects →</a>
+        <a href="{{ url_for('billing.pricing') }}" class="btn-ghost" style="margin-top:12px;">View plan details</a>
+    </div>
+</section>
+{% endblock %}
