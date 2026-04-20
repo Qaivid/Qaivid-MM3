@@ -282,10 +282,8 @@ class VisualStoryboardEngine:
         self._shot_events_by_index = self._index_by_line(ctx.get("shot_events", []))
         # Accumulates visual_props from the most recent verse block so chorus
         # repeats can draw varied imagery from the preceding verse.
-        # Scoped: resets at each verse→original transition.
+        # Resets at each verse-block start (when original lines resume after repeat).
         self._last_verse_props: List[str] = []
-        # Scene name of the previous shot — used for scene-continuity detection.
-        self._prev_scene_name: str = ""
 
         storyboard: List[Dict[str, Any]] = []
         total_shots = len(ctx["line_meanings"])
@@ -405,39 +403,30 @@ class VisualStoryboardEngine:
             # --- Per-shot visual_props tracking ---
             shot_vp = [str(p) for p in (shot.get("visual_props") or []) if p]
 
-            # Scene continuity check: detect whether this shot is in the same scene
-            # as the previous one (secondary chorus-repeat signal that works even
-            # when lyric text varies slightly between chorus passes).
-            _current_scene_name = (scene_override or {}).get("scene_name", "")
-            _is_scene_repeat = (
-                bool(_current_scene_name)
-                and _current_scene_name == self._prev_scene_name
-            )
-            self._prev_scene_name = _current_scene_name
-
-            # A shot needs differentiation when it is:
-            #   (a) a repeat_status="repeat" line, OR
-            #   (b) in the same scene as the previous shot (scene continuity)
-            _needs_differentiation = (shot["repeat_status"] == "repeat") or _is_scene_repeat
-
-            # Scoped accumulation: reset the verse-props pool on the first original
-            # line that follows a repeat block — uses _was_repeat (snapshotted
-            # BEFORE _prev_was_repeat was overwritten) so the transition is caught.
+            # --- Per-shot visual_props accumulation ---
+            # Scoped to the current verse block: reset when transitioning from a
+            # repeat block back to original lines (uses _was_repeat which was
+            # snapshotted before _prev_was_repeat was overwritten this iteration).
             if shot["repeat_status"] == "original" and _was_repeat:
                 self._last_verse_props = []  # new verse block begins; start fresh
             if shot["repeat_status"] == "original" and shot_vp:
-                # No cap: accumulate every prop from the verse so nothing is lost
+                # Accumulate without cap so no verse imagery is lost
                 self._last_verse_props = self._last_verse_props + shot_vp
 
-            # Chorus differentiation: compute a rotating 4-prop window from the
-            # preceding verse pool for ALL shots that need differentiation,
-            # regardless of whether the shot itself has visual_props.
-            # The two sources are MERGED in _build_environment_prompt so each
-            # chorus pass gets both its own imagery and a unique carry-over cluster.
-            if _needs_differentiation and self._last_verse_props:
+            # Chorus differentiation: only applies to confirmed repeat lines.
+            # Using repeat_status alone avoids false positives on original lines
+            # that happen to share a scene override with their neighbours.
+            # Guard with _chorus_count >= 1 to prevent negative offsets before
+            # the first repeat block is encountered.
+            if (
+                shot["repeat_status"] == "repeat"
+                and self._chorus_count >= 1
+                and self._last_verse_props
+            ):
                 pool = self._last_verse_props
                 window_size = 4
-                # _chorus_count is 1-indexed; (count-1) * window shifts each pass
+                # Rotate emphasis cluster per chorus pass: pass 1 → pool[0:4],
+                # pass 2 → pool[4:8] (wrap-around), etc.
                 offset = ((self._chorus_count - 1) * window_size) % len(pool)
                 indices = [(offset + j) % len(pool) for j in range(min(window_size, len(pool)))]
                 verse_carry_props = [pool[i] for i in indices]
@@ -1789,16 +1778,16 @@ class VisualStoryboardEngine:
 
         return {
             "location_dna": location_dna,
-            "place_entities": place_entities[:8],
-            "object_entities": (object_entities + scene_props)[:10],
-            "motifs": ctx["motifs"][:8],
+            "place_entities": place_entities,
+            "object_entities": object_entities + scene_props,
+            "motifs": ctx["motifs"],
             "motif_map": {
                 name: {
                     "type": (payload.get("type") if isinstance(payload, dict) else "") or "",
                     "significance": (payload.get("significance") if isinstance(payload, dict) else "") or "",
                     "visual_form": (payload.get("visual_form") if isinstance(payload, dict) else "") or "",
                 }
-                for name, payload in list(ctx["motif_map"].items())[:8]
+                for name, payload in ctx["motif_map"].items()
             },
             "world_assumptions": world_assumptions,
             "scene_frame": scene_frame,
