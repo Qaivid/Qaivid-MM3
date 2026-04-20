@@ -44,9 +44,11 @@ def _section_lyrics(
 ) -> Dict[str, List[str]]:
     """Divide lyrics into beat sections.
 
-    When timed lyrics are available, uses timestamps relative to the last
-    line's timestamp to assign each line to a section.  Otherwise falls back
-    to positional proportioning over the raw lines.
+    When timed lyrics are available AND have usable temporal spread (i.e.
+    timestamps are not all zero / collapsed), uses timestamps relative to
+    the final timestamp to assign each line to a section.  Falls back to
+    positional proportioning otherwise — including the known all-zero case
+    produced by the Whisper fallback path.
 
     Returns a dict keyed by section name (intro/verse1/chorus/verse2/outro),
     each mapping to the list of lyric lines in that section.
@@ -59,23 +61,32 @@ def _section_lyrics(
             if isinstance(e, dict) and str(e.get("text") or "").strip()
         ]
         if entries:
-            max_ts = max(
+            timestamps = [
                 float(e.get("timestamp") or e.get("start") or 0.0)
                 for e in entries
-            )
-            if max_ts <= 0:
-                max_ts = float(len(entries))
-            for e in entries:
-                ts = float(e.get("timestamp") or e.get("start") or 0.0)
-                ratio = ts / max_ts
-                text = str(e.get("text") or "").strip()
-                for i, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
-                    if ratio <= boundary:
-                        sections[_BEAT_SECTIONS[i]].append(text)
-                        break
-                else:
-                    sections["outro"].append(text)
-            return sections
+            ]
+            max_ts = max(timestamps)
+            min_ts = min(timestamps)
+            # Only use timestamp-based sectioning when there is meaningful
+            # temporal spread.  If all timestamps are 0 (or nearly identical),
+            # the Whisper fallback produced a degenerate list — fall through
+            # to positional distribution below.
+            if max_ts > 0 and (max_ts - min_ts) > 1.0:
+                for e, ts in zip(entries, timestamps):
+                    ratio = ts / max_ts
+                    text = str(e.get("text") or "").strip()
+                    for i, boundary in enumerate(_BEAT_BOUNDARIES[1:], 0):
+                        if ratio <= boundary:
+                            sections[_BEAT_SECTIONS[i]].append(text)
+                            break
+                    else:
+                        sections["outro"].append(text)
+                return sections
+            # Degenerate timestamps — fall through to positional using text
+            # extracted from the timed entries so nothing is lost
+            lyrics_text = "\n".join(
+                str(e.get("text") or "").strip() for e in entries
+            ) or lyrics_text
 
     lines = [ln.strip() for ln in (lyrics_text or "").splitlines() if ln.strip()]
     if not lines:
@@ -176,38 +187,104 @@ def _system_prompt(cultural_grounding: str = "") -> str:
     return base
 
 
-def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
-    """Build a culture-specific grounding block from the active culture pack.
+# Deterministic cultural grounding keyed by geography/location markers.
+# Used as a reliable fallback when context_packet["culture_pack"] is absent
+# (e.g. older projects) or when the pack object was not serialised to the DB.
+# Keys are lowercase fragments that may appear in location_dna or geography.
+_MARKER_GROUNDING: Dict[str, str] = {
+    "punjab": (
+        "Required architecture: kuchha (mud-plastered) village architecture — "
+        "thick bare ochre/sand-toned mud walls, flat clay rooftops with exterior "
+        "stone or mud staircases, small deep-set windows with blue or turquoise "
+        "painted wooden shutters, heavy carved wooden doors painted blue, smooth "
+        "plastered parapet walls, no glass or modern cladding.\n\n"
+        "Required setting vocabulary: clean swept earthen vehra (open courtyard) "
+        "— packed bare mud floor, borders of thick kuchha walls, charpai "
+        "(rope-strung wooden bed) in open air, terracotta matkas near the "
+        "entrance, mustard or wheat fields visible beyond the compound wall, "
+        "open sky overhead, golden or warm afternoon light; no concrete or tile, "
+        "no synthetic materials.\n\n"
+        "Visual restrictions (every location must comply):\n"
+        "  - Do not use Rajasthani haveli ornamentation.\n"
+        "  - Walls must be bare plastered mud (kuchha), not brick or painted plaster.\n"
+        "  - Courtyard floor must be packed earth, not tile or concrete.\n"
+        "  - No Mughal arches, ornate columns, or Indo-Saracenic domes.\n"
+        "  - Do not render speakers with East Asian, European, or African features "
+        "unless the text explicitly demands it.\n\n"
+        "Common misinterpretations to avoid:\n"
+        "  - Do not substitute a generic 'rural Indian village'.\n"
+        "  - Punjab village architecture is plain, massive, and earthen — not "
+        "Rajasthani or Mughal ornate.\n"
+        "  - Do not flatten domestic imagery into random rustic props."
+    ),
+    "urdu ghazal": (
+        "Required aesthetic: classical Mughal-Deccani courtly interior or walled "
+        "garden — cool marble or polished stone surfaces, arched niches with oil "
+        "lamps, latticed jaali screens filtering moonlight, geometric tile work.\n\n"
+        "Visual restrictions:\n"
+        "  - Avoid generic contemporary interiors.\n"
+        "  - Avoid bright saturated colours — favour ivory, deep indigo, "
+        "terracotta, and candlelight gold.\n\n"
+        "Common misinterpretations to avoid:\n"
+        "  - Do not substitute a Bollywood disco aesthetic.\n"
+        "  - Do not render the space as a modern apartment or café."
+    ),
+}
 
-    The pack is already stored in context_packet by the context engine.
-    Returns an empty string when no pack is active or the pack has no
-    visual specifics worth injecting.
+# Ordered list of (marker_fragment, grounding_key) for detection.
+# The fragment is lowercased and checked with 'in' against location_dna + geography.
+_MARKER_KEYS: List[tuple] = [
+    ("punjab", "punjab"),
+    ("ghazal", "urdu ghazal"),
+    ("urdu",   "urdu ghazal"),
+]
+
+
+def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
+    """Build a culture-specific grounding block for the system prompt.
+
+    Strategy (in priority order):
+    1. Use the full culture_pack object stored in context_packet (richest source).
+    2. Fall back to a deterministic marker lookup from location_dna / geography
+       (works for older projects where culture_pack may not be serialised).
+    3. Return empty string when no marker matches — non-cultural songs are unaffected.
     """
     pack = context_packet.get("culture_pack") or {}
-    if not pack:
-        return ""
 
-    world_defaults = pack.get("world_defaults") or {}
-    restrictions: List[str] = list(pack.get("visual_restrictions") or [])
-    misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
+    if pack:
+        world_defaults = pack.get("world_defaults") or {}
+        restrictions: List[str] = list(pack.get("visual_restrictions") or [])
+        misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
 
-    arch = str(world_defaults.get("architecture_style") or "").strip()
-    setting = str(world_defaults.get("characteristic_setting") or
-                  world_defaults.get("domestic_setting") or "").strip()
+        arch = str(world_defaults.get("architecture_style") or "").strip()
+        setting = str(world_defaults.get("characteristic_setting") or
+                      world_defaults.get("domestic_setting") or "").strip()
 
-    parts: List[str] = []
-    if arch:
-        parts.append(f"Required architecture: {arch}")
-    if setting:
-        parts.append(f"Required setting vocabulary: {setting}")
-    if restrictions:
-        parts.append("Visual restrictions (every location must comply):\n"
-                     + "\n".join(f"  - {r}" for r in restrictions))
-    if misinterps:
-        parts.append("Common misinterpretations to avoid:\n"
-                     + "\n".join(f"  - {m}" for m in misinterps))
+        parts: List[str] = []
+        if arch:
+            parts.append(f"Required architecture: {arch}")
+        if setting:
+            parts.append(f"Required setting vocabulary: {setting}")
+        if restrictions:
+            parts.append("Visual restrictions (every location must comply):\n"
+                         + "\n".join(f"  - {r}" for r in restrictions))
+        if misinterps:
+            parts.append("Common misinterpretations to avoid:\n"
+                         + "\n".join(f"  - {m}" for m in misinterps))
+        if parts:
+            return "\n\n".join(parts)
 
-    return "\n\n".join(parts)
+    # Fallback: inspect location_dna and geography for known cultural markers
+    world = context_packet.get("world_assumptions") or {}
+    location_dna = str(context_packet.get("location_dna") or "").lower()
+    geography = str(world.get("geography") or "").lower()
+    combined = location_dna + " " + geography
+
+    for fragment, key in _MARKER_KEYS:
+        if fragment in combined:
+            return _MARKER_GROUNDING.get(key, "")
+
+    return ""
 
 
 def _user_prompt(
