@@ -13,3 +13,4 @@ boto3>=1.28.0
 botocore
 gunicorn
 langdetect
+stripe>=15.0.0
