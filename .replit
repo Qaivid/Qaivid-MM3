@@ -10,6 +10,8 @@ packages = ["ffmpeg-full", "libsndfile", "postgresql"]
 
 [userenv.shared]
 FLASK_SECRET_KEY = "d5f32bdd7c62911fed5ebf4a081d664643a09bb12673d0a26902b71b83ac657e"
+STRIPE_PRO_PRICE_ID = "price_1TOFBcB4lGtqUxlVpRorBawI"
+STRIPE_STUDIO_PRICE_ID = "price_1TOFBdB4lGtqUxlVT6aowE9F"
 
 [workflows]
 runButton = "Project"
