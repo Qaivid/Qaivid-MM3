@@ -4,6 +4,33 @@
 
 {% block content %}
 
+{# ── CINEMATIC MASTHEAD ───────────────────────────────────────────── #}
+<div class="lp-masthead">
+    <div class="lp-masthead-bg">
+        <div class="lp-masthead-glow lp-masthead-glow-l"></div>
+        <div class="lp-masthead-glow lp-masthead-glow-r"></div>
+        <div class="lp-masthead-scanlines"></div>
+        <div class="lp-masthead-strip lp-masthead-strip-top"></div>
+        <div class="lp-masthead-strip lp-masthead-strip-bot"></div>
+        <div class="lp-masthead-frames">
+            {% for i in range(14) %}
+            <div class="lp-mf"></div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="lp-masthead-inner">
+        <div class="lp-masthead-brand">
+            <span class="lp-masthead-logo">Qaivid</span>
+            <span class="lp-masthead-sep">·</span>
+            <span class="lp-masthead-sub">Cinema Studio</span>
+        </div>
+        <div class="lp-masthead-meta">
+            <span class="lp-masthead-badge">● MetaMind 3.1</span>
+            <span class="lp-masthead-tagline">AI Director · Beat-Synced · End-to-End Production</span>
+        </div>
+    </div>
+</div>
+
 {# ── HERO ────────────────────────────────────────────────────────── #}
 <section class="lp-hero">
     <div class="absolute inset-0 lp-hero-bg">
