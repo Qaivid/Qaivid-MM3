@@ -165,6 +165,20 @@ def download_bytes(r2_key: str) -> bytes:
     return buf.getvalue()
 
 
+def stream_object(r2_key: str):
+    """Return (body_stream, content_type, content_length) for *r2_key*.
+
+    *body_stream* is the raw streaming body from the S3 GetObject response —
+    suitable for passing to Flask's ``Response(stream_with_context(...))``.
+    Raises ``ClientError`` if the object does not exist.
+    """
+    obj = _get_client().get_object(Bucket=_bucket(), Key=r2_key)
+    body = obj["Body"]
+    ct = obj.get("ContentType", "application/octet-stream")
+    cl = obj.get("ContentLength")
+    return body, ct, cl
+
+
 def r2_available() -> bool:
     """Return True if all R2 env vars are set."""
     return all(os.getenv(k) for k in [

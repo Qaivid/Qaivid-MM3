@@ -6,6 +6,7 @@ import psycopg
 from dotenv import load_dotenv
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     jsonify,
@@ -13,6 +14,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    stream_with_context,
     url_for,
 )
 from psycopg.rows import dict_row
@@ -2827,6 +2829,42 @@ def api_diversify_wardrobe(project_id: str):
         return {"ok": False, "error": str(exc)}, 500
 
 
+@app.route("/r2-site/<path:key>")
+def r2_site_asset(key: str):
+    """Public streaming proxy for site-assets/* only.
+
+    Serves logos and other admin-uploaded branding files directly from R2
+    without requiring a public bucket or Cloudflare public access.  Only the
+    ``site-assets/`` prefix is accessible — all other paths return 403.
+    Cache-Control is set to 24 h so browsers don't hammer the server.
+    """
+    if not key.startswith("site-assets/"):
+        abort(403)
+    import logging as _log
+    _log.getLogger("r2_site").info("Serving site asset: %s", key)
+    try:
+        body, ct, cl = r2_storage.stream_object(key)
+        headers = {
+            "Content-Type": ct,
+            "Cache-Control": "public, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if cl is not None:
+            headers["Content-Length"] = str(cl)
+
+        def _generate():
+            while True:
+                chunk = body.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+
+        return Response(stream_with_context(_generate()), headers=headers)
+    except Exception as _e:
+        _log.getLogger("r2_site").error("Failed to serve %s: %s", key, _e)
+        abort(404)
+
+
 @app.route("/r2proxy")
 @login_required
 def r2proxy():
@@ -2945,11 +2983,15 @@ def admin_upload_logo():
     ext = ext_map.get(ct.split(";")[0].strip(), "png")
     r2_key = f"site-assets/logo-{int(__import__('time').time())}.{ext}"
     try:
-        url = r2_storage.upload_fileobj(f.stream, r2_key, content_type=ct)
+        r2_storage.upload_fileobj(f.stream, r2_key, content_type=ct)
+        # Store the Flask proxy path, not the private R2 endpoint URL.
+        # /r2-site/<key> is a public streaming proxy that authenticates to R2
+        # server-side — no public bucket or R2_PUBLIC_URL config required.
+        proxy_url = url_for("r2_site_asset", key=r2_key, _external=False)
         from system_config import set_raw, invalidate_cache
-        set_raw("site_logo_url", url)
+        set_raw("site_logo_url", proxy_url)
         invalidate_cache()
-        return jsonify({"ok": True, "url": url})
+        return jsonify({"ok": True, "url": proxy_url})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
