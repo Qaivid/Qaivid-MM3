@@ -178,21 +178,23 @@ h1, h2, h3, .brand, .display {
 }
 .landing-page .topbar-tagline {
     display: block;
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.32);
-    padding-left: 16px;
-    border-left: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.68);
+    padding-left: 18px;
+    border-left: 1px solid rgba(255,255,255,0.22);
     white-space: nowrap;
+    text-shadow: 0 0 18px rgba(212,255,58,0.18);
 }
 .landing-page .topbar-nav {
     position: absolute;
-    right: 32px;
+    right: 20px;
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
+    gap: 6px;
 }
 
 .brand {

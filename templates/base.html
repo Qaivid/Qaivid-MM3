@@ -28,10 +28,9 @@
             <a class="brand{% if sc.site_logo_url %} brand--has-logo{% endif %}" href="{{ url_for('index') }}">
                 {%- if sc.site_logo_url -%}
                 <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
-                     style="height:{{ sc.site_logo_size }}px;width:auto;max-width:220px;object-fit:contain;display:block;">
-                {%- else -%}
-                <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind 3.1</span>
+                     style="height:{{ sc.site_logo_size }}px;width:auto;max-width:180px;object-fit:contain;display:block;">
                 {%- endif -%}
+                <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind 3.1</span>
             </a>
             <div class="topbar-tagline">{% block topbar_tagline %}{% endblock %}</div>
         </div>
@@ -91,10 +90,9 @@
                 <a class="brand footer-brand-link{% if sc.site_logo_url %} brand--has-logo{% endif %}" href="{{ url_for('index') }}">
                     {%- if sc.site_logo_url -%}
                     <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
-                         style="height:{{ sc.site_logo_size }}px;width:auto;max-width:220px;object-fit:contain;display:block;">
-                    {%- else -%}
-                    <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind</span>
+                         style="height:{{ sc.site_logo_size }}px;width:auto;max-width:180px;object-fit:contain;display:block;">
                     {%- endif -%}
+                    <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind</span>
                 </a>
                 <p class="footer-tagline">{{ sc.site_footer_tagline | replace('\n', '<br>') | safe }}</p>
             </div>
