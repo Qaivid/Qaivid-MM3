@@ -42,6 +42,87 @@ _BEAT_BOUNDARIES = [0.0, 0.15, 0.40, 0.62, 0.80, 1.0]
 _SECTION_TAG_RE = re.compile(r'^\s*\[([^\]]+)\]\s*$')
 
 
+def _detect_repeated_structure(
+    lines: List[str],
+) -> Optional[Dict[str, List[str]]]:
+    """Detect song structure from unlabeled lyrics by finding repeated line blocks.
+
+    Scans for the longest block of consecutive lines that repeats at least twice
+    (the chorus/mukhda).  Unique blocks between repeats become verse sections.
+
+    Returns an ordered dict like:
+        {"chorus": [...], "verse": [...], "chorus_2": [...], "verse_2": [...], ...}
+    or None if no clear repetition is detected (too short / no repeating block).
+    """
+    if not lines or len(lines) < 8:
+        return None
+
+    normalized = [ln.strip().lower() for ln in lines]
+    n = len(normalized)
+
+    best_positions: Optional[List[int]] = None
+    best_len = 0
+
+    # Search from longest blocks down to 3 lines — prefer longer blocks
+    max_search = min(16, n // 3)
+    for block_len in range(max_search, 2, -1):
+        seen: Dict[tuple, List[int]] = {}
+        for i in range(n - block_len + 1):
+            fp = tuple(normalized[i : i + block_len])
+            seen.setdefault(fp, []).append(i)
+
+        for positions in seen.values():
+            # Remove overlapping occurrences
+            valid: List[int] = [positions[0]]
+            for pos in positions[1:]:
+                if pos >= valid[-1] + block_len:
+                    valid.append(pos)
+            if len(valid) >= 2:
+                # Prefer more repetitions; break ties by longer block
+                if not best_positions or len(valid) > len(best_positions) or (
+                    len(valid) == len(best_positions) and block_len > best_len
+                ):
+                    best_positions = valid
+                    best_len = block_len
+        if best_positions:
+            break
+
+    if not best_positions or len(best_positions) < 2:
+        return None
+
+    # Build ordered sections: verse blocks between chorus repeats
+    sections: Dict[str, List[str]] = {}
+    chorus_count = 0
+    verse_count = 0
+    pos = 0
+
+    for block_start in sorted(best_positions):
+        if pos < block_start:
+            verse_count += 1
+            key = "verse" if verse_count == 1 else f"verse_{verse_count}"
+            sections[key] = lines[pos:block_start]
+
+        chorus_count += 1
+        ckey = "chorus" if chorus_count == 1 else f"chorus_{chorus_count}"
+        sections[ckey] = lines[block_start : block_start + best_len]
+        pos = block_start + best_len
+
+    if pos < n:
+        verse_count += 1
+        key = "verse" if verse_count == 1 else f"verse_{verse_count}"
+        sections[key] = lines[pos:]
+
+    # Only return if structure makes sense (3+ sections, no empty ones)
+    sections = {k: v for k, v in sections.items() if v}
+    if len(sections) >= 3:
+        logger.debug(
+            "Detected song structure: %s (sections=%d, chorus_len=%d, chorus_repeats=%d)",
+            list(sections.keys()), len(sections), best_len, chorus_count,
+        )
+        return sections
+    return None
+
+
 def _section_lyrics(
     lyrics_text: str,
     lyrics_timed: Optional[List[Dict[str, Any]]] = None,
@@ -58,7 +139,12 @@ def _section_lyrics(
        pre-choruses, etc. without any cap.
     2. Timestamp-based — when timed lyrics are available with meaningful
        temporal spread, time boundaries map lines to the legacy 5-section set.
-    3. Positional — proportional distribution across the 5-section fallback.
+    3. Repetition detection — find the longest block of lines that repeats
+       (the chorus/mukhda) and segment the full song around those repeats.
+       Unique blocks between chorus repeats become verse sections.  Works on
+       any unlabeled lyrics as long as the chorus appears at least twice.
+    4. Positional — proportional distribution across the 5-section fallback
+       (last resort when no structure can be inferred).
 
     Returns an ordered dict keyed by section name mapping to lyric lines.
     No section is created with zero lines.
@@ -126,8 +212,14 @@ def _section_lyrics(
                 str(e.get("text") or "").strip() for e in entries
             ) or lyrics_text
 
-    # --- Priority 3: positional distribution ---
-    lines = [ln.strip() for ln in (lyrics_text or "").splitlines() if ln.strip()]
+    # --- Priority 3: repetition-based structure detection ---
+    content_lines = [ln.strip() for ln in (lyrics_text or "").splitlines() if ln.strip()]
+    detected = _detect_repeated_structure(content_lines)
+    if detected:
+        return detected
+
+    # --- Priority 4: positional distribution (last resort) ---
+    lines = content_lines
     if not lines:
         return {k: v for k, v in fallback.items() if v}
     n = len(lines)
@@ -397,9 +489,17 @@ def _user_prompt(
                 + formatted
             )
         if parts:
+            n_sections = len(sections) if (lyrics or lyrics_timed) else 0
+            scene_count_instruction = (
+                f"\n\nSCENE COUNT RULE: The lyrics above have exactly {n_sections} "
+                f"labeled sections. Each variant MUST contain exactly {n_sections} "
+                "scenes — one scene per section. Do NOT merge sections, do NOT drop "
+                "sections, and do NOT add extra scenes beyond this count."
+            ) if n_sections >= 2 else ""
             lyric_block = (
                 "\n\n"
                 + "\n\n---\n\n".join(parts)
+                + scene_count_instruction
                 + "\n\nIMPORTANT: The architecture_style and characteristic_setting "
                 "in world_assumptions define the exact built-environment vocabulary "
                 "for this song's world. Every location description must use those "
