@@ -2708,8 +2708,6 @@ def admin():
         image_modes = get_image_modes()
     except Exception:
         image_modes = {"ref": "quality", "shot": "quality"}
-    stripe_ok = bool(os.getenv("STRIPE_SECRET_KEY"))
-    stripe_webhook_ok = bool(os.getenv("STRIPE_WEBHOOK_SECRET"))
     return render_template(
         "admin.html",
         users=users,
@@ -2723,11 +2721,6 @@ def admin():
         recent_projects=recent_projects,
         mrr=mrr,
         completion_rate=completion_rate,
-        r2_ok=r2_storage.r2_available(),
-        api_ok=bool(_api_key()),
-        fal_ok=_fal_set(),
-        stripe_ok=stripe_ok,
-        stripe_webhook_ok=stripe_webhook_ok,
         current_user_id=me["id"],
         image_modes=image_modes,
     )

@@ -10,10 +10,7 @@
             <p class="adm-subtitle">Full platform control — users, projects, billing, system</p>
         </div>
         <div class="adm-header-badges">
-            <span class="adm-badge {{ 'adm-badge-ok' if r2_ok else 'adm-badge-bad' }}">R2 {{ 'online' if r2_ok else 'offline' }}</span>
-            <span class="adm-badge {{ 'adm-badge-ok' if api_ok else 'adm-badge-bad' }}">OpenAI {{ 'set' if api_ok else 'missing' }}</span>
-            <span class="adm-badge {{ 'adm-badge-ok' if fal_ok else 'adm-badge-bad' }}">FAL {{ 'set' if fal_ok else 'missing' }}</span>
-            <span class="adm-badge {{ 'adm-badge-ok' if stripe_ok else 'adm-badge-bad' }}">Stripe {{ 'set' if stripe_ok else 'missing' }}</span>
+            <span class="adm-badge adm-badge-ok">Admin</span>
         </div>
     </header>
 
@@ -267,30 +264,6 @@
     ════════════════════════════════════════════════════════ -->
     <div class="adm-panel" id="tab-system">
 
-        <!-- API / service status -->
-        <div class="adm-section-title">Service status</div>
-        <div class="adm-sys-grid">
-            <div class="adm-sys-row">
-                <span class="adm-sys-label">Cloudflare R2 Storage</span>
-                <span class="adm-badge {{ 'adm-badge-ok' if r2_ok else 'adm-badge-bad' }}">{{ 'Online' if r2_ok else 'Offline / not configured' }}</span>
-            </div>
-            <div class="adm-sys-row">
-                <span class="adm-sys-label">OpenAI API key</span>
-                <span class="adm-badge {{ 'adm-badge-ok' if api_ok else 'adm-badge-bad' }}">{{ 'Set' if api_ok else 'Missing' }}</span>
-            </div>
-            <div class="adm-sys-row">
-                <span class="adm-sys-label">FAL.ai API key</span>
-                <span class="adm-badge {{ 'adm-badge-ok' if fal_ok else 'adm-badge-bad' }}">{{ 'Set' if fal_ok else 'Missing' }}</span>
-            </div>
-            <div class="adm-sys-row">
-                <span class="adm-sys-label">Stripe secret key</span>
-                <span class="adm-badge {{ 'adm-badge-ok' if stripe_ok else 'adm-badge-bad' }}">{{ 'Set' if stripe_ok else 'Missing' }}</span>
-            </div>
-            <div class="adm-sys-row">
-                <span class="adm-sys-label">Stripe webhook secret</span>
-                <span class="adm-badge {{ 'adm-badge-ok' if stripe_webhook_ok else 'adm-badge-warn' }}">{{ 'Set' if stripe_webhook_ok else 'Not configured (auto-downgrade disabled)' }}</span>
-            </div>
-        </div>
 
         <!-- Image generation modes -->
         <div class="adm-section-title" style="margin-top:32px">Image generation mode</div>
