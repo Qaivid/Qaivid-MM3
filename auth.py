@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 from typing import Optional
 
@@ -143,33 +145,92 @@ def count_user_projects(user_id: int) -> int:
 def get_user_by_email(email: str) -> Optional[dict]:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT id, email, password_hash, is_admin, created_at "
+            "SELECT id, email, password_hash, is_admin, created_at, email_verified "
             "FROM users WHERE LOWER(email) = LOWER(%s)",
             (email,),
         )
         return cur.fetchone()
 
 
-def create_user(email: str, password: str, is_admin: bool = False) -> dict:
-    """Insert a new user. Raises DuplicateEmailError on a unique-constraint race
-    (the route handler also pre-checks, but two concurrent signups can both pass
-    the pre-check and only one wins the insert)."""
+def create_user(email: str, password: str, is_admin: bool = False, pre_verified: bool = False) -> dict:
+    """Insert a new user. Raises DuplicateEmailError on a unique-constraint race.
+
+    Regular signups are created with email_verified=FALSE and a random token.
+    Admin bootstrap and pre_verified=True skip the verification requirement.
+    Returns the new user row including email_verify_token.
+    """
     pw_hash = generate_password_hash(password)
+    token: Optional[str] = None if (is_admin or pre_verified) else secrets.token_urlsafe(32)
+    verified: bool = is_admin or pre_verified
+    now = datetime.now(timezone.utc)
     try:
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO users (email, password_hash, is_admin)
-                VALUES (%s, %s, %s)
-                RETURNING id, email, is_admin, created_at
+                INSERT INTO users
+                  (email, password_hash, is_admin,
+                   email_verified, email_verify_token, email_verify_sent_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, email, is_admin, created_at,
+                          email_verified, email_verify_token
                 """,
-                (email.strip(), pw_hash, is_admin),
+                (email.strip(), pw_hash, is_admin, verified, token, now if token else None),
             )
             row = cur.fetchone()
             conn.commit()
             return row
     except UniqueViolation as exc:
         raise DuplicateEmailError(email) from exc
+
+
+def get_user_by_verify_token(token: str) -> Optional[dict]:
+    """Look up a user by their email verification token."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, email, email_verified, email_verify_token, email_verify_sent_at "
+            "FROM users WHERE email_verify_token = %s",
+            (token,),
+        )
+        return cur.fetchone()
+
+
+def confirm_email_verification(user_id: int) -> None:
+    """Mark a user as verified and clear the token."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            """UPDATE users
+               SET email_verified = TRUE,
+                   email_verify_token = NULL,
+                   email_verify_sent_at = NULL
+             WHERE id = %s""",
+            (user_id,),
+        )
+        conn.commit()
+
+
+def refresh_verify_token(user_id: int) -> str:
+    """Generate a new verification token (for resend requests)."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET email_verify_token = %s, email_verify_sent_at = %s WHERE id = %s",
+            (token, now, user_id),
+        )
+        conn.commit()
+    return token
+
+
+EMAIL_VERIFY_EXPIRY_HOURS = 24
+
+
+def is_verify_token_expired(sent_at) -> bool:
+    """Return True if the token is older than EMAIL_VERIFY_EXPIRY_HOURS."""
+    if not sent_at:
+        return True
+    if sent_at.tzinfo is None:
+        sent_at = sent_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - sent_at > timedelta(hours=EMAIL_VERIFY_EXPIRY_HOURS)
 
 
 def verify_password(user: dict, password: str) -> bool:

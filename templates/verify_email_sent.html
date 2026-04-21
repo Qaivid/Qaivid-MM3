@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Check your email · Qaivid MetaMind 3.1{% endblock %}
+{% block content %}
+<section class="auth-hero">
+    <div class="eyebrow">
+        {% if expired %}Link expired{% elif unverified %}Email not verified{% else %}Almost there{% endif %}
+    </div>
+    <h1 class="auth-headline">
+        {% if expired or unverified %}
+            Verify your <span class="accent">email</span>
+        {% else %}
+            Check your <span class="accent">inbox</span>
+        {% endif %}
+    </h1>
+    <p class="auth-tagline">
+        {% if expired %}
+            Your verification link has expired. Request a fresh one below.
+        {% elif unverified %}
+            Your account isn't verified yet. Check your inbox or request a new link.
+        {% else %}
+            We sent a verification link to <strong>{{ email }}</strong>. Click it to activate your account.
+        {% endif %}
+    </p>
+</section>
+
+<section class="card auth-card verify-card">
+
+    {% if not expired and not unverified %}
+    <div class="verify-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+        </svg>
+    </div>
+    <h2>Verify your email</h2>
+    <p class="muted" style="margin-bottom:8px;">Sent to <strong style="color:#e0e0e0;">{{ email }}</strong></p>
+    <p class="muted">Click the link in the email to activate your account. The link expires in <strong style="color:#e0e0e0;">24 hours</strong>.</p>
+    <div class="verify-steps">
+        <div class="verify-step">
+            <span class="step-num">1</span>
+            <span>Open the email from <em>Qaivid MetaMind</em></span>
+        </div>
+        <div class="verify-step">
+            <span class="step-num">2</span>
+            <span>Click <em>"Verify my email"</em></span>
+        </div>
+        <div class="verify-step">
+            <span class="step-num">3</span>
+            <span>You'll be logged in automatically</span>
+        </div>
+    </div>
+    <div class="verify-divider">
+        <span>Didn't get it? Check spam or</span>
+    </div>
+    {% else %}
+    <h2>
+        {% if expired %}Request a new link{% else %}Resend verification{% endif %}
+    </h2>
+    <p class="muted" style="margin-bottom:20px;">
+        {% if expired %}
+            Your link expired after 24 hours. Enter your email to get a fresh one.
+        {% else %}
+            Enter your email below and we'll send a new verification link.
+        {% endif %}
+    </p>
+    {% endif %}
+
+    <form action="{{ url_for('resend_verification') }}" method="post" class="resend-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="resend-row">
+            <input type="email" name="email" placeholder="Your email address"
+                   value="{{ email or '' }}" required autocomplete="email">
+            <button type="submit" class="btn-primary">
+                {% if not expired and not unverified %}Resend{% else %}Send link{% endif %}
+            </button>
+        </div>
+    </form>
+
+    <p class="muted" style="margin-top:24px;text-align:center;">
+        Already verified? <a href="{{ url_for('login') }}">Sign in</a>
+    </p>
+</section>
+
+<style>
+.verify-card {
+    max-width: 480px;
+    margin: 0 auto;
+    text-align: center;
+}
+.verify-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(212, 255, 58, 0.08);
+    border: 1px solid rgba(212, 255, 58, 0.2);
+    margin: 0 auto 24px;
+    color: #d4ff3a;
+}
+.verify-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 24px 0;
+    text-align: left;
+}
+.verify-step {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 14px;
+    color: #b0b8c4;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px 16px;
+}
+.verify-step em { color: #e0e0e0; font-style: normal; }
+.step-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(212, 255, 58, 0.12);
+    border: 1px solid rgba(212, 255, 58, 0.3);
+    color: #d4ff3a;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.verify-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 16px;
+    font-size: 13px;
+    color: #555;
+}
+.verify-divider::before,
+.verify-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+}
+.resend-form { width: 100%; }
+.resend-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+.resend-row input[type="email"] {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s;
+}
+.resend-row input[type="email"]:focus {
+    border-color: rgba(212,255,58,0.4);
+}
+.resend-row .btn-primary {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}

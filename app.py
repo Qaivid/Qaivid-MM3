@@ -53,21 +53,28 @@ from pipeline_worker import (
 )
 from auth import (
     DuplicateEmailError,
+    EMAIL_VERIFY_EXPIRY_HOURS,
     admin_required,
     bootstrap_admin,
+    confirm_email_verification,
     count_user_projects,
     create_user,
     current_user,
     delete_user,
     get_user_by_email,
+    get_user_by_verify_token,
     get_user_password_hash,
+    is_verify_token_expired,
     login_required,
     login_user,
     logout_user,
+    refresh_verify_token,
     update_user_password,
     update_user_plan,
     verify_password,
 )
+from disposable_domains import is_disposable_email
+from email_utils import send_verification_email
 import r2_storage
 from billing import billing_bp, FREE_PROJECT_LIMIT
 
@@ -603,6 +610,9 @@ def signup():
     if not email or "@" not in email:
         flash("Please enter a valid email.", "error")
         return render_template("signup.html", email=email), 400
+    if is_disposable_email(email):
+        flash("Temporary or disposable email addresses are not allowed. Please use a real email.", "error")
+        return render_template("signup.html", email=email), 400
     if len(password) < 8:
         flash("Password must be at least 8 characters.", "error")
         return render_template("signup.html", email=email), 400
@@ -614,9 +624,65 @@ def signup():
     except DuplicateEmailError:
         flash("An account with that email already exists.", "error")
         return render_template("signup.html", email=email), 400
+    token = user.get("email_verify_token")
+    if token:
+        verify_url = url_for("verify_email", token=token, _external=True)
+        site_name = app.config.get("SITE_NAME", "Qaivid MetaMind")
+        send_verification_email(email, verify_url, site_name=site_name)
+        return redirect(url_for("verify_email_sent", email=email))
     login_user(user)
     flash("Welcome to Qaivid.", "success")
     return redirect(url_for("projects"))
+
+
+@app.route("/verify-email")
+def verify_email():
+    token = request.args.get("token", "").strip()
+    if not token:
+        flash("Invalid verification link.", "error")
+        return redirect(url_for("login"))
+    user = get_user_by_verify_token(token)
+    if not user:
+        flash("This verification link is invalid or has already been used.", "error")
+        return redirect(url_for("login"))
+    if user.get("email_verified"):
+        flash("Your email is already verified. Sign in to continue.", "success")
+        return redirect(url_for("login"))
+    if is_verify_token_expired(user.get("email_verify_sent_at")):
+        flash("This verification link has expired. Please request a new one.", "error")
+        return redirect(url_for("verify_email_sent", email=user["email"], expired="1"))
+    confirm_email_verification(user["id"])
+    login_user(user)
+    flash("Email verified! Welcome to Qaivid.", "success")
+    return redirect(url_for("projects"))
+
+
+@app.route("/verify-email-sent")
+def verify_email_sent():
+    email = request.args.get("email", "")
+    expired = request.args.get("expired", "")
+    return render_template("verify_email_sent.html", email=email, expired=expired)
+
+
+@app.route("/resend-verification", methods=["POST"])
+def resend_verification():
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        flash("Please provide your email address.", "error")
+        return redirect(url_for("login"))
+    user = get_user_by_email(email)
+    if not user:
+        flash("If that account exists, we sent a new verification email.", "success")
+        return redirect(url_for("verify_email_sent", email=email))
+    if user.get("email_verified"):
+        flash("Your email is already verified. Sign in to continue.", "success")
+        return redirect(url_for("login"))
+    token = refresh_verify_token(user["id"])
+    verify_url = url_for("verify_email", token=token, _external=True)
+    site_name = app.config.get("SITE_NAME", "Qaivid MetaMind")
+    send_verification_email(email, verify_url, site_name=site_name)
+    flash("A new verification email has been sent.", "success")
+    return redirect(url_for("verify_email_sent", email=email))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -632,6 +698,8 @@ def login():
     if not user or not verify_password(user, password):
         flash("Invalid email or password.", "error")
         return render_template("login.html", email=email, next_url=next_url), 401
+    if not user.get("email_verified", True):
+        return redirect(url_for("verify_email_sent", email=email, unverified="1"))
     login_user(user)
     if next_url.startswith("/") and not next_url.startswith("//"):
         return redirect(next_url)
