@@ -44,7 +44,7 @@
 {% set actual_idx = stage_order.index(actual_norm) if actual_norm in stage_order else -1 %}
 
 <div class="proj-breadcrumb">
-    <a href="{{ url_for('index') }}" class="back-link">← My Projects</a>
+    <a href="{{ url_for('projects') }}" class="back-link">← My Projects</a>
     <span class="proj-breadcrumb-name">{{ project.name }}</span>
     {% if project._is_review_only %}
     <span class="proj-review-badge">↩ reviewing earlier step — <a href="{{ url_for('project_detail', project_id=project.id) }}">jump to current ({{ actual }})</a></span>

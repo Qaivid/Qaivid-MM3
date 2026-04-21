@@ -31,10 +31,17 @@
                 Paste any lyrics, upload your audio — MetaMind transcribes in any language, maps every word to the beat, and produces a director-grade shot list with face-locked character stills. No video editing skills needed.
             </p>
             <div class="lp-ctas">
-                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">
-                    <span class="lp-btn-icon">✦</span> Start Creating Free
-                </a>
-                <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">See pricing →</a>
+                {% if current_user %}
+                    <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg">
+                        <span class="lp-btn-icon">✦</span> Start a New Project
+                    </a>
+                    <a href="{{ url_for('projects') }}" class="btn-ghost btn-ghost-lg">My Projects →</a>
+                {% else %}
+                    <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">
+                        <span class="lp-btn-icon">✦</span> Start Creating Free
+                    </a>
+                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">See pricing →</a>
+                {% endif %}
             </div>
             <div class="lp-trust">
                 <div class="lp-trust-item"><span class="lp-trust-icon">🌍</span><span>40+ languages</span></div>
@@ -337,9 +344,15 @@
         <div class="lp-cta-banner-inner">
             <h2 class="lp-cta-banner-title">Your next music video<br>starts here.</h2>
             <p class="lp-cta-banner-sub">No credit card. No setup. Just paste your lyrics and go.</p>
-            <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg lp-cta-btn">
-                Create your first video — it's free
-            </a>
+            {% if current_user %}
+                <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg lp-cta-btn">
+                    Start a New Project →
+                </a>
+            {% else %}
+                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg lp-cta-btn">
+                    Create your first video — it's free
+                </a>
+            {% endif %}
         </div>
     </div>
 </section>

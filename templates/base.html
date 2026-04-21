@@ -15,7 +15,7 @@
         <a class="brand" href="{{ url_for('index') }}">Qaivid<span>MetaMind 3.0</span></a>
         <nav class="topbar-nav">
             {% if current_user %}
-                <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">My Projects</a>
+                <a href="{{ url_for('projects') }}" class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}">My Projects</a>
                 <a href="{{ url_for('new_project') }}" class="nav-link nav-cta {% if request.endpoint == 'new_project' %}active{% endif %}">+ New Project</a>
                 {% if current_user.is_admin %}
                     <a href="{{ url_for('admin') }}" class="nav-link nav-admin {% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">&#9881; Admin</a>
@@ -66,7 +66,7 @@
             <div class="footer-links">
                 <div class="footer-col">
                     <div class="footer-col-title">Product</div>
-                    <a href="{{ url_for('index') }}">My Projects</a>
+                    <a href="{{ url_for('projects') }}">My Projects</a>
                     <a href="{{ url_for('new_project') }}">New Project</a>
                     <a href="{{ url_for('billing.pricing') }}">Pricing</a>
                 </div>

@@ -474,19 +474,23 @@ def _stage_progress(stage: str) -> dict:
 
 @app.route("/")
 def index():
+    return render_template(
+        "landing.html",
+        api_key_set=bool(_api_key()),
+        fal_set=_fal_set(),
+    )
+
+
+@app.route("/projects")
+@login_required
+def projects():
     user = current_user()
-    if not user:
-        return render_template(
-            "landing.html",
-            api_key_set=bool(_api_key()),
-            fal_set=_fal_set(),
-        )
-    projects = _list_projects(user["id"])
-    for p in projects:
+    project_list = _list_projects(user["id"])
+    for p in project_list:
         p["progress_meta"] = _stage_progress(p.get("stage") or "new")
     return render_template(
         "projects.html",
-        projects=projects,
+        projects=project_list,
         api_key_set=bool(_api_key()),
         fal_set=_fal_set(),
     )
@@ -517,7 +521,7 @@ def new_project():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if current_user():
-        return redirect(url_for("index"))
+        return redirect(url_for("projects"))
     if request.method == "GET":
         return render_template("signup.html")
     email = (request.form.get("email") or "").strip().lower()
@@ -538,13 +542,13 @@ def signup():
         return render_template("signup.html", email=email), 400
     login_user(user)
     flash("Welcome to Qaivid.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("projects"))
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user():
-        return redirect(url_for("index"))
+        return redirect(url_for("projects"))
     next_url = request.values.get("next") or ""
     if request.method == "GET":
         return render_template("login.html", next_url=next_url)
@@ -557,7 +561,7 @@ def login():
     login_user(user)
     if next_url.startswith("/") and not next_url.startswith("//"):
         return redirect(next_url)
-    return redirect(url_for("index"))
+    return redirect(url_for("projects"))
 
 
 @app.route("/logout", methods=["POST"])
@@ -641,13 +645,13 @@ def generate():
     audio_provided = bool(request.files.get("audio") and request.files["audio"].filename)
     if not text and not audio_provided:
         flash("Please paste your lyrics or upload an audio file — at least one is required.", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("new_project"))
     if not _api_key():
         flash("OPENAI_API_KEY is not set. Add it in Replit secrets.", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("new_project"))
     if not _fal_set():
         flash("FAL_API_KEY is not set. Add it in Replit secrets to render images.", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("new_project"))
 
     project_id = uuid.uuid4().hex[:12]
 
@@ -658,7 +662,7 @@ def generate():
         ext = Path(audio_file.filename).suffix.lower()
         if ext not in ALLOWED_AUDIO:
             flash(f"Unsupported audio format: {ext}. Use MP3, WAV, M4A, OGG, or FLAC.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("new_project"))
         safe_name = secure_filename(audio_file.filename)
         # Save locally for audio processing (librosa needs a file path)
         local_audio_dir = PROJECTS_ROOT / project_id / "uploads"
@@ -2449,7 +2453,7 @@ def project_delete(project_id: str):
         cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
         conn.commit()
     flash(f"Project '{project.get('name')}' deleted.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("projects"))
 
 
 @app.route("/project/<project_id>/export.json")
@@ -2625,7 +2629,7 @@ def admin_impersonate(user_id: int):
     from flask import g as _g
     _g.pop("current_user", None)
     flash(f"Now impersonating {target['email']}. Use Exit Impersonation to return.", "info")
-    return redirect(url_for("index"))
+    return redirect(url_for("projects"))
 
 
 @app.route("/admin/impersonate/exit", methods=["POST"])
@@ -2635,7 +2639,7 @@ def admin_impersonate_exit():
     original_id = _sess.get("original_admin_id")
     if not original_id:
         flash("You are not impersonating anyone.", "info")
-        return redirect(url_for("index"))
+        return redirect(url_for("new_project"))
     _sess["user_id"] = original_id
     _sess.pop("original_admin_id", None)
     from flask import g as _g

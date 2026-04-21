@@ -12,7 +12,7 @@
         <div class="stage-error-block">
             <p class="stage-error-title">Pipeline failed</p>
             <pre class="stage-error-pre">{{ project.error or "Unknown error." }}</pre>
-            <a href="{{ url_for('index') }}" class="btn-stage">← Back to Studio</a>
+            <a href="{{ url_for('projects') }}" class="btn-stage">← Back to Studio</a>
         </div>
         {% else %}
         <div class="stage-spinner"></div>
