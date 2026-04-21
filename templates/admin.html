@@ -371,19 +371,19 @@
                 <div class="cms-field">
                     <label>Logo URL (leave blank for default text brand)</label>
                     <input type="text" id="cms-site_logo_url" value="{{ sc.site_logo_url }}"
-                        placeholder="https://…/logo.png">
+                        placeholder="https://…/logo.png"
+                        oninput="cmsLogoUrlChanged(this.value)">
                     <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
                         <input type="file" id="cms-logo-file" accept="image/*" style="display:none">
                         <button type="button" class="cms-save-btn" style="font-size:11px;padding:6px 14px;"
                             onclick="cmsUploadLogo()">Upload logo</button>
                         <span class="cms-toast" id="cms-logo-toast" style="font-size:11px;"></span>
                     </div>
-                    {% if sc.site_logo_url %}
-                    <div style="margin-top:10px;">
-                        <img src="{{ sc.site_logo_url }}" alt="Current logo"
-                             style="max-height:60px;max-width:160px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.06);padding:6px;">
+                    <div id="cms-logo-preview-wrap" style="margin-top:10px;{% if not sc.site_logo_url %}display:none;{% endif %}">
+                        <img id="cms-logo-preview-img"
+                             src="{{ sc.site_logo_url or '' }}" alt="Current logo"
+                             style="max-height:60px;max-width:200px;width:auto;height:auto;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.06);padding:6px;">
                     </div>
-                    {% endif %}
                 </div>
                 <div class="cms-field">
                     <label>Logo display size (px)
@@ -656,6 +656,20 @@ document.querySelectorAll('.adm-tab').forEach(btn => {
     btn.addEventListener('click', () => sessionStorage.setItem('adminTab', btn.dataset.tab));
 });
 
+// ── Site CMS: logo URL typed manually ─────────────────
+function cmsLogoUrlChanged(url) {
+    const img = document.getElementById('cms-logo-preview-img');
+    const wrap = document.getElementById('cms-logo-preview-wrap');
+    if (!img || !wrap) return;
+    if (url.trim()) {
+        img.src = url.trim();
+        wrap.style.display = '';
+    } else {
+        wrap.style.display = 'none';
+        img.src = '';
+    }
+}
+
 // ── Site CMS: logo upload ─────────────────────────────
 function cmsUploadLogo() {
     const input = document.getElementById('cms-logo-file');
@@ -677,7 +691,11 @@ function cmsUploadLogo() {
             const data = await res.json();
             if (data.ok) {
                 document.getElementById('cms-site_logo_url').value = data.url;
-                toast.textContent = '✓ Uploaded';
+                // live-update the preview in the Branding card
+                const img = document.getElementById('cms-logo-preview-img');
+                const wrap = document.getElementById('cms-logo-preview-wrap');
+                if (img && wrap) { img.src = data.url; wrap.style.display = ''; }
+                toast.textContent = '✓ Uploaded & saved';
                 setTimeout(() => toast.classList.remove('show'), 3000);
             } else {
                 toast.textContent = '✗ ' + (data.error || 'Upload failed');
@@ -722,9 +740,9 @@ async function cmsSaveAll() {
         });
         const data = await res.json();
         if (data.ok) {
-            toast.textContent = '✓ Saved ' + data.saved.length + ' settings';
+            toast.textContent = '✓ Saved — reloading…';
             toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
+            setTimeout(() => window.location.reload(), 900);
         } else {
             toast.textContent = '✗ Error saving';
             toast.style.color = '#ff6b6b';

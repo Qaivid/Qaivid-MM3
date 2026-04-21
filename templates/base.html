@@ -28,7 +28,7 @@
             <a class="brand" href="{{ url_for('index') }}">
                 {%- if sc.site_logo_url -%}
                 <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }} logo"
-                     style="height:{{ sc.site_logo_size }}px;width:{{ sc.site_logo_size }}px;object-fit:contain;vertical-align:middle;margin-right:8px;">
+                     style="height:{{ sc.site_logo_size }}px;width:auto;max-width:200px;object-fit:contain;vertical-align:middle;margin-right:8px;">
                 {%- endif -%}
                 {{ sc.site_name }}<span>MetaMind 3.1</span>
             </a>
@@ -90,7 +90,7 @@
                 <a class="brand footer-brand-link" href="{{ url_for('index') }}">
                     {%- if sc.site_logo_url -%}
                     <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }} logo"
-                         style="height:{{ sc.site_logo_size }}px;width:{{ sc.site_logo_size }}px;object-fit:contain;vertical-align:middle;margin-right:6px;">
+                         style="height:{{ sc.site_logo_size }}px;width:auto;max-width:200px;object-fit:contain;vertical-align:middle;margin-right:6px;">
                     {%- endif -%}
                     {{ sc.site_name }}<span>MetaMind</span>
                 </a>
