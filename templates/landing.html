@@ -19,17 +19,17 @@
             <div class="lp-eyebrow-wrap">
                 <span class="lp-badge">
                     <span class="lp-badge-dot"></span>
-                    AI Music Video Studio &nbsp;·&nbsp; MetaMind 3.0
+                    AI Cinema Studio &nbsp;·&nbsp; MetaMind 3.1
                 </span>
             </div>
             <h1 class="lp-headline">
-                Turn Your Lyrics Into<br>
-                <span class="lp-headline-white">Cinematic Music</span><br>
-                <span class="lp-headline-white">Videos</span>
+                The AI Cinema Studio<br>
+                <span class="lp-headline-white">for Lyrics, Scripts</span><br>
+                <span class="lp-headline-white">&amp; Every Story.</span>
             </h1>
-            <p class="lp-headline-italic">with the Most Advanced AI Director</p>
+            <p class="lp-headline-italic">Powered by MetaMind 3.1 — the Most Advanced AI Director</p>
             <p class="lp-sub">
-                MetaMind transforms songs, scripts, and stories into cinematic masterpieces — powered by a beat-synced AI-director workflow. Face-locked stills, 40+ languages, full storyboard pipeline.
+                From a lyric line to a full film script — MetaMind generates creative briefs, face-locked character stills, beat-synced storyboards, and cinematic exports. In 40+ languages. No editing skills required.
             </p>
             <div class="lp-ctas">
                 {% if current_user %}
@@ -52,7 +52,7 @@
             </div>
         </div>
 
-        {# Right — cinematic hero image #}
+        {# Right — cinematic hero image panel #}
         <div class="lp-hero-visual">
             <div class="lp-hero-img-wrap">
                 <div class="lp-hero-img-glow"></div>
@@ -60,45 +60,55 @@
                     src="{{ url_for('static', filename='images/hero-cinematic.png') }}"
                     alt="Qaivid MetaMind — AI cinematic music video production"
                     class="lp-hero-img"
-                    onerror="this.style.display='none'; document.getElementById('lp-hero-fallback').style.display='block';"
+                    onerror="this.style.display='none';"
                 />
-                {# Fallback storyboard card if image fails #}
-                <div id="lp-hero-fallback" style="display:none;">
-                    <div class="lp-mock-scene-stack">
-                        <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-2"></div>
-                        <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-1"></div>
-                        <div class="lp-mock-card lp-mock-card-front">
-                            <div class="lp-mock-card-header">
-                                <div class="lp-mock-shot-num">Shot 03</div>
-                                <div class="lp-mock-time">
-                                    <span class="lp-mono">0:32</span>
-                                    <span class="lp-mono-muted">—</span>
-                                    <span class="lp-mono">0:38</span>
-                                </div>
-                                <div class="lp-mock-badge lp-mock-badge-shot">CLOSE-UP</div>
-                            </div>
-                            <div class="lp-mock-still">
-                                <div class="lp-mock-still-inner">
-                                    <div class="lp-mock-gradient-bg"></div>
-                                    <div class="lp-mock-face-indicator">
-                                        <div class="lp-mock-face-ring"></div>
-                                        <div class="lp-mock-face-dot"></div>
-                                    </div>
-                                </div>
-                                <div class="lp-mock-still-label">
-                                    <span class="lp-mock-badge lp-mock-badge-ok">✓ STILL GENERATED</span>
-                                </div>
-                            </div>
-                            <div class="lp-mock-lyric">ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ</div>
-                        </div>
+
+                {# Top scene bar #}
+                <div class="lp-hov-top">
+                    <div class="lp-hov-pill lp-hov-pill-lime">
+                        <span class="lp-hov-dot"></span> AI DIRECTOR ACTIVE
+                    </div>
+                    <div class="lp-hov-scene-count">Scene 3 / 8</div>
+                </div>
+
+                {# Floating left scene card #}
+                <div class="lp-hov-card lp-hov-card-left">
+                    <div class="lp-hov-card-thumb">
+                        <div class="lp-hov-face-ring"></div>
+                    </div>
+                    <div class="lp-hov-card-body">
+                        <div class="lp-hov-card-label">CLOSE-UP · 0:32–0:38</div>
+                        <div class="lp-hov-card-title">Face locked ✓</div>
                     </div>
                 </div>
-                {# Overlay badges #}
-                <div class="lp-hero-img-badges">
-                    <span class="lp-vbadge">AI Storyboard</span>
-                    <span class="lp-vbadge">Beat-Sync</span>
-                    <span class="lp-vbadge">Face-Lock</span>
+
+                {# Floating right stats card #}
+                <div class="lp-hov-card lp-hov-card-right">
+                    <div class="lp-hov-stat">
+                        <span class="lp-hov-stat-num">40+</span>
+                        <span class="lp-hov-stat-lbl">Languages</span>
+                    </div>
+                    <div class="lp-hov-stat">
+                        <span class="lp-hov-stat-num lp-hov-cyan">98%</span>
+                        <span class="lp-hov-stat-lbl">Beat-sync</span>
+                    </div>
                 </div>
+
+                {# Bottom waveform + badges #}
+                <div class="lp-hov-bottom">
+                    <div class="lp-hov-wave">
+                        <span></span><span></span><span></span><span></span><span></span>
+                        <span></span><span></span><span></span><span></span><span></span>
+                        <span></span><span></span><span></span><span></span><span></span>
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="lp-hero-img-badges">
+                        <span class="lp-vbadge">AI Storyboard</span>
+                        <span class="lp-vbadge">Beat-Sync</span>
+                        <span class="lp-vbadge">Face-Lock</span>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -127,7 +137,7 @@
 <section class="lp-section lp-how" id="how-it-works">
     <div class="lp-section-inner">
         <div class="lp-section-eyebrow">How it works</div>
-        <h2 class="lp-section-title">From lyrics to cinematic shot list<br><span class="lp-title-accent">in four steps</span></h2>
+        <h2 class="lp-section-title">From any text to a cinematic production<br><span class="lp-title-accent">in four steps</span></h2>
         <p class="lp-section-sub">No video editing. No design skills. No guesswork. Just paste, upload, and let the AI direct.</p>
 
         <div class="lp-how-grid">

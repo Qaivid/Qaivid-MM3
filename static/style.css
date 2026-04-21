@@ -3434,7 +3434,9 @@ main:has(> .ws-grid) {
     position: relative;
     z-index: 1;
     object-fit: cover;
-    object-position: center;
+    object-position: center 40%;
+    transform: scale(1.08);
+    transform-origin: center center;
 }
 .lp-hero-img-badges {
     position: absolute;
