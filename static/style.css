@@ -82,6 +82,116 @@ h1, h2, h3, .brand, .display {
     z-index: 50;
 }
 
+/* default: hide decorative layers, show inner inline */
+.topbar-bg { display: none; }
+.topbar-inner { display: contents; }
+.topbar-tagline { display: none; }
+
+/* ── LANDING PAGE CINEMATIC TOPBAR ───────────────────────────── */
+.landing-page .topbar {
+    height: 110px;
+    padding: 0;
+    background: #07070c;
+    border-bottom: 1px solid rgba(212,255,58,0.13);
+    overflow: hidden;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+.landing-page .topbar-bg {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.landing-page .topbar-glow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 480px;
+    height: 180px;
+    border-radius: 50%;
+    filter: blur(55px);
+}
+.landing-page .topbar-glow-l {
+    left: -60px;
+    background: radial-gradient(ellipse, rgba(212,255,58,0.28) 0%, transparent 70%);
+}
+.landing-page .topbar-glow-r {
+    right: -60px;
+    background: radial-gradient(ellipse, rgba(56,225,255,0.22) 0%, transparent 70%);
+}
+.landing-page .topbar-scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(255,255,255,0.01) 3px,
+        rgba(255,255,255,0.01) 4px
+    );
+}
+.landing-page .topbar-film-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+.landing-page .topbar-film-strip-t {
+    top: 10px;
+    background: linear-gradient(90deg, transparent 0%, rgba(212,255,58,0.45) 15%, rgba(56,225,255,0.4) 50%, rgba(212,255,58,0.45) 85%, transparent 100%);
+}
+.landing-page .topbar-film-strip-b {
+    bottom: 10px;
+    background: linear-gradient(90deg, transparent 0%, rgba(56,225,255,0.18) 20%, rgba(212,255,58,0.18) 50%, rgba(56,225,255,0.18) 80%, transparent 100%);
+}
+.landing-page .topbar-frames {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    opacity: 0.06;
+}
+.landing-page .topbar-frame-tick {
+    flex: 1;
+    height: 65%;
+    border-left: 1px solid rgba(255,255,255,0.7);
+    border-right: 1px solid rgba(255,255,255,0.7);
+}
+.landing-page .topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    max-width: 1200px;
+    padding: 0 40px;
+    z-index: 2;
+    box-sizing: border-box;
+}
+.landing-page .topbar-tagline {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    padding-left: 16px;
+    border-left: 1px solid rgba(255,255,255,0.1);
+    white-space: nowrap;
+}
+.landing-page .topbar-nav {
+    position: absolute;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+}
+
 .brand {
     font-size: 22px;
     color: var(--text);
@@ -2768,11 +2878,11 @@ main:has(> .ws-grid) {
 
 .lp-hero {
     position: relative;
-    min-height: calc(100vh - 120px);
+    min-height: calc(100vh - 110px);
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 40px 0 0;
+    padding: 48px 0 0;
     overflow: hidden;
 }
 .lp-hero::before {

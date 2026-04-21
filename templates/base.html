@@ -10,9 +10,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body{% if current_user and current_user.is_admin %} class="is-admin"{% endif %}>
+<body class="{% if current_user and current_user.is_admin %}is-admin {% endif %}{% block body_class %}{% endblock %}">
     <header class="topbar">
-        <a class="brand" href="{{ url_for('index') }}">Qaivid<span>MetaMind 3.0</span></a>
+        <div class="topbar-bg">
+            <div class="topbar-glow topbar-glow-l"></div>
+            <div class="topbar-glow topbar-glow-r"></div>
+            <div class="topbar-scanlines"></div>
+            <div class="topbar-film-strip topbar-film-strip-t"></div>
+            <div class="topbar-film-strip topbar-film-strip-b"></div>
+            <div class="topbar-frames">{% for i in range(18) %}<div class="topbar-frame-tick"></div>{% endfor %}</div>
+        </div>
+        <div class="topbar-inner">
+            <a class="brand" href="{{ url_for('index') }}">Qaivid<span>MetaMind 3.1</span></a>
+            <div class="topbar-tagline">{% block topbar_tagline %}{% endblock %}</div>
+        </div>
         <nav class="topbar-nav">
             {% if current_user %}
                 <a href="{{ url_for('projects') }}" class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}">My Projects</a>
