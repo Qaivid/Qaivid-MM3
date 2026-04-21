@@ -138,11 +138,17 @@ h1, h2, h3, .brand, .display {
     filter: brightness(0.70) saturate(0.15);
 }
 
-/* brand-colour overlay — flat #ddfd62 screen wash across the full strip */
+/* brand-colour overlay — tints the greyscale strip lime→cyan */
 .landing-page .topbar-tint-l {
     position: absolute;
     inset: 0;
-    background: rgba(221,253,98,0.45);
+    background: linear-gradient(
+        90deg,
+        rgba(212,255,58,0.38) 0%,
+        rgba(212,255,58,0.18) 30%,
+        rgba(56,225,255,0.18) 70%,
+        rgba(56,225,255,0.36) 100%
+    );
     mix-blend-mode: screen;
     pointer-events: none;
     z-index: 2;
