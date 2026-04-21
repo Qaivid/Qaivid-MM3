@@ -491,7 +491,8 @@ def index():
 @login_required
 def new_project():
     user = current_user()
-    if (user.get("plan", "free") == "free"
+    if (not user.get("is_admin")
+            and user.get("plan", "free") == "free"
             and count_user_projects(user["id"]) >= FREE_PROJECT_LIMIT):
         flash(
             f"Free plan is limited to {FREE_PROJECT_LIMIT} projects. "
@@ -618,7 +619,8 @@ def account_delete():
 @login_required
 def generate():
     user = current_user()
-    if (user.get("plan", "free") == "free"
+    if (not user.get("is_admin")
+            and user.get("plan", "free") == "free"
             and count_user_projects(user["id"]) >= FREE_PROJECT_LIMIT):
         flash(
             f"Free plan is limited to {FREE_PROJECT_LIMIT} projects. "
