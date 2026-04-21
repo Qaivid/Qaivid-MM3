@@ -134,8 +134,8 @@ h1, h2, h3, .brand, .display {
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
-    opacity: 0.90;
-    filter: brightness(0.85);
+    opacity: 1;
+    filter: brightness(0.95);
 }
 
 .landing-page .topbar-tint-l { display: none; }
