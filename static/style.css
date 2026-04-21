@@ -134,8 +134,8 @@ h1, h2, h3, .brand, .display {
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
-    opacity: 0.72;
-    filter: brightness(0.8) saturate(1.1);
+    opacity: 0.78;
+    filter: brightness(0.75) saturate(1.2) hue-rotate(-15deg);
 }
 
 /* brand-colour washes sit on top of the strip image */
