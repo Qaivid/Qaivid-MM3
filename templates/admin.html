@@ -360,6 +360,94 @@
 
         <div class="cms-grid" id="cms-grid">
 
+            <!-- ── BRANDING ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Branding</div>
+                <div class="cms-field">
+                    <label>Site name</label>
+                    <input type="text" id="cms-site_name" value="{{ sc.site_name }}"
+                        placeholder="Qaivid">
+                </div>
+                <div class="cms-field">
+                    <label>Logo URL (leave blank for default text brand)</label>
+                    <input type="text" id="cms-site_logo_url" value="{{ sc.site_logo_url }}"
+                        placeholder="https://…/logo.png">
+                    <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+                        <input type="file" id="cms-logo-file" accept="image/*" style="display:none">
+                        <button type="button" class="cms-save-btn" style="font-size:11px;padding:6px 14px;"
+                            onclick="cmsUploadLogo()">Upload logo</button>
+                        <span class="cms-toast" id="cms-logo-toast" style="font-size:11px;"></span>
+                    </div>
+                    {% if sc.site_logo_url %}
+                    <div style="margin-top:10px;">
+                        <img src="{{ sc.site_logo_url }}" alt="Current logo"
+                             style="max-height:60px;max-width:160px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.06);padding:6px;">
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="cms-field">
+                    <label>Logo display size (px)
+                        <span class="cms-range-val" id="cms-logo-size-val">{{ sc.site_logo_size }}</span>
+                    </label>
+                    <input type="range" id="cms-site_logo_size"
+                        min="16" max="160" step="1"
+                        value="{{ sc.site_logo_size }}"
+                        oninput="document.getElementById('cms-logo-size-val').textContent=this.value">
+                </div>
+            </div>
+
+            <!-- ── HERO STYLING ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Hero — Line Styling</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:12px;">
+                    Colors and font sizes for the two headline lines.
+                </div>
+
+                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Line 1 (lime)</div>
+                <div class="cms-field">
+                    <label>Color</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="color" id="cms-line1-picker" value="{{ sc.site_hero_line1_color }}"
+                            style="width:36px;height:28px;border:none;background:none;cursor:pointer;padding:0;"
+                            oninput="document.getElementById('cms-site_hero_line1_color').value=this.value">
+                        <input type="text" id="cms-site_hero_line1_color" value="{{ sc.site_hero_line1_color }}"
+                            style="width:90px;" placeholder="#d4ff3a"
+                            oninput="document.getElementById('cms-line1-picker').value=this.value">
+                        <div id="cms-line1-preview" style="flex:1;padding:4px 10px;border-radius:5px;background:rgba(255,255,255,0.04);
+                            font-size:1rem;font-weight:800;color:{{ sc.site_hero_line1_color }};font-size:{{ sc.site_hero_line1_size }};">
+                            {{ sc.site_hero_line1 }}
+                        </div>
+                    </div>
+                </div>
+                <div class="cms-field">
+                    <label>Font size</label>
+                    <input type="text" id="cms-site_hero_line1_size" value="{{ sc.site_hero_line1_size }}"
+                        placeholder="3.75rem">
+                </div>
+
+                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.06em;">Line 2 (white)</div>
+                <div class="cms-field">
+                    <label>Color</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="color" id="cms-line2-picker" value="{{ sc.site_hero_line2_color }}"
+                            style="width:36px;height:28px;border:none;background:none;cursor:pointer;padding:0;"
+                            oninput="document.getElementById('cms-site_hero_line2_color').value=this.value">
+                        <input type="text" id="cms-site_hero_line2_color" value="{{ sc.site_hero_line2_color }}"
+                            style="width:90px;" placeholder="#ffffff"
+                            oninput="document.getElementById('cms-line2-picker').value=this.value">
+                        <div style="flex:1;padding:4px 10px;border-radius:5px;background:rgba(255,255,255,0.04);
+                            font-weight:800;color:{{ sc.site_hero_line2_color }};font-size:{{ sc.site_hero_line2_size }};">
+                            {{ sc.site_hero_line2 }}
+                        </div>
+                    </div>
+                </div>
+                <div class="cms-field">
+                    <label>Font size</label>
+                    <input type="text" id="cms-site_hero_line2_size" value="{{ sc.site_hero_line2_size }}"
+                        placeholder="3.75rem">
+                </div>
+            </div>
+
             <!-- ── HEADER ── -->
             <div class="cms-card">
                 <div class="cms-card-title">Header</div>
@@ -492,6 +580,31 @@
                 </div>
             </div>
 
+            <!-- ── LEGAL ── -->
+            <div class="cms-card" style="grid-column: 1 / -1;">
+                <div class="cms-card-title">Legal Pages</div>
+                <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:16px;">
+                    Use simple formatting: <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;"># Heading</code>
+                    <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">## Subheading</code>
+                    <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">- Bullet</code>.
+                    Leave blank to show the built-in default content.
+                    Links: <a href="/privacy" target="_blank" style="color:#38e1ff;">/privacy</a> ·
+                    <a href="/terms" target="_blank" style="color:#38e1ff;">/terms</a>
+                </p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                    <div class="cms-field">
+                        <label>Privacy Policy content</label>
+                        <textarea id="cms-site_privacy_content" rows="12"
+                            placeholder="# 1. Who We Are&#10;&#10;Your company is...&#10;&#10;# 2. Data We Collect&#10;&#10;- Account email&#10;- Project content">{{ sc.site_privacy_content }}</textarea>
+                    </div>
+                    <div class="cms-field">
+                        <label>Terms of Service content</label>
+                        <textarea id="cms-site_terms_content" rows="12"
+                            placeholder="# 1. Acceptance&#10;&#10;By using this service...&#10;&#10;# 2. Eligibility&#10;&#10;- Must be 16+">{{ sc.site_terms_content }}</textarea>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="cms-save-row">
@@ -542,6 +655,44 @@ if (savedTab) {
 document.querySelectorAll('.adm-tab').forEach(btn => {
     btn.addEventListener('click', () => sessionStorage.setItem('adminTab', btn.dataset.tab));
 });
+
+// ── Site CMS: logo upload ─────────────────────────────
+function cmsUploadLogo() {
+    const input = document.getElementById('cms-logo-file');
+    if (!input) return;
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        const toast = document.getElementById('cms-logo-toast');
+        toast.textContent = 'Uploading…';
+        toast.classList.add('show');
+        const form = new FormData();
+        form.append('logo', file);
+        try {
+            const res = await fetch('/admin/site-settings/upload-logo', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
+                body: form,
+            });
+            const data = await res.json();
+            if (data.ok) {
+                document.getElementById('cms-site_logo_url').value = data.url;
+                toast.textContent = '✓ Uploaded';
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            } else {
+                toast.textContent = '✗ ' + (data.error || 'Upload failed');
+                toast.style.color = '#ff6b6b';
+                setTimeout(() => { toast.classList.remove('show'); toast.style.color=''; }, 4000);
+            }
+        } catch {
+            toast.textContent = '✗ Network error';
+            toast.style.color = '#ff6b6b';
+            setTimeout(() => { toast.classList.remove('show'); toast.style.color=''; }, 4000);
+        }
+        input.value = '';
+    };
+    input.click();
+}
 
 // ── Site CMS save ─────────────────────────────────────
 async function cmsSaveAll() {

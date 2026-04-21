@@ -214,36 +214,53 @@ def _inject_user():
 
 
 _SITE_DEFAULTS: dict[str, str] = {
-    "site_header_tagline":    "Lyrics · Scripts · Poems · Stories · End-to-End Production",
+    # ── Branding ──────────────────────────────────────────────────────
+    "site_name":        "Qaivid",
+    "site_logo_url":    "",
+    "site_logo_size":   "45",
+    # ── Header ────────────────────────────────────────────────────────
+    "site_header_tagline":      "Lyrics · Scripts · Poems · Stories · End-to-End Production",
     "site_header_film_opacity": "0.40",
-    "site_hero_eyebrow":      "AI Cinema Studio · MetaMind 3.1",
-    "site_hero_line1":        "Qaivid",
-    "site_hero_line2":        "Cinema Studio",
-    "site_hero_tagline":      "Powered by MetaMind 3.1 — the Most Advanced AI Director",
-    "site_hero_subtitle":     (
+    # ── Hero text ─────────────────────────────────────────────────────
+    "site_hero_eyebrow":  "AI Cinema Studio · MetaMind 3.1",
+    "site_hero_line1":    "Qaivid",
+    "site_hero_line1_color": "#d4ff3a",
+    "site_hero_line1_size":  "3.75rem",
+    "site_hero_line2":    "Cinema Studio",
+    "site_hero_line2_color": "#ffffff",
+    "site_hero_line2_size":  "3.75rem",
+    "site_hero_tagline":  "Powered by MetaMind 3.1 — the Most Advanced AI Director",
+    "site_hero_subtitle": (
         "From a lyric line to a full film script — MetaMind generates creative briefs, "
         "face-locked character stills, beat-synced storyboards, and cinematic exports. "
         "In 40+ languages. No editing skills required."
     ),
     "site_hero_cta_primary":   "Start a Project",
     "site_hero_cta_secondary": "My Projects",
+    # ── Trust bar ─────────────────────────────────────────────────────
     "site_trust_1": "🌐  40+ languages",
     "site_trust_2": "🎬  8 shot types",
     "site_trust_3": "🎵  Beat-synced",
     "site_trust_4": "🔒  Face-locked stills",
+    # ── Section titles ────────────────────────────────────────────────
     "site_howitworks_title": "From first word to finished film",
     "site_howitworks_sub":   "— end to end",
     "site_features_title":   "Everything included —",
     "site_features_sub":     "nothing left to chance",
     "site_pricing_title":    "One plan for every",
     "site_pricing_sub":      "level of ambition",
-    "site_footer_tagline":   (
+    # ── Footer ────────────────────────────────────────────────────────
+    "site_footer_tagline": (
         "Turn any lyrics, poem, or script into a\n"
         "beat-synced cinematic music video — in minutes."
     ),
+    # ── Announcement banner ───────────────────────────────────────────
     "site_banner_enabled": "false",
     "site_banner_text":    "",
     "site_banner_color":   "#d4ff3a",
+    # ── Legal pages ───────────────────────────────────────────────────
+    "site_privacy_content": "",
+    "site_terms_content":   "",
 }
 
 
@@ -2875,16 +2892,28 @@ def healthz():
 
 
 _SITE_ALLOWED_KEYS = frozenset([
+    # branding
+    "site_name", "site_logo_url", "site_logo_size",
+    # header
     "site_header_tagline", "site_header_film_opacity",
-    "site_hero_eyebrow", "site_hero_line1", "site_hero_line2",
+    # hero text
+    "site_hero_eyebrow",
+    "site_hero_line1", "site_hero_line1_color", "site_hero_line1_size",
+    "site_hero_line2", "site_hero_line2_color", "site_hero_line2_size",
     "site_hero_tagline", "site_hero_subtitle",
     "site_hero_cta_primary", "site_hero_cta_secondary",
+    # trust bar
     "site_trust_1", "site_trust_2", "site_trust_3", "site_trust_4",
+    # sections
     "site_howitworks_title", "site_howitworks_sub",
     "site_features_title", "site_features_sub",
     "site_pricing_title", "site_pricing_sub",
+    # footer
     "site_footer_tagline",
+    # banner
     "site_banner_enabled", "site_banner_text", "site_banner_color",
+    # legal
+    "site_privacy_content", "site_terms_content",
 ])
 
 
@@ -2900,6 +2929,39 @@ def admin_site_settings_save():
             saved.append(k)
     invalidate_cache()
     return jsonify({"ok": True, "saved": saved})
+
+
+@app.route("/admin/site-settings/upload-logo", methods=["POST"])
+@admin_required
+def admin_upload_logo():
+    f = request.files.get("logo")
+    if not f:
+        return jsonify({"error": "No file provided"}), 400
+    ct = f.content_type or "image/png"
+    if not ct.startswith("image/"):
+        return jsonify({"error": "File must be an image"}), 400
+    ext_map = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+               "image/gif": "gif", "image/svg+xml": "svg"}
+    ext = ext_map.get(ct.split(";")[0].strip(), "png")
+    r2_key = f"site-assets/logo-{int(__import__('time').time())}.{ext}"
+    try:
+        url = r2_storage.upload_fileobj(f.stream, r2_key, content_type=ct)
+        from system_config import set_raw, invalidate_cache
+        set_raw("site_logo_url", url)
+        invalidate_cache()
+        return jsonify({"ok": True, "url": url})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Terms of Service · {{ sc.site_name }} MetaMind{% endblock %}
+{% block content %}
+<section class="legal-page">
+    <div class="legal-inner">
+        <h1 class="legal-title">Terms of Service</h1>
+        {% if sc.site_terms_content %}
+            <div class="legal-body">
+                {% for line in sc.site_terms_content.split('\n') %}
+                    {% set stripped = line.strip() %}
+                    {% if stripped.startswith('## ') %}
+                        <h2>{{ stripped[3:] }}</h2>
+                    {% elif stripped.startswith('# ') %}
+                        <h2>{{ stripped[2:] }}</h2>
+                    {% elif stripped.startswith('- ') %}
+                        <p class="legal-bullet">{{ stripped[2:] }}</p>
+                    {% elif stripped %}
+                        <p>{{ stripped }}</p>
+                    {% else %}
+                        <br>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="legal-body">
+                <p class="legal-updated">Last updated: January 2025</p>
+                <h2>1. Acceptance</h2>
+                <p>By accessing or using {{ sc.site_name }} MetaMind, you agree to be bound by these Terms. If you do not agree, please do not use the platform.</p>
+                <h2>2. Eligibility</h2>
+                <p class="legal-bullet">You must be at least 16 years old to use this service.</p>
+                <p class="legal-bullet">You must provide accurate information when creating your account.</p>
+                <p class="legal-bullet">You are responsible for maintaining the confidentiality of your account credentials.</p>
+                <h2>3. Acceptable Use</h2>
+                <p>You may use {{ sc.site_name }} MetaMind only for lawful purposes. You must not submit content that infringes copyright, is defamatory, or violates any applicable law. You are solely responsible for the content you submit.</p>
+                <h2>4. Intellectual Property</h2>
+                <p>You retain ownership of any content you submit. By using the platform, you grant us a limited, non-exclusive licence to process your content for the purpose of delivering the service. AI-generated outputs belong to you subject to any applicable AI provider terms.</p>
+                <h2>5. Credits &amp; Billing</h2>
+                <p>Credit usage is metered per generation task. Credits are non-refundable once consumed. Subscriptions renew automatically unless cancelled before the renewal date. We reserve the right to adjust pricing with 30 days' notice.</p>
+                <h2>6. Limitation of Liability</h2>
+                <p>{{ sc.site_name }} MetaMind is provided "as is". We make no warranties, express or implied. In no event shall we be liable for any indirect, incidental, or consequential damages arising from your use of the platform.</p>
+                <h2>7. Termination</h2>
+                <p>We may suspend or terminate your account for violations of these Terms. You may close your account at any time from the account settings page.</p>
+                <h2>8. Changes to Terms</h2>
+                <p>We may update these Terms from time to time. Continued use of the platform after changes constitutes acceptance of the revised Terms.</p>
+                <h2>9. Governing Law</h2>
+                <p>These Terms are governed by the laws of the jurisdiction in which we operate. Any disputes shall be resolved through binding arbitration where permitted by law.</p>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
