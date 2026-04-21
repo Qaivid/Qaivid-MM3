@@ -141,31 +141,34 @@ h1, h2, h3, .brand, .display {
     align-items: center;
     flex-shrink: 0;
     width: 100%;
-    padding: 0 6px;
+    overflow: hidden;
+    padding: 0;
     box-sizing: border-box;
     background: #0e0d0b;
 }
 .landing-page .topbar-sprockets-t {
-    height: 24px;
+    height: 26px;
     padding-top: 5px;
-    padding-bottom: 3px;
-    border-bottom: 1.5px solid rgba(255,255,255,0.12);
+    padding-bottom: 4px;
+    border-bottom: 1.5px solid rgba(255,255,255,0.14);
 }
 .landing-page .topbar-sprockets-b {
-    height: 24px;
-    padding-top: 3px;
+    height: 26px;
+    padding-top: 4px;
     padding-bottom: 5px;
-    border-top: 1.5px solid rgba(255,255,255,0.12);
+    border-top: 1.5px solid rgba(255,255,255,0.14);
 }
-/* real film hole: punched through — page colour shows as the "hole" */
+/* fixed-width holes so spacing is perfectly uniform (continuous reel) */
 .landing-page .topbar-sprocket {
-    flex: 1;
-    height: 11px;
+    width: 20px;
+    flex-shrink: 0;
+    height: 12px;
     border-radius: 2px;
-    background: #0a0a0f; /* matches page — looks like a hole */
-    border: none;
-    margin: 0 4px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    background: #06060a; /* darker than page — reads as punched hole */
+    margin: 0 6px;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.07),
+        0 1px 2px rgba(0,0,0,0.6);
 }
 
 /* scene frames strip */
@@ -198,17 +201,17 @@ h1, h2, h3, .brand, .display {
     background-image: url('/static/images/hero-cinematic.png');
     background-size: 750%;
     background-repeat: no-repeat;
-    opacity: 0.25;
-    filter: saturate(1.3) brightness(0.85);
+    opacity: 0.3;
+    filter: saturate(1.2) brightness(0.9);
 }
-/* slight tint variation per scene using nth-child */
-.landing-page .topbar-scene:nth-child(2n) .topbar-scene-img {
-    filter: saturate(0.85) brightness(0.75) hue-rotate(20deg);
-    opacity: 0.20;
-}
-.landing-page .topbar-scene:nth-child(3n) .topbar-scene-img {
-    filter: saturate(1.5) brightness(0.95) hue-rotate(-12deg);
-    opacity: 0.28;
+/* per-scene colour tint overlay — driven by inline style from template */
+.landing-page .topbar-scene-tint {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.55;
 }
 
 /* left/right colour tint overlays */
