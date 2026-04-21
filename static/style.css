@@ -134,25 +134,11 @@ h1, h2, h3, .brand, .display {
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
-    opacity: 0.82;
-    filter: brightness(0.70) saturate(0.15);
+    opacity: 0.90;
+    filter: brightness(0.85);
 }
 
-/* brand-colour overlay — tints the greyscale strip lime→cyan */
-.landing-page .topbar-tint-l {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-        90deg,
-        rgba(212,255,58,0.38) 0%,
-        rgba(212,255,58,0.18) 30%,
-        rgba(56,225,255,0.18) 70%,
-        rgba(56,225,255,0.36) 100%
-    );
-    mix-blend-mode: screen;
-    pointer-events: none;
-    z-index: 2;
-}
+.landing-page .topbar-tint-l { display: none; }
 .landing-page .topbar-tint-r { display: none; }
 
 /* darkened zone behind the logo so text stays legible */
