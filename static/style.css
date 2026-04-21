@@ -3484,11 +3484,11 @@ main:has(> .ws-grid) {
     backdrop-filter: blur(6px);
 }
 
-/* ── HOW IT WORKS — 4-STEP GRID ──────────────────────────────── */
+/* ── HOW IT WORKS — 5-STEP GRID ──────────────────────────────── */
 .lp-how-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 32px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 28px;
     margin-top: 64px;
 }
 .lp-how-step { text-align: center; }
@@ -3626,8 +3626,11 @@ main:has(> .ws-grid) {
 }
 
 /* ── LANDING PAGE RESPONSIVE */ 
+@media (max-width: 1300px) {
+    .lp-how-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+}
 @media (max-width: 1100px) {
-    .lp-how-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .lp-how-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; }
     .lp-feature-grid-3 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
