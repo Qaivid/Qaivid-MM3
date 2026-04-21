@@ -23,24 +23,25 @@
                 </span>
             </div>
             <h1 class="lp-headline">
-                Your lyrics.<br>
-                Your music.<br>
-                <span class="lp-headline-accent">A cinematic video,<br>built frame by frame.</span>
+                Turn Your Lyrics Into<br>
+                <span class="lp-headline-white">Cinematic Music</span><br>
+                <span class="lp-headline-white">Videos</span>
             </h1>
+            <p class="lp-headline-italic">with the Most Advanced AI Director</p>
             <p class="lp-sub">
-                Paste any lyrics, upload your audio — MetaMind transcribes in any language, maps every word to the beat, and produces a director-grade shot list with face-locked character stills. No video editing skills needed.
+                MetaMind transforms songs, scripts, and stories into cinematic masterpieces — powered by a beat-synced AI-director workflow. Face-locked stills, 40+ languages, full storyboard pipeline.
             </p>
             <div class="lp-ctas">
                 {% if current_user %}
                     <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg">
-                        <span class="lp-btn-icon">✦</span> Start a New Project
+                        <span class="lp-btn-icon">✦</span> Start a Project
                     </a>
-                    <a href="{{ url_for('projects') }}" class="btn-ghost btn-ghost-lg">My Projects →</a>
+                    <a href="{{ url_for('projects') }}" class="btn-ghost btn-ghost-lg">My Projects</a>
                 {% else %}
                     <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">
-                        <span class="lp-btn-icon">✦</span> Start Creating Free
+                        <span class="lp-btn-icon">✦</span> Start a Project
                     </a>
-                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">See pricing →</a>
+                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">My Projects</a>
                 {% endif %}
             </div>
             <div class="lp-trust">
@@ -49,64 +50,55 @@
                 <div class="lp-trust-item"><span class="lp-trust-icon">⚡</span><span>Beat-synced</span></div>
                 <div class="lp-trust-item"><span class="lp-trust-icon">🔒</span><span>Face-locked stills</span></div>
             </div>
-            <p class="lp-plans-note">Plans from $14.99/month — no film crew required</p>
         </div>
 
-        {# Right — mock storyboard card #}
+        {# Right — cinematic hero image #}
         <div class="lp-hero-visual">
-            <div class="lp-hero-visual-glow"></div>
-            <div class="lp-mock-scene-stack">
-                <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-2"></div>
-                <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-1"></div>
-                <div class="lp-mock-card lp-mock-card-front">
-                    <div class="lp-mock-card-header">
-                        <div class="lp-mock-shot-num">Shot 03</div>
-                        <div class="lp-mock-time">
-                            <span class="lp-mono">0:32</span>
-                            <span class="lp-mono-muted">—</span>
-                            <span class="lp-mono">0:38</span>
-                        </div>
-                        <div class="lp-mock-badge lp-mock-badge-shot">CLOSE-UP</div>
-                    </div>
-                    <div class="lp-mock-still">
-                        <div class="lp-mock-still-inner">
-                            <div class="lp-mock-gradient-bg"></div>
-                            <div class="lp-mock-face-indicator">
-                                <div class="lp-mock-face-ring"></div>
-                                <div class="lp-mock-face-dot"></div>
+            <div class="lp-hero-img-wrap">
+                <div class="lp-hero-img-glow"></div>
+                <img
+                    src="{{ url_for('static', filename='images/hero-cinematic.png') }}"
+                    alt="Qaivid MetaMind — AI cinematic music video production"
+                    class="lp-hero-img"
+                    onerror="this.style.display='none'; document.getElementById('lp-hero-fallback').style.display='block';"
+                />
+                {# Fallback storyboard card if image fails #}
+                <div id="lp-hero-fallback" style="display:none;">
+                    <div class="lp-mock-scene-stack">
+                        <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-2"></div>
+                        <div class="lp-mock-card lp-mock-card-back lp-mock-card-back-1"></div>
+                        <div class="lp-mock-card lp-mock-card-front">
+                            <div class="lp-mock-card-header">
+                                <div class="lp-mock-shot-num">Shot 03</div>
+                                <div class="lp-mock-time">
+                                    <span class="lp-mono">0:32</span>
+                                    <span class="lp-mono-muted">—</span>
+                                    <span class="lp-mono">0:38</span>
+                                </div>
+                                <div class="lp-mock-badge lp-mock-badge-shot">CLOSE-UP</div>
                             </div>
+                            <div class="lp-mock-still">
+                                <div class="lp-mock-still-inner">
+                                    <div class="lp-mock-gradient-bg"></div>
+                                    <div class="lp-mock-face-indicator">
+                                        <div class="lp-mock-face-ring"></div>
+                                        <div class="lp-mock-face-dot"></div>
+                                    </div>
+                                </div>
+                                <div class="lp-mock-still-label">
+                                    <span class="lp-mock-badge lp-mock-badge-ok">✓ STILL GENERATED</span>
+                                </div>
+                            </div>
+                            <div class="lp-mock-lyric">ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ</div>
                         </div>
-                        <div class="lp-mock-still-label">
-                            <span class="lp-mock-badge lp-mock-badge-ok">✓ STILL GENERATED</span>
-                        </div>
-                    </div>
-                    <div class="lp-mock-lyric">ਮੈਨੂੰ ਮਾਰ ਮੁਕਾਇਆ ਤੂੰ</div>
-                    <div class="lp-mock-meta">
-                        <div class="lp-mock-meta-row">
-                            <span class="lp-mock-meta-label">FRAME</span>
-                            <span>ECU on tear-streaked cheek, catch-light visible</span>
-                        </div>
-                        <div class="lp-mock-meta-row">
-                            <span class="lp-mock-meta-label">MOTION</span>
-                            <span>Camera holds, shallow DOF push in</span>
-                        </div>
-                        <div class="lp-mock-meta-row">
-                            <span class="lp-mock-meta-label">MOOD</span>
-                            <span>Heartbreak · Longing · Release</span>
-                        </div>
-                    </div>
-                    <div class="lp-mock-tags">
-                        <span class="lp-mock-tag lp-mock-tag-violet">Verse 2</span>
-                        <span class="lp-mock-tag lp-mock-tag-pink">Emotional peak</span>
-                        <span class="lp-mock-tag lp-mock-tag-cyan">Punjabi</span>
                     </div>
                 </div>
-            </div>
-            {# Badge pills over visual #}
-            <div class="lp-hero-visual-badges">
-                <span class="lp-vbadge">AI Storyboard</span>
-                <span class="lp-vbadge">Beat-Sync</span>
-                <span class="lp-vbadge">Face-Lock</span>
+                {# Overlay badges #}
+                <div class="lp-hero-img-badges">
+                    <span class="lp-vbadge">AI Storyboard</span>
+                    <span class="lp-vbadge">Beat-Sync</span>
+                    <span class="lp-vbadge">Face-Lock</span>
+                </div>
             </div>
         </div>
     </div>
