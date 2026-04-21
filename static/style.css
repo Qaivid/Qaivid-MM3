@@ -209,15 +209,25 @@ h1, h2, h3, .brand, .display {
     width: 28px;
     height: 28px;
     border-radius: 8px;
+    flex-shrink: 0;
     background: conic-gradient(from 180deg, var(--lime), var(--cyan), var(--violet), var(--pink), var(--lime));
     box-shadow: 0 0 24px rgba(212, 255, 58, 0.35);
 }
-.brand span {
+/* When a custom logo image is present, hide the decorative gradient square */
+.brand--has-logo::before {
+    display: none;
+}
+.brand span,
+.brand-sub {
     background: linear-gradient(135deg, var(--lime), var(--cyan));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
+}
+.brand-name {
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
 }
 
 .topbar nav { display: flex; gap: 6px; align-items: center; }

@@ -25,12 +25,13 @@
             <div class="topbar-fade-b"></div>
         </div>
         <div class="topbar-inner">
-            <a class="brand" href="{{ url_for('index') }}">
+            <a class="brand{% if sc.site_logo_url %} brand--has-logo{% endif %}" href="{{ url_for('index') }}">
                 {%- if sc.site_logo_url -%}
-                <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }} logo"
-                     style="height:{{ sc.site_logo_size }}px;width:auto;max-width:200px;object-fit:contain;vertical-align:middle;margin-right:8px;">
+                <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
+                     style="height:{{ sc.site_logo_size }}px;width:auto;max-width:220px;object-fit:contain;display:block;">
+                {%- else -%}
+                <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind 3.1</span>
                 {%- endif -%}
-                {{ sc.site_name }}<span>MetaMind 3.1</span>
             </a>
             <div class="topbar-tagline">{% block topbar_tagline %}{% endblock %}</div>
         </div>
@@ -87,12 +88,13 @@
     <footer class="site-footer">
         <div class="footer-inner">
             <div class="footer-brand">
-                <a class="brand footer-brand-link" href="{{ url_for('index') }}">
+                <a class="brand footer-brand-link{% if sc.site_logo_url %} brand--has-logo{% endif %}" href="{{ url_for('index') }}">
                     {%- if sc.site_logo_url -%}
-                    <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }} logo"
-                         style="height:{{ sc.site_logo_size }}px;width:auto;max-width:200px;object-fit:contain;vertical-align:middle;margin-right:6px;">
+                    <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
+                         style="height:{{ sc.site_logo_size }}px;width:auto;max-width:220px;object-fit:contain;display:block;">
+                    {%- else -%}
+                    <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind</span>
                     {%- endif -%}
-                    {{ sc.site_name }}<span>MetaMind</span>
                 </a>
                 <p class="footer-tagline">{{ sc.site_footer_tagline | replace('\n', '<br>') | safe }}</p>
             </div>
