@@ -111,7 +111,12 @@ app.register_blueprint(billing_bp)
 # Exempt the Stripe webhook from CSRF — we verify via Stripe-Signature header instead
 csrf.exempt(app.view_functions["billing.webhook"])
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. In Railway: go to your web service → Variables → "
+        "add DATABASE_URL = ${{Postgres.DATABASE_URL}} to link your database."
+    )
 
 ensure_schema()
 bootstrap_admin()
