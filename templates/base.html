@@ -13,71 +13,14 @@
 <body class="{% if current_user and current_user.is_admin %}is-admin {% endif %}{% block body_class %}{% endblock %}">
     <header class="topbar">
         <div class="topbar-bg">
-            <!-- ambient glows -->
-            <div class="topbar-glow topbar-glow-l"></div>
-            <div class="topbar-glow topbar-glow-r"></div>
-            <!-- film strip layer -->
-            <div class="topbar-reel">
-                <div class="topbar-sprockets topbar-sprockets-t">{% for i in range(26) %}<div class="topbar-sprocket"></div>{% endfor %}</div>
-                <div class="topbar-scenes">
-                    {% set scenes = [
-                        {
-                            'label': 'Music Video',
-                            'pos': '10% 60%', 'hue': '-20deg', 'sat': '2.0',
-                            'grad': 'linear-gradient(160deg,rgba(212,255,58,0.55) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(180,255,0,0.22) 0%,transparent 60%)',
-                            'label_color': '#d4ff3a'
-                        },
-                        {
-                            'label': 'Feature Film',
-                            'pos': '30% 40%', 'hue': '30deg', 'sat': '1.6',
-                            'grad': 'linear-gradient(160deg,rgba(255,160,40,0.50) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(200,90,0,0.20) 0%,transparent 60%)',
-                            'label_color': '#ffb040'
-                        },
-                        {
-                            'label': 'Documentary',
-                            'pos': '50% 20%', 'hue': '200deg', 'sat': '0.6',
-                            'grad': 'linear-gradient(160deg,rgba(56,225,255,0.40) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(20,120,160,0.22) 0%,transparent 60%)',
-                            'label_color': '#38e1ff'
-                        },
-                        {
-                            'label': 'Lyric Video',
-                            'pos': '70% 70%', 'hue': '-40deg', 'sat': '1.8',
-                            'grad': 'linear-gradient(160deg,rgba(212,255,58,0.45) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(100,200,0,0.18) 0%,transparent 60%)',
-                            'label_color': '#d4ff3a'
-                        },
-                        {
-                            'label': 'Short Film',
-                            'pos': '85% 30%', 'hue': '180deg', 'sat': '1.4',
-                            'grad': 'linear-gradient(160deg,rgba(100,80,255,0.50) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(60,40,200,0.22) 0%,transparent 60%)',
-                            'label_color': '#a090ff'
-                        },
-                        {
-                            'label': 'Poem / Script',
-                            'pos': '95% 55%', 'hue': '160deg', 'sat': '1.7',
-                            'grad': 'linear-gradient(160deg,rgba(56,225,255,0.45) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(0,160,200,0.20) 0%,transparent 60%)',
-                            'label_color': '#38e1ff'
-                        },
-                        {
-                            'label': 'Story',
-                            'pos': '60% 85%', 'hue': '-10deg', 'sat': '1.5',
-                            'grad': 'linear-gradient(160deg,rgba(255,80,140,0.45) 0%,rgba(0,0,0,0) 55%),linear-gradient(0deg,rgba(200,30,100,0.20) 0%,transparent 60%)',
-                            'label_color': '#ff80b0'
-                        },
-                    ] %}
-                    {% for s in scenes %}
-                    <div class="topbar-scene">
-                        <div class="topbar-scene-img" style="background-position:{{ s.pos }};filter:saturate({{ s.sat }}) brightness(0.80) hue-rotate({{ s.hue }})"></div>
-                        <div class="topbar-scene-tint" style="background:{{ s.grad }}"></div>
-                        <div class="topbar-scene-label" style="color:{{ s.label_color }}">{{ s.label }}</div>
-                    </div>
-                    {% endfor %}
-                </div>
-                <div class="topbar-sprockets topbar-sprockets-b">{% for i in range(26) %}<div class="topbar-sprocket"></div>{% endfor %}</div>
-            </div>
-            <!-- colour overlays per frame zone -->
+            <!-- real film strip image -->
+            <div class="topbar-film-img"></div>
+            <!-- brand colour washes over the strip -->
             <div class="topbar-tint-l"></div>
             <div class="topbar-tint-r"></div>
-            <!-- bottom fade to blend into page -->
+            <!-- darken left zone so logo stays legible -->
+            <div class="topbar-logo-shield"></div>
+            <!-- bottom gradient melts header into page -->
             <div class="topbar-fade-b"></div>
         </div>
         <div class="topbar-inner">

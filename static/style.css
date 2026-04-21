@@ -126,144 +126,54 @@ h1, h2, h3, .brand, .display {
     background: radial-gradient(ellipse, rgba(56,225,255,0.14) 0%, transparent 70%);
 }
 
-/* the full-width film reel structure */
-.landing-page .topbar-reel {
+/* ── film strip image fills the full header ── */
+.landing-page .topbar-film-img {
     position: absolute;
     inset: 0;
-    display: flex;
-    flex-direction: column;
-    background: #0e0d0b; /* film base — slightly warm dark */
-}
-
-/* sprocket hole rows */
-.landing-page .topbar-sprockets {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    width: 100%;
-    overflow: hidden;
-    padding: 0;
-    box-sizing: border-box;
-    background: #0e0d0b;
-}
-.landing-page .topbar-sprockets-t {
-    height: 26px;
-    padding-top: 5px;
-    padding-bottom: 4px;
-    border-bottom: 1.5px solid rgba(255,255,255,0.14);
-}
-.landing-page .topbar-sprockets-b {
-    height: 26px;
-    padding-top: 4px;
-    padding-bottom: 5px;
-    border-top: 1.5px solid rgba(255,255,255,0.14);
-}
-/* fixed-width holes so spacing is perfectly uniform (continuous reel) */
-.landing-page .topbar-sprocket {
-    width: 20px;
-    flex-shrink: 0;
-    height: 12px;
-    border-radius: 2px;
-    background: #06060a; /* darker than page — reads as punched hole */
-    margin: 0 6px;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.07),
-        0 1px 2px rgba(0,0,0,0.6);
-}
-
-/* scene frames strip */
-.landing-page .topbar-scenes {
-    flex: 1;
-    display: flex;
-    gap: 0;
-    padding: 0;
-    overflow: hidden;
-    background: #0e0d0b;
-}
-.landing-page .topbar-scene {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    border-left: 2px solid #0e0d0b;
-    border-right: 2px solid #0e0d0b;
-}
-.landing-page .topbar-scene::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border: 1px solid rgba(255,255,255,0.12);
-    pointer-events: none;
-    z-index: 2;
-}
-.landing-page .topbar-scene-img {
-    position: absolute;
-    inset: 0;
-    background-image: url('/static/images/hero-cinematic.png');
-    background-size: 750%;
+    background-image: url('/static/images/film-strip-header.png');
+    background-size: cover;
+    background-position: center center;
     background-repeat: no-repeat;
-    opacity: 0.3;
-    filter: saturate(1.2) brightness(0.9);
-}
-/* per-scene colour tint overlay — driven by inline style from template */
-.landing-page .topbar-scene-tint {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    mix-blend-mode: screen;
-    opacity: 0.7;
-}
-/* genre label at the bottom of each frame */
-.landing-page .topbar-scene-label {
-    position: absolute;
-    bottom: 5px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 7.5px;
-    font-weight: 700;
-    letter-spacing: 0.10em;
-    text-transform: uppercase;
-    z-index: 3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 0 4px;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    opacity: 0.72;
+    filter: brightness(0.8) saturate(1.1);
 }
 
-/* left/right colour tint overlays */
+/* brand-colour washes sit on top of the strip image */
 .landing-page .topbar-tint-l {
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 220px;
-    background: linear-gradient(90deg, rgba(212,255,58,0.07) 0%, transparent 100%);
+    left: 0; top: 0; bottom: 0;
+    width: 340px;
+    background: linear-gradient(90deg, rgba(212,255,58,0.12) 0%, transparent 100%);
     pointer-events: none;
     z-index: 2;
 }
 .landing-page .topbar-tint-r {
     position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 220px;
-    background: linear-gradient(270deg, rgba(56,225,255,0.07) 0%, transparent 100%);
+    right: 0; top: 0; bottom: 0;
+    width: 340px;
+    background: linear-gradient(270deg, rgba(56,225,255,0.10) 0%, transparent 100%);
     pointer-events: none;
     z-index: 2;
 }
 
-/* bottom gradient fade — merges header into page */
-.landing-page .topbar-fade-b {
+/* darkened zone behind the logo so text stays legible */
+.landing-page .topbar-logo-shield {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 48px;
-    background: linear-gradient(0deg, #0a0a0f 0%, transparent 100%);
+    left: 0; top: 0; bottom: 0;
+    width: 480px;
+    background: linear-gradient(90deg, rgba(10,10,15,0.72) 0%, rgba(10,10,15,0.40) 60%, transparent 100%);
     pointer-events: none;
     z-index: 3;
+}
+
+/* bottom gradient — header dissolves into page */
+.landing-page .topbar-fade-b {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    background: linear-gradient(0deg, #0a0a0f 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 4;
 }
 
 /* logo + tagline overlay */
