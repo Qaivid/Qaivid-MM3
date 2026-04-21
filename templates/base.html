@@ -33,6 +33,16 @@
         </nav>
     </header>
 
+    {% if is_impersonating %}
+    <div class="impersonation-bar">
+        <span>⚡ Impersonating <strong>{{ current_user.email }}</strong> — actions are as this user</span>
+        <form method="post" action="{{ url_for('admin_impersonate_exit') }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="impersonation-exit">Exit impersonation</button>
+        </form>
+    </div>
+    {% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <div class="flash-stack">

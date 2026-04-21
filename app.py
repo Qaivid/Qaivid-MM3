@@ -63,6 +63,7 @@ from auth import (
     login_user,
     logout_user,
     update_user_password,
+    update_user_plan,
     verify_password,
 )
 import r2_storage
@@ -205,7 +206,11 @@ _recover_stalled_jobs()
 
 @app.context_processor
 def _inject_user():
-    return {"current_user": current_user()}
+    from flask import session as _sess
+    return {
+        "current_user": current_user(),
+        "is_impersonating": bool(_sess.get("original_admin_id")),
+    }
 
 
 def db():
@@ -2464,10 +2469,11 @@ def project_export(project_id: str):
 @admin_required
 def admin():
     with db() as conn, conn.cursor() as cur:
+        # Users with project counts
         cur.execute(
             """
             SELECT u.id, u.email, u.is_admin, u.created_at,
-                   u.plan, u.plan_expires_at,
+                   u.plan, u.plan_expires_at, u.stripe_customer_id,
                    COUNT(p.id) AS project_count
             FROM users u
             LEFT JOIN projects p ON p.user_id = u.id
@@ -2476,57 +2482,166 @@ def admin():
             """
         )
         users = cur.fetchall()
+
+        # Projects with owner
         cur.execute(
             """
-            SELECT p.id, p.name, p.genre, p.status, p.created_at,
-                   u.email AS owner_email
+            SELECT p.id, p.name, p.genre, p.status, p.stage,
+                   p.created_at, p.updated_at, u.email AS owner_email,
+                   p.error
             FROM projects p
             JOIN users u ON u.id = p.user_id
             ORDER BY p.created_at DESC
-            LIMIT 200
+            LIMIT 500
             """
         )
         projects = cur.fetchall()
-        cur.execute("SELECT COUNT(*) AS c FROM projects")
-        total_projects = cur.fetchone()["c"]
-        cur.execute(
-            "SELECT status, COUNT(*) AS c FROM projects GROUP BY status"
-        )
-        status_counts = {r["status"]: r["c"] for r in cur.fetchall()}
+
+        # Aggregate user stats
         cur.execute(
             """
-            SELECT p.id, p.name, p.error, p.created_at, u.email AS owner_email
-            FROM projects p JOIN users u ON u.id = p.user_id
-            WHERE p.status = 'failed'
-            ORDER BY p.created_at DESC LIMIT 25
+            SELECT
+                COUNT(*) AS total_users,
+                COUNT(CASE WHEN plan = 'pro' THEN 1 END) AS pro_count,
+                COUNT(CASE WHEN plan = 'studio' THEN 1 END) AS studio_count,
+                COUNT(CASE WHEN is_admin THEN 1 END) AS admin_count,
+                COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) AS signups_7d,
+                COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) AS signups_30d
+            FROM users
             """
         )
-        failed = cur.fetchall()
+        user_stats = cur.fetchone()
+
+        # Aggregate project stats
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS total_projects,
+                COUNT(CASE WHEN status = 'complete' THEN 1 END) AS complete_count,
+                COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed_count,
+                COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) AS projects_7d
+            FROM projects
+            """
+        )
+        proj_stats = cur.fetchone()
+
         cur.execute("SELECT COUNT(*) AS c FROM shot_assets")
         total_shots = cur.fetchone()["c"]
         cur.execute("SELECT COUNT(*) AS c FROM video_assets")
         total_videos = cur.fetchone()["c"]
+
+        # Status counts
+        cur.execute("SELECT status, COUNT(*) AS c FROM projects GROUP BY status")
+        status_counts = {r["status"]: r["c"] for r in cur.fetchall()}
+
+        # Recent activity (last 15 signups + last 15 projects)
+        cur.execute(
+            """
+            SELECT email, created_at FROM users
+            ORDER BY created_at DESC LIMIT 15
+            """
+        )
+        recent_signups = cur.fetchall()
+        cur.execute(
+            """
+            SELECT p.id, p.name, p.status, p.created_at, u.email AS owner_email
+            FROM projects p JOIN users u ON u.id = p.user_id
+            ORDER BY p.created_at DESC LIMIT 15
+            """
+        )
+        recent_projects = cur.fetchall()
+
     me = current_user()
+    mrr = (user_stats["pro_count"] * 29) + (user_stats["studio_count"] * 99)
+    completion_rate = (
+        round(proj_stats["complete_count"] / proj_stats["total_projects"] * 100)
+        if proj_stats["total_projects"] > 0 else 0
+    )
     try:
         from system_config import get_image_modes
         image_modes = get_image_modes()
     except Exception:
         image_modes = {"ref": "quality", "shot": "quality"}
+    stripe_ok = bool(os.getenv("STRIPE_SECRET_KEY"))
+    stripe_webhook_ok = bool(os.getenv("STRIPE_WEBHOOK_SECRET"))
     return render_template(
         "admin.html",
         users=users,
         projects=projects,
-        failed=failed,
-        total_projects=total_projects,
+        user_stats=user_stats,
+        proj_stats=proj_stats,
         total_shots=total_shots,
         total_videos=total_videos,
         status_counts=status_counts,
+        recent_signups=recent_signups,
+        recent_projects=recent_projects,
+        mrr=mrr,
+        completion_rate=completion_rate,
         r2_ok=r2_storage.r2_available(),
         api_ok=bool(_api_key()),
         fal_ok=_fal_set(),
+        stripe_ok=stripe_ok,
+        stripe_webhook_ok=stripe_webhook_ok,
         current_user_id=me["id"],
         image_modes=image_modes,
     )
+
+
+@app.route("/admin/user/<int:user_id>/set_plan", methods=["POST"])
+@admin_required
+def admin_set_user_plan(user_id: int):
+    plan = request.form.get("plan", "free")
+    if plan not in ("free", "pro", "studio"):
+        flash("Invalid plan value.", "error")
+        return redirect(url_for("admin"))
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+    if not row:
+        flash("User not found.", "error")
+        return redirect(url_for("admin"))
+    update_user_plan(user_id, plan)
+    flash(f"{row['email']} plan set to {plan}.", "success")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/user/<int:user_id>/impersonate", methods=["POST"])
+@admin_required
+def admin_impersonate(user_id: int):
+    from flask import session as _sess
+    me = current_user()
+    if user_id == me["id"]:
+        flash("You can't impersonate yourself.", "error")
+        return redirect(url_for("admin"))
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
+    if not target:
+        flash("User not found.", "error")
+        return redirect(url_for("admin"))
+    _sess["original_admin_id"] = me["id"]
+    _sess["user_id"] = user_id
+    # Invalidate cached user on g
+    from flask import g as _g
+    _g.pop("current_user", None)
+    flash(f"Now impersonating {target['email']}. Use Exit Impersonation to return.", "info")
+    return redirect(url_for("index"))
+
+
+@app.route("/admin/impersonate/exit", methods=["POST"])
+@login_required
+def admin_impersonate_exit():
+    from flask import session as _sess
+    original_id = _sess.get("original_admin_id")
+    if not original_id:
+        flash("You are not impersonating anyone.", "info")
+        return redirect(url_for("index"))
+    _sess["user_id"] = original_id
+    _sess.pop("original_admin_id", None)
+    from flask import g as _g
+    _g.pop("current_user", None)
+    flash("Returned to admin account.", "success")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/user/<int:user_id>/toggle_admin", methods=["POST"])
