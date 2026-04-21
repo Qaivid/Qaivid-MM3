@@ -2,7 +2,7 @@
 {% block title %}Qaivid MetaMind — AI Cinematic Music Video Studio{% endblock %}
 {% block main_class %}landing-main{% endblock %}
 {% block body_class %}landing-page{% endblock %}
-{% block topbar_tagline %}Lyrics · Scripts · Poems · Stories · End-to-End Production{% endblock %}
+{% block topbar_tagline %}{{ sc.site_header_tagline }}{% endblock %}
 
 {% block content %}
 
@@ -21,35 +21,33 @@
             <div class="lp-eyebrow-wrap">
                 <span class="lp-badge">
                     <span class="lp-badge-dot"></span>
-                    AI Cinema Studio &nbsp;·&nbsp; MetaMind 3.1
+                    {{ sc.site_hero_eyebrow }}
                 </span>
             </div>
             <h1 class="lp-headline">
-                Qaivid<br>
-                <span class="lp-headline-white">Cinema Studio</span>
+                {{ sc.site_hero_line1 }}<br>
+                <span class="lp-headline-white">{{ sc.site_hero_line2 }}</span>
             </h1>
-            <p class="lp-headline-italic">Powered by MetaMind 3.1 — the Most Advanced AI Director</p>
-            <p class="lp-sub">
-                From a lyric line to a full film script — MetaMind generates creative briefs, face-locked character stills, beat-synced storyboards, and cinematic exports. In 40+ languages. No editing skills required.
-            </p>
+            <p class="lp-headline-italic">{{ sc.site_hero_tagline }}</p>
+            <p class="lp-sub">{{ sc.site_hero_subtitle }}</p>
             <div class="lp-ctas">
                 {% if current_user %}
                     <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg">
-                        <span class="lp-btn-icon">✦</span> Start a Project
+                        <span class="lp-btn-icon">✦</span> {{ sc.site_hero_cta_primary }}
                     </a>
-                    <a href="{{ url_for('projects') }}" class="btn-ghost btn-ghost-lg">My Projects</a>
+                    <a href="{{ url_for('projects') }}" class="btn-ghost btn-ghost-lg">{{ sc.site_hero_cta_secondary }}</a>
                 {% else %}
                     <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg">
-                        <span class="lp-btn-icon">✦</span> Start a Project
+                        <span class="lp-btn-icon">✦</span> {{ sc.site_hero_cta_primary }}
                     </a>
-                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">My Projects</a>
+                    <a href="{{ url_for('billing.pricing') }}" class="btn-ghost btn-ghost-lg">{{ sc.site_hero_cta_secondary }}</a>
                 {% endif %}
             </div>
             <div class="lp-trust">
-                <div class="lp-trust-item"><span class="lp-trust-icon">🌍</span><span>40+ languages</span></div>
-                <div class="lp-trust-item"><span class="lp-trust-icon">🎬</span><span>8 shot types</span></div>
-                <div class="lp-trust-item"><span class="lp-trust-icon">⚡</span><span>Beat-synced</span></div>
-                <div class="lp-trust-item"><span class="lp-trust-icon">🔒</span><span>Face-locked stills</span></div>
+                <div class="lp-trust-item">{{ sc.site_trust_1 }}</div>
+                <div class="lp-trust-item">{{ sc.site_trust_2 }}</div>
+                <div class="lp-trust-item">{{ sc.site_trust_3 }}</div>
+                <div class="lp-trust-item">{{ sc.site_trust_4 }}</div>
             </div>
         </div>
 
@@ -138,7 +136,7 @@
 <section class="lp-section lp-how" id="how-it-works">
     <div class="lp-section-inner">
         <div class="lp-section-eyebrow">How it works</div>
-        <h2 class="lp-section-title">From first word to finished film<br><span class="lp-title-accent">— end to end</span></h2>
+        <h2 class="lp-section-title">{{ sc.site_howitworks_title }}<br><span class="lp-title-accent">{{ sc.site_howitworks_sub }}</span></h2>
         <p class="lp-section-sub">MetaMind 3.1 handles every stage of production. Just bring your audio or script — no editing skills, no crew required.</p>
 
         <div class="lp-how-grid">
@@ -192,7 +190,7 @@
         <div class="lp-radial lp-radial-feat-left"></div>
         <div class="lp-radial lp-radial-feat-right"></div>
         <div class="lp-section-eyebrow">What makes it different</div>
-        <h2 class="lp-section-title">Everything included —<br><span class="lp-title-accent">nothing left to chance</span></h2>
+        <h2 class="lp-section-title">{{ sc.site_features_title }}<br><span class="lp-title-accent">{{ sc.site_features_sub }}</span></h2>
         <p class="lp-section-sub">MetaMind handles every creative and technical decision so you can focus on your vision, not the pipeline.</p>
 
         <div class="lp-feature-grid-3">
@@ -298,7 +296,7 @@
 <section class="lp-section lp-pricing" id="pricing">
     <div class="lp-section-inner">
         <div class="lp-section-eyebrow">Simple pricing</div>
-        <h2 class="lp-section-title">One plan for every<br><span class="lp-title-accent">level of ambition</span></h2>
+        <h2 class="lp-section-title">{{ sc.site_pricing_title }}<br><span class="lp-title-accent">{{ sc.site_pricing_sub }}</span></h2>
         <p class="lp-section-sub">Monthly or yearly. Cancel any time. <a href="{{ url_for('billing.pricing') }}" class="lp-pricing-full-link">See full plan details →</a></p>
 
         <div class="lp-credit-pills">

@@ -129,3 +129,52 @@ def get_image_modes() -> dict[str, str]:
 def invalidate_cache() -> None:
     with _cache_lock:
         _cache.clear()
+
+
+# ── Generic raw helpers (no normalization) ────────────────────────────────
+
+def get_raw(key: str, default: str = "") -> str:
+    """Read any key without normalization."""
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached and (now - cached[0]) < _CACHE_TTL_SEC:
+            return cached[1]
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute("SELECT value FROM system_config WHERE key = %s", (key,))
+            row = cur.fetchone()
+            value = row["value"] if row else default
+    except Exception as exc:
+        logger.warning("system_config get_raw failed for %s: %s", key, exc)
+        value = default
+    with _cache_lock:
+        _cache[key] = (now, value)
+    return value
+
+
+def set_raw(key: str, value: str) -> None:
+    """Persist any setting without normalization."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO system_config (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE
+              SET value = EXCLUDED.value, updated_at = NOW()
+            """,
+            (key, value),
+        )
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
+
+
+def get_all_site_settings() -> dict:
+    """Return all site_* keys as a plain dict."""
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute("SELECT key, value FROM system_config WHERE key LIKE 'site_%'")
+            return {r["key"]: r["value"] for r in cur.fetchall()}
+    except Exception as exc:
+        logger.warning("get_all_site_settings failed: %s", exc)
+        return {}

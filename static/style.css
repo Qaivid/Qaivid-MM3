@@ -134,7 +134,7 @@ h1, h2, h3, .brand, .display {
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
-    opacity: 0.40;
+    opacity: var(--film-opacity, 0.40);
     filter: brightness(0.95);
 }
 
@@ -4608,3 +4608,134 @@ main:has(> .ws-grid) {
     .adm-kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .adm-tabs { overflow-x: auto; }
 }
+
+/* ── Announcement Banner ──────────────────────────────────────────── */
+.site-announcement-banner {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 9px 20px;
+    line-height: 1.4;
+    z-index: 200;
+    position: relative;
+}
+
+/* ── Admin: Site CMS tab ──────────────────────────────────────────── */
+.cms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+.cms-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px;
+}
+.cms-card-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #d4ff3a;
+    margin-bottom: 14px;
+}
+.cms-field {
+    margin-bottom: 12px;
+}
+.cms-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.cms-field input[type="text"],
+.cms-field textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 7px;
+    color: #fff;
+    font-size: 13px;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.15s;
+}
+.cms-field input[type="text"]:focus,
+.cms-field textarea:focus {
+    outline: none;
+    border-color: #d4ff3a;
+}
+.cms-field input[type="range"] {
+    width: 100%;
+    accent-color: #d4ff3a;
+}
+.cms-field .cms-range-val {
+    font-size: 12px;
+    color: #d4ff3a;
+    font-weight: 700;
+    margin-left: 8px;
+}
+.cms-field .cms-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cms-toggle {
+    appearance: none;
+    width: 38px; height: 20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+.cms-toggle:checked { background: #d4ff3a; }
+.cms-toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #0a0a0f;
+    transition: left 0.2s;
+}
+.cms-toggle:checked::after { left: 21px; }
+.cms-toggle-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+}
+.cms-save-row {
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.cms-save-btn {
+    background: #d4ff3a;
+    color: #0a0a0f;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 22px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.cms-save-btn:hover { opacity: 0.85; }
+.cms-save-btn:disabled { opacity: 0.5; cursor: default; }
+.cms-toast {
+    font-size: 12px;
+    font-weight: 600;
+    color: #d4ff3a;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.cms-toast.show { opacity: 1; }

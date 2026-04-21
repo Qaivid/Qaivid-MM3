@@ -213,6 +213,51 @@ def _inject_user():
     }
 
 
+_SITE_DEFAULTS: dict[str, str] = {
+    "site_header_tagline":    "Lyrics · Scripts · Poems · Stories · End-to-End Production",
+    "site_header_film_opacity": "0.40",
+    "site_hero_eyebrow":      "AI Cinema Studio · MetaMind 3.1",
+    "site_hero_line1":        "Qaivid",
+    "site_hero_line2":        "Cinema Studio",
+    "site_hero_tagline":      "Powered by MetaMind 3.1 — the Most Advanced AI Director",
+    "site_hero_subtitle":     (
+        "From a lyric line to a full film script — MetaMind generates creative briefs, "
+        "face-locked character stills, beat-synced storyboards, and cinematic exports. "
+        "In 40+ languages. No editing skills required."
+    ),
+    "site_hero_cta_primary":   "Start a Project",
+    "site_hero_cta_secondary": "My Projects",
+    "site_trust_1": "🌐  40+ languages",
+    "site_trust_2": "🎬  8 shot types",
+    "site_trust_3": "🎵  Beat-synced",
+    "site_trust_4": "🔒  Face-locked stills",
+    "site_howitworks_title": "From first word to finished film",
+    "site_howitworks_sub":   "— end to end",
+    "site_features_title":   "Everything included —",
+    "site_features_sub":     "nothing left to chance",
+    "site_pricing_title":    "One plan for every",
+    "site_pricing_sub":      "level of ambition",
+    "site_footer_tagline":   (
+        "Turn any lyrics, poem, or script into a\n"
+        "beat-synced cinematic music video — in minutes."
+    ),
+    "site_banner_enabled": "false",
+    "site_banner_text":    "",
+    "site_banner_color":   "#d4ff3a",
+}
+
+
+@app.context_processor
+def _inject_site_settings():
+    try:
+        from system_config import get_all_site_settings
+        saved = get_all_site_settings()
+    except Exception:
+        saved = {}
+    merged = {**_SITE_DEFAULTS, **saved}
+    return {"sc": merged}
+
+
 def db():
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
@@ -2827,6 +2872,34 @@ def healthz():
         "r2_set": r2_storage.r2_available(),
         "db_ok": db_ok,
     }
+
+
+_SITE_ALLOWED_KEYS = frozenset([
+    "site_header_tagline", "site_header_film_opacity",
+    "site_hero_eyebrow", "site_hero_line1", "site_hero_line2",
+    "site_hero_tagline", "site_hero_subtitle",
+    "site_hero_cta_primary", "site_hero_cta_secondary",
+    "site_trust_1", "site_trust_2", "site_trust_3", "site_trust_4",
+    "site_howitworks_title", "site_howitworks_sub",
+    "site_features_title", "site_features_sub",
+    "site_pricing_title", "site_pricing_sub",
+    "site_footer_tagline",
+    "site_banner_enabled", "site_banner_text", "site_banner_color",
+])
+
+
+@app.route("/admin/site-settings", methods=["POST"])
+@admin_required
+def admin_site_settings_save():
+    from system_config import set_raw, invalidate_cache
+    data = request.get_json(force=True) or {}
+    saved = []
+    for k, v in data.items():
+        if k in _SITE_ALLOWED_KEYS:
+            set_raw(k, str(v))
+            saved.append(k)
+    invalidate_cache()
+    return jsonify({"ok": True, "saved": saved})
 
 
 if __name__ == "__main__":

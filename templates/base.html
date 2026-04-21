@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{% block title %}Qaivid MetaMind 3.0 — AI music video studio{% endblock %}</title>
+    <title>{% block title %}Qaivid MetaMind 3.1 — AI music video studio{% endblock %}</title>
+    <style>:root { --film-opacity: {{ sc.site_header_film_opacity }}; }</style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -47,6 +48,12 @@
         </nav>
     </header>
 
+    {% if sc.site_banner_enabled == 'true' and sc.site_banner_text %}
+    <div class="site-announcement-banner" style="background:{{ sc.site_banner_color }};color:#0a0a0f;">
+        {{ sc.site_banner_text }}
+    </div>
+    {% endif %}
+
     {% if is_impersonating %}
     <div class="impersonation-bar">
         <span>⚡ Impersonating <strong>{{ current_user.email }}</strong> — actions are as this user</span>
@@ -75,7 +82,7 @@
         <div class="footer-inner">
             <div class="footer-brand">
                 <a class="brand footer-brand-link" href="{{ url_for('index') }}">Qaivid<span>MetaMind</span></a>
-                <p class="footer-tagline">Turn any lyrics, poem, or script into a<br>beat-synced cinematic music video — in minutes.</p>
+                <p class="footer-tagline">{{ sc.site_footer_tagline | replace('\n', '<br>') | safe }}</p>
             </div>
             <div class="footer-links">
                 <div class="footer-col">

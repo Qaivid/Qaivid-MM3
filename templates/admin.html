@@ -23,6 +23,7 @@
         <button class="adm-tab" data-tab="users">Users <span class="adm-tab-count">{{ user_stats.total_users }}</span></button>
         <button class="adm-tab" data-tab="projects">Projects <span class="adm-tab-count">{{ proj_stats.total_projects }}</span></button>
         <button class="adm-tab" data-tab="system">System</button>
+        <button class="adm-tab" data-tab="site">Site CMS</button>
     </nav>
 
     <!-- ══════════════════════════════════════════════════════
@@ -348,6 +349,157 @@
         </form>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════
+         TAB: SITE CMS
+    ════════════════════════════════════════════════════════ -->
+    <div class="adm-panel" id="tab-site">
+        <div class="adm-section-title">Site Content Management</div>
+        <p style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:20px;">
+            Edit copy, toggle the announcement banner, and tune the film strip opacity — changes go live immediately on the next page load.
+        </p>
+
+        <div class="cms-grid" id="cms-grid">
+
+            <!-- ── HEADER ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Header</div>
+                <div class="cms-field">
+                    <label>Tagline text</label>
+                    <input type="text" id="cms-site_header_tagline" value="{{ sc.site_header_tagline }}">
+                </div>
+                <div class="cms-field">
+                    <label>Film strip opacity
+                        <span class="cms-range-val" id="cms-opacity-val">{{ sc.site_header_film_opacity }}</span>
+                    </label>
+                    <input type="range" id="cms-site_header_film_opacity"
+                        min="0" max="1" step="0.01"
+                        value="{{ sc.site_header_film_opacity }}"
+                        oninput="document.getElementById('cms-opacity-val').textContent=this.value">
+                </div>
+            </div>
+
+            <!-- ── HERO ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Hero — Text</div>
+                <div class="cms-field">
+                    <label>Eyebrow badge</label>
+                    <input type="text" id="cms-site_hero_eyebrow" value="{{ sc.site_hero_eyebrow }}">
+                </div>
+                <div class="cms-field">
+                    <label>Headline line 1 (lime)</label>
+                    <input type="text" id="cms-site_hero_line1" value="{{ sc.site_hero_line1 }}">
+                </div>
+                <div class="cms-field">
+                    <label>Headline line 2 (white)</label>
+                    <input type="text" id="cms-site_hero_line2" value="{{ sc.site_hero_line2 }}">
+                </div>
+                <div class="cms-field">
+                    <label>Italic tagline</label>
+                    <input type="text" id="cms-site_hero_tagline" value="{{ sc.site_hero_tagline }}">
+                </div>
+                <div class="cms-field">
+                    <label>Subtitle paragraph</label>
+                    <textarea id="cms-site_hero_subtitle" rows="3">{{ sc.site_hero_subtitle }}</textarea>
+                </div>
+            </div>
+
+            <!-- ── HERO CTAs ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Hero — CTAs &amp; Trust Bar</div>
+                <div class="cms-field">
+                    <label>Primary CTA button text</label>
+                    <input type="text" id="cms-site_hero_cta_primary" value="{{ sc.site_hero_cta_primary }}">
+                </div>
+                <div class="cms-field">
+                    <label>Secondary CTA button text</label>
+                    <input type="text" id="cms-site_hero_cta_secondary" value="{{ sc.site_hero_cta_secondary }}">
+                </div>
+                <div class="cms-field">
+                    <label>Trust item 1</label>
+                    <input type="text" id="cms-site_trust_1" value="{{ sc.site_trust_1 }}">
+                </div>
+                <div class="cms-field">
+                    <label>Trust item 2</label>
+                    <input type="text" id="cms-site_trust_2" value="{{ sc.site_trust_2 }}">
+                </div>
+                <div class="cms-field">
+                    <label>Trust item 3</label>
+                    <input type="text" id="cms-site_trust_3" value="{{ sc.site_trust_3 }}">
+                </div>
+                <div class="cms-field">
+                    <label>Trust item 4</label>
+                    <input type="text" id="cms-site_trust_4" value="{{ sc.site_trust_4 }}">
+                </div>
+            </div>
+
+            <!-- ── SECTIONS ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Section Titles</div>
+                <div class="cms-field">
+                    <label>How It Works — title</label>
+                    <input type="text" id="cms-site_howitworks_title" value="{{ sc.site_howitworks_title }}">
+                </div>
+                <div class="cms-field">
+                    <label>How It Works — accent line</label>
+                    <input type="text" id="cms-site_howitworks_sub" value="{{ sc.site_howitworks_sub }}">
+                </div>
+                <div class="cms-field">
+                    <label>Features — title</label>
+                    <input type="text" id="cms-site_features_title" value="{{ sc.site_features_title }}">
+                </div>
+                <div class="cms-field">
+                    <label>Features — accent line</label>
+                    <input type="text" id="cms-site_features_sub" value="{{ sc.site_features_sub }}">
+                </div>
+                <div class="cms-field">
+                    <label>Pricing — title</label>
+                    <input type="text" id="cms-site_pricing_title" value="{{ sc.site_pricing_title }}">
+                </div>
+                <div class="cms-field">
+                    <label>Pricing — accent line</label>
+                    <input type="text" id="cms-site_pricing_sub" value="{{ sc.site_pricing_sub }}">
+                </div>
+            </div>
+
+            <!-- ── BANNER ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Announcement Banner</div>
+                <div class="cms-field">
+                    <div class="cms-toggle-row">
+                        <input type="checkbox" class="cms-toggle" id="cms-site_banner_enabled"
+                            {{ 'checked' if sc.site_banner_enabled == 'true' }}>
+                        <span class="cms-toggle-label">Show banner sitewide</span>
+                    </div>
+                </div>
+                <div class="cms-field">
+                    <label>Banner text</label>
+                    <input type="text" id="cms-site_banner_text" value="{{ sc.site_banner_text }}"
+                        placeholder="e.g. 🚀 New: Beat-sync v2 now live — try it free!">
+                </div>
+                <div class="cms-field">
+                    <label>Banner background color</label>
+                    <input type="text" id="cms-site_banner_color" value="{{ sc.site_banner_color }}"
+                        placeholder="#d4ff3a">
+                </div>
+            </div>
+
+            <!-- ── FOOTER ── -->
+            <div class="cms-card">
+                <div class="cms-card-title">Footer</div>
+                <div class="cms-field">
+                    <label>Footer tagline (use \n for line break)</label>
+                    <textarea id="cms-site_footer_tagline" rows="3">{{ sc.site_footer_tagline }}</textarea>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="cms-save-row">
+            <button class="cms-save-btn" id="cms-save-btn" onclick="cmsSaveAll()">Save all changes</button>
+            <span class="cms-toast" id="cms-toast">✓ Saved</span>
+        </div>
+    </div>
+
 </section>
 {% endblock %}
 
@@ -390,5 +542,52 @@ if (savedTab) {
 document.querySelectorAll('.adm-tab').forEach(btn => {
     btn.addEventListener('click', () => sessionStorage.setItem('adminTab', btn.dataset.tab));
 });
+
+// ── Site CMS save ─────────────────────────────────────
+async function cmsSaveAll() {
+    const btn = document.getElementById('cms-save-btn');
+    const toast = document.getElementById('cms-toast');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    const payload = {};
+    document.querySelectorAll('#tab-site [id^="cms-site_"]').forEach(el => {
+        const key = el.id.replace('cms-', '');
+        if (el.type === 'checkbox') {
+            payload[key] = el.checked ? 'true' : 'false';
+        } else {
+            payload[key] = el.value;
+        }
+    });
+
+    try {
+        const res = await fetch('/admin/site-settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            toast.textContent = '✓ Saved ' + data.saved.length + ' settings';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        } else {
+            toast.textContent = '✗ Error saving';
+            toast.style.color = '#ff6b6b';
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); toast.style.color=''; }, 3000);
+        }
+    } catch(e) {
+        toast.textContent = '✗ Network error';
+        toast.style.color = '#ff6b6b';
+        toast.classList.add('show');
+        setTimeout(() => { toast.classList.remove('show'); toast.style.color=''; }, 4000);
+    }
+    btn.disabled = false;
+    btn.textContent = 'Save all changes';
+}
 </script>
 {% endblock %}
