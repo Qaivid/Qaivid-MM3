@@ -297,8 +297,8 @@
 <section class="lp-section lp-pricing" id="pricing">
     <div class="lp-section-inner">
         <div class="lp-section-eyebrow">Simple pricing</div>
-        <h2 class="lp-section-title">Start free, scale when<br><span class="lp-title-accent">you need to</span></h2>
-        <p class="lp-section-sub">No credit card required to start. <a href="{{ url_for('signup') }}" class="lp-pricing-full-link">Sign up to see all plans →</a></p>
+        <h2 class="lp-section-title">One plan for every<br><span class="lp-title-accent">level of ambition</span></h2>
+        <p class="lp-section-sub">Monthly or yearly. Cancel any time. <a href="{{ url_for('billing.pricing') }}" class="lp-pricing-full-link">See full plan details →</a></p>
 
         <div class="lp-credit-pills">
             <span class="lp-credit-pill">🪙 1 credit = 1¢</span>
@@ -306,22 +306,7 @@
             <span class="lp-credit-pill">🎞️ 500 credits = 1 min AI video</span>
         </div>
 
-        <div class="lp-plan-cards lp-plan-cards-4">
-            <div class="lp-plan-card">
-                <div class="lp-plan-name">Free</div>
-                <div class="lp-plan-price">$0<span>/mo</span></div>
-                <div class="lp-plan-credits">3 projects · explore</div>
-                <div class="lp-plan-desc">Explore the full pipeline with your first projects.</div>
-                <ul class="lp-plan-features">
-                    <li>✓ 3 projects</li>
-                    <li>✓ Full storyboard pipeline</li>
-                    <li>✓ AI-generated stills</li>
-                    <li>✓ All 40+ languages</li>
-                    <li class="lp-plan-no">✗ No commercial licence</li>
-                </ul>
-                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Get started free</a>
-            </div>
-
+        <div class="lp-plan-cards">
             <div class="lp-plan-card">
                 <div class="lp-plan-name">Starter</div>
                 <div class="lp-plan-price">$14.99<span>/mo</span></div>
@@ -377,14 +362,14 @@
     <div class="lp-section-inner">
         <div class="lp-cta-banner-inner">
             <h2 class="lp-cta-banner-title">Your next cinematic project<br>starts here.</h2>
-            <p class="lp-cta-banner-sub">No credit card. No setup. Paste your lyrics, script, or story and go.</p>
+            <p class="lp-cta-banner-sub">No complexity. No crew. Paste your lyrics, script, or story — and let MetaMind 3.1 do the rest.</p>
             {% if current_user %}
                 <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg lp-cta-btn">
                     Start a New Project →
                 </a>
             {% else %}
                 <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-lg lp-cta-btn">
-                    Create your first video — it's free
+                    Get started — choose your plan →
                 </a>
             {% endif %}
         </div>

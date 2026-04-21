@@ -32,28 +32,7 @@
         </div>
     </div>
 
-    <div class="pricing-grid pricing-grid-4">
-
-        {# FREE #}
-        <div class="pricing-card{% if current_plan == 'free' %} pricing-card-current{% endif %}">
-            {% if current_plan == 'free' %}<div class="pricing-current-badge">Your current plan</div>{% endif %}
-            <div class="pricing-plan-icon">✦</div>
-            <div class="pricing-plan-name">Free</div>
-            <div class="pricing-price-wrap">
-                <div class="pricing-price">$0<span>/mo</span></div>
-            </div>
-            <div class="pricing-credits-line">3 projects · explore the pipeline</div>
-            <p class="pricing-desc">{{ plans.free.description }}</p>
-            <ul class="pricing-features">
-                {% for f in plans.free.features %}<li>✓ {{ f }}</li>{% endfor %}
-                {% for l in plans.free.limits %}<li class="pricing-feature-no">✗ {{ l }}</li>{% endfor %}
-            </ul>
-            {% if current_plan == 'free' %}
-            <div class="pricing-cta-placeholder">You're on this plan</div>
-            {% else %}
-            <a href="{{ url_for('signup') }}" class="btn-ghost pricing-btn">Get started free</a>
-            {% endif %}
-        </div>
+    <div class="pricing-grid">
 
         {# STARTER #}
         <div class="pricing-card{% if current_plan == 'starter' %} pricing-card-current{% endif %}">
@@ -197,7 +176,7 @@
         <div class="pricing-faq-grid">
             <div class="pricing-faq-item">
                 <h3>Can I cancel anytime?</h3>
-                <p>Yes — cancel from your account settings at any time. Your plan stays active until the end of the billing period, then reverts to Free.</p>
+                <p>Yes — cancel from your account settings at any time. Your plan stays active until the end of the billing period, then expires.</p>
             </div>
             <div class="pricing-faq-item">
                 <h3>Do credits roll over?</h3>
