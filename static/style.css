@@ -91,8 +91,8 @@ h1, h2, h3, .brand, .display {
 .landing-page .topbar {
     height: 160px;
     padding: 0;
-    background: #07070c;
-    border-bottom: 1px solid rgba(212,255,58,0.13);
+    background: #0a0a0f;
+    border-bottom: none;
     overflow: hidden;
     position: sticky;
     top: 0;
@@ -104,61 +104,135 @@ h1, h2, h3, .brand, .display {
     inset: 0;
     pointer-events: none;
 }
+
+/* ambient colour glows */
 .landing-page .topbar-glow {
     position: absolute;
-    top: 50%;
+    top: 40%;
     transform: translateY(-50%);
-    width: 480px;
-    height: 180px;
+    width: 520px;
+    height: 200px;
     border-radius: 50%;
-    filter: blur(55px);
+    filter: blur(70px);
+    pointer-events: none;
+    z-index: 1;
 }
 .landing-page .topbar-glow-l {
-    left: -60px;
-    background: radial-gradient(ellipse, rgba(212,255,58,0.28) 0%, transparent 70%);
+    left: -80px;
+    background: radial-gradient(ellipse, rgba(212,255,58,0.18) 0%, transparent 70%);
 }
 .landing-page .topbar-glow-r {
-    right: -60px;
-    background: radial-gradient(ellipse, rgba(56,225,255,0.22) 0%, transparent 70%);
+    right: -80px;
+    background: radial-gradient(ellipse, rgba(56,225,255,0.14) 0%, transparent 70%);
 }
-.landing-page .topbar-scanlines {
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 3px,
-        rgba(255,255,255,0.01) 3px,
-        rgba(255,255,255,0.01) 4px
-    );
-}
-.landing-page .topbar-film-strip {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 2px;
-}
-.landing-page .topbar-film-strip-t {
-    top: 10px;
-    background: linear-gradient(90deg, transparent 0%, rgba(212,255,58,0.45) 15%, rgba(56,225,255,0.4) 50%, rgba(212,255,58,0.45) 85%, transparent 100%);
-}
-.landing-page .topbar-film-strip-b {
-    bottom: 10px;
-    background: linear-gradient(90deg, transparent 0%, rgba(56,225,255,0.18) 20%, rgba(212,255,58,0.18) 50%, rgba(56,225,255,0.18) 80%, transparent 100%);
-}
-.landing-page .topbar-frames {
+
+/* the full-width film reel structure */
+.landing-page .topbar-reel {
     position: absolute;
     inset: 0;
     display: flex;
+    flex-direction: column;
+}
+
+/* sprocket hole rows */
+.landing-page .topbar-sprockets {
+    display: flex;
     align-items: center;
-    opacity: 0.06;
+    gap: 0;
+    flex-shrink: 0;
+    width: 100%;
+    padding: 0 4px;
+    box-sizing: border-box;
 }
-.landing-page .topbar-frame-tick {
+.landing-page .topbar-sprockets-t {
+    height: 22px;
+    padding-top: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.landing-page .topbar-sprockets-b {
+    height: 22px;
+    padding-bottom: 4px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+}
+.landing-page .topbar-sprocket {
     flex: 1;
-    height: 65%;
-    border-left: 1px solid rgba(255,255,255,0.7);
-    border-right: 1px solid rgba(255,255,255,0.7);
+    height: 10px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.0);
+    border: 1px solid rgba(255,255,255,0.18);
+    margin: 0 3px;
 }
+
+/* scene frames strip */
+.landing-page .topbar-scenes {
+    flex: 1;
+    display: flex;
+    gap: 3px;
+    padding: 0 3px;
+    overflow: hidden;
+}
+.landing-page .topbar-scene {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    border-right: 1px solid rgba(255,255,255,0.08);
+}
+.landing-page .topbar-scene-img {
+    position: absolute;
+    inset: -2px;
+    background-image: url('/static/images/hero-cinematic.png');
+    background-size: 800%;
+    background-repeat: no-repeat;
+    opacity: 0.13;
+    filter: saturate(1.4) brightness(0.9);
+    transition: opacity 0.3s;
+}
+/* slight tint variation per scene using nth-child */
+.landing-page .topbar-scene:nth-child(2n) .topbar-scene-img {
+    filter: saturate(0.9) brightness(0.85) hue-rotate(15deg);
+    opacity: 0.11;
+}
+.landing-page .topbar-scene:nth-child(3n) .topbar-scene-img {
+    filter: saturate(1.6) brightness(1.0) hue-rotate(-10deg);
+    opacity: 0.15;
+}
+
+/* left/right colour tint overlays */
+.landing-page .topbar-tint-l {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 220px;
+    background: linear-gradient(90deg, rgba(212,255,58,0.07) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 2;
+}
+.landing-page .topbar-tint-r {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 220px;
+    background: linear-gradient(270deg, rgba(56,225,255,0.07) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* bottom gradient fade — merges header into page */
+.landing-page .topbar-fade-b {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(0deg, #0a0a0f 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* logo + tagline overlay */
 .landing-page .topbar-inner {
     display: flex;
     align-items: center;
@@ -170,7 +244,7 @@ h1, h2, h3, .brand, .display {
     width: 100%;
     max-width: 1200px;
     padding: 0 40px;
-    z-index: 2;
+    z-index: 10;
     box-sizing: border-box;
 }
 .landing-page .topbar-tagline {
@@ -179,9 +253,9 @@ h1, h2, h3, .brand, .display {
     font-weight: 600;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.32);
     padding-left: 16px;
-    border-left: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.12);
     white-space: nowrap;
 }
 .landing-page .topbar-nav {
@@ -189,7 +263,7 @@ h1, h2, h3, .brand, .display {
     right: 32px;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 3;
+    z-index: 10;
 }
 
 .brand {

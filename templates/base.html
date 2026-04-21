@@ -13,12 +13,25 @@
 <body class="{% if current_user and current_user.is_admin %}is-admin {% endif %}{% block body_class %}{% endblock %}">
     <header class="topbar">
         <div class="topbar-bg">
+            <!-- ambient glows -->
             <div class="topbar-glow topbar-glow-l"></div>
             <div class="topbar-glow topbar-glow-r"></div>
-            <div class="topbar-scanlines"></div>
-            <div class="topbar-film-strip topbar-film-strip-t"></div>
-            <div class="topbar-film-strip topbar-film-strip-b"></div>
-            <div class="topbar-frames">{% for i in range(18) %}<div class="topbar-frame-tick"></div>{% endfor %}</div>
+            <!-- film strip layer -->
+            <div class="topbar-reel">
+                <div class="topbar-sprockets topbar-sprockets-t">{% for i in range(26) %}<div class="topbar-sprocket"></div>{% endfor %}</div>
+                <div class="topbar-scenes">
+                    {% set positions = ['0% 30%','18% 60%','33% 20%','50% 50%','65% 40%','80% 70%','96% 30%'] %}
+                    {% for pos in positions %}
+                    <div class="topbar-scene"><div class="topbar-scene-img" style="background-position:{{ pos }}"></div></div>
+                    {% endfor %}
+                </div>
+                <div class="topbar-sprockets topbar-sprockets-b">{% for i in range(26) %}<div class="topbar-sprocket"></div>{% endfor %}</div>
+            </div>
+            <!-- colour overlays per frame zone -->
+            <div class="topbar-tint-l"></div>
+            <div class="topbar-tint-r"></div>
+            <!-- bottom fade to blend into page -->
+            <div class="topbar-fade-b"></div>
         </div>
         <div class="topbar-inner">
             <a class="brand" href="{{ url_for('index') }}">Qaivid<span>MetaMind 3.1</span></a>
