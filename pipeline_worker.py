@@ -102,6 +102,15 @@ def ensure_schema() -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 0;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_interval TEXT NOT NULL DEFAULT 'monthly';")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_token TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_sent_at TIMESTAMPTZ;")
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS users_email_verify_token_idx
+            ON users (email_verify_token) WHERE email_verify_token IS NOT NULL;
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id              TEXT PRIMARY KEY,
