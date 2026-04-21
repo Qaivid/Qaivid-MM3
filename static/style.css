@@ -89,7 +89,7 @@ h1, h2, h3, .brand, .display {
 
 /* ── LANDING PAGE CINEMATIC TOPBAR ───────────────────────────── */
 .landing-page .topbar {
-    height: 110px;
+    height: 160px;
     padding: 0;
     background: #07070c;
     border-bottom: 1px solid rgba(212,255,58,0.13);
@@ -2878,11 +2878,11 @@ main:has(> .ws-grid) {
 
 .lp-hero {
     position: relative;
-    min-height: calc(100vh - 110px);
+    min-height: calc(100vh - 160px);
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 48px 0 0;
+    padding: 20px 0 0;
     overflow: hidden;
 }
 .lp-hero::before {
