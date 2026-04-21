@@ -1,0 +1,117 @@
+[2026-04-21 20:33:05 +0000] [1] [INFO] Control socket listening at /root/.gunicorn/gunicorn.ctl
+[2026-04-21 20:33:05 +0000] [4] [INFO] Booting worker with pid: 4
+[2026-04-21 20:33:05 +0000] [5] [INFO] Booting worker with pid: 5
+[2026-04-21 20:33:05 +0000] [1] [INFO] Starting gunicorn 25.3.0
+[2026-04-21 20:33:05 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
+[2026-04-21 20:33:05 +0000] [1] [INFO] Using worker: sync
+Starting Container
+[2026-04-21 20:33:05 +0000] [4] [ERROR] Exception in worker process
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+Traceback (most recent call last):
+    return util.import_app(self.app_uri)
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    worker.init_process()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/util.py", line 377, in import_app
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    mod = importlib.import_module(module)
+    self.load_wsgi()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+  File "/root/.nix-profile/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/app.py", line 107, in <module>
+    raise RuntimeError(
+RuntimeError: FLASK_SECRET_KEY is not set. Refusing to start with an insecure default key in production.
+FLASK_SECRET_KEY is not set. Refusing to start with an insecure default key in production.
+[2026-04-21 20:33:05 +0000] [4] [INFO] Worker exiting (pid: 4)
+[2026-04-21 20:33:05 +0000] [5] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/util.py", line 377, in import_app
+    self.load_wsgi()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    mod = importlib.import_module(module)
+    self.wsgi = self.app.wsgi()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^^^^^^
+  File "/root/.nix-profile/lib/python3.12/importlib/__init__.py", line 90, in import_module
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+    return _bootstrap._gcd_import(name[level:], package, level)
+                    ^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return self.load_wsgiapp()
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/app.py", line 107, in <module>
+    raise RuntimeError(
+RuntimeError: FLASK_SECRET_KEY is not set. Refusing to start with an insecure default key in production.
+FLASK_SECRET_KEY is not set. Refusing to start with an insecure default key in production.
+[2026-04-21 20:33:05 +0000] [5] [INFO] Worker exiting (pid: 5)
+During handling of the above exception, another exception occurred:
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 66, in run
+Traceback (most recent call last):
+    WSGIApplication("%(prog)s [OPTIONS] [APP_MODULE]", prog=prog).run()
+  File "/opt/venv/bin/gunicorn", line 8, in <module>
+    sys.exit(run())
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 235, in run
+             ^^^^^
+[2026-04-21 20:33:06 +0000] [1] [ERROR] Worker (pid:4) exited with code 3.
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 641, in reap_workers
+[2026-04-21 20:33:06 +0000] [1] [ERROR] Worker (pid:5) exited with code 3.
+    raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 246, in run
+    handler()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 271, in handle_chld
+    self.reap_workers()
+gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+    super().run()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 458, in stop
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 641, in reap_workers
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 71, in run
+    self.halt(reason=inst.reason, exit_status=inst.exit_status)
+    raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+    Arbiter(self).run()
+    self.reap_workers()
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 254, in run
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 378, in halt
+    self.stop()
+[2026-04-21 20:33:07 +0000] [4] [INFO] Booting worker with pid: 4
+[2026-04-21 20:33:07 +0000] [5] [INFO] Booting worker with pid: 5
+[2026-04-21 20:33:07 +0000] [1] [INFO] Control socket listening at /root/.gunicorn/gunicorn.ctl
+[2026-04-21 20:33:07 +0000] [1] [INFO] Starting gunicorn 25.3.0
+[2026-04-21 20:33:07 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
+[2026-04-21 20:33:07 +0000] [1] [INFO] Using worker: sync
+[2026-04-21 20:33:07 +0000] [4] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
