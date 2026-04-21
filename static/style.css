@@ -3227,13 +3227,37 @@ main:has(> .ws-grid) {
 }
 
 /* ── PRICING TEASER */ 
+.lp-credit-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 20px 0 0;
+}
+.lp-credit-pill {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 14px;
+}
+.lp-plan-credits {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--lime);
+    margin: -6px 0 14px;
+    letter-spacing: 0.01em;
+}
 .lp-plan-cards {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
-    margin-top: 60px;
+    margin-top: 32px;
     align-items: start;
 }
+.lp-plan-cards-4 { grid-template-columns: repeat(4, 1fr); }
 .lp-plan-card {
     background: rgba(22,22,30,0.8);
     border: 1px solid var(--border);
@@ -3616,6 +3640,7 @@ main:has(> .ws-grid) {
     .lp-output-cards { grid-template-columns: 1fr; }
     .lp-output-card-featured { transform: none; }
     .lp-plan-cards { grid-template-columns: 1fr; }
+    .lp-plan-cards-4 { grid-template-columns: 1fr; }
     .lp-steps { flex-direction: column; }
     .lp-step-connector { width: auto; height: 20px; }
     .lp-step-connector::after { content: '↓'; }
@@ -3847,6 +3872,158 @@ main:has(> .ws-grid) {
     margin: 0;
 }
 .pricing-faq-item a { color: var(--cyan); text-decoration: underline; }
+
+/* ── PRICING: CREDIT PILLS + INTERVAL TOGGLE ── */
+.pricing-page { max-width: 1200px; }
+.pricing-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.pricing-credit-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0 28px;
+}
+.pricing-credit-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 7px 16px;
+}
+.pricing-credit-pill-icon { font-size: 15px; }
+.pricing-interval-toggle {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 4px;
+    gap: 4px;
+}
+.pit-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-radius: 100px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.pit-btn-active {
+    background: var(--lime);
+    color: #0a0a0f;
+}
+.pit-save-badge {
+    background: rgba(56,225,255,0.15);
+    color: var(--cyan);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 100px;
+    border: 1px solid rgba(56,225,255,0.2);
+}
+.pit-btn-active .pit-save-badge {
+    background: rgba(0,0,0,0.2);
+    color: rgba(10,10,15,0.8);
+    border-color: rgba(0,0,0,0.15);
+}
+.pricing-plan-icon {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+.pricing-credits-line {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--lime);
+    margin: 0 0 14px;
+    letter-spacing: 0.01em;
+}
+.pricing-price-wrap { margin-bottom: 4px; }
+.pricing-price-alt {
+    font-size: 12px;
+    color: var(--muted);
+    margin: -8px 0 14px;
+}
+.pricing-yearly-sub {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-top: 4px;
+}
+.pricing-save-tag {
+    background: rgba(212,255,58,0.12);
+    color: var(--lime);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 100px;
+    border: 1px solid rgba(212,255,58,0.2);
+}
+
+/* ── PRICING: CREDIT EXPLAINER ── */
+.pricing-credit-explainer {
+    text-align: center;
+    margin: 0 0 60px;
+}
+.pricing-credit-explainer h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 24px;
+}
+.pricing-credit-boxes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.pricing-credit-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: left;
+}
+.pricing-credit-box-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 10px;
+}
+.pricing-credit-box p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin: 0;
+}
+.pricing-credit-note {
+    font-size: 12px;
+    color: var(--muted);
+    opacity: 0.7;
+    margin: 0;
+}
+
+@media (max-width: 960px) {
+    .pricing-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .pricing-credit-boxes { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 580px) {
+    .pricing-grid-4 { grid-template-columns: 1fr; }
+    .pricing-credit-boxes { grid-template-columns: 1fr; }
+    .pricing-credit-pills { gap: 6px; }
+}
 
 /* ── BILLING SUCCESS ── */
 .billing-success-page {

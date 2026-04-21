@@ -5,60 +5,120 @@
 
     <div class="pricing-hero">
         <div class="eyebrow">Simple pricing</div>
-        <h1>Start free, scale when<br><span class="pricing-hero-accent">you need to</span></h1>
-        <p class="muted">No credit card required on the Free plan. Cancel anytime.</p>
+        <h1>Choose your plan</h1>
+        <p class="muted">Full AI cinema production at transparent credit pricing. Every plan covers the complete pipeline — from creative brief to finished film.</p>
+
+        <div class="pricing-credit-pills">
+            <div class="pricing-credit-pill">
+                <span class="pricing-credit-pill-icon">🪙</span>
+                <span>1 credit = 1¢</span>
+            </div>
+            <div class="pricing-credit-pill">
+                <span class="pricing-credit-pill-icon">🎬</span>
+                <span>100 credits = 1 min animatic</span>
+            </div>
+            <div class="pricing-credit-pill">
+                <span class="pricing-credit-pill-icon">🎞️</span>
+                <span>500 credits = 1 min AI video</span>
+            </div>
+        </div>
+
+        <div class="pricing-interval-toggle" id="interval-toggle">
+            <button class="pit-btn pit-btn-active" data-interval="monthly" onclick="setPricingInterval('monthly')">Monthly</button>
+            <button class="pit-btn" data-interval="yearly" onclick="setPricingInterval('yearly')">
+                Yearly
+                <span class="pit-save-badge">SAVE UP TO 20%</span>
+            </button>
+        </div>
     </div>
 
-    <div class="pricing-grid">
+    <div class="pricing-grid pricing-grid-4">
 
         {# FREE #}
         <div class="pricing-card{% if current_plan == 'free' %} pricing-card-current{% endif %}">
-            {% if current_plan == 'free' %}
-            <div class="pricing-current-badge">Your current plan</div>
-            {% endif %}
+            {% if current_plan == 'free' %}<div class="pricing-current-badge">Your current plan</div>{% endif %}
+            <div class="pricing-plan-icon">✦</div>
             <div class="pricing-plan-name">Free</div>
-            <div class="pricing-price">$0<span>/mo</span></div>
-            <p class="pricing-desc">Get started and explore the full pipeline with your first projects.</p>
+            <div class="pricing-price-wrap">
+                <div class="pricing-price">$0<span>/mo</span></div>
+            </div>
+            <div class="pricing-credits-line">3 projects · explore the pipeline</div>
+            <p class="pricing-desc">{{ plans.free.description }}</p>
             <ul class="pricing-features">
-                <li>✓ 3 projects</li>
-                <li>✓ Full storyboard pipeline</li>
-                <li>✓ AI-generated stills</li>
-                <li>✓ All languages</li>
-                <li class="pricing-feature-no">✗ No commercial licence</li>
+                {% for f in plans.free.features %}<li>✓ {{ f }}</li>{% endfor %}
+                {% for l in plans.free.limits %}<li class="pricing-feature-no">✗ {{ l }}</li>{% endfor %}
             </ul>
             {% if current_plan == 'free' %}
             <div class="pricing-cta-placeholder">You're on this plan</div>
-            {% elif current_user %}
-            <div class="pricing-cta-placeholder">Included for all accounts</div>
             {% else %}
             <a href="{{ url_for('signup') }}" class="btn-ghost pricing-btn">Get started free</a>
             {% endif %}
         </div>
 
-        {# PRO #}
+        {# STARTER #}
+        <div class="pricing-card{% if current_plan == 'starter' %} pricing-card-current{% endif %}">
+            {% if current_plan == 'starter' %}<div class="pricing-current-badge">Your current plan</div>{% endif %}
+            <div class="pricing-plan-icon">✦</div>
+            <div class="pricing-plan-name">Starter</div>
+            <div class="pricing-price-wrap">
+                <div class="pricing-price pricing-price-monthly">$14.99<span>/mo</span></div>
+                <div class="pricing-price pricing-price-yearly" style="display:none">
+                    $161.99<span>/yr</span>
+                    <div class="pricing-yearly-sub">≈ $13.50/mo · <span class="pricing-save-tag">Save 10%</span></div>
+                </div>
+                <div class="pricing-price-alt pricing-price-monthly">or $161.99/yr — save 10%</div>
+                <div class="pricing-price-alt pricing-price-yearly" style="display:none">billed annually</div>
+            </div>
+            <div class="pricing-credits-line">🪙 1,500 credits / month</div>
+            <p class="pricing-desc">{{ plans.starter.description }}</p>
+            <ul class="pricing-features">
+                {% for f in plans.starter.features %}<li>✓ {{ f }}</li>{% endfor %}
+            </ul>
+            {% if current_plan == 'starter' %}
+            <div class="pricing-cta-placeholder">Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}</div>
+            {% elif stripe_enabled %}
+            <form method="post" action="{{ url_for('billing.checkout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="plan" value="starter">
+                <input type="hidden" name="interval" class="interval-field" value="monthly">
+                {% if current_user %}
+                <button type="submit" class="btn-ghost pricing-btn">Get Starter →</button>
+                {% else %}
+                <a href="{{ url_for('signup') }}" class="btn-ghost pricing-btn">Sign up to upgrade</a>
+                {% endif %}
+            </form>
+            {% else %}
+            <div class="pricing-coming-soon">Coming soon</div>
+            {% endif %}
+        </div>
+
+        {# PRO — most popular #}
         <div class="pricing-card pricing-card-pro{% if current_plan == 'pro' %} pricing-card-current{% endif %}">
             <div class="pricing-popular">Most popular</div>
-            {% if current_plan == 'pro' %}
-            <div class="pricing-current-badge">Your current plan</div>
-            {% endif %}
+            {% if current_plan == 'pro' %}<div class="pricing-current-badge">Your current plan</div>{% endif %}
+            <div class="pricing-plan-icon">👑</div>
             <div class="pricing-plan-name">Pro</div>
-            <div class="pricing-price">$29<span>/mo</span></div>
-            <p class="pricing-desc">For creators who release music regularly and need unlimited power.</p>
+            <div class="pricing-price-wrap">
+                <div class="pricing-price pricing-price-monthly">$39.99<span>/mo</span></div>
+                <div class="pricing-price pricing-price-yearly" style="display:none">
+                    $407.99<span>/yr</span>
+                    <div class="pricing-yearly-sub">≈ $34.00/mo · <span class="pricing-save-tag">Save 15%</span></div>
+                </div>
+                <div class="pricing-price-alt pricing-price-monthly">or $407.99/yr — save 15%</div>
+                <div class="pricing-price-alt pricing-price-yearly" style="display:none">billed annually</div>
+            </div>
+            <div class="pricing-credits-line">🪙 4,000 credits / month</div>
+            <p class="pricing-desc">{{ plans.pro.description }}</p>
             <ul class="pricing-features">
-                <li>✓ Unlimited projects</li>
-                <li>✓ Priority AI generation</li>
-                <li>✓ Face-locked character stills</li>
-                <li>✓ Commercial licence</li>
-                <li>✓ All languages &amp; custom styles</li>
+                {% for f in plans.pro.features %}<li>✓ {{ f }}</li>{% endfor %}
             </ul>
             {% if current_plan == 'pro' %}
-            <div class="pricing-cta-placeholder">
-                Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}
-            </div>
+            <div class="pricing-cta-placeholder">Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}</div>
             {% elif stripe_enabled %}
             <form method="post" action="{{ url_for('billing.checkout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="plan" value="pro">
+                <input type="hidden" name="interval" class="interval-field" value="monthly">
                 {% if current_user %}
                 <button type="submit" class="btn-primary pricing-btn">Upgrade to Pro →</button>
                 {% else %}
@@ -72,27 +132,30 @@
 
         {# STUDIO #}
         <div class="pricing-card{% if current_plan == 'studio' %} pricing-card-current{% endif %}">
-            {% if current_plan == 'studio' %}
-            <div class="pricing-current-badge">Your current plan</div>
-            {% endif %}
+            {% if current_plan == 'studio' %}<div class="pricing-current-badge">Your current plan</div>{% endif %}
+            <div class="pricing-plan-icon">⚡</div>
             <div class="pricing-plan-name">Studio</div>
-            <div class="pricing-price">$99<span>/mo</span></div>
-            <p class="pricing-desc">For labels, agencies, and production houses with multiple artists.</p>
+            <div class="pricing-price-wrap">
+                <div class="pricing-price pricing-price-monthly">$199.99<span>/mo</span></div>
+                <div class="pricing-price pricing-price-yearly" style="display:none">
+                    $1,919.99<span>/yr</span>
+                    <div class="pricing-yearly-sub">≈ $160.00/mo · <span class="pricing-save-tag">Save 20%</span></div>
+                </div>
+                <div class="pricing-price-alt pricing-price-monthly">or $1,919.99/yr — save 20%</div>
+                <div class="pricing-price-alt pricing-price-yearly" style="display:none">billed annually</div>
+            </div>
+            <div class="pricing-credits-line">🪙 20,000 credits / month</div>
+            <p class="pricing-desc">{{ plans.studio.description }}</p>
             <ul class="pricing-features">
-                <li>✓ Everything in Pro</li>
-                <li>✓ Team seats</li>
-                <li>✓ Custom style packs</li>
-                <li>✓ API access</li>
-                <li>✓ Dedicated support</li>
+                {% for f in plans.studio.features %}<li>✓ {{ f }}</li>{% endfor %}
             </ul>
             {% if current_plan == 'studio' %}
-            <div class="pricing-cta-placeholder">
-                Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}
-            </div>
+            <div class="pricing-cta-placeholder">Active{% if plan_expires_at %} · renews {{ plan_expires_at.strftime("%b %d, %Y") }}{% endif %}</div>
             {% elif stripe_enabled %}
             <form method="post" action="{{ url_for('billing.checkout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="plan" value="studio">
+                <input type="hidden" name="interval" class="interval-field" value="monthly">
                 {% if current_user %}
                 <button type="submit" class="btn-primary pricing-btn">Upgrade to Studio →</button>
                 {% else %}
@@ -106,6 +169,29 @@
 
     </div>
 
+    <div class="pricing-credit-explainer">
+        <h2>How credits work</h2>
+        <div class="pricing-credit-boxes">
+            <div class="pricing-credit-box">
+                <div class="pricing-credit-box-title">🪙 1 credit = 1¢</div>
+                <p>Every monthly plan charges exactly 1 cent per credit. Yearly plans give you the same credits at a lower per-credit cost.</p>
+            </div>
+            <div class="pricing-credit-box">
+                <div class="pricing-credit-box-title">🎬 Animatic Video</div>
+                <p>100 credits = 1 minute of animatic (Ken Burns animated storyboard). Ideal for previewing your production before full AI rendering.</p>
+            </div>
+            <div class="pricing-credit-box">
+                <div class="pricing-credit-box-title">🎞️ AI Cinematic Video</div>
+                <p>500 credits = 1 minute of full AI-generated cinematic video. Higher compute cost, photorealistic output.</p>
+            </div>
+            <div class="pricing-credit-box">
+                <div class="pricing-credit-box-title">🖼️ Still Images</div>
+                <p>10 credits per AI still image generation. Face-locked stills via PuLID cost the same as standard generations.</p>
+            </div>
+        </div>
+        <p class="pricing-credit-note">Credits reset monthly. Unused credits do not roll over. Small credit deductions also apply for AI steps (transcription, briefs, images).</p>
+    </div>
+
     <div class="pricing-faq">
         <h2>Common questions</h2>
         <div class="pricing-faq-grid">
@@ -114,19 +200,38 @@
                 <p>Yes — cancel from your account settings at any time. Your plan stays active until the end of the billing period, then reverts to Free.</p>
             </div>
             <div class="pricing-faq-item">
-                <h3>What counts as a project?</h3>
-                <p>One project is one music video run — from lyrics upload through storyboard, stills, and final video assembly.</p>
+                <h3>Do credits roll over?</h3>
+                <p>No — credits reset at the start of each billing cycle. Unused credits from the previous month are not carried forward.</p>
             </div>
             <div class="pricing-faq-item">
                 <h3>What is the commercial licence?</h3>
-                <p>Pro and Studio users can release, sell, and monetise the videos generated by Qaivid without restriction.</p>
+                <p>Starter, Pro, and Studio users can release, sell, and monetise the videos generated by Qaivid without restriction.</p>
             </div>
             <div class="pricing-faq-item">
                 <h3>Do you offer annual billing?</h3>
-                <p>Monthly billing only at launch. Annual plans with a discount are coming soon — <a href="{{ url_for('signup') }}">sign up</a> to be notified.</p>
+                <p>Yes — switch to Yearly on the toggle above to save 10–20% depending on your plan. Annual plans are billed upfront.</p>
+            </div>
+            <div class="pricing-faq-item">
+                <h3>What counts as 1 minute of video?</h3>
+                <p>60 seconds of rendered output timeline — whether animatic or full AI video. Shot duration accumulates across all scenes in your project.</p>
+            </div>
+            <div class="pricing-faq-item">
+                <h3>Can I buy extra credits?</h3>
+                <p>Top-up credit packs are coming soon. For now, upgrade to a higher plan for more monthly credits.</p>
             </div>
         </div>
     </div>
 
 </section>
+
+<script>
+function setPricingInterval(interval) {
+    document.querySelectorAll('.pit-btn').forEach(b => b.classList.remove('pit-btn-active'));
+    document.querySelector('[data-interval="' + interval + '"]').classList.add('pit-btn-active');
+    const isYearly = interval === 'yearly';
+    document.querySelectorAll('.pricing-price-monthly').forEach(el => el.style.display = isYearly ? 'none' : '');
+    document.querySelectorAll('.pricing-price-yearly').forEach(el => el.style.display = isYearly ? '' : 'none');
+    document.querySelectorAll('.interval-field').forEach(el => el.value = interval);
+}
+</script>
 {% endblock %}

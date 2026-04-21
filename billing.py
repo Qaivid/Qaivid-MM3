@@ -32,47 +32,103 @@ billing_bp = Blueprint("billing", __name__)
 
 FREE_PROJECT_LIMIT = 3
 
+# Credit costs (mirrors Qaivid 1 costPlanner.ts)
+CREDIT_COSTS = {
+    "still_image": 10,          # 1 AI still image = 10 credits (~10¢)
+    "animatic_per_min": 100,    # 1 min animatic video = 100 credits
+    "ai_video_per_min": 500,    # 1 min full AI video = 500 credits
+    "creative_brief": 5,        # brief generation = 5 credits
+    "transcription": 2,         # audio transcription = 2 credits
+}
+
 PLANS = {
     "free": {
         "name": "Free",
         "price_monthly": 0,
-        "price_label": "$0 / mo",
+        "price_yearly": 0,
+        "price_label": "$0",
+        "credits_monthly": 0,
+        "description": "Explore the pipeline with your first projects.",
         "features": [
             "3 projects",
             "Full storyboard pipeline",
             "AI-generated stills",
-            "All languages",
+            "All 40+ languages",
         ],
         "limits": ["No commercial licence"],
         "stripe_price_env": None,
+        "stripe_price_yearly_env": None,
+        "popular": False,
+        "yearly_saving": None,
     },
-    "pro": {
-        "name": "Pro",
-        "price_monthly": 29,
-        "price_label": "$29 / mo",
+    "starter": {
+        "name": "Starter",
+        "price_monthly": 14.99,
+        "price_yearly": 161.99,
+        "price_yearly_monthly": 13.50,
+        "price_label": "$14.99",
+        "credits_monthly": 1500,
+        "description": "For creators ready to produce their first AI video.",
         "features": [
-            "Unlimited projects",
-            "Priority AI generation",
-            "Face-locked character stills",
-            "Commercial licence",
-            "All languages & custom styles",
+            "1,500 credits / month",
+            "~15 min of animatic video/month",
+            "~3 min of full AI video/month",
+            "AI Director's Brief & creative vision",
+            "Character reference image generation",
+            "Shot-by-shot storyboard with timing",
+            "Final film stitching with audio",
         ],
         "limits": [],
         "stripe_price_env": "STRIPE_PRO_PRICE_ID",
+        "stripe_price_yearly_env": None,
+        "popular": False,
+        "yearly_saving": "10%",
+    },
+    "pro": {
+        "name": "Pro",
+        "price_monthly": 39.99,
+        "price_yearly": 407.99,
+        "price_yearly_monthly": 34.00,
+        "price_label": "$39.99",
+        "credits_monthly": 4000,
+        "description": "For serious creators producing at volume.",
+        "features": [
+            "4,000 credits / month",
+            "~40 min of animatic video/month",
+            "~8 min of full AI video/month",
+            "Everything in Starter",
+            "Subtitle designer & animated captions",
+            "Cinematic colour grading & logos",
+            "Post-production export suite",
+        ],
+        "limits": [],
+        "stripe_price_env": "STRIPE_PRO_PRICE_ID",
+        "stripe_price_yearly_env": None,
+        "popular": True,
+        "yearly_saving": "15%",
     },
     "studio": {
         "name": "Studio",
-        "price_monthly": 99,
-        "price_label": "$99 / mo",
+        "price_monthly": 199.99,
+        "price_yearly": 1919.99,
+        "price_yearly_monthly": 160.00,
+        "price_label": "$199.99",
+        "credits_monthly": 20000,
+        "description": "For studios running full production pipelines.",
         "features": [
+            "20,000 credits / month",
+            "~200 min of animatic video/month",
+            "~40 min of full AI video/month",
             "Everything in Pro",
-            "Team seats",
-            "Custom style packs",
-            "API access",
+            "Lip-sync & avatar singer shots",
+            "Training data pipeline export",
             "Dedicated support",
         ],
         "limits": [],
         "stripe_price_env": "STRIPE_STUDIO_PRICE_ID",
+        "stripe_price_yearly_env": None,
+        "popular": False,
+        "yearly_saving": "20%",
     },
 }
 
@@ -99,13 +155,18 @@ def pricing():
     user = current_user()
     current_plan = (user or {}).get("plan", "free")
     plan_expires_at = (user or {}).get("plan_expires_at")
+    plan_interval = (user or {}).get("plan_interval", "monthly")
+    credits = (user or {}).get("credits", 0)
     stripe_enabled = _stripe_enabled()
     return render_template(
         "pricing.html",
         plans=PLANS,
         current_plan=current_plan,
         plan_expires_at=plan_expires_at,
+        plan_interval=plan_interval,
+        credits=credits,
         stripe_enabled=stripe_enabled,
+        credit_costs=CREDIT_COSTS,
     )
 
 
@@ -121,7 +182,10 @@ def checkout():
         return redirect(url_for("billing.pricing"))
 
     plan_key = request.form.get("plan", "").lower()
-    if plan_key not in ("pro", "studio"):
+    plan_interval = request.form.get("interval", "monthly").lower()
+    if plan_interval not in ("monthly", "yearly"):
+        plan_interval = "monthly"
+    if plan_key not in ("starter", "pro", "studio"):
         flash("Invalid plan selection.", "error")
         return redirect(url_for("billing.pricing"))
 
@@ -133,6 +197,7 @@ def checkout():
 
     stripe = _stripe()
     user = current_user()
+    credits_to_grant = PLANS[plan_key].get("credits_monthly", 0)
 
     try:
         base_url = request.host_url.rstrip("/")
@@ -143,8 +208,8 @@ def checkout():
             customer=user.get("stripe_customer_id") or None,
             success_url=base_url + url_for("billing.success") + "?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=base_url + url_for("billing.cancel"),
-            metadata={"user_id": str(user["id"]), "plan": plan_key},
-            subscription_data={"metadata": {"user_id": str(user["id"]), "plan": plan_key}},
+            metadata={"user_id": str(user["id"]), "plan": plan_key, "interval": plan_interval, "credits": str(credits_to_grant)},
+            subscription_data={"metadata": {"user_id": str(user["id"]), "plan": plan_key, "interval": plan_interval}},
         )
         return redirect(session.url, code=303)
     except Exception as exc:
@@ -261,14 +326,19 @@ def _handle_checkout_completed(session_obj: dict) -> None:
         except Exception as exc:
             logger.warning("Could not retrieve subscription %s: %s", subscription_id, exc)
 
+    plan_interval = meta.get("interval", "monthly")
+    credits_to_grant = PLANS.get(plan_key, {}).get("credits_monthly", 0)
+
     try:
         update_user_plan(
             user_id=int(user_id),
             plan=plan_key,
             stripe_customer_id=customer_id,
             plan_expires_at=expires_at,
+            plan_interval=plan_interval,
+            credits_to_grant=credits_to_grant,
         )
-        logger.info("User %s upgraded to %s via checkout", user_id, plan_key)
+        logger.info("User %s upgraded to %s (%s) — %d credits granted", user_id, plan_key, plan_interval, credits_to_grant)
     except Exception as exc:
         logger.exception("Failed to update plan for user %s: %s", user_id, exc)
 
@@ -284,7 +354,13 @@ def _handle_subscription_updated(sub_obj: dict) -> None:
     if not user:
         return
     if status in ("active", "trialing"):
-        update_user_plan(user["id"], user.get("plan", "pro"), plan_expires_at=expires_at)
+        plan_key = user.get("plan", "pro")
+        credits_to_grant = PLANS.get(plan_key, {}).get("credits_monthly", 0)
+        update_user_plan(
+            user["id"], plan_key,
+            plan_expires_at=expires_at,
+            credits_to_grant=credits_to_grant,
+        )
     elif status in ("canceled", "unpaid", "past_due"):
         _downgrade_customer(customer_id)
 

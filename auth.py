@@ -36,7 +36,8 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, email, is_admin, created_at, "
-            "       plan, stripe_customer_id, plan_expires_at "
+            "       plan, stripe_customer_id, plan_expires_at, "
+            "       credits, plan_interval "
             "FROM users WHERE id = %s",
             (user_id,),
         )
@@ -48,6 +49,8 @@ def update_user_plan(
     plan: str,
     stripe_customer_id: Optional[str] = None,
     plan_expires_at=None,
+    plan_interval: Optional[str] = None,
+    credits_to_grant: int = 0,
 ) -> None:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -55,12 +58,67 @@ def update_user_plan(
             UPDATE users
                SET plan = %s,
                    stripe_customer_id = COALESCE(%s, stripe_customer_id),
-                   plan_expires_at = %s
+                   plan_expires_at = %s,
+                   plan_interval = COALESCE(%s, plan_interval),
+                   credits = credits + %s
              WHERE id = %s
             """,
-            (plan, stripe_customer_id, plan_expires_at, user_id),
+            (plan, stripe_customer_id, plan_expires_at, plan_interval, credits_to_grant, user_id),
+        )
+        if credits_to_grant > 0:
+            cur.execute(
+                """INSERT INTO credit_ledger (user_id, credits, label)
+                   VALUES (%s, %s, %s)""",
+                (user_id, credits_to_grant, f"Plan grant: {plan}"),
+            )
+        conn.commit()
+
+
+def grant_monthly_credits(user_id: int, plan: str, plan_interval: str = "monthly") -> int:
+    """Grant monthly credit allocation for a plan. Returns credits granted."""
+    from billing import PLANS  # avoid circular at module level
+    plan_def = PLANS.get(plan, {})
+    credits = plan_def.get("credits_monthly", 0)
+    if credits <= 0:
+        return 0
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET credits = %s WHERE id = %s",
+            (credits, user_id),
+        )
+        cur.execute(
+            "INSERT INTO credit_ledger (user_id, credits, label) VALUES (%s, %s, %s)",
+            (user_id, credits, f"Monthly reset: {plan}"),
         )
         conn.commit()
+    return credits
+
+
+def deduct_credits(user_id: int, amount: float, label: str, project_id: Optional[str] = None) -> bool:
+    """Deduct credits from user balance. Returns True if successful, False if insufficient."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT credits FROM users WHERE id = %s FOR UPDATE", (user_id,))
+        row = cur.fetchone()
+        if not row or (row.get("credits") or 0) < amount:
+            return False
+        cur.execute(
+            "UPDATE users SET credits = credits - %s WHERE id = %s",
+            (amount, user_id),
+        )
+        cur.execute(
+            "INSERT INTO credit_ledger (user_id, project_id, credits, label) VALUES (%s, %s, %s, %s)",
+            (user_id, project_id, -amount, label),
+        )
+        conn.commit()
+    return True
+
+
+def get_credit_balance(user_id: int) -> int:
+    """Return the current credit balance for a user."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT credits FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        return int((row or {}).get("credits") or 0)
 
 
 def get_user_by_stripe_customer(customer_id: str) -> Optional[dict]:

@@ -292,48 +292,72 @@
         <h2 class="lp-section-title">Start free, scale when<br><span class="lp-title-accent">you need to</span></h2>
         <p class="lp-section-sub">No credit card required to start. <a href="{{ url_for('signup') }}" class="lp-pricing-full-link">Sign up to see all plans →</a></p>
 
-        <div class="lp-plan-cards">
+        <div class="lp-credit-pills">
+            <span class="lp-credit-pill">🪙 1 credit = 1¢</span>
+            <span class="lp-credit-pill">🎬 100 credits = 1 min animatic</span>
+            <span class="lp-credit-pill">🎞️ 500 credits = 1 min AI video</span>
+        </div>
+
+        <div class="lp-plan-cards lp-plan-cards-4">
             <div class="lp-plan-card">
                 <div class="lp-plan-name">Free</div>
                 <div class="lp-plan-price">$0<span>/mo</span></div>
-                <div class="lp-plan-desc">Get started and see what the AI can do with your first projects.</div>
+                <div class="lp-plan-credits">3 projects · explore</div>
+                <div class="lp-plan-desc">Explore the full pipeline with your first projects.</div>
                 <ul class="lp-plan-features">
                     <li>✓ 3 projects</li>
                     <li>✓ Full storyboard pipeline</li>
                     <li>✓ AI-generated stills</li>
-                    <li>✓ All languages</li>
+                    <li>✓ All 40+ languages</li>
                     <li class="lp-plan-no">✗ No commercial licence</li>
                 </ul>
                 <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Get started free</a>
             </div>
 
+            <div class="lp-plan-card">
+                <div class="lp-plan-name">Starter</div>
+                <div class="lp-plan-price">$14.99<span>/mo</span></div>
+                <div class="lp-plan-credits">🪙 1,500 credits / month</div>
+                <div class="lp-plan-desc">For creators ready to produce their first AI video.</div>
+                <ul class="lp-plan-features">
+                    <li>✓ ~15 min animatic/month</li>
+                    <li>✓ ~3 min AI video/month</li>
+                    <li>✓ AI Director's Brief</li>
+                    <li>✓ Character reference images</li>
+                    <li>✓ Commercial licence</li>
+                </ul>
+                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Get Starter →</a>
+            </div>
+
             <div class="lp-plan-card lp-plan-card-pro">
                 <div class="lp-plan-popular">Most popular</div>
                 <div class="lp-plan-name">Pro</div>
-                <div class="lp-plan-price">$14.99<span>/mo</span></div>
-                <div class="lp-plan-desc">For creators who release music regularly and need unlimited horsepower.</div>
+                <div class="lp-plan-price">$39.99<span>/mo</span></div>
+                <div class="lp-plan-credits">🪙 4,000 credits / month</div>
+                <div class="lp-plan-desc">For serious creators producing at volume.</div>
                 <ul class="lp-plan-features">
-                    <li>✓ Unlimited projects</li>
-                    <li>✓ Priority AI generation</li>
-                    <li>✓ Face-locked character stills</li>
-                    <li>✓ Commercial licence</li>
-                    <li>✓ All languages + custom styles</li>
+                    <li>✓ ~40 min animatic/month</li>
+                    <li>✓ ~8 min AI video/month</li>
+                    <li>✓ Everything in Starter</li>
+                    <li>✓ Subtitle designer</li>
+                    <li>✓ Cinematic colour grading</li>
                 </ul>
-                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-block">Start for free →</a>
+                <a href="{{ url_for('signup') }}" class="btn-primary btn-primary-block">Start with Pro →</a>
             </div>
 
             <div class="lp-plan-card">
                 <div class="lp-plan-name">Studio</div>
-                <div class="lp-plan-price">$49.99<span>/mo</span></div>
-                <div class="lp-plan-desc">For labels, agencies, and production houses with multiple artists.</div>
+                <div class="lp-plan-price">$199.99<span>/mo</span></div>
+                <div class="lp-plan-credits">🪙 20,000 credits / month</div>
+                <div class="lp-plan-desc">For studios running full production pipelines.</div>
                 <ul class="lp-plan-features">
+                    <li>✓ ~200 min animatic/month</li>
+                    <li>✓ ~40 min AI video/month</li>
                     <li>✓ Everything in Pro</li>
-                    <li>✓ Team seats</li>
-                    <li>✓ Custom style packs</li>
-                    <li>✓ API access</li>
+                    <li>✓ Lip-sync & avatar shots</li>
                     <li>✓ Dedicated support</li>
                 </ul>
-                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Talk to us</a>
+                <a href="{{ url_for('signup') }}" class="btn-ghost btn-ghost-block">Get Studio →</a>
             </div>
         </div>
     </div>
@@ -344,8 +368,8 @@
     <div class="lp-cta-radial"></div>
     <div class="lp-section-inner">
         <div class="lp-cta-banner-inner">
-            <h2 class="lp-cta-banner-title">Your next music video<br>starts here.</h2>
-            <p class="lp-cta-banner-sub">No credit card. No setup. Just paste your lyrics and go.</p>
+            <h2 class="lp-cta-banner-title">Your next cinematic project<br>starts here.</h2>
+            <p class="lp-cta-banner-sub">No credit card. No setup. Paste your lyrics, script, or story and go.</p>
             {% if current_user %}
                 <a href="{{ url_for('new_project') }}" class="btn-primary btn-primary-lg lp-cta-btn">
                     Start a New Project →
