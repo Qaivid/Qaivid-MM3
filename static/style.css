@@ -219,17 +219,17 @@ h1, h2, h3, .brand, .display {
 .brand--has-logo::before {
     display: none;
 }
+/* .brand-sub and .brand-name colors are now driven by inline styles from the CMS.
+   We only reset browser overrides so the inline color takes full effect. */
 .brand span,
 .brand-sub {
-    background: linear-gradient(135deg, var(--lime), var(--cyan));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: unset;
 }
 .brand-name {
-    color: var(--text);
-    -webkit-text-fill-color: var(--text);
+    -webkit-text-fill-color: unset;
 }
 
 .topbar nav { display: flex; gap: 6px; align-items: center; }

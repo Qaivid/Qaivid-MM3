@@ -394,6 +394,99 @@
                         value="{{ sc.site_logo_size }}"
                         oninput="document.getElementById('cms-logo-size-val').textContent=this.value">
                 </div>
+
+                <!-- ── Brand name text (e.g. "Qaivid") ── -->
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
+                    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">
+                        Brand name text <span style="opacity:.5;font-weight:400;text-transform:none;letter-spacing:0;">(e.g. "{{ sc.site_name }}")</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div class="cms-field">
+                            <label>Color</label>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <input type="color" id="cms-bn-color-picker" value="{{ sc.site_brand_name_color }}"
+                                    style="width:32px;height:26px;border:none;background:none;cursor:pointer;padding:0;"
+                                    oninput="document.getElementById('cms-site_brand_name_color').value=this.value">
+                                <input type="text" id="cms-site_brand_name_color" value="{{ sc.site_brand_name_color }}"
+                                    style="width:80px;" placeholder="#ffffff"
+                                    oninput="document.getElementById('cms-bn-color-picker').value=this.value">
+                            </div>
+                        </div>
+                        <div class="cms-field">
+                            <label>Font size</label>
+                            <input type="text" id="cms-site_brand_name_size" value="{{ sc.site_brand_name_size }}"
+                                placeholder="24px">
+                        </div>
+                        <div class="cms-field">
+                            <label>Weight</label>
+                            <select id="cms-site_brand_name_weight">
+                                {% for w in ['400','500','600','700','800','900'] %}
+                                <option value="{{ w }}" {% if sc.site_brand_name_weight == w %}selected{% endif %}>{{ w }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="cms-field">
+                            <label>Style</label>
+                            <select id="cms-site_brand_name_style">
+                                <option value="normal" {% if sc.site_brand_name_style == 'normal' %}selected{% endif %}>Normal</option>
+                                <option value="italic" {% if sc.site_brand_name_style == 'italic' %}selected{% endif %}>Italic</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Brand sub text (e.g. "MetaMind 3.1") ── -->
+                <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
+                    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">
+                        Brand version text <span style="opacity:.5;font-weight:400;text-transform:none;letter-spacing:0;">(e.g. "MetaMind 3.1")</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div class="cms-field">
+                            <label>Color</label>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <input type="color" id="cms-bs-color-picker" value="{{ sc.site_brand_sub_color }}"
+                                    style="width:32px;height:26px;border:none;background:none;cursor:pointer;padding:0;"
+                                    oninput="document.getElementById('cms-site_brand_sub_color').value=this.value">
+                                <input type="text" id="cms-site_brand_sub_color" value="{{ sc.site_brand_sub_color }}"
+                                    style="width:80px;" placeholder="#d4ff3a"
+                                    oninput="document.getElementById('cms-bs-color-picker').value=this.value">
+                            </div>
+                        </div>
+                        <div class="cms-field">
+                            <label>Font size</label>
+                            <input type="text" id="cms-site_brand_sub_size" value="{{ sc.site_brand_sub_size }}"
+                                placeholder="15px">
+                        </div>
+                        <div class="cms-field">
+                            <label>Weight</label>
+                            <select id="cms-site_brand_sub_weight">
+                                {% for w in ['400','500','600','700','800','900'] %}
+                                <option value="{{ w }}" {% if sc.site_brand_sub_weight == w %}selected{% endif %}>{{ w }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="cms-field">
+                            <label>Style</label>
+                            <select id="cms-site_brand_sub_style">
+                                <option value="normal" {% if sc.site_brand_sub_style == 'normal' %}selected{% endif %}>Normal</option>
+                                <option value="italic" {% if sc.site_brand_sub_style == 'italic' %}selected{% endif %}>Italic</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live preview -->
+                <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:10px;color:rgba(255,255,255,0.35);margin-right:4px;">Preview:</span>
+                    <span id="cms-brand-preview-name"
+                        style="font-family:'Space Grotesk',sans-serif;color:{{ sc.site_brand_name_color }};font-size:{{ sc.site_brand_name_size }};font-weight:{{ sc.site_brand_name_weight }};font-style:{{ sc.site_brand_name_style }};">
+                        {{ sc.site_name }}
+                    </span>
+                    <span id="cms-brand-preview-sub"
+                        style="font-family:'Space Grotesk',sans-serif;color:{{ sc.site_brand_sub_color }};font-size:{{ sc.site_brand_sub_size }};font-weight:{{ sc.site_brand_sub_weight }};font-style:{{ sc.site_brand_sub_style }};">
+                        MetaMind 3.1
+                    </span>
+                </div>
             </div>
 
             <!-- ── HERO STYLING ── -->
@@ -655,6 +748,35 @@ if (savedTab) {
 document.querySelectorAll('.adm-tab').forEach(btn => {
     btn.addEventListener('click', () => sessionStorage.setItem('adminTab', btn.dataset.tab));
 });
+
+// ── Brand typography live preview ─────────────────────
+(function() {
+    function _applyStyle(previewId, colorId, sizeId, weightId, styleId) {
+        const el = document.getElementById(previewId);
+        if (!el) return;
+        const get = id => (document.getElementById(id) || {}).value || '';
+        el.style.color      = get(colorId);
+        el.style.fontSize   = get(sizeId);
+        el.style.fontWeight = get(weightId);
+        el.style.fontStyle  = get(styleId);
+    }
+    function _wire(inputIds, previewId, colorId, sizeId, weightId, styleId) {
+        inputIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => _applyStyle(previewId, colorId, sizeId, weightId, styleId));
+        });
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        _wire(['cms-site_brand_name_color','cms-bn-color-picker','cms-site_brand_name_size','cms-site_brand_name_weight','cms-site_brand_name_style'],
+              'cms-brand-preview-name','cms-site_brand_name_color','cms-site_brand_name_size','cms-site_brand_name_weight','cms-site_brand_name_style');
+        _wire(['cms-site_brand_sub_color','cms-bs-color-picker','cms-site_brand_sub_size','cms-site_brand_sub_weight','cms-site_brand_sub_style'],
+              'cms-brand-preview-sub','cms-site_brand_sub_color','cms-site_brand_sub_size','cms-site_brand_sub_weight','cms-site_brand_sub_style');
+        // also update preview's name text when site_name field changes
+        const nameField = document.getElementById('cms-site_name');
+        const previewName = document.getElementById('cms-brand-preview-name');
+        if (nameField && previewName) nameField.addEventListener('input', () => { previewName.textContent = nameField.value || 'Qaivid'; });
+    });
+})();
 
 // ── Site CMS: logo URL typed manually ─────────────────
 function cmsLogoUrlChanged(url) {

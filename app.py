@@ -220,6 +220,16 @@ _SITE_DEFAULTS: dict[str, str] = {
     "site_name":        "Qaivid",
     "site_logo_url":    "",
     "site_logo_size":   "45",
+    # Brand-name text style (the main "Qaivid" word)
+    "site_brand_name_color":  "#ffffff",
+    "site_brand_name_size":   "24px",
+    "site_brand_name_weight": "800",
+    "site_brand_name_style":  "normal",
+    # Brand-sub text style (the "MetaMind 3.1" version string)
+    "site_brand_sub_color":   "#d4ff3a",
+    "site_brand_sub_size":    "15px",
+    "site_brand_sub_weight":  "600",
+    "site_brand_sub_style":   "italic",
     # ── Header ────────────────────────────────────────────────────────
     "site_header_tagline":      "Lyrics · Scripts · Poems · Stories · End-to-End Production",
     "site_header_film_opacity": "0.40",
@@ -2932,6 +2942,8 @@ def healthz():
 _SITE_ALLOWED_KEYS = frozenset([
     # branding
     "site_name", "site_logo_url", "site_logo_size",
+    "site_brand_name_color", "site_brand_name_size", "site_brand_name_weight", "site_brand_name_style",
+    "site_brand_sub_color",  "site_brand_sub_size",  "site_brand_sub_weight",  "site_brand_sub_style",
     # header
     "site_header_tagline", "site_header_film_opacity",
     # hero text

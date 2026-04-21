@@ -30,7 +30,7 @@
                 <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
                      style="height:{{ sc.site_logo_size }}px;width:auto;max-width:180px;object-fit:contain;display:block;">
                 {%- endif -%}
-                <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind 3.1</span>
+                <span class="brand-name" style="color:{{ sc.site_brand_name_color }};font-size:{{ sc.site_brand_name_size }};font-weight:{{ sc.site_brand_name_weight }};font-style:{{ sc.site_brand_name_style }};">{{ sc.site_name }}</span><span class="brand-sub" style="color:{{ sc.site_brand_sub_color }};font-size:{{ sc.site_brand_sub_size }};font-weight:{{ sc.site_brand_sub_weight }};font-style:{{ sc.site_brand_sub_style }};">MetaMind 3.1</span>
             </a>
             <div class="topbar-tagline">{% block topbar_tagline %}{% endblock %}</div>
         </div>
@@ -92,7 +92,7 @@
                     <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
                          style="height:{{ sc.site_logo_size }}px;width:auto;max-width:180px;object-fit:contain;display:block;">
                     {%- endif -%}
-                    <span class="brand-name">{{ sc.site_name }}</span><span class="brand-sub">MetaMind</span>
+                    <span class="brand-name" style="color:{{ sc.site_brand_name_color }};font-size:{{ sc.site_brand_name_size }};font-weight:{{ sc.site_brand_name_weight }};font-style:{{ sc.site_brand_name_style }};">{{ sc.site_name }}</span><span class="brand-sub" style="color:{{ sc.site_brand_sub_color }};font-size:{{ sc.site_brand_sub_size }};font-weight:{{ sc.site_brand_sub_weight }};font-style:{{ sc.site_brand_sub_style }};">MetaMind</span>
                 </a>
                 <p class="footer-tagline">{{ sc.site_footer_tagline | replace('\n', '<br>') | safe }}</p>
             </div>
