@@ -49,6 +49,7 @@ from character_materializer import materialize_characters
 from location_materializer import materialize_locations
 from motif_materializer import materialize_motifs
 import r2_storage
+import dataset_collector
 
 logger = logging.getLogger(__name__)
 
@@ -2918,6 +2919,19 @@ def _stage5_job(project_id: str) -> None:
                 conn.commit()
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+        # Snapshot project to training dataset
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT text, genre, name, context_packet, styled_timeline, summary "
+                    "FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                ds_row = cur.fetchone() or {}
+            dataset_collector.save_project_dataset(project_id, ds_row)
+        except Exception:
+            logger.warning("Dataset snapshot pre-fetch failed for project %s", project_id)
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "final", "label": "Final cut ready."},
