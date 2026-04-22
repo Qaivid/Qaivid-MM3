@@ -2786,6 +2786,18 @@ def postprod_page(project_id: str):
     _ai_export_raw = ai_cfg.get("export_url") or raw_config.get("ai_export_url") or ""
     ai_export_url: str | None = _asset_url(_ai_export_raw) if _ai_export_raw else None
 
+    # SRT proxy URL for client-side cue parsing (so live preview shows real subtitle text)
+    srt_url: str | None = None
+    _srt_key = shared_cfg.get("srt_r2_key") or quick_cfg.get("srt_r2_key") or ai_cfg.get("srt_r2_key")
+    if _srt_key:
+        try:
+            import r2_storage as _r2s
+            if _r2s.r2_available():
+                _srt_raw = _r2s.public_url_for(_srt_key)
+                srt_url = url_for("r2proxy", url=_srt_raw, _external=False)
+        except Exception:
+            pass
+
     # Generating/error state for both modes (stored at top level of postprod_config)
     quick_generating = bool(raw_config.get("generating"))
     ai_generating    = bool(raw_config.get("ai_generating"))
@@ -2816,6 +2828,7 @@ def postprod_page(project_id: str):
         quick_video_url=quick_video_url,
         ai_video_url=ai_video_url,
         ai_export_url=ai_export_url,
+        srt_url=srt_url,
         quick_generating=quick_generating,
         ai_generating=ai_generating,
         ai_error=ai_error,

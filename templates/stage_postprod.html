@@ -108,12 +108,22 @@
           <div class="pp-logo-br" id="pp-logo-br"></div>
         </div>
 
-        <!-- AI video player (AI mode, hidden by default) -->
+        <!-- AI video player + live preview overlay (AI mode, hidden by default) -->
         {% if ai_video_url %}
-        <video id="pp-ai-video" class="pp-ai-video" style="display:none"
-               src="{{ ai_video_url }}" preload="metadata" controls playsinline
-               poster="">
-        </video>
+        <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
+          <video id="pp-ai-video" class="pp-ai-video"
+                 src="{{ ai_video_url }}" preload="metadata" controls playsinline>
+          </video>
+          <!-- Overlay elements mirror the Quick-mode overlays -->
+          <div class="pp-ai-overlay" id="pp-ai-overlay">
+            <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
+            <div class="pp-sub-preview"    id="pp-ai-sub-preview"></div>
+            <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
+            <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
+            <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
+            <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+          </div>
+        </div>
         {% else %}
         <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
           <div class="pp-ai-no-video-icon">🎬</div>
@@ -908,9 +918,16 @@
 }
 
 /* ── AI Video player ─────────────────────────────────────────────────── */
+.pp-ai-video-wrap {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+}
 .pp-ai-video {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; background: #000;
+  width: 100%; height: 100%; object-fit: contain; background: #000;
+  flex: 1;
+}
+/* Overlay on top of AI video — pointer-events off so native controls still work */
+.pp-ai-overlay {
+  position: absolute; inset: 0; pointer-events: none;
 }
 .pp-ai-no-video {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -929,8 +946,8 @@
 .pp-ai-mode .pp-quick-only-tab { display: none !important; }
 .pp-ai-mode .pp-ai-only     { display: inline-flex !important; }
 .pp-ai-mode #pp-kb-wrap     { display: none !important; }
-.pp-ai-mode .pp-ai-video    { display: block !important; }
-.pp-ai-mode #pp-ai-no-video { display: flex !important; }
+.pp-ai-mode #pp-ai-video-wrap { display: flex !important; }
+.pp-ai-mode #pp-ai-no-video  { display: flex !important; }
 .pp-ai-mode #pp-thumb-strip { opacity: .4; pointer-events: none; }
 </style>
 
@@ -987,6 +1004,86 @@
 
   /* cfg always points to the active mode's config object */
   let cfg = cfgQuick;
+
+  /* ── SRT cue data (parsed from uploaded file, used for live preview) ── */
+  let srtCues = [];
+
+  function parseSRT(text) {
+    const cues = [];
+    const blocks = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim().split(/\n\n+/);
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      const tsLine = lines.find(l => l.includes('-->'));
+      if (!tsLine) continue;
+      const m = tsLine.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/);
+      if (!m) continue;
+      const start = +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000;
+      const end   = +m[5]*3600 + +m[6]*60 + +m[7] + +m[8]/1000;
+      const tsIdx = lines.indexOf(tsLine);
+      const cueText = lines.slice(tsIdx+1).join('\n').replace(/<[^>]+>/g,'').trim();
+      if (cueText) cues.push({ start, end, text: cueText });
+    }
+    return cues;
+  }
+
+  function ppFindCue(time) {
+    return srtCues.find(c => time >= c.start && time < c.end) || null;
+  }
+
+  function ppBuildSubStyle() {
+    return {
+      font:    document.getElementById('ctrl-sub-font')?.value    || 'Arial',
+      size:    document.getElementById('ctrl-sub-size')?.value    || 24,
+      color:   document.getElementById('ctrl-sub-color')?.value   || '#ffffff',
+      bg:      document.getElementById('ctrl-sub-bg')?.value      || '#000000',
+      outline: document.getElementById('ctrl-sub-outline')?.value || 1.5,
+      shadow:  document.getElementById('ctrl-sub-shadow')?.value  || 0,
+      yPct:    document.getElementById('ctrl-sub-y')?.value       || 90,
+    };
+  }
+
+  function ppApplySubStyle(el, text, s) {
+    if (!el) return;
+    if (!text || !cfg.srt_r2_key) { el.textContent = ''; el.style.cssText = 'pointer-events:none;'; return; }
+    el.textContent = text;
+    el.style.cssText = `
+      position:absolute; left:5%; right:5%;
+      bottom:${100 - parseInt(s.yPct)}%;
+      text-align:center; font-family:${s.font}; font-size:${s.size}px;
+      color:${s.color};
+      text-shadow: ${s.outline}px ${s.outline}px 0 #000, -${s.outline}px ${s.outline}px 0 #000,
+                   ${s.outline}px -${s.outline}px 0 #000, -${s.outline}px -${s.outline}px 0 #000,
+                   0 ${s.shadow}px 4px rgba(0,0,0,.8);
+      background: ${s.bg}80; padding: 2px 8px; border-radius: 3px;
+      pointer-events:none; z-index:10; white-space:pre-line;
+    `;
+  }
+
+  /* Show the SRT cue at 'time' on both the KB overlay and the AI overlay */
+  function ppShowSubtitleCue(time) {
+    const cue = ppFindCue(time);
+    const text = cue ? cue.text : '';
+    const s = ppBuildSubStyle();
+    ppApplySubStyle(document.getElementById('pp-sub-preview'),    text, s);
+    ppApplySubStyle(document.getElementById('pp-ai-sub-preview'), text, s);
+  }
+
+  /* ── Playback wall-clock tracking (for subtitle sync in Quick mode) ─── */
+  let playWallStart   = 0;
+  let playTimeOffset  = 0;
+
+  function getCurrentGlobalTime() {
+    if (!playing) return ppElapsedAt(currentIdx);
+    return playTimeOffset + (Date.now() - playWallStart) / 1000;
+  }
+
+  /* RAF loop — runs only while playing, stops itself when play stops */
+  let subRafId = null;
+  function subUpdateLoop() {
+    if (!playing) { subRafId = null; return; }
+    ppShowSubtitleCue(getCurrentGlobalTime());
+    subRafId = requestAnimationFrame(subUpdateLoop);
+  }
 
   /* ── Restore controls from cfg ────────────────────────────────────────*/
   /* ── ASS colour → CSS hex ────────────────────────────────────────────── */
@@ -1055,6 +1152,8 @@
       if (logo.opacity  !== undefined) { const pct=Math.round(logo.opacity*100); setVal('ctrl-logo-op-' + slot, pct); ppRangeVal('logo-op-' + slot, pct, '%'); }
       if (logo.x_offset !== undefined) { setVal('ctrl-logo-x-' + slot, logo.x_offset); ppRangeVal('logo-x-' + slot, logo.x_offset, 'px'); }
       if (logo.y_offset !== undefined) { setVal('ctrl-logo-y-' + slot, logo.y_offset); ppRangeVal('logo-y-' + slot, logo.y_offset, 'px'); }
+      // Restore logo into player overlay (preview_url stored in config since last upload)
+      if (logo.preview_url) ppLogoPreview(slot, logo.preview_url);
     });
 
     // per-shot KB badges
@@ -1367,7 +1466,15 @@
     const thumb = document.getElementById('pp-thumb-' + shot.idx);
     if (thumb) { thumb.classList.add('active'); thumb.scrollIntoView({block:'nearest',inline:'center'}); }
     document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
-    if (playing && ppAudio) ppAudioSeek(ppElapsedAt(currentIdx));
+    if (playing) {
+      // Reset wall clock so subtitle sync stays accurate after a manual shot jump
+      playWallStart  = Date.now();
+      playTimeOffset = ppElapsedAt(currentIdx);
+      if (ppAudio) ppAudioSeek(playTimeOffset);
+    } else {
+      // Static view — show cue at shot's start time
+      ppShowSubtitleCue(ppElapsedAt(currentIdx));
+    }
   };
 
   function renderShot() {
@@ -1405,10 +1512,17 @@
     if (playing) {
       clearTimeout(playTimer); playing = false; btn.textContent = '▶';
       if (ppAudio) ppAudio.pause();
+      // Show static cue at current shot's start time when paused
+      ppShowSubtitleCue(ppElapsedAt(currentIdx));
     } else {
       playing = true; btn.textContent = '⏸';
-      if (ppAudio) { ppAudioSeek(ppElapsedAt(currentIdx)); ppAudio.play().catch(()=>{}); }
+      // Snap wall clock to current playback position
+      playWallStart  = Date.now();
+      playTimeOffset = ppElapsedAt(currentIdx);
+      if (ppAudio) { ppAudioSeek(playTimeOffset); ppAudio.play().catch(()=>{}); }
       ppAutoAdvance();
+      // Start RAF subtitle loop
+      if (!subRafId) subRafId = requestAnimationFrame(subUpdateLoop);
     }
   };
 
@@ -1530,20 +1644,28 @@
   };
 
   window.ppApplyFilterPreview = function() {
-    const filt  = cfg.colour_filter || 'original';
-    const intens = (cfg.filter_intensity || 100) / 100;
+    const filt    = cfg.colour_filter || 'original';
+    const intens  = (cfg.filter_intensity || 100) / 100;
     const baseCss = FILTER_CSS[filt] || '';
-    const preview  = document.getElementById('pp-filter-preview-img');
-    const overlay  = document.getElementById('pp-filter-overlay');
+    const filterVal = baseCss ? `${baseCss} opacity(${intens})` : '';
+
+    // Filter preview chip thumbnail
+    const preview = document.getElementById('pp-filter-preview-img');
     if (preview) {
       preview.style.filter  = baseCss;
       preview.style.opacity = 0.5 + 0.5 * intens;
     }
-    // Live preview on the player
-    const kbImg = document.getElementById('pp-kb-img');
-    if (kbImg) kbImg.style.filter = baseCss ? `${baseCss} opacity(${intens})` : '';
+    // Live preview label
     const label = document.getElementById('pp-filter-preview-label');
     if (label) label.textContent = filt.replace(/-/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+
+    // Apply to Quick mode still image
+    const kbImg = document.getElementById('pp-kb-img');
+    if (kbImg) kbImg.style.filter = filterVal;
+
+    // Apply to AI video element (CSS filter works on <video> in all modern browsers)
+    const aiVid = document.getElementById('pp-ai-video');
+    if (aiVid) aiVid.style.filter = filterVal;
   };
 
   /* ── Fill mode ──────────────────────────────────────────────────────── */
@@ -1577,43 +1699,26 @@
 
   /* ── Subtitle preview ───────────────────────────────────────────────── */
   window.ppSubPreview = function() {
-    const font    = document.getElementById('ctrl-sub-font')?.value || 'Arial';
-    const size    = document.getElementById('ctrl-sub-size')?.value || 24;
-    const color   = document.getElementById('ctrl-sub-color')?.value || '#ffffff';
-    const bg      = document.getElementById('ctrl-sub-bg')?.value || '#000000';
-    const outline = document.getElementById('ctrl-sub-outline')?.value || 1.5;
-    const shadow  = document.getElementById('ctrl-sub-shadow')?.value || 0;
-    const y       = document.getElementById('ctrl-sub-y')?.value || 90;
+    const s = ppBuildSubStyle();
 
-    const shot = SHOTS[currentIdx];
-    const text = shot?.meaning?.slice(0,60) || 'Sample subtitle text';
-    const sub  = document.getElementById('pp-sub-preview');
-    if (sub && cfg.srt_r2_key) {
-      sub.textContent = text;
-      sub.style.cssText = `
-        position:absolute; left:5%; right:5%;
-        bottom:${100 - parseInt(y)}%;
-        text-align:center; font-family:${font}; font-size:${size}px;
-        color:${color};
-        text-shadow: ${outline}px ${outline}px 0 #000, -${outline}px ${outline}px 0 #000,
-                     ${outline}px -${outline}px 0 #000, -${outline}px -${outline}px 0 #000,
-                     0 ${shadow}px 4px rgba(0,0,0,.8);
-        background: ${bg}80; padding: 2px 8px; border-radius: 3px;
-        pointer-events:none;
-      `;
-    } else if (sub) {
-      sub.textContent = '';
+    // Show real SRT cue at current shot's start time (static / non-playing view)
+    // During playback, subUpdateLoop handles live sync via ppShowSubtitleCue()
+    if (!playing) {
+      const shotTime = ppElapsedAt(currentIdx);
+      ppShowSubtitleCue(shotTime);
     }
 
-    // Update the preview box in the subs panel
+    // Update the styled preview box in the Subtitles panel
+    const shotText = SHOTS[currentIdx]?.meaning?.slice(0,60) || 'Sample subtitle text';
+    const cueText  = ppFindCue(ppElapsedAt(currentIdx))?.text?.slice(0,80) || shotText;
     const box = document.getElementById('pp-sub-preview-box');
     if (box) {
-      box.textContent = text;
-      box.style.fontFamily  = font;
-      box.style.fontSize    = size + 'px';
-      box.style.color       = color;
-      box.style.background  = bg + '80';
-      box.style.textShadow  = `${outline}px ${outline}px 0 #000`;
+      box.textContent = cueText;
+      box.style.fontFamily  = s.font;
+      box.style.fontSize    = s.size + 'px';
+      box.style.color       = s.color;
+      box.style.background  = s.bg + '80';
+      box.style.textShadow  = `${s.outline}px ${s.outline}px 0 #000`;
     }
   };
 
@@ -1649,17 +1754,28 @@
   /* ── SRT upload ─────────────────────────────────────────────────────── */
   window.ppUploadSrt = async function(input) {
     if (!input.files[0]) return;
-    const fname = input.files[0].name;
+    const file  = input.files[0];
+    const fname = file.name;
+
+    // Parse SRT content in the browser immediately for live preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      srtCues = parseSRT(e.target.result);
+      ppSubPreview(); // Refresh overlays with real cue data
+    };
+    reader.readAsText(file);
+
+    // Upload to server for use in the rendered export
     const fd = new FormData();
-    fd.append('srt_file', input.files[0]);
+    fd.append('srt_file', file);
     fd.append('csrf_token', CSRF);
     const res = await fetch(`/project/${PID}/postprod/upload_srt`, { method:'POST', body:fd });
     const d = await res.json();
     if (d.ok) {
       // Sync SRT key to both mode configs (shared setting)
       cfgQuick.srt_r2_key = d.r2_key;
-      cfgAi.srt_r2_key = d.r2_key;
-      cfg.srt_r2_key = d.r2_key;
+      cfgAi.srt_r2_key    = d.r2_key;
+      cfg.srt_r2_key      = d.r2_key;
       document.getElementById('srt-filename').textContent = '✓ ' + fname;
       markDirty(); scheduleAutosave();
     } else {
@@ -1677,12 +1793,13 @@
     const res = await fetch(`/project/${PID}/postprod/upload_logo/${slot}`, { method:'POST', body:fd });
     const d = await res.json();
     if (d.ok) {
-      // Sync logo to both mode configs (shared setting)
+      // Sync logo to both mode configs (shared setting) — store preview_url for page-reload restoration
       [cfgQuick, cfgAi].forEach(c => {
         if (!c.logos) c.logos = {};
         if (!c.logos[slot]) c.logos[slot] = {};
-        c.logos[slot].r2_key = d.r2_key;
-        c.logos[slot].filename = fname;
+        c.logos[slot].r2_key      = d.r2_key;
+        c.logos[slot].filename    = fname;
+        c.logos[slot].preview_url = d.preview_url || '';
       });
       document.getElementById('logo-fn-' + slot).textContent = '✓ ' + fname;
       const ctrl = document.getElementById('logo-ctrl-' + slot);
@@ -1695,22 +1812,37 @@
   };
 
   window.ppLogoPreview = function(slot, previewUrl) {
-    const map = { 'top-left':'pp-logo-tl','top-right':'pp-logo-tr','bottom-left':'pp-logo-bl','bottom-right':'pp-logo-br' };
-    const el = document.getElementById(map[slot]);
-    if (!el) return;
+    const sfx = { 'top-left':'tl','top-right':'tr','bottom-left':'bl','bottom-right':'br' }[slot];
+    if (!sfx) return;
+    // Update both Quick-mode overlay and AI-mode overlay
+    const ids = ['pp-logo-' + sfx, 'pp-ai-logo-' + sfx];
     const url = previewUrl || ((cfg.logos || {})[slot] || {}).preview_url || '';
-    if (!url && !el.querySelector('img')) return;
-    if (!el.querySelector('img')) {
-      const img = document.createElement('img');
-      img.style.maxWidth = '100%';
-      el.appendChild(img);
-    }
-    const img = el.querySelector('img');
-    if (url) img.src = url;
     const wEl = document.getElementById('ctrl-logo-w-' + slot);
     const oEl = document.getElementById('ctrl-logo-op-' + slot);
-    if (wEl) el.style.maxWidth = wEl.value + 'px';
-    if (oEl) el.style.opacity  = oEl.value / 100;
+    const xEl = document.getElementById('ctrl-logo-x-' + slot);
+    const yEl = document.getElementById('ctrl-logo-y-' + slot);
+    const xOff = xEl ? parseInt(xEl.value) || 0 : 0;
+    const yOff = yEl ? parseInt(yEl.value) || 0 : 0;
+
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (!url && !el.querySelector('img')) return;
+      if (!el.querySelector('img')) {
+        const img = document.createElement('img');
+        img.style.maxWidth = '100%'; img.style.display = 'block';
+        el.appendChild(img);
+      }
+      const img = el.querySelector('img');
+      if (url) img.src = url;
+      if (wEl) el.style.maxWidth = wEl.value + 'px';
+      if (oEl) el.style.opacity  = oEl.value / 100;
+      // Apply x/y offset to the overlay corner position
+      if (slot.includes('left'))   el.style.left   = (14 + xOff) + 'px';
+      if (slot.includes('right'))  el.style.right  = (14 - xOff) + 'px';
+      if (slot.includes('top'))    el.style.top    = (14 + yOff) + 'px';
+      if (slot.includes('bottom')) el.style.bottom = (14 - yOff) + 'px';
+    });
   };
 
   /* ── Auto-poll if generating was in progress ────────────────────────── */
@@ -1738,6 +1870,31 @@
   if (SHOTS.length > 0) ppJumpTo(0);
   ppApplyFilterPreview();
   ppSubPreview();
+
+  /* ── Fetch existing SRT on page load for live cue preview ───────────── */
+  const SRT_URL = {{ (srt_url or '') | tojson }};
+  if (SRT_URL) {
+    fetch(SRT_URL)
+      .then(r => r.ok ? r.text() : null)
+      .then(text => {
+        if (!text) return;
+        srtCues = parseSRT(text);
+        ppSubPreview(); // Re-render overlays with real cue data
+      })
+      .catch(() => {});
+  }
+
+  /* ── AI video: apply filter + sync subtitles on timeupdate ─────────── */
+  const aiVidEl = document.getElementById('pp-ai-video');
+  if (aiVidEl) {
+    aiVidEl.addEventListener('timeupdate', () => {
+      ppShowSubtitleCue(aiVidEl.currentTime);
+    });
+    // Sync once on metadata load in case filter was already set
+    aiVidEl.addEventListener('loadedmetadata', () => {
+      ppApplyFilterPreview();
+    });
+  }
 
   // Close popovers on escape
   document.addEventListener('keydown', (e) => {
