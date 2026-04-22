@@ -1,8 +1,8 @@
-"""FAL-backed video generation for Qaivid MetaMind.
+"""AtlasCloud WAN 2.6 video generation for Qaivid MetaMind.
 
-Animates each shot still into a short video clip using Kling image-to-video.
+Animates each shot still into a short video clip using WAN 2.6 image-to-video.
 Video clips are stored in Cloudflare R2 (r2_storage.py).
-Returns public R2 URLs instead of local Paths.
+Returns public R2 URLs.
 """
 from __future__ import annotations
 
@@ -11,39 +11,84 @@ import os
 import time
 import uuid
 
-import fal_client
+import boto3
 import requests
 
 import r2_storage
 
 logger = logging.getLogger(__name__)
 
-VIDEO_MODEL = "fal-ai/kling-video/v1/standard/image-to-video"
-MAX_DURATION = 5
-ASPECT_RATIO = "16:9"
-VIDEO_TIMEOUT_S = 360
+ATLAS_BASE_URL   = "https://api.atlascloud.ai/api/v1/model"
+VIDEO_MODEL      = "alibaba/wan-2.6/image-to-video"
+ASPECT_RATIO     = "16:9"
+DEFAULT_DURATION = 5       # seconds
+MAX_DURATION     = 10      # seconds (AtlasCloud I2V cap)
+FPS              = 24
+RESOLUTION       = "1080p"
+POLL_INTERVAL_S  = 5
+VIDEO_TIMEOUT_S  = 480     # 8 min — WAN 2.6 is slower than Kling
 
 
 class VideoGenerationError(RuntimeError):
     pass
 
 
-def _ensure_key() -> None:
-    if not os.getenv("FAL_KEY") and os.getenv("FAL_API_KEY"):
-        os.environ["FAL_KEY"] = os.environ["FAL_API_KEY"]
-    if not os.getenv("FAL_KEY"):
-        raise VideoGenerationError("FAL_API_KEY (or FAL_KEY) is not set in secrets.")
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def _api_key() -> str:
+    key = os.getenv("ATLAS_CLOUD_API_KEY") or os.getenv("ATLASCLOUD_API_KEY")
+    if not key:
+        raise VideoGenerationError(
+            "ATLAS_CLOUD_API_KEY is not set in secrets."
+        )
+    return key
 
 
-def _r2_key(project_id: str, shot_index: int) -> str:
-    return f"projects/{project_id}/videos/shot_{shot_index}_{uuid.uuid4().hex[:6]}.mp4"
+def _headers() -> dict:
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {_api_key()}",
+    }
 
 
-def _fal_accessible_url(r2_url: str) -> str:
-    """Ensure Kling can access the image URL.
+# ── Image accessibility ───────────────────────────────────────────────────────
 
-    Tries the URL anonymously first.  If not accessible, downloads from R2 via
-    authenticated boto3 and uploads to FAL's transient CDN.
+def _presigned_url(r2_url: str, expires: int = 600) -> str:
+    """Generate a time-limited presigned URL for a private R2 object so that
+    AtlasCloud can fetch it.  Falls back to returning the original URL if
+    credentials are missing (public bucket case)."""
+    try:
+        from urllib.parse import urlparse
+        parsed   = urlparse(r2_url)
+        raw_path = parsed.path.lstrip("/")
+        bucket   = os.getenv("R2_BUCKET_NAME", "")
+        if bucket and raw_path.startswith(bucket + "/"):
+            r2_key = raw_path[len(bucket) + 1:]
+        else:
+            r2_key = raw_path
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            region_name="auto",
+        )
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": r2_key},
+            ExpiresIn=expires,
+        )
+    except Exception as exc:
+        logger.warning("Could not generate presigned URL (%s); using original", exc)
+        return r2_url
+
+
+def _accessible_url(r2_url: str) -> str:
+    """Return a URL that AtlasCloud can fetch.
+
+    Tries the URL anonymously first.  If it returns 4xx, generate a
+    presigned R2 URL valid for 10 minutes.
     """
     try:
         resp = requests.head(r2_url, timeout=6)
@@ -51,55 +96,93 @@ def _fal_accessible_url(r2_url: str) -> str:
             return r2_url
     except Exception:
         pass
-
-    from urllib.parse import urlparse
-    parsed = urlparse(r2_url)
-    raw_path = parsed.path.lstrip("/")
-    bucket = os.getenv("R2_BUCKET_NAME", "")
-    if bucket and raw_path.startswith(bucket + "/"):
-        r2_key = raw_path[len(bucket) + 1:]
-    else:
-        r2_key = raw_path
-
-    _ensure_key()
-    img_bytes = r2_storage.download_bytes(r2_key)
-    fal_url = fal_client.upload(img_bytes, "image/jpeg")
-    logger.info("Re-hosted private R2 still on FAL CDN: %s", fal_url)
-    return fal_url
+    logger.info("R2 URL not publicly accessible — generating presigned URL")
+    return _presigned_url(r2_url)
 
 
-def _run_fal_video(payload: dict, timeout_s: int = VIDEO_TIMEOUT_S) -> dict:
-    _ensure_key()
+# ── R2 storage ────────────────────────────────────────────────────────────────
+
+def _r2_key(project_id: str, shot_index: int) -> str:
+    return f"projects/{project_id}/videos/shot_{shot_index}_{uuid.uuid4().hex[:6]}.mp4"
+
+
+# ── AtlasCloud API ────────────────────────────────────────────────────────────
+
+def _submit_job(image_url: str, prompt: str, duration: int) -> str:
+    """POST a generation job and return the prediction ID."""
+    payload = {
+        "model": VIDEO_MODEL,
+        "input": {
+            "prompt": prompt,
+            "image_url": image_url,
+            "resolution": RESOLUTION,
+            "duration": duration,
+            "fps": FPS,
+            "aspect_ratio": ASPECT_RATIO,
+        },
+    }
+    resp = requests.post(
+        f"{ATLAS_BASE_URL}/generateVideo",
+        headers=_headers(),
+        json=payload,
+        timeout=60,
+    )
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        raise VideoGenerationError(
+            f"AtlasCloud submit failed ({resp.status_code}): {resp.text[:400]}"
+        ) from exc
+
+    data = resp.json().get("data", {})
+    prediction_id = data.get("id")
+    if not prediction_id:
+        raise VideoGenerationError(
+            f"AtlasCloud did not return a prediction ID: {resp.text[:400]}"
+        )
+    logger.info("AtlasCloud job submitted — prediction_id=%s", prediction_id)
+    return prediction_id
+
+
+def _poll_job(prediction_id: str, timeout_s: int = VIDEO_TIMEOUT_S) -> str:
+    """Poll until the job is done and return the video URL."""
+    poll_url = f"{ATLAS_BASE_URL}/prediction/{prediction_id}"
     deadline = time.time() + timeout_s
-    handler = fal_client.submit(VIDEO_MODEL, arguments=payload)
-    last_exc: Exception | None = None
+
     while time.time() < deadline:
+        resp = requests.get(poll_url, headers=_headers(), timeout=30)
         try:
-            result = handler.get()
-            if result is not None:
-                return result
-        except Exception as exc:
-            last_exc = exc
-            err_str = str(exc)
-            if any(sig in err_str for sig in ("422", "400", "ValidationError",
-                                               "loc", "field required", "value_error")):
-                raise VideoGenerationError(f"FAL validation error on {VIDEO_MODEL}: {exc}") from exc
-        time.sleep(3.0)
+            resp.raise_for_status()
+        except requests.HTTPError as exc:
+            raise VideoGenerationError(
+                f"AtlasCloud poll failed ({resp.status_code}): {resp.text[:400]}"
+            ) from exc
+
+        data   = resp.json().get("data", {})
+        status = data.get("status", "")
+        logger.debug("AtlasCloud poll — id=%s status=%s", prediction_id, status)
+
+        if status in ("completed", "succeeded"):
+            outputs = data.get("outputs") or []
+            if outputs:
+                return outputs[0]
+            raise VideoGenerationError(
+                f"AtlasCloud job succeeded but outputs list is empty: {data}"
+            )
+
+        if status in ("failed", "error", "cancelled"):
+            raise VideoGenerationError(
+                f"AtlasCloud job {status}: {data.get('error') or data}"
+            )
+
+        time.sleep(POLL_INTERVAL_S)
+
     raise VideoGenerationError(
-        f"FAL video timed out after {timeout_s}s: {last_exc}"
-    ) from last_exc
+        f"AtlasCloud video timed out after {timeout_s}s (prediction_id={prediction_id})"
+    )
 
 
-def _extract_video_url(result: dict) -> str:
-    video = result.get("video")
-    if isinstance(video, dict):
-        url = video.get("url")
-        if url:
-            return url
-    if isinstance(video, str):
-        return video
-    raise VideoGenerationError(f"Could not extract video URL from FAL response: {result}")
-
+# ── Public interface ──────────────────────────────────────────────────────────
 
 def generate_shot_video(
     project_id: str,
@@ -112,47 +195,44 @@ def generate_shot_video(
     """Animate *still_url* into a short video clip stored in R2.
 
     Args:
-        still_url: Public URL of the still image (R2 URL).
-        motion_prompt: Concise Kling-optimised camera/motion description.
-            When provided, used as the video prompt instead of the full
-            still-image visual_prompt (which is far too long for Kling).
+        still_url:     Public (or R2) URL of the still image.
+        prompt:        Visual prompt for the shot.
+        duration_s:    Shot duration hint (clips are capped at MAX_DURATION).
+        motion_prompt: Concise WAN-optimised camera/motion description.
+                       When provided, used as the video prompt instead of the
+                       full visual prompt (which is often too long).
 
-    Returns a public R2 URL string (previously returned a local Path).
+    Returns a public R2 URL string.
     Raises VideoGenerationError on failure.
     """
-    _ensure_key()
-
-    clip_duration = "5"
+    # Determine clip duration
     if duration_s is not None and duration_s >= 8:
-        clip_duration = "10"
+        clip_duration = MAX_DURATION
+    else:
+        clip_duration = DEFAULT_DURATION
 
+    # Choose prompt — motion_prompt is concise and WAN-optimised
     effective_prompt = (motion_prompt or "").strip()
     if not effective_prompt:
-        effective_prompt = (prompt or "cinematic camera motion, smooth dolly").strip()[:200]
+        effective_prompt = (prompt or "cinematic camera motion, smooth dolly").strip()
+    # WAN 2.6 handles longer prompts well, but trim to safe limit
+    effective_prompt = effective_prompt[:400]
 
-    short_prompt = effective_prompt[:250]
-
-    # Ensure Kling can access the still image (private R2 → FAL CDN if needed)
-    fal_still_url = _fal_accessible_url(still_url)
-
-    payload = {
-        "image_url": fal_still_url,
-        "prompt": short_prompt,
-        "duration": clip_duration,
-        "aspect_ratio": ASPECT_RATIO,
-    }
+    # Ensure the image URL is reachable by AtlasCloud
+    accessible_image_url = _accessible_url(still_url)
 
     logger.info(
-        "Generating video for project=%s shot=%s dur=%ss",
+        "Generating WAN 2.6 video — project=%s shot=%s dur=%ss",
         project_id, shot_index, clip_duration,
     )
 
-    result = _run_fal_video(payload)
-    video_fal_url = _extract_video_url(result)
+    prediction_id = _submit_job(accessible_image_url, effective_prompt, clip_duration)
+    video_url     = _poll_job(prediction_id)
 
-    r2_key = _r2_key(project_id, shot_index)
+    # Download from AtlasCloud CDN and persist to our R2 bucket
+    r2_key     = _r2_key(project_id, shot_index)
     public_url = r2_storage.upload_from_url(
-        video_fal_url, r2_key, content_type="video/mp4", stream=True
+        video_url, r2_key, content_type="video/mp4", stream=True
     )
-    logger.info("Saved video clip to R2: %s", public_url)
+    logger.info("Saved WAN 2.6 clip to R2: %s", public_url)
     return public_url
