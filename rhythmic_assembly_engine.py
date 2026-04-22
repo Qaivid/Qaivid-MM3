@@ -13,7 +13,7 @@ class RhythmicAssemblyEngine:
     DEFAULT_BPM = 120.0
     DEFAULT_BEATS_PER_BAR = 4
     DEFAULT_MIN_SHOT_DURATION = 2.0   # WAN 2.6 minimum billable duration
-    DEFAULT_MAX_SHOT_DURATION = 12.0
+    DEFAULT_MAX_SHOT_DURATION = 15.0  # WAN 2.6 maximum duration
     DEFAULT_INTENSITY = 0.5
 
     def __init__(self):

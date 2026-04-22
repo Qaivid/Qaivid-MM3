@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 ATLAS_BASE_URL          = "https://api.atlascloud.ai/api/v1/model"
 VIDEO_MODEL             = "alibaba/wan-2.6/image-to-video-flash"
 RESOLUTION              = "720p"          # Flash sweet spot; change to "1080p" for standard
-DEFAULT_DURATION        = 5               # seconds (min: 5)
-MAX_DURATION            = 10              # seconds (AtlasCloud I2V cap)
+MIN_DURATION            = 2               # seconds (WAN 2.6 minimum)
+DEFAULT_DURATION        = 5               # seconds — fallback when no duration hint
+MAX_DURATION            = 15              # seconds (WAN 2.6 maximum)
 MOTION_PROMPT_MAX_CHARS = 400             # change here when switching models
 POLL_INTERVAL_S         = 4
 VIDEO_TIMEOUT_S         = 360             # 6 min — Flash is faster than standard
@@ -208,7 +209,12 @@ def generate_shot_video(
     Returns a public R2 URL string.
     Raises VideoGenerationError on failure.
     """
-    clip_duration = MAX_DURATION if (duration_s is not None and duration_s >= 8) else DEFAULT_DURATION
+    # Use the shot's actual duration, clamped to WAN 2.6's accepted range [2, 15].
+    # Round to nearest integer — AtlasCloud takes whole seconds.
+    if duration_s is not None and duration_s > 0:
+        clip_duration = max(MIN_DURATION, min(MAX_DURATION, round(duration_s)))
+    else:
+        clip_duration = DEFAULT_DURATION
 
     effective_prompt = (motion_prompt or "").strip()
     if not effective_prompt:
