@@ -148,6 +148,7 @@
                         <th>Email</th>
                         <th>Role</th>
                         <th>Plan</th>
+                        <th>Credits</th>
                         <th>Projects</th>
                         <th>Stripe</th>
                         <th>Joined</th>
@@ -178,6 +179,23 @@
                                     <option value="studio" {{ 'selected' if plan == 'studio' }}>Studio</option>
                                 </select>
                             </form>
+                        </td>
+                        <td class="adm-credits-cell">
+                            <span class="adm-credits-val" id="credits-val-{{ u.id }}">{{ "{:,}".format(u.credits | int) }}</span>
+                            <div class="adm-credits-actions">
+                                <form method="post" action="/admin/user/{{ u.id }}/reset-credits" class="adm-form-inline"
+                                      onsubmit="return confirm('Reset {{ u.email }} credits to their plan allocation?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="adm-btn adm-btn-credit-reset" title="Reset to plan">↺ Plan</button>
+                                </form>
+                                <form method="post" action="/admin/user/{{ u.id }}/set-credits" class="adm-form-inline adm-credits-set-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="number" name="credits" min="0" step="100"
+                                           value="{{ u.credits | int }}"
+                                           class="adm-credits-input" title="Set exact credit balance">
+                                    <button type="submit" class="adm-btn adm-btn-credit-set">Set</button>
+                                </form>
+                            </div>
                         </td>
                         <td>{{ u.project_count }}</td>
                         <td>

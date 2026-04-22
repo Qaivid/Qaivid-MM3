@@ -3225,6 +3225,7 @@ def admin():
             """
             SELECT u.id, u.email, u.is_admin, u.created_at,
                    u.plan, u.plan_expires_at, u.stripe_customer_id,
+                   COALESCE(u.credits, 0) AS credits,
                    COUNT(p.id) AS project_count
             FROM users u
             LEFT JOIN projects p ON p.user_id = u.id
@@ -3346,6 +3347,53 @@ def admin_set_user_plan(user_id: int):
         return redirect(url_for("admin"))
     update_user_plan(user_id, plan)
     flash(f"{row['email']} plan set to {plan}.", "success")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/user/<int:user_id>/set-credits", methods=["POST"])
+@admin_required
+def admin_set_credits(user_id: int):
+    """Set a user's credit balance to an arbitrary amount."""
+    try:
+        amount = int(request.form.get("credits", 0))
+        if amount < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash("Invalid credit amount.", "error")
+        return redirect(url_for("admin"))
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            flash("User not found.", "error")
+            return redirect(url_for("admin"))
+        cur.execute("UPDATE users SET credits = %s WHERE id = %s", (amount, user_id))
+        cur.execute(
+            "INSERT INTO credit_ledger (user_id, credits, label) VALUES (%s, %s, %s)",
+            (user_id, amount, f"Admin set: {amount} credits"),
+        )
+        conn.commit()
+    flash(f"{row['email']} credits set to {amount:,}.", "success")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/user/<int:user_id>/reset-credits", methods=["POST"])
+@admin_required
+def admin_reset_credits(user_id: int):
+    """Reset a user's credits to their plan's monthly allocation."""
+    from auth import grant_monthly_credits
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT email, plan FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+    if not row:
+        flash("User not found.", "error")
+        return redirect(url_for("admin"))
+    plan = row["plan"] or "free"
+    granted = grant_monthly_credits(user_id, plan)
+    if granted == 0:
+        flash(f"{row['email']} is on the Free plan — no credits to grant.", "info")
+    else:
+        flash(f"{row['email']} credits reset to {granted:,} ({plan} plan).", "success")
     return redirect(url_for("admin"))
 
 

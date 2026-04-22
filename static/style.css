@@ -4886,6 +4886,16 @@ main:has(> .ws-grid) {
 .adm-btn-ghost:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
 .adm-btn-danger { background: rgba(255,92,122,0.1); border-color: rgba(255,92,122,0.3); color: var(--error); }
 .adm-btn-danger:hover { background: rgba(255,92,122,0.32); color: #ffb0b8; border-color: rgba(255,92,122,0.55); }
+.adm-btn-credit-reset { background: rgba(212,255,58,0.08); border-color: rgba(212,255,58,0.25); color: #d4ff3a; }
+.adm-btn-credit-reset:hover { background: rgba(212,255,58,0.18); border-color: rgba(212,255,58,0.5); }
+.adm-btn-credit-set { background: rgba(56,225,255,0.08); border-color: rgba(56,225,255,0.25); color: #38e1ff; }
+.adm-btn-credit-set:hover { background: rgba(56,225,255,0.18); border-color: rgba(56,225,255,0.5); }
+.adm-credits-cell { min-width: 140px; }
+.adm-credits-val { font-weight: 700; font-size: 13px; color: #d4ff3a; display: block; margin-bottom: 6px; font-family: monospace; }
+.adm-credits-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.adm-credits-set-form { display: flex; gap: 4px; align-items: center; }
+.adm-credits-input { width: 72px; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: var(--text); font-size: 12px; font-family: monospace; }
+.adm-credits-input:focus { outline: none; border-color: rgba(56,225,255,0.5); }
 
 /* System tab */
 .adm-sys-grid { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
