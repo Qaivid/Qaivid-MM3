@@ -184,7 +184,7 @@ class RhythmicAssemblyEngine:
                         "Lyric-anchor reconciliation: residual=%.3fs absorbed by last shot",
                         residual,
                     )
-            return timeline
+            return self._snap_to_whole_seconds(timeline)
 
         # ── Audio-duration normalization (non-anchor mode, Task #104) ─────────
         # If the accumulated shot durations don't cover the full audio track,
@@ -232,6 +232,24 @@ class RhythmicAssemblyEngine:
                             residual,
                         )
 
+        return self._snap_to_whole_seconds(timeline)
+
+    def _snap_to_whole_seconds(self, timeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Snap every shot duration to the nearest whole second (min 2, max 15),
+        then recompute start_time and end_time sequentially so the stored values
+        match exactly what WAN 2.6 will generate."""
+        ts = 0.0
+        for s in timeline:
+            raw = s.get("duration") or self.min_shot_duration
+            snapped = int(max(self.min_shot_duration, min(self.max_shot_duration, round(raw))))
+            s["duration"]   = snapped
+            s["start_time"] = round(ts, 3)
+            s["end_time"]   = round(ts + snapped, 3)
+            ts += snapped
+        logger.info(
+            "Whole-second snap: %d shots, total %ds",
+            len(timeline), int(ts),
+        )
         return timeline
 
     def _validate_storyboard(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
