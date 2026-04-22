@@ -2782,8 +2782,9 @@ def postprod_page(project_id: str):
         ai_video_url = _asset_url(final_video_raw)
 
     # AI export URL (post-processed version of the AI video)
-    ai_export_raw = raw_config.get("ai_export_url") or ""
-    ai_export_url: str | None = _asset_url(ai_export_raw) if ai_export_raw else None
+    # Stored at postprod_config.ai.export_url; fallback to legacy top-level key
+    _ai_export_raw = ai_cfg.get("export_url") or raw_config.get("ai_export_url") or ""
+    ai_export_url: str | None = _asset_url(_ai_export_raw) if _ai_export_raw else None
 
     # Generating/error state for both modes (stored at top level of postprod_config)
     quick_generating = bool(raw_config.get("generating"))
@@ -2843,7 +2844,7 @@ def postprod_save(project_id: str):
     system_keys = {
         k: existing[k] for k in (
             "generating", "quick_video_error",
-            "ai_generating", "ai_error", "ai_export_url",
+            "ai_generating", "ai_error",
             "srt_r2_key", "logos",
         )
         if k in existing
@@ -2853,6 +2854,12 @@ def postprod_save(project_id: str):
     # system keys. Otherwise treat as flat quick config (legacy save).
     if "quick" in data or "ai" in data:
         merged = {**system_keys, **data}
+        # Preserve ai.export_url (written by the worker) — JS saves don't include it
+        _old_ai_export = (existing.get("ai") or {}).get("export_url")
+        if _old_ai_export and not (merged.get("ai") or {}).get("export_url"):
+            if "ai" not in merged or not isinstance(merged["ai"], dict):
+                merged["ai"] = {}
+            merged["ai"]["export_url"] = _old_ai_export
     else:
         # Legacy flat save — store everything under 'quick' but preserve system keys
         old_quick = existing.get("quick") or {}
@@ -2920,7 +2927,8 @@ def postprod_ai_status(project_id: str):
     config = project.get("postprod_config") or {}
     generating = bool(config.get("ai_generating"))
     error = config.get("ai_error") or ""
-    raw_url = config.get("ai_export_url") or ""
+    # Export URL stored at config.ai.export_url; fallback to legacy top-level key
+    raw_url = (config.get("ai") or {}).get("export_url") or config.get("ai_export_url") or ""
     url = _asset_url(raw_url) if raw_url else ""
     if url:
         generating = False

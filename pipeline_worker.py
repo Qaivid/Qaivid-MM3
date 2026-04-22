@@ -4174,15 +4174,20 @@ def _assemble_ai_postprod_job(project_id: str, settings: dict) -> None:
             export_url = r2_storage.upload_file(current_video, r2_key)
 
             with _db() as conn, conn.cursor() as cur:
+                # Read-modify-write to store export_url inside the ai sub-config
+                cur.execute("SELECT postprod_config FROM projects WHERE id=%s FOR UPDATE", (project_id,))
+                _row = cur.fetchone()
+                _cfg = (_row[0] if _row and _row[0] else {}) if _row else {}
+                if isinstance(_cfg, str):
+                    _cfg = _json.loads(_cfg)
+                _cfg["ai_generating"] = False
+                _cfg["ai_error"] = None
+                if "ai" not in _cfg or not isinstance(_cfg["ai"], dict):
+                    _cfg["ai"] = {}
+                _cfg["ai"]["export_url"] = export_url
                 cur.execute(
-                    "UPDATE projects SET "
-                    "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
-                    "updated_at=NOW() WHERE id=%s",
-                    (_json.dumps({
-                        "ai_generating": False,
-                        "ai_error": None,
-                        "ai_export_url": export_url,
-                    }), project_id),
+                    "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+                    (_json.dumps(_cfg), project_id),
                 )
                 conn.commit()
 
@@ -4220,7 +4225,7 @@ def kick_ai_postprod(project_id: str, settings: dict) -> None:
             "UPDATE projects SET "
             "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
             "updated_at=NOW() WHERE id=%s",
-            (_json.dumps({"ai_generating": True, "ai_error": None, "ai_export_url": None}), project_id),
+            (_json.dumps({"ai_generating": True, "ai_error": None}), project_id),
         )
         conn.commit()
     _POSTPROD_EXECUTOR.submit(_assemble_ai_postprod_job, project_id, settings)
