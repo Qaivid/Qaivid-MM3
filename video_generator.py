@@ -1,6 +1,8 @@
-"""AtlasCloud WAN 2.6 video generation for Qaivid MetaMind.
+"""AtlasCloud WAN 2.6 Flash video generation for Qaivid MetaMind.
 
-Animates each shot still into a short video clip using WAN 2.6 image-to-video.
+Animates each shot still into a short video clip using WAN 2.6 Flash image-to-video.
+Flash is the speed-optimised, cost-effective tier of WAN 2.6 — same API shape as
+the standard model; switch VIDEO_MODEL to alibaba/wan-2.6/image-to-video to go back.
 Video clips are stored in Cloudflare R2 (r2_storage.py).
 Returns public R2 URLs.
 """
@@ -19,15 +21,13 @@ import r2_storage
 logger = logging.getLogger(__name__)
 
 ATLAS_BASE_URL          = "https://api.atlascloud.ai/api/v1/model"
-VIDEO_MODEL             = "alibaba/wan-2.6/image-to-video"
-ASPECT_RATIO            = "16:9"
-DEFAULT_DURATION        = 5       # seconds
-MAX_DURATION            = 10      # seconds (AtlasCloud I2V cap)
-MOTION_PROMPT_MAX_CHARS = 400     # WAN 2.6 sweet spot — change here when switching models
-FPS              = 24
-RESOLUTION       = "1080p"
-POLL_INTERVAL_S  = 5
-VIDEO_TIMEOUT_S  = 480     # 8 min — WAN 2.6 is slower than Kling
+VIDEO_MODEL             = "alibaba/wan-2.6/image-to-video-flash"
+RESOLUTION              = "720p"          # Flash sweet spot; change to "1080p" for standard
+DEFAULT_DURATION        = 5               # seconds (min: 5)
+MAX_DURATION            = 10              # seconds (AtlasCloud I2V cap)
+MOTION_PROMPT_MAX_CHARS = 400             # change here when switching models
+POLL_INTERVAL_S         = 4
+VIDEO_TIMEOUT_S         = 360             # 6 min — Flash is faster than standard
 
 
 class VideoGenerationError(RuntimeError):
@@ -56,8 +56,7 @@ def _headers() -> dict:
 
 def _presigned_url(r2_url: str, expires: int = 600) -> str:
     """Generate a time-limited presigned URL for a private R2 object so that
-    AtlasCloud can fetch it.  Falls back to returning the original URL if
-    credentials are missing (public bucket case)."""
+    AtlasCloud can fetch it.  Falls back to the original URL on any error."""
     try:
         from urllib.parse import urlparse
         parsed   = urlparse(r2_url)
@@ -86,9 +85,9 @@ def _presigned_url(r2_url: str, expires: int = 600) -> str:
 
 
 def _accessible_url(r2_url: str) -> str:
-    """Return a URL that AtlasCloud can fetch.
+    """Return a URL AtlasCloud can fetch.
 
-    Tries the URL anonymously first.  If it returns 4xx, generate a
+    Tries the URL anonymously first.  If it returns 4xx, generates a
     presigned R2 URL valid for 10 minutes.
     """
     try:
@@ -110,17 +109,20 @@ def _r2_key(project_id: str, shot_index: int) -> str:
 # ── AtlasCloud API ────────────────────────────────────────────────────────────
 
 def _submit_job(image_url: str, prompt: str, duration: int) -> str:
-    """POST a generation job and return the prediction ID."""
+    """POST a generation job and return the prediction ID.
+
+    AtlasCloud uses a flat payload — NOT a nested "input" object.
+    The image field is "image", not "image_url".
+    """
     payload = {
-        "model": VIDEO_MODEL,
-        "input": {
-            "prompt": prompt,
-            "image_url": image_url,
-            "resolution": RESOLUTION,
-            "duration": duration,
-            "fps": FPS,
-            "aspect_ratio": ASPECT_RATIO,
-        },
+        "model":                    VIDEO_MODEL,
+        "image":                    image_url,    # flat, not input.image_url
+        "prompt":                   prompt,
+        "resolution":               RESOLUTION,
+        "duration":                 duration,
+        "shot_type":                "single",     # one camera per clip
+        "enable_prompt_expansion":  False,        # use our precise prompts as-is
+        "generate_audio":           False,        # audio assembled separately in post
     }
     resp = requests.post(
         f"{ATLAS_BASE_URL}/generateVideo",
@@ -206,34 +208,26 @@ def generate_shot_video(
     Returns a public R2 URL string.
     Raises VideoGenerationError on failure.
     """
-    # Determine clip duration
-    if duration_s is not None and duration_s >= 8:
-        clip_duration = MAX_DURATION
-    else:
-        clip_duration = DEFAULT_DURATION
+    clip_duration = MAX_DURATION if (duration_s is not None and duration_s >= 8) else DEFAULT_DURATION
 
-    # Choose prompt — motion_prompt is concise and WAN-optimised
     effective_prompt = (motion_prompt or "").strip()
     if not effective_prompt:
         effective_prompt = (prompt or "cinematic camera motion, smooth dolly").strip()
-    # WAN 2.6 handles longer prompts well, but trim to safe limit
-    effective_prompt = effective_prompt[:400]
+    effective_prompt = effective_prompt[:MOTION_PROMPT_MAX_CHARS]
 
-    # Ensure the image URL is reachable by AtlasCloud
     accessible_image_url = _accessible_url(still_url)
 
     logger.info(
-        "Generating WAN 2.6 video — project=%s shot=%s dur=%ss",
+        "Generating WAN 2.6 Flash video — project=%s shot=%s dur=%ss",
         project_id, shot_index, clip_duration,
     )
 
     prediction_id = _submit_job(accessible_image_url, effective_prompt, clip_duration)
     video_url     = _poll_job(prediction_id)
 
-    # Download from AtlasCloud CDN and persist to our R2 bucket
     r2_key     = _r2_key(project_id, shot_index)
     public_url = r2_storage.upload_from_url(
         video_url, r2_key, content_type="video/mp4", stream=True
     )
-    logger.info("Saved WAN 2.6 clip to R2: %s", public_url)
+    logger.info("Saved WAN 2.6 Flash clip to R2: %s", public_url)
     return public_url
