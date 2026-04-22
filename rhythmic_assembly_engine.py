@@ -12,7 +12,7 @@ class RhythmicAssemblyEngine:
     DEFAULT_FPS = 24
     DEFAULT_BPM = 120.0
     DEFAULT_BEATS_PER_BAR = 4
-    DEFAULT_MIN_SHOT_DURATION = 1.5
+    DEFAULT_MIN_SHOT_DURATION = 2.0   # WAN 2.6 minimum billable duration
     DEFAULT_MAX_SHOT_DURATION = 12.0
     DEFAULT_INTENSITY = 0.5
 
@@ -160,7 +160,7 @@ class RhythmicAssemblyEngine:
             )
             for j in range(len(timeline) - 1):
                 gap = timeline[j + 1]["start_time"] - timeline[j]["start_time"]
-                dur = max(beat_duration, round(gap, 3))
+                dur = max(self.min_shot_duration, beat_duration, round(gap, 3))
                 timeline[j]["duration"] = round(dur, 3)
                 timeline[j]["end_time"] = round(timeline[j]["start_time"] + dur, 3)
                 timeline[j]["lyric_anchored"] = True
@@ -169,7 +169,8 @@ class RhythmicAssemblyEngine:
             last["lyric_anchored"] = True
             if audio_duration > 0:
                 last["duration"] = max(
-                    beat_duration, round(audio_duration - last["start_time"], 3)
+                    self.min_shot_duration, beat_duration,
+                    round(audio_duration - last["start_time"], 3)
                 )
                 last["end_time"] = round(last["start_time"] + last["duration"], 3)
                 # Absorb any beat-snap residual.

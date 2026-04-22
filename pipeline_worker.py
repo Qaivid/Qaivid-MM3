@@ -3469,7 +3469,7 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     dur = float(per_shot_dur[str(idx)])
                 else:
                     dur = float(shot.get("duration") or 4.0)
-                dur = max(0.5, dur)
+                dur = max(2.0, dur)  # WAN 2.6 minimum billable duration
 
                 dst = work_dir / f"still_{idx:04d}.jpg"
                 try:
