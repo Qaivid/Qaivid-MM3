@@ -11,6 +11,19 @@
   {% else %}{% set ns.pending = ns.pending + 1 %}
   {% endif %}
 {% endfor %}
+{% set total_shots = shots | length %}
+{% set all_ready = (ns.ready == total_shots and total_shots > 0) %}
+
+{% set op_ns = namespace(op_pending=0, op_rendering=0, op_ready=0, op_failed=0) %}
+{% for s in shots %}
+  {% set op = outpaint_by_idx.get(s.shot_index, {}) %}
+  {% if op.status == 'ready' %}{% set op_ns.op_ready = op_ns.op_ready + 1 %}
+  {% elif op.status == 'rendering' %}{% set op_ns.op_rendering = op_ns.op_rendering + 1 %}
+  {% elif op.status == 'failed' %}{% set op_ns.op_failed = op_ns.op_failed + 1 %}
+  {% else %}{% set op_ns.op_pending = op_ns.op_pending + 1 %}
+  {% endif %}
+{% endfor %}
+{% set all_outpainted = (op_ns.op_ready == total_shots and total_shots > 0) %}
 
 <div class="stage-wrap">
   {% include '_stage_header.html' %}
@@ -81,16 +94,77 @@
       <span class="sc-bulk-hint muted">Accepted: JPG, PNG, WEBP</span>
     </div>
 
+    <!-- ══ OUTPAINT PANEL ══════════════════════════════════════════════════ -->
+    <div class="op-panel" id="op-panel"
+         style="{{ '' if all_ready else 'display:none;' }}">
+      <div class="op-panel-inner">
+        <div class="op-panel-left">
+          <div class="op-icon">⬡</div>
+          <div>
+            <div class="op-title">AI Outpaint to True {{ aspect_ratio }}</div>
+            <div class="op-sub">
+              Extend every still to
+              {% if aspect_ratio == '16:9' %}1920 × 1080{% elif aspect_ratio == '9:16' %}1080 × 1920{% else %}{{ aspect_ratio }}{% endif %}
+              using FLUX Fill Dev &mdash;
+              <strong>~$0.006 / image</strong>.
+              Originals are preserved; outpainted versions go to video generation.
+            </div>
+          </div>
+        </div>
+        <div class="op-panel-right">
+          <!-- Outpaint status pills -->
+          <div class="op-status-row" id="op-status-row">
+            <span class="op-pill op-pill-ready" id="op-cnt-ready">
+              {{ op_ns.op_ready }} ready
+            </span>
+            <span class="op-pill op-pill-rendering" id="op-cnt-rendering"
+                  style="{{ '' if op_ns.op_rendering > 0 else 'display:none;' }}">
+              {{ op_ns.op_rendering }} running
+            </span>
+            <span class="op-pill op-pill-failed" id="op-cnt-failed"
+                  style="{{ '' if op_ns.op_failed > 0 else 'display:none;' }}">
+              {{ op_ns.op_failed }} failed
+            </span>
+            <span class="op-pill op-pill-pending" id="op-cnt-pending"
+                  style="{{ '' if op_ns.op_pending > 0 else 'display:none;' }}">
+              {{ op_ns.op_pending }} pending
+            </span>
+          </div>
+          <button class="btn-outpaint" id="btn-outpaint-all"
+                  onclick="opOutpaintAll()"
+                  {% if all_outpainted %}style="opacity:.5;cursor:default;"{% endif %}>
+            {% if all_outpainted %}
+              ✓ All Outpainted
+            {% elif op_ns.op_rendering > 0 %}
+              ⏳ Running…
+            {% elif op_ns.op_ready > 0 %}
+              ↺ Re-outpaint All
+            {% else %}
+              ⬡ Outpaint All to {{ aspect_ratio }}
+            {% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+
     <!-- ── Shot grid ────────────────────────────────────────── -->
     <div class="sc-grid" id="sc-grid">
       {% for shot in shots %}
+      {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
       <div class="sc-card" id="sc-card-{{ shot.shot_index }}"
            data-idx="{{ shot.shot_index }}"
-           data-status="{{ shot.status }}">
+           data-status="{{ shot.status }}"
+           data-op-status="{{ op.status or 'pending' }}">
 
         <!-- Thumbnail -->
         <div class="sc-thumb-wrap">
-          {% if shot.url %}
+          {% if op.url and op.status == 'ready' %}
+          <a href="{{ op.url }}" target="_blank" rel="noopener" class="sc-thumb-link">
+            <img src="{{ op.url }}" alt="Shot {{ shot.shot_index }} (outpainted)"
+                 class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
+          </a>
+          {% elif shot.url %}
           <a href="{{ shot.url }}" target="_blank" rel="noopener" class="sc-thumb-link">
             <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}"
                  class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
@@ -105,6 +179,15 @@
             <span class="muted">&#8226;&#8226;&#8226;</span>
             {% endif %}
           </div>
+          {% endif %}
+
+          <!-- Outpaint overlay badge on the thumbnail -->
+          {% if op.status == 'ready' %}
+          <span class="sc-op-badge sc-op-badge--ready" id="op-badge-{{ shot.shot_index }}">{{ aspect_ratio }}</span>
+          {% elif op.status == 'rendering' %}
+          <span class="sc-op-badge sc-op-badge--rendering" id="op-badge-{{ shot.shot_index }}">expanding…</span>
+          {% elif op.status == 'failed' %}
+          <span class="sc-op-badge sc-op-badge--failed" id="op-badge-{{ shot.shot_index }}">op failed</span>
           {% endif %}
         </div>
 
@@ -160,7 +243,7 @@
           <button class="btn-mini sc-regen-btn" id="sc-gen-btn-{{ shot.shot_index }}"
                   data-idx="{{ shot.shot_index }}"
                   onclick="scGenOne({{ shot.shot_index }}, true)">
-            &#8635; Regenerate
+            &#8635; Regen
           </button>
           {% elif shot.status == 'rendering' %}
           <button class="btn-mini sc-gen-btn sc-gen-btn--spinning" disabled
@@ -172,6 +255,17 @@
                   data-idx="{{ shot.shot_index }}"
                   onclick="scGenOne({{ shot.shot_index }}, false)">
             &#9654; Generate
+          </button>
+          {% endif %}
+
+          <!-- Outpaint button (only shown when still is ready) -->
+          {% if shot.status == 'ready' %}
+          <button class="btn-mini sc-op-btn" id="sc-op-btn-{{ shot.shot_index }}"
+                  data-idx="{{ shot.shot_index }}"
+                  data-op-status="{{ op.status or 'pending' }}"
+                  onclick="opOutpaintOne({{ shot.shot_index }})"
+                  title="Outpaint this still to {{ aspect_ratio }}">
+            {% if op.status == 'ready' %}↺{% elif op.status == 'rendering' %}⏳{% else %}⬡{% endif %}
           </button>
           {% endif %}
         </div>
@@ -233,6 +327,84 @@
 .sc-btn-gen-all, .sc-btn-regen-all { font-size: 12px; padding: 6px 12px; }
 .sc-bulk-hint { font-size: 11px; margin-left: 4px; }
 
+/* ══ Outpaint panel ══ */
+.op-panel {
+  margin: 0 0 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(212,255,58,.35);
+  background: linear-gradient(135deg, rgba(212,255,58,.06) 0%, rgba(56,225,255,.04) 100%);
+  padding: 16px 20px;
+}
+.op-panel-inner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.op-panel-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 200px;
+}
+.op-icon {
+  font-size: 28px;
+  color: #d4ff3a;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.op-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #d4ff3a;
+  margin-bottom: 3px;
+}
+.op-sub {
+  font-size: 11px;
+  color: #8a9ab2;
+  line-height: 1.45;
+}
+.op-sub strong { color: #c8f135; }
+.op-panel-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.op-status-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.op-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.op-pill-ready    { background: rgba(126,200,164,.2); color: #7ec8a4; border: 1px solid rgba(126,200,164,.3); }
+.op-pill-rendering{ background: rgba(200,241,53,.2);  color: #c8f135; border: 1px solid rgba(200,241,53,.3); }
+.op-pill-failed   { background: rgba(255,107,107,.15);color: #ff6b6b; border: 1px solid rgba(255,107,107,.3); }
+.op-pill-pending  { background: rgba(154,166,178,.1); color: #9aa6b2; border: 1px solid rgba(154,166,178,.2); }
+
+.btn-outpaint {
+  background: #d4ff3a;
+  color: #0a0a0f;
+  border: none;
+  border-radius: 7px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn-outpaint:hover { background: #ffe200; transform: translateY(-1px); }
+.btn-outpaint:active { transform: translateY(0); }
+
 /* ── Shot grid ── */
 .sc-grid {
   display: grid;
@@ -251,6 +423,7 @@
 .sc-card[data-status="ready"]     { border-color: #2d4a38; }
 .sc-card[data-status="failed"]    { border-color: #4a2d2d; }
 .sc-card[data-status="rendering"] { border-color: #3a4020; }
+.sc-card[data-op-status="ready"]  { border-color: #3a4a20; box-shadow: 0 0 0 1px rgba(212,255,58,.15); }
 
 /* Thumbnail */
 .sc-thumb-wrap { aspect-ratio: 16/9; background: #0d1018; overflow: hidden; position: relative; }
@@ -263,6 +436,21 @@
 }
 .sc-spinner { display: inline-block; animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Outpaint badge overlay on thumbnail */
+.sc-op-badge {
+  position: absolute;
+  bottom: 5px; right: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.sc-op-badge--ready    { background: #d4ff3a; color: #0a0a0f; }
+.sc-op-badge--rendering{ background: rgba(200,241,53,.3); color: #c8f135; border: 1px solid #c8f13560; }
+.sc-op-badge--failed   { background: rgba(255,107,107,.25); color: #ff6b6b; border: 1px solid #ff6b6b40; }
 
 /* Meta */
 .sc-meta-header {
@@ -335,6 +523,18 @@
 }
 .sc-regen-btn:hover { background: rgba(90,90,160,.3); }
 
+/* Outpaint per-shot button */
+.sc-op-btn {
+  font-size: 13px; padding: 3px 7px;
+  background: rgba(212,255,58,.1); color: #d4ff3a;
+  border: 1px solid rgba(212,255,58,.3); border-radius: 4px;
+  cursor: pointer; transition: background .15s;
+  flex-shrink: 0;
+}
+.sc-op-btn:hover { background: rgba(212,255,58,.22); }
+.sc-op-btn[data-op-status="rendering"] { color: #c8f135; cursor: default; }
+.sc-op-btn[data-op-status="ready"]     { color: #7ec8a4; border-color: rgba(126,200,164,.35); background: rgba(126,200,164,.08); }
+
 /* Regenerate warning modal */
 .sc-modal-overlay {
   display: none; position: fixed; inset: 0;
@@ -367,13 +567,25 @@
 
 <script>
 (function () {
-  const PID  = {{ project.id | tojson }};
-  const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+  const PID    = {{ project.id | tojson }};
+  const CSRF   = document.querySelector('meta[name="csrf-token"]').content;
+  const ASPECT = {{ aspect_ratio | tojson }};
+  const TOTAL  = {{ total_shots }};
 
-  /* ── State ── */
+  /* ── Still state ── */
   const shotState = {};
   {% for shot in shots %}
   shotState[{{ shot.shot_index }}] = { status: {{ shot.status | tojson }}, url: {{ (shot.url or '') | tojson }} };
+  {% endfor %}
+
+  /* ── Outpaint state ── */
+  const opState = {};
+  {% for shot in shots %}
+  {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
+  opState[{{ shot.shot_index }}] = {
+    status: {{ (op.status or 'pending') | tojson }},
+    url:    {{ (op.url or '') | tojson }},
+  };
   {% endfor %}
 
   /* ── Counter update ── */
@@ -391,9 +603,56 @@
     document.getElementById('cnt-generating').textContent = generating;
     const genAllBtn = document.getElementById('btn-gen-all');
     if (genAllBtn) genAllBtn.textContent = '\u25B6 Generate All Pending (' + pending + ')';
+
+    // Show outpaint panel when all stills are ready
+    const opPanel = document.getElementById('op-panel');
+    if (opPanel) opPanel.style.display = (ready === TOTAL && TOTAL > 0) ? '' : 'none';
   }
 
-  /* ── Apply a status update to a card ── */
+  /* ── Outpaint counter update ── */
+  function updateOpCounters() {
+    let opReady = 0, opRendering = 0, opFailed = 0, opPending = 0;
+    for (const s of Object.values(opState)) {
+      if      (s.status === 'ready')     opReady++;
+      else if (s.status === 'rendering') opRendering++;
+      else if (s.status === 'failed')    opFailed++;
+      else                               opPending++;
+    }
+
+    const setCount = (id, n, show) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = el.textContent.replace(/^\d+/, n);
+      el.style.display = (show || n > 0) ? '' : 'none';
+    };
+    setCount('op-cnt-ready',     opReady,     true);
+    setCount('op-cnt-rendering', opRendering, false);
+    setCount('op-cnt-failed',    opFailed,    false);
+    setCount('op-cnt-pending',   opPending,   false);
+
+    const btn = document.getElementById('btn-outpaint-all');
+    if (btn) {
+      if (opRendering > 0) {
+        btn.textContent = '\u23F3 Running\u2026';
+        btn.style.opacity = '.7';
+        btn.style.cursor  = 'default';
+      } else if (opReady === TOTAL && TOTAL > 0) {
+        btn.textContent = '\u2713 All Outpainted';
+        btn.style.opacity = '.5';
+        btn.style.cursor  = 'default';
+      } else if (opReady > 0) {
+        btn.textContent = '\u21BA Re-outpaint All';
+        btn.style.opacity = '';
+        btn.style.cursor  = '';
+      } else {
+        btn.textContent = '\u2B21 Outpaint All to ' + ASPECT;
+        btn.style.opacity = '';
+        btn.style.cursor  = '';
+      }
+    }
+  }
+
+  /* ── Apply a still status update to a card ── */
   function applyStatus(idx, status, url, error) {
     shotState[idx] = { status, url };
     const card = document.getElementById('sc-card-' + idx);
@@ -402,13 +661,15 @@
 
     const thumbWrap = card.querySelector('.sc-thumb-wrap');
     if (url && status === 'ready') {
+      const currentOp = opState[idx] || {};
+      const displayUrl = (currentOp.status === 'ready' && currentOp.url) ? currentOp.url : url;
       let img = card.querySelector('.sc-thumb');
       if (!img) {
-        thumbWrap.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener" class="sc-thumb-link">' +
-          '<img src="' + url + '" class="sc-thumb" loading="lazy"></a>';
+        thumbWrap.innerHTML = '<a href="' + displayUrl + '" target="_blank" rel="noopener" class="sc-thumb-link">' +
+          '<img src="' + displayUrl + '" class="sc-thumb" loading="lazy" id="sc-img-' + idx + '"></a>';
       } else {
-        img.src = url;
-        img.parentElement.href = url;
+        img.src = displayUrl;
+        img.parentElement.href = displayUrl;
       }
     } else if (status === 'rendering') {
       const ph = card.querySelector('.sc-thumb-placeholder');
@@ -422,7 +683,7 @@
     if (btn) {
       if (status === 'ready') {
         btn.className = 'btn-mini sc-regen-btn';
-        btn.textContent = '\u21BB Regenerate';
+        btn.textContent = '\u21BB Regen';
         btn.disabled = false;
         btn.onclick = () => scGenOne(idx, true);
       } else if (status === 'rendering') {
@@ -434,6 +695,23 @@
         btn.textContent = '\u25B6 Generate';
         btn.disabled = false;
         btn.onclick = () => scGenOne(idx, false);
+      }
+    }
+
+    // Show/hide per-shot outpaint button
+    let opBtn = document.getElementById('sc-op-btn-' + idx);
+    if (status === 'ready' && !opBtn) {
+      const actions = card.querySelector('.sc-actions');
+      if (actions) {
+        opBtn = document.createElement('button');
+        opBtn.className = 'btn-mini sc-op-btn';
+        opBtn.id = 'sc-op-btn-' + idx;
+        opBtn.dataset.idx = idx;
+        opBtn.dataset.opStatus = 'pending';
+        opBtn.title = 'Outpaint to ' + ASPECT;
+        opBtn.textContent = '\u2B21';
+        opBtn.onclick = () => opOutpaintOne(idx);
+        actions.appendChild(opBtn);
       }
     }
 
@@ -454,7 +732,64 @@
     updateCounters();
   }
 
-  /* ── Poll for status changes ── */
+  /* ── Apply outpaint status update ── */
+  function applyOpStatus(idx, status, url) {
+    opState[idx] = { status, url };
+    const card = document.getElementById('sc-card-' + idx);
+    if (!card) return;
+    card.dataset.opStatus = status;
+
+    // Update thumbnail: show outpainted version when ready
+    if (status === 'ready' && url) {
+      let img = card.querySelector('.sc-thumb');
+      if (!img) {
+        const thumbWrap = card.querySelector('.sc-thumb-wrap');
+        thumbWrap.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener" class="sc-thumb-link">' +
+          '<img src="' + url + '" class="sc-thumb" loading="lazy" id="sc-img-' + idx + '"></a>';
+      } else {
+        img.src = url;
+        img.parentElement.href = url;
+      }
+    }
+
+    // Update badge
+    let badge = document.getElementById('op-badge-' + idx);
+    const thumbWrap = card.querySelector('.sc-thumb-wrap');
+    if (!badge && thumbWrap) {
+      badge = document.createElement('span');
+      badge.id = 'op-badge-' + idx;
+      thumbWrap.appendChild(badge);
+    }
+    if (badge) {
+      if (status === 'ready') {
+        badge.className = 'sc-op-badge sc-op-badge--ready';
+        badge.textContent = ASPECT;
+      } else if (status === 'rendering') {
+        badge.className = 'sc-op-badge sc-op-badge--rendering';
+        badge.textContent = 'expanding\u2026';
+      } else if (status === 'failed') {
+        badge.className = 'sc-op-badge sc-op-badge--failed';
+        badge.textContent = 'op failed';
+      } else {
+        badge.className = '';
+        badge.textContent = '';
+      }
+    }
+
+    // Update per-shot outpaint button
+    const opBtn = document.getElementById('sc-op-btn-' + idx);
+    if (opBtn) {
+      opBtn.dataset.opStatus = status;
+      if (status === 'ready')     { opBtn.textContent = '\u21BA'; }
+      else if (status === 'rendering') { opBtn.textContent = '\u23F3'; opBtn.disabled = true; }
+      else if (status === 'failed')    { opBtn.textContent = '\u26A0'; opBtn.disabled = false; }
+      else                             { opBtn.textContent = '\u2B21'; opBtn.disabled = false; }
+    }
+
+    updateOpCounters();
+  }
+
+  /* ── Poll for still status changes ── */
   let pollTimer = null;
   function startPolling() {
     if (pollTimer) return;
@@ -474,12 +809,29 @@
     }, 3000);
   }
 
+  /* ── Poll for outpaint status changes ── */
+  let opPollTimer = null;
+  function startOpPolling() {
+    if (opPollTimer) return;
+    opPollTimer = setInterval(async () => {
+      const hasLive = Object.values(opState).some(s => s.status === 'rendering');
+      if (!hasLive) { clearInterval(opPollTimer); opPollTimer = null; return; }
+      try {
+        const r = await fetch('/project/' + PID + '/stills/outpaint-status.json');
+        const data = await r.json();
+        for (const shot of data.shots) {
+          const prev = opState[shot.shot_index];
+          if (!prev || prev.status !== shot.outpaint_status || prev.url !== shot.outpaint_url) {
+            applyOpStatus(shot.shot_index, shot.outpaint_status, shot.outpaint_url);
+          }
+        }
+      } catch(e) {}
+    }, 3000);
+  }
+
   /* ── Generate one shot ── */
   window.scGenOne = async function(idx, isRegen) {
-    if (isRegen) {
-      scModalOpen(idx);
-      return;
-    }
+    if (isRegen) { scModalOpen(idx); return; }
     _doGenOne(idx);
   };
 
@@ -488,18 +840,14 @@
     startPolling();
     try {
       await fetch('/project/' + PID + '/stills/generate/' + idx, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': CSRF }
+        method: 'POST', headers: { 'X-CSRFToken': CSRF }
       });
     } catch(e) { applyStatus(idx, 'failed', null, 'Network error'); }
   }
 
   /* ── Generate all pending ── */
   window.scGenerateAll = async function(isRegen) {
-    if (isRegen) {
-      scModalOpen(null); // null = all
-      return;
-    }
+    if (isRegen) { scModalOpen(null); return; }
     const pendingIdxs = Object.entries(shotState)
       .filter(([, s]) => s.status !== 'ready' && s.status !== 'rendering')
       .map(([idx]) => parseInt(idx));
@@ -508,8 +856,7 @@
     startPolling();
     try {
       await fetch('/project/' + PID + '/stills/generate-all', {
-        method: 'POST',
-        headers: { 'X-CSRFToken': CSRF }
+        method: 'POST', headers: { 'X-CSRFToken': CSRF }
       });
     } catch(e) {}
   };
@@ -523,23 +870,53 @@
     startPolling();
     try {
       const resp = await fetch('/project/' + PID + '/retry/all_failed_shots', {
-        method: 'POST',
-        headers: { 'X-CSRFToken': CSRF }
+        method: 'POST', headers: { 'X-CSRFToken': CSRF }
       });
       const data = await resp.json();
       if (!data.ok) console.error('Retry all failed:', data.error);
     } catch(e) { console.error('Retry all failed network error', e); }
   };
 
+  /* ── Outpaint all ── */
+  window.opOutpaintAll = async function() {
+    const btn = document.getElementById('btn-outpaint-all');
+    if (btn) { btn.textContent = '\u23F3 Queuing\u2026'; btn.style.opacity = '.7'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/outpaint-all', {
+        method: 'POST', headers: { 'X-CSRFToken': CSRF }
+      });
+      const data = await resp.json();
+      if (!data.ok) { alert('Outpaint error: ' + (data.error || 'unknown')); return; }
+      // Mark all ready shots as rendering
+      for (const [idx, s] of Object.entries(shotState)) {
+        if (s.status === 'ready') applyOpStatus(parseInt(idx), 'rendering', null);
+      }
+      startOpPolling();
+    } catch(e) {
+      alert('Network error starting outpaint.');
+    }
+  };
+
+  /* ── Outpaint one shot ── */
+  window.opOutpaintOne = async function(idx) {
+    applyOpStatus(idx, 'rendering', null);
+    startOpPolling();
+    try {
+      await fetch('/project/' + PID + '/stills/outpaint/' + idx, {
+        method: 'POST', headers: { 'X-CSRFToken': CSRF }
+      });
+    } catch(e) { applyOpStatus(idx, 'failed', null); }
+  };
+
   /* ── Regenerate modal ── */
-  let modalTarget = null; // shot index or null for "all"
+  let modalTarget = null;
   function scModalOpen(target) {
     modalTarget = target;
     const body = document.getElementById('sc-modal-body');
     if (target === null) {
-      body.textContent = 'Regenerating ALL images will use generation credits for every shot, even ones already generated. This is the same cost as generating them fresh. Continue?';
+      body.textContent = 'Regenerating ALL images will use generation credits for every shot, even ones already generated. Continue?';
     } else {
-      body.textContent = 'Regenerating this image will use additional generation credits, the same as generating it for the first time. Continue?';
+      body.textContent = 'Regenerating this image will use additional generation credits. Continue?';
     }
     document.getElementById('sc-regen-modal').classList.add('open');
     document.getElementById('sc-modal-confirm').onclick = scModalConfirm;
@@ -551,15 +928,13 @@
   async function scModalConfirm() {
     document.getElementById('sc-regen-modal').classList.remove('open');
     if (modalTarget === null) {
-      // Regen all: reset all to pending then kick
       for (const [idx, state] of Object.entries(shotState)) {
         if (state.status === 'ready') applyStatus(parseInt(idx), 'rendering', null, null);
       }
       startPolling();
       try {
         await fetch('/project/' + PID + '/stills/generate-all', {
-          method: 'POST',
-          headers: { 'X-CSRFToken': CSRF }
+          method: 'POST', headers: { 'X-CSRFToken': CSRF }
         });
       } catch(e) {}
     } else {
@@ -573,7 +948,6 @@
     if (!input.files || !input.files.length) return;
     const label = document.getElementById('sc-upload-label-' + idx);
     if (label) label.textContent = 'Uploading\u2026';
-    const form = document.getElementById('sc-upload-form-' + idx);
     const fd = new FormData();
     fd.append('image', input.files[0]);
     fd.append('csrf_token', CSRF);
@@ -582,39 +956,40 @@
       .then(data => {
         if (data.ok) {
           applyStatus(idx, 'ready', data.url, null);
-          if (label) { label.textContent = '\u2713 Uploaded'; }
+          if (label) label.textContent = '\u2713 Uploaded';
         } else {
-          if (label) label.textContent = '\u2191 Upload';
-          alert('Upload failed: ' + (data.error || 'Unknown error'));
+          if (label) label.textContent = '\u8679 Upload';
+          alert(data.error || 'Upload failed.');
         }
       })
-      .catch(() => {
-        if (label) label.textContent = '\u2191 Upload';
-        alert('Upload failed — please try again.');
+      .catch(() => { if (label) label.textContent = '\u8679 Upload'; });
+  };
+  window.scUpload = function(e, idx) { e.preventDefault(); };
+
+  /* ── Prompt save ── */
+  window.scSavePrompt = async function(idx, val) {
+    const ind = document.getElementById('sc-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, prompt: val }),
       });
+      const data = await resp.json();
+      if (data.ok && ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+    } catch(e) {}
   };
 
-  /* ── Save prompt ── */
-  window.scSavePrompt = function(idx, prompt) {
-    fetch('/project/' + PID + '/stills/prompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-      body: JSON.stringify({ shot_index: idx, prompt })
-    }).then(() => {
-      const ind = document.getElementById('sc-saved-' + idx);
-      if (ind) { ind.style.display = 'inline'; setTimeout(() => { ind.style.display = 'none'; }, 1800); }
-    });
-  };
+  /* ── Auto-start outpaint polling if any are rendering ── */
+  if (Object.values(opState).some(s => s.status === 'rendering')) {
+    startOpPolling();
+  }
+  if (Object.values(shotState).some(s => s.status === 'rendering')) {
+    startPolling();
+  }
 
-  /* ── Start polling if anything is already rendering ── */
-  const hasLive = Object.values(shotState).some(s => s.status === 'rendering');
-  if (hasLive) startPolling();
-
-  /* ── Close modal on overlay click ── */
-  document.getElementById('sc-regen-modal').addEventListener('click', function(e) {
-    if (e.target === this) scModalCancel();
-  });
-
+  updateCounters();
+  updateOpCounters();
 })();
 </script>
 {% endblock %}

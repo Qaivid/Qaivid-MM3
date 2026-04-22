@@ -1274,6 +1274,17 @@ def project_detail(project_id: str):
         # For new projects (fixed assembly engine) this should be ~1.0
         scale = round(audio_dur / total_stills_dur, 3) if total_stills_dur > 0 and audio_dur > 0 else 1.0
 
+        # Outpaint state per shot
+        outpaint_by_idx = {
+            a["shot_index"]: {
+                "status": a.get("outpaint_status") or "pending",
+                "url":    _asset_url(a.get("outpaint_url")) if a.get("outpaint_url") else None,
+            }
+            for a in shot_assets
+        }
+        # Aspect ratio from project settings
+        aspect_ratio = (project.get("settings") or {}).get("aspect_ratio") or "16:9"
+
         return render_template(
             "stills_control.html",
             project=project,
@@ -1281,6 +1292,8 @@ def project_detail(project_id: str):
             total_stills_dur=total_stills_dur,
             audio_dur=audio_dur,
             dur_scale=scale,
+            outpaint_by_idx=outpaint_by_idx,
+            aspect_ratio=aspect_ratio,
         )
 
     if stage == "stills_review":
@@ -2347,6 +2360,143 @@ def stills_upload_one(project_id: str, shot_index: int):
         return jsonify({"ok": False, "error": "No file received."}), 400
     set_shot_uploaded_image(project_id, shot_index, file_url)
     return jsonify({"ok": True, "url": _asset_url(file_url)})
+
+
+@app.route("/project/<project_id>/stills/outpaint-all", methods=["POST"])
+@login_required
+def stills_outpaint_all(project_id: str):
+    """Queue outpainting for all ready shots (background thread per shot)."""
+    _stills_control_guard(project_id)
+    project = _get_project(project_id, current_user()["id"])
+    aspect = ((project.get("settings") or {}).get("aspect_ratio") or "16:9")
+    assets = _get_shot_assets(project_id)
+    ready = [a for a in assets if a.get("status") == "ready" and a.get("file_path")]
+    if not ready:
+        return jsonify({"ok": False, "error": "No ready stills to outpaint."}), 400
+
+    import threading
+    from image_outpainter import outpaint_shot_still, OutpaintError
+
+    def _run_outpaint(pid, idx, url, prompt, ar):
+        with app.app_context():
+            try:
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='rendering' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+                new_url = outpaint_shot_still(pid, idx, url, prompt, ar)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_url=%s, outpaint_status='ready' WHERE project_id=%s AND shot_index=%s",
+                        (new_url, pid, idx),
+                    )
+                    conn.commit()
+                logger.info("Outpaint done shot=%s url=%s", idx, new_url)
+            except OutpaintError as exc:
+                logger.error("Outpaint failed shot=%s: %s", idx, exc)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+            except Exception as exc:
+                logger.exception("Outpaint unexpected error shot=%s", idx)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+
+    timeline = project.get("styled_timeline") or []
+    for a in ready:
+        idx = a["shot_index"]
+        tl  = next((s for s in timeline if (s.get("shot_index") or s.get("timeline_index")) == idx), {})
+        prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or a.get("prompt") or "")
+        t = threading.Thread(
+            target=_run_outpaint,
+            args=(project_id, idx, a["file_path"], prompt, aspect),
+            daemon=True,
+        )
+        t.start()
+
+    return jsonify({"ok": True, "queued": len(ready), "aspect_ratio": aspect})
+
+
+@app.route("/project/<project_id>/stills/outpaint/<int:shot_index>", methods=["POST"])
+@login_required
+def stills_outpaint_one(project_id: str, shot_index: int):
+    """Queue outpainting for a single shot."""
+    _stills_control_guard(project_id)
+    project = _get_project(project_id, current_user()["id"])
+    aspect = ((project.get("settings") or {}).get("aspect_ratio") or "16:9")
+    assets = _get_shot_assets(project_id)
+    asset = next((a for a in assets if a["shot_index"] == shot_index), None)
+    if not asset or asset.get("status") != "ready" or not asset.get("file_path"):
+        return jsonify({"ok": False, "error": "Shot is not ready."}), 400
+
+    import threading
+    from image_outpainter import outpaint_shot_still, OutpaintError
+
+    timeline = project.get("styled_timeline") or []
+    tl = next((s for s in timeline if (s.get("shot_index") or s.get("timeline_index")) == shot_index), {})
+    prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or asset.get("prompt") or "")
+
+    def _run(pid, idx, url, pr, ar):
+        with app.app_context():
+            try:
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='rendering' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+                new_url = outpaint_shot_still(pid, idx, url, pr, ar)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_url=%s, outpaint_status='ready' WHERE project_id=%s AND shot_index=%s",
+                        (new_url, pid, idx),
+                    )
+                    conn.commit()
+            except Exception as exc:
+                logger.exception("Outpaint failed shot=%s", idx)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+
+    threading.Thread(
+        target=_run,
+        args=(project_id, shot_index, asset["file_path"], prompt, aspect),
+        daemon=True,
+    ).start()
+
+    return jsonify({"ok": True, "shot_index": shot_index})
+
+
+@app.route("/project/<project_id>/stills/outpaint-status.json")
+@login_required
+def stills_outpaint_status_json(project_id: str):
+    """Live outpaint status for all shots."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    assets = _get_shot_assets(project_id)
+    return jsonify({
+        "shots": [
+            {
+                "shot_index":      a["shot_index"],
+                "outpaint_status": a.get("outpaint_status") or "pending",
+                "outpaint_url":    _asset_url(a.get("outpaint_url")) if a.get("outpaint_url") else None,
+            }
+            for a in assets
+        ]
+    })
 
 
 @app.route("/project/<project_id>/stills/approve", methods=["POST"])

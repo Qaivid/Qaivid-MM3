@@ -493,16 +493,25 @@ def _update_video(project_id: str, shot_index: int, status: str,
 
 
 def _get_ready_still_url(project_id: str, shot_index: int) -> Optional[str]:
-    """Return the R2 public URL of a ready still for this shot, or None."""
+    """Return the R2 public URL of a ready still for this shot, or None.
+
+    Prefers the outpainted version (outpaint_url) when available so that
+    video generation receives a true 16:9 / 9:16 frame.
+    Falls back to the original file_path if no outpaint exists.
+    """
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT file_path FROM shot_assets WHERE project_id=%s AND shot_index=%s AND status='ready'",
+            "SELECT file_path, outpaint_url, outpaint_status FROM shot_assets "
+            "WHERE project_id=%s AND shot_index=%s AND status='ready'",
             (project_id, shot_index),
         )
         row = cur.fetchone()
-    if row and row.get("file_path"):
-        return row["file_path"]
-    return None
+    if not row:
+        return None
+    if row.get("outpaint_status") == "ready" and row.get("outpaint_url"):
+        logger.debug("Using outpainted still for project=%s shot=%s", project_id, shot_index)
+        return row["outpaint_url"]
+    return row.get("file_path") or None
 
 
 def _get_shot_motion_prompt(project_id: str, shot_index: int) -> Optional[str]:
