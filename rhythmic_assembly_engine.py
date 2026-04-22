@@ -98,8 +98,8 @@ class RhythmicAssemblyEngine:
                     "timeline_index": i + 1,
                     "shot_index": shot["shot_index"],
                     "shot_id": shot.get("shot_id", f"shot_{shot['shot_index']}"),
-                    "start_time": round(current_timestamp, 3),
-                    "duration": round(synced_duration, 3),
+                    "start_time": int(current_timestamp) if float(current_timestamp).is_integer() else round(current_timestamp, 3),
+                    "duration": int(synced_duration),
                     "end_time": round(current_timestamp + synced_duration, 3),
                     "start_beat": beat_start,
                     "bar_index": bar_index,
@@ -160,31 +160,18 @@ class RhythmicAssemblyEngine:
             )
             for j in range(len(timeline) - 1):
                 gap = timeline[j + 1]["start_time"] - timeline[j]["start_time"]
-                dur = max(self.min_shot_duration, beat_duration, round(gap, 3))
-                timeline[j]["duration"] = round(dur, 3)
+                dur = int(max(int(self.min_shot_duration), min(int(self.max_shot_duration), round(gap))))
+                timeline[j]["duration"] = dur
                 timeline[j]["end_time"] = round(timeline[j]["start_time"] + dur, 3)
                 timeline[j]["lyric_anchored"] = True
             # Last shot: fill to audio_duration when known; else keep beat formula.
             last = timeline[-1]
             last["lyric_anchored"] = True
             if audio_duration > 0:
-                last["duration"] = max(
-                    self.min_shot_duration, beat_duration,
-                    round(audio_duration - last["start_time"], 3)
-                )
+                raw_last = audio_duration - last["start_time"]
+                last["duration"] = int(max(int(self.min_shot_duration), min(int(self.max_shot_duration), round(raw_last))))
                 last["end_time"] = round(last["start_time"] + last["duration"], 3)
-                # Absorb any beat-snap residual.
-                residual = round(audio_duration - last["end_time"], 3)
-                if abs(residual) > 0.05:
-                    last["duration"] = max(
-                        beat_duration, round(last["duration"] + residual, 3)
-                    )
-                    last["end_time"] = round(last["start_time"] + last["duration"], 3)
-                    logger.debug(
-                        "Lyric-anchor reconciliation: residual=%.3fs absorbed by last shot",
-                        residual,
-                    )
-            return self._snap_to_whole_seconds(timeline)
+            return timeline
 
         # ── Audio-duration normalization (non-anchor mode, Task #104) ─────────
         # If the accumulated shot durations don't cover the full audio track,
@@ -199,57 +186,17 @@ class RhythmicAssemblyEngine:
                     "Timeline duration normalization: %.1fs → %.1fs (audio) ×%.3f for %d shots",
                     total_assigned, audio_duration, scale, len(timeline),
                 )
-                ts = 0.0
+                ts = 0
                 for s in timeline:
                     scaled = s["duration"] * scale
-                    # Snap to beat grid, keep above minimum
-                    snapped = self._snap_duration_to_beat(scaled, beat_duration)
-                    snapped = max(self.min_shot_duration, snapped)
-                    s["duration"] = round(snapped, 3)
-                    s["start_time"] = round(ts, 3)
-                    s["end_time"] = round(ts + snapped, 3)
+                    snapped = int(max(int(self.min_shot_duration), min(int(self.max_shot_duration), round(scaled))))
+                    s["duration"]   = snapped
+                    s["start_time"] = ts
+                    s["end_time"]   = ts + snapped
                     s["start_beat"] = round(ts / beat_duration)
-                    s["bar_index"] = int(ts // bar_duration) + 1
+                    s["bar_index"]  = int(ts // bar_duration) + 1
                     ts += snapped
 
-                # ── Final reconciliation: absorb residual into last shot ──────
-                # Beat-snapping can cause the total to drift by up to one beat.
-                # Apply the residual to the last shot so the sum is within ±0.1s
-                # of audio_duration (still respects min_shot_duration).
-                if timeline:
-                    total_snapped = sum(s["duration"] for s in timeline)
-                    residual = round(audio_duration - total_snapped, 3)
-                    if abs(residual) > 0.05:
-                        last = timeline[-1]
-                        adjusted = max(
-                            self.min_shot_duration,
-                            round(last["duration"] + residual, 3),
-                        )
-                        last["duration"] = adjusted
-                        last["end_time"] = round(last["start_time"] + adjusted, 3)
-                        logger.debug(
-                            "Timeline reconciliation: residual=%.3fs applied to last shot",
-                            residual,
-                        )
-
-        return self._snap_to_whole_seconds(timeline)
-
-    def _snap_to_whole_seconds(self, timeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Snap every shot duration to the nearest whole second (min 2, max 15),
-        then recompute start_time and end_time sequentially so the stored values
-        match exactly what WAN 2.6 will generate."""
-        ts = 0.0
-        for s in timeline:
-            raw = s.get("duration") or self.min_shot_duration
-            snapped = int(max(self.min_shot_duration, min(self.max_shot_duration, round(raw))))
-            s["duration"]   = snapped
-            s["start_time"] = round(ts, 3)
-            s["end_time"]   = round(ts + snapped, 3)
-            ts += snapped
-        logger.info(
-            "Whole-second snap: %d shots, total %ds",
-            len(timeline), int(ts),
-        )
         return timeline
 
     def _validate_storyboard(self, storyboard: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -374,8 +321,11 @@ class RhythmicAssemblyEngine:
         beats = max(1, round(duration / beat_duration))
         return beats * beat_duration
 
-    def _clamp_duration(self, duration: float) -> float:
-        return max(self.min_shot_duration, min(self.max_shot_duration, duration))
+    def _clamp_duration(self, duration: float) -> int:
+        """Return a whole-second duration clamped to [min, max].
+        WAN 2.6 accepts only integer seconds (2–15), so we commit to an
+        integer here rather than rounding later and accumulating drift."""
+        return int(max(self.min_shot_duration, min(self.max_shot_duration, round(duration))))
 
     def _get_audio_intensity_for_index(self, intensity_curve: List[float], index: int) -> float:
         if not intensity_curve:
