@@ -11,31 +11,66 @@
     <div class="pp-toolbar-left">
       <span class="pp-project-badge">{{ project.name }}</span>
       <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
+      <!-- Source mode switcher -->
+      <div class="pp-source-switcher" id="pp-source-switcher">
+        <button class="pp-source-pill active" id="pill-quick"
+                onclick="ppSwitchMode('quick')" title="Animated stills with Ken Burns effects">
+          ⚡ Quick Video
+        </button>
+        <button class="pp-source-pill {% if not ai_video_url %}pp-source-pill-locked{% endif %}"
+                id="pill-ai"
+                onclick="ppSwitchMode('ai')"
+                title="{% if ai_video_url %}Apply effects to full AI-rendered video{% else %}AI video not rendered yet — click Full AI Render below{% endif %}">
+          🎬 AI Rendered
+          {% if ai_video_url %}<span class="pp-source-ready-dot"></span>{% endif %}
+        </button>
+      </div>
     </div>
     <div class="pp-toolbar-right">
       <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save Settings</button>
-      <button class="pp-btn pp-btn-generate" id="btn-generate" onclick="ppGenerate()">
+
+      <!-- Quick mode buttons -->
+      <button class="pp-btn pp-btn-generate pp-quick-only" id="btn-generate" onclick="ppGenerate()">
         ▶ Generate Quick Video
       </button>
       {% if quick_video_url %}
-      <a class="pp-btn pp-btn-download" id="btn-download" href="{{ quick_video_url }}" download target="_blank">
+      <a class="pp-btn pp-btn-download pp-quick-only" id="btn-download" href="{{ quick_video_url }}" download target="_blank">
         ⬇ Download
       </a>
       <button id="btn-share-quick"
               onclick="toggleShareQuick('{{ project.id }}', this)"
-              class="pp-btn {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
+              class="pp-btn pp-quick-only {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
               title="Share this quick video on the Qaivid homepage">
         {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
       </button>
       {% else %}
-      <a class="pp-btn pp-btn-download pp-btn-download-hidden" id="btn-download" href="#" download target="_blank">
+      <a class="pp-btn pp-btn-download pp-btn-download-hidden pp-quick-only" id="btn-download" href="#" download target="_blank">
         ⬇ Download
       </a>
       {% endif %}
-      <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}" style="display:inline;">
+      <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}" style="display:inline;" class="pp-quick-only" id="form-advance">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="pp-btn pp-btn-ai">Full AI Render →</button>
       </form>
+
+      <!-- AI mode buttons (hidden by default) -->
+      {% if ai_video_url %}
+      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
+              onclick="ppGenerateAI()" style="display:none;">
+        ▶ Apply &amp; Export AI Video
+      </button>
+      <a class="pp-btn pp-btn-download {% if not ai_export_url %}pp-btn-download-hidden{% endif %} pp-ai-only"
+         id="btn-download-ai"
+         href="{{ ai_export_url or '#' }}" download target="_blank"
+         style="display:none;">
+        ⬇ Download AI Export
+      </a>
+      {% else %}
+      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
+              disabled style="display:none; opacity:.5; cursor:not-allowed;">
+        ▶ Apply &amp; Export AI Video
+      </button>
+      {% endif %}
     </div>
   </div>
 
@@ -61,7 +96,7 @@
     <!-- Left: preview + thumbnail strip -->
     <div class="pp-preview-col">
       <div class="pp-preview-frame" id="pp-preview-frame">
-        <!-- Ken Burns animated current still -->
+        <!-- Ken Burns animated current still (Quick mode) -->
         <div class="pp-kb-wrap" id="pp-kb-wrap">
           <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
           <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
@@ -72,8 +107,23 @@
           <div class="pp-logo-bl" id="pp-logo-bl"></div>
           <div class="pp-logo-br" id="pp-logo-br"></div>
         </div>
-        <!-- Play controls -->
-        <div class="pp-controls">
+
+        <!-- AI video player (AI mode, hidden by default) -->
+        {% if ai_video_url %}
+        <video id="pp-ai-video" class="pp-ai-video" style="display:none"
+               src="{{ ai_video_url }}" preload="metadata" controls playsinline
+               poster="">
+        </video>
+        {% else %}
+        <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
+          <div class="pp-ai-no-video-icon">🎬</div>
+          <p>AI video not rendered yet.</p>
+          <p class="pp-ai-no-video-hint">Use <strong>Full AI Render →</strong> in Quick mode to generate your AI video clips first, then come back here to apply post-production effects.</p>
+        </div>
+        {% endif %}
+
+        <!-- Play controls (Quick mode only) -->
+        <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
           <button class="pp-ctrl-btn" onclick="ppPrev()" title="Previous">◀</button>
           <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()" title="Play/Pause">▶</button>
           <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶▶</button>
@@ -128,7 +178,7 @@
     <!-- Right: 5-tab control panel -->
     <div class="pp-control-panel">
       <div class="pp-tabs">
-        <button class="pp-tab active" onclick="ppTab(this,'anim')">Animation</button>
+        <button class="pp-tab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
         <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
         <button class="pp-tab" onclick="ppTab(this,'over')">Overlays</button>
         <button class="pp-tab" onclick="ppTab(this,'filt')">Filters</button>
@@ -511,8 +561,10 @@
           </div>
         </div>
 
-        <button class="pp-btn pp-btn-generate pp-btn-generate-full" id="btn-generate-expo"
+        <button class="pp-btn pp-btn-generate pp-btn-generate-full pp-quick-only" id="btn-generate-expo"
                 onclick="ppGenerate()">▶ Generate Quick Video</button>
+        <button class="pp-btn pp-btn-generate pp-btn-generate-full pp-ai-only" id="btn-generate-expo-ai"
+                onclick="ppGenerateAI()" style="display:none;">▶ Apply &amp; Export AI Video</button>
         <p class="pp-ctrl-hint" style="margin-top:8px;">
           Generation runs in the background. Stay on this page to see progress,
           or come back later — the Download button will appear when ready.
@@ -826,6 +878,55 @@
   transition: all .2s; min-height: 40px;
   border: 1px solid #1e2230;
 }
+
+/* ── Source mode switcher ────────────────────────────────────────────── */
+.pp-source-switcher {
+  display: flex; align-items: center; gap: 2px;
+  background: #0d0d14; border: 1px solid #2a2a38;
+  border-radius: 8px; padding: 3px;
+}
+.pp-source-pill {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: none; background: transparent;
+  color: #5a6270; transition: all .15s; display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.pp-source-pill:hover { color: #cfd6df; background: rgba(255,255,255,.05); }
+.pp-source-pill.active {
+  background: linear-gradient(135deg,#2563eb,#7c3aed);
+  color: #fff;
+}
+.pp-source-pill-locked { opacity: .5; cursor: default; }
+.pp-source-pill-locked:hover { color: #5a6270; background: transparent; }
+.pp-source-ready-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #22c55e; display: inline-block; flex-shrink: 0;
+}
+
+/* ── AI Video player ─────────────────────────────────────────────────── */
+.pp-ai-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; background: #000;
+}
+.pp-ai-no-video {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: #5a6270; padding: 20px; text-align: center;
+}
+.pp-ai-no-video-icon { font-size: 40px; }
+.pp-ai-no-video p { font-size: 13px; margin: 0; color: #5a6270; }
+.pp-ai-no-video .pp-ai-no-video-hint { font-size: 12px; color: #3a3f4a; }
+.pp-ai-no-video strong { color: #f5a623; }
+
+/* ── Mode visibility helpers ─────────────────────────────────────────── */
+.pp-ai-mode .pp-quick-only  { display: none !important; }
+.pp-ai-mode .pp-quick-ctrl  { display: none !important; }
+.pp-ai-mode .pp-quick-only-tab { display: none !important; }
+.pp-ai-mode .pp-ai-only     { display: inline-flex !important; }
+.pp-ai-mode #pp-kb-wrap     { display: none !important; }
+.pp-ai-mode .pp-ai-video    { display: block !important; }
+.pp-ai-mode #pp-ai-no-video { display: flex !important; }
+.pp-ai-mode #pp-thumb-strip { opacity: .4; pointer-events: none; }
 </style>
 
 <script>
@@ -846,8 +947,12 @@
     {% endfor %}
   ];
 
-  /* ── Config object ──────────────────────────────────────────────────── */
-  const cfg = Object.assign({
+  /* ── Source mode state ──────────────────────────────────────────────── */
+  let ppSourceMode = 'quick';  // 'quick' | 'ai'
+  const AI_VIDEO_URL = {{ (ai_video_url or '') | tojson }};
+
+  /* ── Default config shape ───────────────────────────────────────────── */
+  const CFG_DEFAULTS = {
     ken_burns_mode: 'zoom-in',
     per_shot_kb: {},
     transition: 'crossfade',
@@ -865,7 +970,18 @@
       outline_colour: '&H00000000', back_colour: '&H80000000',
       bold: 0, outline: 1.5, shadow: 0, alignment: 2, margin_v: 40,
     },
-  }, {{ config | tojson }});
+  };
+
+  /* ── Shared settings (SRT / logos) ─────────────────────────────────── */
+  /* These live at top level of postprod_config, shared between both modes */
+  const SHARED_CFG = {{ shared_cfg | tojson }};
+
+  /* ── Per-mode config objects (loaded from server) ───────────────────── */
+  let cfgQuick = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, {{ quick_cfg | tojson }});
+  let cfgAi    = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, {{ ai_cfg | tojson }});
+
+  /* cfg always points to the active mode's config object */
+  let cfg = cfgQuick;
 
   /* ── Restore controls from cfg ────────────────────────────────────────*/
   /* ── ASS colour → CSS hex ────────────────────────────────────────────── */
@@ -963,10 +1079,12 @@
     _autosaveTimer = setTimeout(async () => {
       if (!dirty) return;
       syncCfgFromControls();
+      if (ppSourceMode === 'quick') Object.assign(cfgQuick, cfg);
+      else Object.assign(cfgAi, cfg);
       await fetch(`/project/${PID}/postprod/save`, {
         method: 'POST',
         headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
-        body: JSON.stringify(cfg),
+        body: JSON.stringify({ quick: cfgQuick, ai: cfgAi }),
       });
       dirty = false;
       const btn = document.getElementById('btn-save');
@@ -1029,13 +1147,62 @@
     return `&H${av}${b.toString(16).padStart(2,'0').toUpperCase()}${g.toString(16).padStart(2,'0').toUpperCase()}${r.toString(16).padStart(2,'0').toUpperCase()}`;
   }
 
+  /* ── Source mode switching ──────────────────────────────────────────── */
+  window.ppSwitchMode = function(mode) {
+    if (mode === ppSourceMode) return;
+    // Flush current controls into current mode's config before switching
+    syncCfgFromControls();
+    if (ppSourceMode === 'quick') Object.assign(cfgQuick, cfg);
+    else Object.assign(cfgAi, cfg);
+
+    ppSourceMode = mode;
+    cfg = (mode === 'quick') ? cfgQuick : cfgAi;
+
+    // Update pill styles
+    document.getElementById('pill-quick').classList.toggle('active', mode === 'quick');
+    document.getElementById('pill-ai').classList.toggle('active', mode === 'ai');
+
+    // Toggle CSS class on studio element for show/hide
+    const studio = document.querySelector('.pp-studio') || document.getElementById('pp-wrap');
+    const wrap   = document.querySelector('.pp-wrap');
+    if (mode === 'ai') {
+      wrap && wrap.classList.add('pp-ai-mode');
+      // Stop stills playback
+      if (playing) { ppTogglePlay(); }
+      // If Animation tab was active, switch to Subtitles
+      const animTab = document.getElementById('pp-tab-anim');
+      if (animTab && animTab.classList.contains('active')) {
+        const subsTab = document.querySelector('.pp-tab:not(.pp-quick-only-tab)');
+        if (subsTab) ppTab(subsTab, 'subs');
+      }
+    } else {
+      wrap && wrap.classList.remove('pp-ai-mode');
+    }
+
+    // Restore controls for new mode
+    restoreControls();
+    ppApplyFilterPreview();
+    ppSubPreview();
+
+    // If AI mode is generating, resume polling
+    if (mode === 'ai') {
+      const aiGen = {{ ai_generating | tojson }};
+      if (aiGen) { showStatus('Applying effects to AI video…'); startAIPolling(); }
+    }
+  };
+
   /* ── Save ───────────────────────────────────────────────────────────── */
   window.ppSave = async function() {
     syncCfgFromControls();
+    // Mirror cfg into the right sub-config
+    if (ppSourceMode === 'quick') Object.assign(cfgQuick, cfg);
+    else Object.assign(cfgAi, cfg);
+
+    const payload = { quick: cfgQuick, ai: cfgAi };
     await fetch(`/project/${PID}/postprod/save`, {
       method: 'POST',
       headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
-      body: JSON.stringify(cfg),
+      body: JSON.stringify(payload),
     });
     dirty = false;
     const btn = document.getElementById('btn-save');
@@ -1044,9 +1211,10 @@
     setTimeout(() => { btn.textContent = 'Save Settings'; }, 1500);
   };
 
-  /* ── Generate ───────────────────────────────────────────────────────── */
+  /* ── Generate (Quick) ───────────────────────────────────────────────── */
   window.ppGenerate = async function() {
     syncCfgFromControls();
+    Object.assign(cfgQuick, cfg);
     await ppSave();
     showStatus('Generating quick video…');
     hideError();
@@ -1055,7 +1223,7 @@
     const res = await fetch(`/project/${PID}/postprod/generate`, {
       method: 'POST',
       headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
-      body: JSON.stringify(cfg),
+      body: JSON.stringify(cfgQuick),
     });
     if (res.ok) startPolling();
     else {
@@ -1064,7 +1232,30 @@
     }
   };
 
-  /* ── Polling ────────────────────────────────────────────────────────── */
+  /* ── Generate AI Export ─────────────────────────────────────────────── */
+  window.ppGenerateAI = async function() {
+    if (!AI_VIDEO_URL) { showError('AI video not rendered yet.'); return; }
+    syncCfgFromControls();
+    Object.assign(cfgAi, cfg);
+    await ppSave();
+    showStatus('Applying effects to AI video…');
+    hideError();
+    const btn = document.getElementById('btn-generate-ai');
+    btn.disabled = true; btn.textContent = '⏳ Processing…';
+    const res = await fetch(`/project/${PID}/postprod/generate-ai`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
+      body: JSON.stringify(cfgAi),
+    });
+    if (res.ok) startAIPolling();
+    else {
+      const d = await res.json().catch(() => ({}));
+      btn.disabled = false; btn.textContent = '▶ Apply & Export AI Video';
+      showError(d.error || 'Failed to start AI export. Please try again.');
+    }
+  };
+
+  /* ── Polling (Quick) ────────────────────────────────────────────────── */
   let pollTimer = null;
   function startPolling() {
     if (pollTimer) return;
@@ -1089,6 +1280,32 @@
           showError(d.error);
           const genBtn = document.getElementById('btn-generate');
           genBtn.disabled = false; genBtn.textContent = '▶ Generate Quick Video';
+        }
+      } catch(e) {}
+    }, 3000);
+  }
+
+  /* ── Polling (AI Export) ────────────────────────────────────────────── */
+  let aiPollTimer = null;
+  function startAIPolling() {
+    if (aiPollTimer) return;
+    aiPollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(`/project/${PID}/postprod/ai-status`);
+        const d = await r.json();
+        if (d.url) {
+          clearInterval(aiPollTimer); aiPollTimer = null;
+          hideStatus();
+          const dlBtn = document.getElementById('btn-download-ai');
+          if (dlBtn) { dlBtn.href = d.url; dlBtn.classList.remove('pp-btn-download-hidden'); dlBtn.style.display = ''; }
+          const genBtn = document.getElementById('btn-generate-ai');
+          if (genBtn) { genBtn.disabled = false; genBtn.textContent = '▶ Apply & Export AI Video'; }
+        } else if (d.error) {
+          clearInterval(aiPollTimer); aiPollTimer = null;
+          hideStatus();
+          showError(d.error);
+          const genBtn = document.getElementById('btn-generate-ai');
+          if (genBtn) { genBtn.disabled = false; genBtn.textContent = '▶ Apply & Export AI Video'; }
         }
       } catch(e) {}
     }, 3000);
@@ -1434,6 +1651,9 @@
     const res = await fetch(`/project/${PID}/postprod/upload_srt`, { method:'POST', body:fd });
     const d = await res.json();
     if (d.ok) {
+      // Sync SRT key to both mode configs (shared setting)
+      cfgQuick.srt_r2_key = d.r2_key;
+      cfgAi.srt_r2_key = d.r2_key;
       cfg.srt_r2_key = d.r2_key;
       document.getElementById('srt-filename').textContent = '✓ ' + fname;
       markDirty(); scheduleAutosave();
@@ -1452,13 +1672,16 @@
     const res = await fetch(`/project/${PID}/postprod/upload_logo/${slot}`, { method:'POST', body:fd });
     const d = await res.json();
     if (d.ok) {
-      if (!cfg.logos) cfg.logos = {};
-      if (!cfg.logos[slot]) cfg.logos[slot] = {};
-      cfg.logos[slot].r2_key = d.r2_key;
+      // Sync logo to both mode configs (shared setting)
+      [cfgQuick, cfgAi].forEach(c => {
+        if (!c.logos) c.logos = {};
+        if (!c.logos[slot]) c.logos[slot] = {};
+        c.logos[slot].r2_key = d.r2_key;
+        c.logos[slot].filename = fname;
+      });
       document.getElementById('logo-fn-' + slot).textContent = '✓ ' + fname;
       const ctrl = document.getElementById('logo-ctrl-' + slot);
       if (ctrl) ctrl.style.display = '';
-      cfg.logos[slot].filename = fname;
       if (d.preview_url) ppLogoPreview(slot, d.preview_url);
       markDirty(); scheduleAutosave();
     } else {
@@ -1486,7 +1709,7 @@
   };
 
   /* ── Auto-poll if generating was in progress ────────────────────────── */
-  const cfgGenerating = {{ (config.get('generating', False) | tojson) }};
+  const cfgGenerating = {{ quick_generating | tojson }};
   const hasUrl = {{ (quick_video_url is not none) | tojson }};
   if (cfgGenerating && !hasUrl) {
     showStatus('Generating quick video…');
@@ -1495,6 +1718,14 @@
   if (hasUrl) {
     const dlBtn = document.getElementById('btn-download');
     if (dlBtn) dlBtn.style.display = '';
+  }
+
+  /* ── Auto-poll AI export if it was in progress ──────────────────────── */
+  const aiGenOnLoad = {{ ai_generating | tojson }};
+  const hasAiExport = {{ (ai_export_url is not none) | tojson }};
+  if (aiGenOnLoad && !hasAiExport) {
+    showStatus('Applying effects to AI video…');
+    startAIPolling();
   }
 
   /* ── Init ───────────────────────────────────────────────────────────── */

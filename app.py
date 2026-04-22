@@ -37,6 +37,7 @@ from pipeline_worker import (
     kick_stage_4,
     kick_stage_5,
     kick_stage_refs,
+    kick_ai_postprod,
     kick_quick_video,
     regenerate_entity_plate,
     retry_all_failed_refs,
@@ -2754,8 +2755,41 @@ def postprod_page(project_id: str):
         p["url"] = _asset_url(a.get("file_path"))
         shots.append(p)
 
-    config = project.get("postprod_config") or {}
+    raw_config = project.get("postprod_config") or {}
+
+    # Migrate flat legacy configs to nested {quick: {...}, ai: {...}} shape.
+    # A nested config will always have a "quick" key; flat configs won't.
+    if "quick" not in raw_config and "ai" not in raw_config:
+        # Old flat config — treat it as the quick sub-config
+        config = {"quick": raw_config, "ai": {}}
+    else:
+        config = raw_config
+
+    quick_cfg = config.get("quick") or {}
+    ai_cfg    = config.get("ai") or {}
+
+    # Shared settings (SRT/logos) live at top level of raw_config regardless of nesting
+    shared_cfg = {
+        k: raw_config[k] for k in ("srt_r2_key", "logos") if k in raw_config
+    }
+
     quick_video_url = _asset_url(project.get("quick_video_url")) if project.get("quick_video_url") else None
+
+    # AI video source URL (stitched from WAN clips) — proxy through r2proxy
+    final_video_raw = project.get("final_video_url") or ""
+    ai_video_url: str | None = None
+    if final_video_raw:
+        ai_video_url = _asset_url(final_video_raw)
+
+    # AI export URL (post-processed version of the AI video)
+    ai_export_raw = raw_config.get("ai_export_url") or ""
+    ai_export_url: str | None = _asset_url(ai_export_raw) if ai_export_raw else None
+
+    # Generating/error state for both modes (stored at top level of postprod_config)
+    quick_generating = bool(raw_config.get("generating"))
+    ai_generating    = bool(raw_config.get("ai_generating"))
+    ai_error         = raw_config.get("ai_error") or ""
+
     total_duration = sum(s.get("duration") or 0 for s in timeline)
 
     # Construct audio preview URL from the uploaded audio file
@@ -2775,7 +2809,15 @@ def postprod_page(project_id: str):
         project=project,
         shots=shots,
         config=config,
+        quick_cfg=quick_cfg,
+        ai_cfg=ai_cfg,
+        shared_cfg=shared_cfg,
         quick_video_url=quick_video_url,
+        ai_video_url=ai_video_url,
+        ai_export_url=ai_export_url,
+        quick_generating=quick_generating,
+        ai_generating=ai_generating,
+        ai_error=ai_error,
         total_duration=round(total_duration, 1),
         audio_url=audio_url,
     )
@@ -2784,15 +2826,42 @@ def postprod_page(project_id: str):
 @app.route("/project/<project_id>/postprod/save", methods=["POST"])
 @login_required
 def postprod_save(project_id: str):
-    """Upsert the postprod_config JSON for this project."""
+    """Upsert the postprod_config JSON for this project.
+
+    Accepts either:
+    - Nested: { quick: {...}, ai: {...} }  ← new format
+    - Flat:   { ken_burns_mode: ..., ... } ← legacy (treated as quick sub-config)
+    """
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
     data = request.get_json(silent=True) or {}
+
+    # Preserve top-level system keys (generating, ai_generating, etc.) from the
+    # existing config and merge the new nested structure over the top.
+    existing = project.get("postprod_config") or {}
+    system_keys = {
+        k: existing[k] for k in (
+            "generating", "quick_video_error",
+            "ai_generating", "ai_error", "ai_export_url",
+            "srt_r2_key", "logos",
+        )
+        if k in existing
+    }
+
+    # If the incoming data is nested (has 'quick' or 'ai'), merge it preserving
+    # system keys. Otherwise treat as flat quick config (legacy save).
+    if "quick" in data or "ai" in data:
+        merged = {**system_keys, **data}
+    else:
+        # Legacy flat save — store everything under 'quick' but preserve system keys
+        old_quick = existing.get("quick") or {}
+        merged = {**system_keys, "quick": {**old_quick, **data}, "ai": existing.get("ai") or {}}
+
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
-            (Json(data), project_id),
+            (Json(merged), project_id),
         )
         conn.commit()
     return jsonify({"ok": True})
@@ -2821,6 +2890,37 @@ def postprod_status(project_id: str):
     generating = bool(config.get("generating"))
     error = config.get("quick_video_error") or ""
     raw_url = project.get("quick_video_url") or ""
+    url = _asset_url(raw_url) if raw_url else ""
+    if url:
+        generating = False
+    return jsonify({"ok": True, "generating": generating, "url": url, "error": error})
+
+
+@app.route("/project/<project_id>/postprod/generate-ai", methods=["POST"])
+@login_required
+def postprod_generate_ai(project_id: str):
+    """Kick async AI post-production export job."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if not project.get("final_video_url"):
+        return jsonify({"ok": False, "error": "AI video has not been rendered yet."}), 400
+    settings = request.get_json(silent=True) or {}
+    kick_ai_postprod(project_id, settings)
+    return jsonify({"ok": True, "status": "generating"})
+
+
+@app.route("/project/<project_id>/postprod/ai-status", methods=["GET"])
+@login_required
+def postprod_ai_status(project_id: str):
+    """Poll for AI export URL and error state."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    config = project.get("postprod_config") or {}
+    generating = bool(config.get("ai_generating"))
+    error = config.get("ai_error") or ""
+    raw_url = config.get("ai_export_url") or ""
     url = _asset_url(raw_url) if raw_url else ""
     if url:
         generating = False

@@ -3938,3 +3938,289 @@ def kick_quick_video(project_id: str, settings: dict) -> None:
         )
         conn.commit()
     _POSTPROD_EXECUTOR.submit(_assemble_quick_video_job, project_id, settings)
+
+
+# ── AI Post-Production Export ──────────────────────────────────────────────────
+
+
+def _assemble_ai_postprod_job(project_id: str, settings: dict) -> None:
+    """Background job: applies post-production effects to the AI-rendered stitched video."""
+    import shutil
+    import subprocess
+    import tempfile
+    import requests
+    import json as _json
+
+    try:
+        ffmpeg = shutil.which("ffmpeg") or (
+            "/nix/store/ynlnyy6rn70kvzamy3b40bp3qlz70mn0-ffmpeg-full-7.1.1-bin/bin/ffmpeg"
+        )
+        if not ffmpeg or not Path(ffmpeg).exists():
+            raise RuntimeError("ffmpeg binary not found.")
+
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, final_video_url, postprod_config FROM projects WHERE id=%s",
+                (project_id,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise RuntimeError("Project not found.")
+
+        final_video_url = row.get("final_video_url") or ""
+        if not final_video_url:
+            raise RuntimeError("AI video has not been rendered yet.")
+
+        # ── Settings ──────────────────────────────────────────────────────────
+        colour_filter    = settings.get("colour_filter", "original").lower().replace(" ", "-")
+        filter_intensity = max(0, min(100, int(settings.get("filter_intensity", 100))))
+        aspect       = settings.get("aspect_ratio", "16:9")
+        quality      = settings.get("quality", "1080p").lower().replace(" ", "-")
+        fill_mode    = settings.get("fill_mode", "crop")
+        logo_slots   = settings.get("logos") or {}
+        srt_r2_key   = settings.get("srt_r2_key") or ""
+
+        # ── Output dimensions ─────────────────────────────────────────────────
+        if quality in ("9:16", "1:1"):
+            aspect = quality
+        aw, ah = _ASPECT_DIMS.get(aspect, (1920, 1080))
+        qshort, crf, enc_preset = _QUALITY_PRESETS.get(quality, (1080, 20, "medium"))
+        native_short = min(aw, ah)
+        _scale = qshort / native_short
+        out_w = max(2, int(aw * _scale) // 2 * 2)
+        out_h = max(2, int(ah * _scale) // 2 * 2)
+
+        work_dir = Path(tempfile.mkdtemp(prefix=f"qv_ai_{project_id}_"))
+        try:
+            # ── Download the stitched AI video ────────────────────────────────
+            ai_video_local = work_dir / "ai_source.mp4"
+            resp = requests.get(final_video_url, timeout=300, stream=True)
+            resp.raise_for_status()
+            with open(ai_video_local, "wb") as f:
+                for chunk in resp.iter_content(1 << 16):
+                    f.write(chunk)
+
+            current_video = ai_video_local
+
+            # ── Colour filter + scale/resize ───────────────────────────────────
+            colour_expr = _COLOUR_FILTERS.get(colour_filter, "")
+            alpha = filter_intensity / 100.0
+
+            # Build scale/pad filter for target aspect ratio
+            if fill_mode == "blur-fill":
+                scale_filter = (
+                    f"split=2[_bg][_fg];"
+                    f"[_bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{out_h},gblur=sigma=25[_blurred];"
+                    f"[_fg]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2[_padded];"
+                    f"[_blurred][_padded]overlay=0:0[_scaled]"
+                )
+            else:
+                scale_filter = (
+                    f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                    f"crop={out_w}:{out_h}[_scaled]"
+                )
+
+            # Combine with colour filter
+            if colour_expr and 0.0 < alpha < 1.0:
+                vf_filter = (
+                    f"[0:v]{scale_filter};"
+                    f"[_scaled]split=2[_co][_cf];"
+                    f"[_cf]{colour_expr}[_cfilt];"
+                    f"[_co][_cfilt]blend=all_expr='A*{1-alpha:.6f}+B*{alpha:.6f}'[vout]"
+                )
+            elif colour_expr and alpha > 0:
+                vf_filter = f"[0:v]{scale_filter};[_scaled]{colour_expr}[vout]"
+            else:
+                vf_filter = f"[0:v]{scale_filter};[_scaled]copy[vout]"
+
+            colour_out = work_dir / "colour_scaled.mp4"
+            cmd = [
+                ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(current_video),
+                "-filter_complex", vf_filter,
+                "-map", "[vout]", "-map", "0:a?",
+                "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                "-pix_fmt", "yuv420p", "-c:a", "copy",
+                str(colour_out),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            current_video = colour_out
+
+            # ── Logo overlays ──────────────────────────────────────────────────
+            if logo_slots and r2_storage.r2_available():
+                valid_logos: list[tuple[str, dict, str]] = []
+                for slot, logo_cfg in logo_slots.items():
+                    r2_key = (logo_cfg or {}).get("r2_key", "")
+                    if not r2_key:
+                        continue
+                    try:
+                        logo_data = r2_storage.download_bytes(r2_key)
+                        logo_path = work_dir / f"logo_{slot}.png"
+                        logo_path.write_bytes(logo_data)
+                        valid_logos.append((slot, logo_cfg, str(logo_path)))
+                    except Exception:
+                        logger.warning("AI postprod: could not download logo for slot %s", slot)
+
+                if valid_logos:
+                    logo_out = work_dir / "with_logos.mp4"
+                    cmd_parts = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                                 "-i", str(current_video)]
+                    for _slot, _cfg, logo_path in valid_logos:
+                        cmd_parts += ["-i", logo_path]
+
+                    _corner_x = {
+                        "top-left":     "20",
+                        "top-right":    "main_w-overlay_w-20",
+                        "bottom-left":  "20",
+                        "bottom-right": "main_w-overlay_w-20",
+                    }
+                    _corner_y = {
+                        "top-left":     "20",
+                        "top-right":    "20",
+                        "bottom-left":  "main_h-overlay_h-20",
+                        "bottom-right": "main_h-overlay_h-20",
+                    }
+                    overlay_filter = ""
+                    prev = "[0:v]"
+                    for li, (_slot, logo_cfg, _lp) in enumerate(valid_logos):
+                        opacity  = float((logo_cfg or {}).get("opacity", 0.9))
+                        width    = int((logo_cfg or {}).get("width", 120))
+                        height   = int((logo_cfg or {}).get("height", -1))
+                        x_offset = int((logo_cfg or {}).get("x_offset", 0))
+                        y_offset = int((logo_cfg or {}).get("y_offset", 0))
+                        cx       = _corner_x.get(_slot, "20")
+                        cy       = _corner_y.get(_slot, "20")
+                        ox = f"({cx})+({x_offset})" if x_offset else cx
+                        oy = f"({cy})+({y_offset})" if y_offset else cy
+                        lbl_in  = f"[{li+1}:v]"
+                        lbl_out = f"[ov{li}]" if li < len(valid_logos) - 1 else "[vfinal]"
+                        overlay_filter += (
+                            f"{lbl_in}scale={width}:{height}[ls{li}];"
+                            f"[ls{li}]format=rgba,colorchannelmixer=aa={opacity:.2f}[la{li}];"
+                            f"{prev}[la{li}]overlay={ox}:{oy}{lbl_out};"
+                        )
+                        prev = lbl_out
+                    overlay_filter = overlay_filter.rstrip(";")
+                    cmd_parts += [
+                        "-filter_complex", overlay_filter,
+                        "-map", "[vfinal]", "-map", "0:a?",
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-pix_fmt", "yuv420p", "-c:a", "copy", str(logo_out),
+                    ]
+                    try:
+                        subprocess.run(cmd_parts, check=True, capture_output=True)
+                        current_video = logo_out
+                    except subprocess.CalledProcessError as e:
+                        logger.warning("AI postprod: logo overlay failed (%s)",
+                                       (e.stderr or b"").decode("utf-8", "ignore")[:300])
+
+            # ── Subtitle burn-in ───────────────────────────────────────────────
+            if srt_r2_key and r2_storage.r2_available():
+                try:
+                    srt_data = r2_storage.download_bytes(srt_r2_key)
+                    sub_style = settings.get("subtitle_style") or {}
+                    animation = sub_style.get("animation", "none")
+
+                    if animation == "karaoke":
+                        ass_content = _srt_to_ass_karaoke(srt_data, sub_style)
+                        sub_path = work_dir / "subtitles.ass"
+                        sub_path.write_text(ass_content, encoding="utf-8")
+                        sub_filter = f"ass={sub_path.as_posix()}"
+                    else:
+                        srt_path = work_dir / "subtitles.srt"
+                        srt_path.write_bytes(srt_data)
+                        font_name  = sub_style.get("font", "Arial")
+                        font_size  = int(sub_style.get("font_size", 24))
+                        primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
+                        outline_c  = sub_style.get("outline_colour", "&H00000000")
+                        back_c     = sub_style.get("back_colour", "&H80000000")
+                        bold       = int(sub_style.get("bold", 0))
+                        outline    = float(sub_style.get("outline", 1.5))
+                        shadow     = float(sub_style.get("shadow", 0))
+                        alignment  = int(sub_style.get("alignment", 2))
+                        margin_v   = int(sub_style.get("margin_v", 40))
+                        margin_l   = int(sub_style.get("margin_l", 10))
+                        margin_r   = int(sub_style.get("margin_r", 10))
+                        force_style = (
+                            f"FontName={font_name},FontSize={font_size},"
+                            f"PrimaryColour={primary_c},OutlineColour={outline_c},"
+                            f"BackColour={back_c},Bold={bold},"
+                            f"Outline={outline},Shadow={shadow},"
+                            f"Alignment={alignment},"
+                            f"MarginL={margin_l},MarginR={margin_r},MarginV={margin_v}"
+                        )
+                        sub_filter = (
+                            f"subtitles={srt_path.as_posix()}:force_style='{force_style}'"
+                        )
+
+                    subtitled = work_dir / "subtitled.mp4"
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-i", str(current_video),
+                        "-vf", sub_filter,
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-c:a", "copy", str(subtitled),
+                    ]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    current_video = subtitled
+                except Exception:
+                    logger.warning("AI postprod: subtitle burn-in failed (non-fatal)", exc_info=True)
+
+            # ── Upload to R2 ───────────────────────────────────────────────────
+            safe_name = (row.get("name") or "qaivid").strip().replace(" ", "_")
+            r2_key = f"projects/{project_id}/quick/{safe_name}_ai_export.mp4"
+            export_url = r2_storage.upload_file(current_video, r2_key)
+
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE projects SET "
+                    "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
+                    "updated_at=NOW() WHERE id=%s",
+                    (_json.dumps({
+                        "ai_generating": False,
+                        "ai_error": None,
+                        "ai_export_url": export_url,
+                    }), project_id),
+                )
+                conn.commit()
+
+            logger.info("AI postprod export done for project %s → %s", project_id, export_url)
+
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or b"").decode("utf-8", "ignore")[:800]
+        logger.exception("AI postprod ffmpeg error for project %s: %s", project_id, stderr)
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
+                "WHERE id=%s",
+                (_json.dumps({"ai_generating": False, "ai_error": f"ffmpeg failed: {stderr}"}), project_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.exception("AI postprod export failed for project %s", project_id)
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET postprod_config=postprod_config || %s::jsonb, updated_at=NOW() "
+                "WHERE id=%s",
+                (_json.dumps({"ai_generating": False, "ai_error": str(exc)[:400]}), project_id),
+            )
+            conn.commit()
+
+
+def kick_ai_postprod(project_id: str, settings: dict) -> None:
+    """Queue an async AI-video post-production export job."""
+    import json as _json
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET "
+            "postprod_config=COALESCE(postprod_config,'{}')::jsonb || %s::jsonb, "
+            "updated_at=NOW() WHERE id=%s",
+            (_json.dumps({"ai_generating": True, "ai_error": None, "ai_export_url": None}), project_id),
+        )
+        conn.commit()
+    _POSTPROD_EXECUTOR.submit(_assemble_ai_postprod_job, project_id, settings)
