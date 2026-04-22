@@ -194,6 +194,11 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="adm-btn adm-btn-ghost" title="Browse as this user">Impersonate</button>
                             </form>
+                            <form method="post" action="{{ url_for('admin_send_password_reset', user_id=u.id) }}" class="adm-form-inline"
+                                  onsubmit="return confirm('Send a password reset email to {{ u.email }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="adm-btn adm-btn-ghost" title="Send password reset email">Reset PW</button>
+                            </form>
                             <form method="post" action="{{ url_for('admin_toggle_admin', user_id=u.id) }}" class="adm-form-inline">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="adm-btn adm-btn-ghost">{{ 'Revoke admin' if u.is_admin else 'Make admin' }}</button>
@@ -204,7 +209,11 @@
                                 <button type="submit" class="adm-btn adm-btn-danger">Delete</button>
                             </form>
                             {% else %}
-                            <span class="adm-muted">—</span>
+                            <form method="post" action="{{ url_for('admin_send_password_reset', user_id=u.id) }}" class="adm-form-inline"
+                                  onsubmit="return confirm('Send a password reset email to your account ({{ u.email }})?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="adm-btn adm-btn-ghost" title="Send password reset to your own email">Reset my PW</button>
+                            </form>
                             {% endif %}
                         </td>
                     </tr>

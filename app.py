@@ -57,13 +57,17 @@ from auth import (
     admin_required,
     bootstrap_admin,
     confirm_email_verification,
+    consume_reset_token,
     count_user_projects,
+    create_reset_token,
     create_user,
     current_user,
     delete_user,
     get_user_by_email,
+    get_user_by_reset_token,
     get_user_by_verify_token,
     get_user_password_hash,
+    is_reset_token_expired,
     is_verify_token_expired,
     login_required,
     login_user,
@@ -74,7 +78,7 @@ from auth import (
     verify_password,
 )
 from disposable_domains import is_disposable_email
-from email_utils import send_verification_email
+from email_utils import send_password_reset_email, send_verification_email
 import r2_storage
 from billing import billing_bp, FREE_PROJECT_LIMIT
 
@@ -764,6 +768,44 @@ def account_delete():
     delete_user(uid)
     flash("Your account has been permanently deleted.", "info")
     return redirect(url_for("index"))
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if email:
+            user = get_user_by_email(email)
+            if user:
+                token = create_reset_token(user["id"])
+                reset_url = url_for("reset_password", token=token, _external=True)
+                send_password_reset_email(user["email"], reset_url)
+        return render_template("forgot_password.html", sent=True, email=email)
+    return render_template("forgot_password.html", sent=False)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    user = get_user_by_reset_token(token)
+    if not user:
+        return render_template("reset_password.html", invalid=True)
+    if is_reset_token_expired(user.get("reset_token_sent_at")):
+        return render_template("reset_password.html", expired=True)
+
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        pw2 = request.form.get("password2", "")
+        if len(pw) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("reset_password.html", token=token, email=user["email"])
+        if pw != pw2:
+            flash("Passwords don't match.", "error")
+            return render_template("reset_password.html", token=token, email=user["email"])
+        consume_reset_token(user["id"], pw)
+        flash("Password updated — please sign in with your new password.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", token=token, email=user["email"])
 
 
 @app.route("/generate", methods=["POST"])
@@ -2833,6 +2875,28 @@ def admin_delete_user(user_id: int):
         )
     else:
         flash("User not found.", "error")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/user/<int:user_id>/send-password-reset", methods=["POST"])
+@admin_required
+def admin_send_password_reset(user_id: int):
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
+    if not target:
+        flash("User not found.", "error")
+        return redirect(url_for("admin"))
+    token = create_reset_token(target["id"])
+    reset_url = url_for("reset_password", token=token, _external=True)
+    sent = send_password_reset_email(target["email"], reset_url)
+    if sent:
+        flash(f"Password reset email sent to {target['email']}.", "success")
+    else:
+        flash(
+            f"Email not sent (check RESEND_API_KEY). Reset link: {reset_url}",
+            "info",
+        )
     return redirect(url_for("admin"))
 
 

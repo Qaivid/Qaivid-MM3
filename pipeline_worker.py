@@ -111,6 +111,12 @@ def ensure_schema() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS users_email_verify_token_idx
             ON users (email_verify_token) WHERE email_verify_token IS NOT NULL;
         """)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_sent_at TIMESTAMPTZ;")
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS users_reset_token_idx
+            ON users (reset_token) WHERE reset_token IS NOT NULL;
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id              TEXT PRIMARY KEY,

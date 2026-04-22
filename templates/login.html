@@ -24,6 +24,9 @@
         <div class="row">
             <button type="submit" class="btn-primary">Sign in</button>
         </div>
+        <div class="row" style="margin-top:-4px;">
+            <a href="{{ url_for('forgot_password') }}" class="muted" style="font-size:13px;">Forgot your password?</a>
+        </div>
     </form>
     <p class="muted">No account yet? <a href="{{ url_for('signup') }}">Create one</a>.</p>
 </section>

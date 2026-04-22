@@ -222,6 +222,7 @@ def refresh_verify_token(user_id: int) -> str:
 
 
 EMAIL_VERIFY_EXPIRY_HOURS = 24
+RESET_TOKEN_EXPIRY_HOURS = 1
 
 
 def is_verify_token_expired(sent_at) -> bool:
@@ -231,6 +232,49 @@ def is_verify_token_expired(sent_at) -> bool:
     if sent_at.tzinfo is None:
         sent_at = sent_at.replace(tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - sent_at > timedelta(hours=EMAIL_VERIFY_EXPIRY_HOURS)
+
+
+def is_reset_token_expired(sent_at) -> bool:
+    """Return True if the reset token is older than RESET_TOKEN_EXPIRY_HOURS."""
+    if not sent_at:
+        return True
+    if sent_at.tzinfo is None:
+        sent_at = sent_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - sent_at > timedelta(hours=RESET_TOKEN_EXPIRY_HOURS)
+
+
+def create_reset_token(user_id: int) -> str:
+    """Generate and store a password-reset token. Returns the token."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET reset_token = %s, reset_token_sent_at = %s WHERE id = %s",
+            (token, now, user_id),
+        )
+        conn.commit()
+    return token
+
+
+def get_user_by_reset_token(token: str) -> Optional[dict]:
+    """Look up a user by their password-reset token."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, email, reset_token, reset_token_sent_at FROM users WHERE reset_token = %s",
+            (token,),
+        )
+        return cur.fetchone()
+
+
+def consume_reset_token(user_id: int, new_password: str) -> None:
+    """Set the new password and clear the reset token atomically."""
+    pw_hash = generate_password_hash(new_password)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET password_hash = %s, reset_token = NULL, reset_token_sent_at = NULL WHERE id = %s",
+            (pw_hash, user_id),
+        )
+        conn.commit()
 
 
 def verify_password(user: dict, password: str) -> bool:
