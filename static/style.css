@@ -2122,9 +2122,9 @@ body.scene-lightbox-open { overflow: hidden; }
 .btn-stage { padding: 10px 20px; background: #1e1e2a; color: #bbb; border: 1px solid #2e2e40;
     border-radius: 10px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
 .btn-stage:hover { background: #28283a; color: #fff; }
-.btn-stage-danger { padding: 10px 20px; background: #2a1010; color: #ff8a96;
-    border: 1px solid #4a2020; border-radius: 10px; font-size: 14px; cursor: pointer; }
-.btn-stage-danger:hover { background: #3a1818; }
+.btn-stage-danger { padding: 10px 20px; background: rgba(255,80,96,0.1); color: #ff8a96;
+    border: 1px solid rgba(255,100,100,0.35); border-radius: 10px; font-size: 14px; cursor: pointer; }
+.btn-stage-danger:hover { background: rgba(255,80,96,0.22); color: #ffb0b8; border-color: rgba(255,100,100,0.6); }
 
 /* audit grid (stage 0) */
 .audit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -2243,7 +2243,7 @@ body.scene-lightbox-open { overflow: hidden; }
           border: 1px solid #2e2e3e; background: #1c1c28; color: #d4d8de; }
 .btn-xs:hover { background: #252530; border-color: #3a3a4e; }
 .btn-xs-muted { background: transparent; color: #6b7280; }
-.btn-xs-muted:hover { background: #16161f; color: #aaa; }
+.btn-xs-muted:hover { background: #1e1e2c; color: #d4d8de; }
 .mode-pill { display: inline-block; padding: 2px 8px; border-radius: 999px;
     font-size: 10px; font-weight: 700; text-transform: uppercase; background: #202028; color: #aaa; }
 .mode-pill.mode-face, .mode-pill.mode-body { background: #1d2d3a; color: #88c8ff; }
@@ -2321,8 +2321,8 @@ body.is-admin .topbar { border-bottom: 1px solid rgba(255,140,80,.35); }
 .proj-progress-bar { height: 4px; background: #1f1f30; border-radius: 2px; overflow: hidden; }
 .proj-progress-fill { height: 100%; background: linear-gradient(90deg, #d4f47c, #88c0ff); transition: width .3s; }
 .proj-card-actions { display: flex; gap: 8px; margin-top: 4px; }
-.btn-stage-danger { background: transparent; color: #ff8888; border: 1px solid rgba(255,100,100,.3); }
-.btn-stage-danger:hover { background: rgba(255,100,100,.12); }
+.btn-stage-danger { background: rgba(255,80,96,0.1); color: #ff8888; border: 1px solid rgba(255,100,100,.35); }
+.btn-stage-danger:hover { background: rgba(255,80,96,0.22); color: #ffb0b8; border-color: rgba(255,100,100,0.6); }
 
 /* ======================== new project page ======================== */
 .np-page { max-width: 760px; margin: 32px auto; padding: 0 24px; }
@@ -4564,7 +4564,7 @@ main:has(> .ws-grid) {
 .adm-btn-ghost { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text); }
 .adm-btn-ghost:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
 .adm-btn-danger { background: rgba(255,92,122,0.1); border-color: rgba(255,92,122,0.3); color: var(--error); }
-.adm-btn-danger:hover { background: rgba(255,92,122,0.22); }
+.adm-btn-danger:hover { background: rgba(255,92,122,0.32); color: #ffb0b8; border-color: rgba(255,92,122,0.55); }
 
 /* System tab */
 .adm-sys-grid { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
