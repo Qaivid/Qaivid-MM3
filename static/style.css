@@ -80,10 +80,10 @@ h1, h2, h3, .brand, .display {
     padding: 0;
     background: #0a0a0f;
     border-bottom: none;
-    overflow: hidden;
+    overflow: visible;
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: 100;
 }
 .landing-page .topbar-bg {
     display: block;
