@@ -148,41 +148,10 @@ h1, h2, h3, .brand, .display {
     z-index: 4;
 }
 
-/* logo + tagline overlay */
-.landing-page .topbar-inner {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 100%;
-    max-width: 1200px;
-    padding: 0 40px;
-    z-index: 10;
-    box-sizing: border-box;
-}
-.landing-page .topbar-tagline {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.68);
-    padding-left: 18px;
-    border-left: 1px solid rgba(255,255,255,0.22);
-    white-space: nowrap;
-    text-shadow: 0 0 18px rgba(212,255,58,0.18);
-}
-.landing-page .topbar-nav {
-    position: absolute;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-    gap: 6px;
-}
+/* legacy topbar-inner / topbar-nav: hidden — superseded by topbar-main */
+.landing-page .topbar-inner { display: none !important; }
+.landing-page .topbar-tagline { display: none !important; }
+.landing-page .topbar-nav { display: none !important; }
 /* landing page: restyle .topbar-main to use same cinematic overlay layout */
 .landing-page .topbar-main {
     position: absolute;
@@ -2471,15 +2440,21 @@ body.is-admin .topbar { border-bottom: 1px solid rgba(255,140,80,.35); }
     gap: 5px;
     padding: 8px 16px;
     background: #d4ff3a;
-    color: #0a0a0a;
+    color: #0a0a0a !important;
     border-radius: 8px;
     font-size: 13.5px;
     font-weight: 700;
-    text-decoration: none;
+    text-decoration: none !important;
     white-space: nowrap;
-    transition: background .15s;
+    transition: background .15s, box-shadow .15s, transform .1s;
 }
-.topbar-new-btn:hover { background: #e0ff5a; }
+.topbar-new-btn:hover,
+.topbar-new-btn:focus {
+    background: #38e1ff !important;
+    color: #0a0a0f !important;
+    box-shadow: 0 0 16px rgba(56,225,255,0.35);
+    transform: translateY(-1px);
+}
 
 .topbar-signin-btn {
     padding: 7px 14px;
