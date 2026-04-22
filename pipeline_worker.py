@@ -2763,6 +2763,38 @@ def kick_all_pending_shots(project_id: str, force: bool = False) -> None:
         _SHOT_EXECUTOR.submit(_render_shot, project_id, merged, None, None)
 
 
+def seed_video_rows(project_id: str, shot_indices: list) -> None:
+    """Public: seed video_assets rows as 'queued' without starting rendering."""
+    _seed_video_rows(project_id, [i for i in shot_indices if i is not None])
+
+
+def render_shot_videos(project_id: str, shot_indices: set) -> None:
+    """Submit specific shots (by index) to the video render executor."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT styled_timeline FROM projects WHERE id=%s", (project_id,))
+        row = cur.fetchone()
+    if not row or not row.get("styled_timeline"):
+        return
+    for shot in row["styled_timeline"]:
+        idx = shot.get("shot_index") or shot.get("timeline_index")
+        if idx in shot_indices:
+            _VIDEO_EXECUTOR.submit(_render_video, project_id, shot)
+
+
+def render_failed_videos(project_id: str) -> int:
+    """Re-queue all failed video clips. Returns count submitted."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT shot_index FROM video_assets WHERE project_id=%s AND status='failed'",
+            (project_id,),
+        )
+        failed_idxs = {r["shot_index"] for r in cur.fetchall()}
+    if not failed_idxs:
+        return 0
+    render_shot_videos(project_id, failed_idxs)
+    return len(failed_idxs)
+
+
 def kick_stage_4(project_id: str) -> None:
     _EXECUTOR.submit(_stage4_job, project_id)
 

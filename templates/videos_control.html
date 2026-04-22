@@ -40,6 +40,10 @@
         <button class="btn-secondary" id="btn-gen-all" onclick="vcGenerateAll(false)">
           ▶ Generate All Pending
         </button>
+        <button class="btn-secondary" id="btn-regen-failed" onclick="vcRegenFailed()"
+                style="border-color:rgba(220,60,60,.4);color:#ff8888;">
+          ⚠ Regenerate Failed
+        </button>
         <button class="btn-secondary vc-regen-all-btn" onclick="vcConfirmRegenAll()">
           ↺ Regenerate All
         </button>
@@ -63,6 +67,16 @@
             <div class="vc-frame-empty">No still</div>
             {% endif %}
             <span class="vc-frame-num">#{{ s.shot_index }}</span>
+          </div>
+
+          <!-- Change start frame -->
+          <div style="padding:6px 8px;border-top:1px solid #1e2230;background:#0f1218;">
+            <label style="font-size:10px;color:#444;cursor:pointer;display:flex;align-items:center;gap:5px;">
+              <input type="file" accept="image/*"
+                     style="display:none"
+                     onchange="vcUploadFrame({{ s.shot_index }}, this)">
+              <span style="color:#555;font-size:11px;">⤴ Change start frame</span>
+            </label>
           </div>
 
           <!-- Video preview (only when ready) -->
@@ -109,14 +123,17 @@
           <div class="vc-meaning">{{ s.meaning }}</div>
           {% endif %}
 
-          <!-- Visual prompt (read-only) -->
-          {% set vis_prompt = s.prompt %}
-          {% if vis_prompt %}
+          <!-- Visual prompt (editable) -->
           <div class="vc-prompt-section">
-            <div class="vc-prompt-label">Visual prompt</div>
-            <div class="vc-prompt-text">{{ vis_prompt }}</div>
+            <div class="vc-prompt-label" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>Visual prompt</span>
+              <span class="vc-saved-indicator" id="vc-vis-saved-{{ s.shot_index }}"
+                    style="display:none;color:#ffe200;font-size:10px;">✓ saved</span>
+            </div>
+            <textarea class="vc-motion-input" id="vc-visual-{{ s.shot_index }}"
+                      rows="3" placeholder="Describe the visual for this shot…"
+                      onblur="vcSaveVisual({{ s.shot_index }})">{{ s.prompt or '' }}</textarea>
           </div>
-          {% endif %}
 
           <!-- Motion prompt (editable) -->
           <div class="vc-motion-section">
@@ -440,13 +457,30 @@ function startPolling() {
   }, 4000);
 }
 
+/* ── Save visual prompt on blur ── */
+window.vcSaveVisual = async function(idx) {
+  const ta = document.getElementById('vc-visual-' + idx);
+  if (!ta) return;
+  const val = ta.value.trim();
+  if (!val) return;
+  try {
+    await fetch('/project/' + PID + '/shot/' + idx + '/visual_prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ visual_prompt: val })
+    });
+    const ind = document.getElementById('vc-vis-saved-' + idx);
+    if (ind) { ind.style.display = 'inline'; setTimeout(() => ind.style.display = 'none', 2000); }
+  } catch(e) {}
+};
+
 /* ── Save motion prompt on blur ── */
 window.vcSaveMotion = async function(idx) {
   const ta = document.getElementById('vc-motion-' + idx);
   if (!ta) return;
   const val = ta.value.trim();
   try {
-    await fetch('/project/' + PID + '/shot/' + idx + '/motion_prompt', {
+    await fetch('/project/' + PID + '/shot/' + idx + '/studio_motion_prompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
       body: JSON.stringify({ motion_prompt: val })
@@ -488,6 +522,54 @@ window.vcGenerateAll = async function(force) {
 
 window.vcConfirmRegenAll = () => {
   document.getElementById('vc-regenall-modal').style.display = 'flex';
+};
+
+/* ── Regenerate failed ── */
+window.vcRegenFailed = async function() {
+  const btn = document.getElementById('btn-regen-failed');
+  const failedIdxs = Object.entries(videoState)
+    .filter(([,s]) => s.status === 'failed')
+    .map(([idx]) => parseInt(idx));
+  if (!failedIdxs.length) { alert('No failed clips to regenerate.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Queuing…'; }
+  for (const idx of failedIdxs) applyStatus(idx, 'rendering', null, null);
+  startPolling();
+  try {
+    await fetch('/project/' + PID + '/videos/regenerate-failed', {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF }
+    });
+  } catch(e) {}
+  if (btn) { btn.disabled = false; btn.textContent = '⚠ Regenerate Failed'; }
+};
+
+/* ── Upload replacement start frame ── */
+window.vcUploadFrame = async function(idx, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const label = input.parentElement.querySelector('span');
+  if (label) label.textContent = '⟳ Uploading…';
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('csrf_token', CSRF);
+  try {
+    const res = await fetch('/project/' + PID + '/stills/upload/' + idx, {
+      method: 'POST', body: fd, headers: { 'X-CSRFToken': CSRF }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Refresh the start frame thumbnail
+      const img = document.querySelector('#vc-row-' + idx + ' .vc-frame-img');
+      if (img && data.url) { img.src = data.url + '?t=' + Date.now(); }
+      if (label) label.textContent = '✓ Frame updated';
+      setTimeout(() => { if (label) label.textContent = '⤴ Change start frame'; }, 2500);
+    } else {
+      if (label) label.textContent = '⚠ Upload failed';
+      setTimeout(() => { if (label) label.textContent = '⤴ Change start frame'; }, 2500);
+    }
+  } catch(e) {
+    if (label) label.textContent = '⚠ Error';
+  }
+  input.value = '';
 };
 
 /* ── Approve modal ── */

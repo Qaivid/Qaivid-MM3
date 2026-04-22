@@ -50,6 +50,9 @@ from pipeline_worker import (
     set_shot_uploaded_image,
     kick_single_shot,
     kick_all_pending_shots,
+    seed_video_rows,
+    render_shot_videos,
+    render_failed_videos,
 )
 from auth import (
     DuplicateEmailError,
@@ -522,6 +525,7 @@ STAGE_ORDER = [
     "references_review",
     "stills_control",
     "stills_review",
+    "videos_control",
     "post_production",
     "videos_review",
     "final_review",
@@ -537,6 +541,7 @@ STAGE_LABELS = {
     "references_review": "References",
     "stills_control": "Stills",
     "stills_review": "Stills (Legacy)",
+    "videos_control": "Video Studio",
     "post_production": "Post Production",
     "videos_review": "Video Clips",
     "final_review": "Final Cut",
@@ -1292,6 +1297,9 @@ def project_detail(project_id: str):
                  for a in shot_assets]
         return render_template("stage_stills.html", project=project,
                                shots=shots, refs=refs)
+
+    if stage == "videos_control":
+        return redirect(url_for("video_studio_page", project_id=project_id))
 
     if stage == "post_production":
         return redirect(url_for("postprod_page", project_id=project_id))
@@ -2243,7 +2251,7 @@ def advance_stage_4(project_id: str):
 # ── Stills Control routes ────────────────────────────────────────────────────
 
 _STILLS_EDITABLE_STAGES = (
-    "stills_control", "stills_review", "post_production", "videos_review", "complete",
+    "stills_control", "stills_review", "videos_control", "post_production", "videos_review", "complete",
 )
 
 
@@ -2344,13 +2352,13 @@ def stills_upload_one(project_id: str, shot_index: int):
 @app.route("/project/<project_id>/stills/approve", methods=["POST"])
 @login_required
 def stills_approve(project_id: str):
-    """User approved all stills — advance to Post Production stage."""
+    """User approved all stills — advance to Video Studio (gated, no auto-render)."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET status='awaiting_review', stage='post_production', "
+            "UPDATE projects SET status='awaiting_review', stage='videos_control', "
             "updated_at=NOW() "
             " WHERE id=%s AND stage='stills_control' AND status='awaiting_review'",
             (project_id,),
@@ -2360,6 +2368,172 @@ def stills_approve(project_id: str):
     if not advanced:
         flash("Cannot advance — project is not at the stills review step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
+    # Seed video_asset rows (queued status) so the studio page has entries to display.
+    # Does NOT start rendering — user controls generation from the Video Studio.
+    try:
+        timeline = project.get("styled_timeline") or []
+        shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in timeline]
+        seed_video_rows(project_id, shot_indices)
+    except Exception:
+        pass  # Non-fatal; studio page works fine without pre-seeded rows
+    return redirect(url_for("video_studio_page", project_id=project_id))
+
+
+# ── Video clips status JSON (polling) ─────────────────────────────────────
+@app.route("/project/<project_id>/videos/status.json")
+@login_required
+def videos_status_json(project_id: str):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    video_assets = _get_video_assets(project_id)
+    return jsonify({
+        "videos": [
+            {
+                "shot_index": v["shot_index"],
+                "status": v["status"],
+                "url": _asset_url(v.get("file_path")),
+                "error": v.get("error"),
+            }
+            for v in video_assets
+        ]
+    })
+
+
+# ── Video Studio page ──────────────────────────────────────────────────────
+@app.route("/project/<project_id>/video-studio")
+@login_required
+def video_studio_page(project_id: str):
+    """Gated Video Generation Studio — nothing renders automatically."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    shot_assets  = _get_shot_assets(project_id)
+    video_assets = _get_video_assets(project_id)
+    timeline     = project.get("styled_timeline") or []
+    sa_by_idx    = {a["shot_index"]: a for a in shot_assets}
+    va_by_idx    = {v["shot_index"]: v for v in video_assets}
+    shots = []
+    for a in shot_assets:
+        tl_shot = next((s for s in timeline
+                        if (s.get("shot_index") or s.get("timeline_index")) == a["shot_index"]), {})
+        payload = _shot_payload(a, tl_shot)
+        va = va_by_idx.get(a["shot_index"]) or {}
+        payload["video_status"] = va.get("status") or "queued"
+        payload["video_url"]    = _asset_url(va.get("file_path"))
+        payload["video_error"]  = va.get("error")
+        payload["motion_prompt"] = (a.get("motion_prompt") or
+                                    tl_shot.get("motion_prompt") or "")
+        shots.append(payload)
+    return render_template("videos_control.html", project=project, shots=shots)
+
+
+# ── Save visual prompt (video studio) ──────────────────────────────────────
+@app.route("/project/<project_id>/shot/<int:shot_index>/visual_prompt", methods=["POST"])
+@login_required
+def save_visual_prompt(project_id: str, shot_index: int):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("visual_prompt") or "").strip()
+    if not prompt:
+        return jsonify({"ok": False, "error": "Empty prompt"}), 400
+    update_shot_prompt(project_id, shot_index, prompt)
+    return jsonify({"ok": True})
+
+
+# ── Save motion prompt from video studio ───────────────────────────────────
+@app.route("/project/<project_id>/shot/<int:shot_index>/studio_motion_prompt", methods=["POST"])
+@login_required
+def save_studio_motion_prompt(project_id: str, shot_index: int):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    motion = (data.get("motion_prompt") or "").strip()[:500]
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET motion_prompt=%s, updated_at=NOW() "
+            "WHERE project_id=%s AND shot_index=%s",
+            (motion or None, project_id, shot_index),
+        )
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+# ── Generate single video clip ──────────────────────────────────────────────
+@app.route("/project/<project_id>/videos/generate/<int:shot_index>", methods=["POST"])
+@login_required
+def generate_single_video(project_id: str, shot_index: int):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(403)
+    try:
+        retry_video(project_id, shot_index)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+# ── Generate all pending / force-all video clips ───────────────────────────
+@app.route("/project/<project_id>/videos/generate-all", methods=["POST"])
+@login_required
+def generate_all_videos_route(project_id: str):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(403)
+    force = request.args.get("force") == "1"
+    try:
+        if force:
+            generate_all_videos(project_id)
+        else:
+            video_assets  = _get_video_assets(project_id)
+            shot_assets   = _get_shot_assets(project_id)
+            existing_idxs = {v["shot_index"] for v in video_assets}
+            pending_idxs  = {v["shot_index"] for v in video_assets
+                             if v["status"] not in ("ready", "rendering")}
+            for s in shot_assets:
+                if s["shot_index"] not in existing_idxs and s["status"] == "ready":
+                    pending_idxs.add(s["shot_index"])
+            render_shot_videos(project_id, pending_idxs)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+# ── Regenerate all failed video clips ─────────────────────────────────────
+@app.route("/project/<project_id>/videos/regenerate-failed", methods=["POST"])
+@login_required
+def regenerate_failed_videos_route(project_id: str):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(403)
+    try:
+        count = render_failed_videos(project_id)
+        return jsonify({"ok": True, "count": count})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+# ── Approve videos → move to Post Production ──────────────────────────────
+@app.route("/project/<project_id>/videos/approve", methods=["POST"])
+@login_required
+def videos_approve(project_id: str):
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET stage='post_production', updated_at=NOW() "
+            "WHERE id=%s AND stage IN ('videos_control','videos_review')",
+            (project_id,),
+        )
+        advanced = cur.rowcount == 1
+        conn.commit()
+    if not advanced:
+        flash("Cannot advance at this stage.", "error")
+        return redirect(url_for("video_studio_page", project_id=project_id))
     return redirect(url_for("postprod_page", project_id=project_id))
 
 

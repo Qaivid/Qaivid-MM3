@@ -179,55 +179,17 @@
       {% endfor %}
     </div>
 
-    <!-- ── Approve bar ──────────────────────────────────────── -->
+    <!-- ── Proceed bar ──────────────────────────────────────── -->
     <div class="stage-actions" style="margin-top:28px;">
-      <button type="button" class="btn-stage-primary" id="btn-approve-trigger"
-              onclick="scOpenApproveModal()">
-        Proceed to Video Generation &#8594;
-      </button>
-      <p class="muted" style="font-size:12px;margin-top:6px;">
-        Review all shots above before proceeding. Only <strong>ready</strong> shots will appear in the video.
-      </p>
-    </div>
-  </div>
-</div>
-
-<!-- ── Approve confirmation modal ───────────────────────────────────── -->
-<div id="approve-modal" style="display:none;position:fixed;inset:0;z-index:9000;
-     background:rgba(0,0,0,0.72);align-items:center;justify-content:center;">
-  <div style="background:#16161e;border:1px solid #2a2a38;border-radius:14px;
-              padding:32px 36px;max-width:480px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.6);">
-    <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">Start video generation?</h2>
-    <p style="color:#aaa;font-size:14px;margin:0 0 20px;line-height:1.6;">
-      This will animate <strong id="apm-ready-count" style="color:#c6ff00;">—</strong> ready shots
-      into video clips. <span id="apm-skip-note" style="color:#f5a623;"></span>
-      <br><br>
-      <strong style="color:#fff;">This cannot be undone mid-run.</strong>
-      Make sure you're happy with your shots before continuing.
-    </p>
-    <div style="background:#1e1e2a;border-radius:8px;padding:14px 16px;margin-bottom:22px;font-size:13px;color:#bbb;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span>Ready shots</span><strong id="apm-ready" style="color:#c6ff00;">—</strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span>Pending / failed (will be skipped)</span><strong id="apm-skip" style="color:#f5a623;">—</strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a38;padding-top:8px;margin-top:4px;">
-        <span>Next step</span><strong style="color:#fff;">Post Production Studio</strong>
-      </div>
-    </div>
-    <div style="display:flex;gap:12px;">
-      <form method="post" action="{{ url_for('stills_approve', project_id=project.id) }}" style="flex:1;">
+      <form method="post" action="{{ url_for('stills_approve', project_id=project.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-stage-primary" style="width:100%;padding:13px;font-size:15px;">
-          Yes, generate video clips &#8594;
+        <button type="submit" class="btn-stage-primary">
+          Proceed to Video Studio &#8594;
         </button>
       </form>
-      <button type="button" onclick="scCloseApproveModal()"
-              style="flex:0 0 auto;padding:13px 20px;background:#2a2a38;border:none;
-                     border-radius:8px;color:#aaa;font-size:14px;cursor:pointer;">
-        Cancel
-      </button>
+      <p class="muted" style="font-size:12px;margin-top:6px;">
+        You can review and edit visual prompts, change start frames, and control generation in the Video Studio.
+      </p>
     </div>
   </div>
 </div>
@@ -651,29 +613,6 @@
   /* ── Close modal on overlay click ── */
   document.getElementById('sc-regen-modal').addEventListener('click', function(e) {
     if (e.target === this) scModalCancel();
-  });
-
-  /* ── Approve confirmation modal ── */
-  window.scOpenApproveModal = function() {
-    // Count from live shotState
-    let ready = 0, skip = 0;
-    for (const s of Object.values(shotState)) {
-      if (s.status === 'ready') ready++;
-      else skip++;
-    }
-    document.getElementById('apm-ready-count').textContent = ready + ' shot' + (ready === 1 ? '' : 's');
-    document.getElementById('apm-ready').textContent = ready;
-    document.getElementById('apm-skip').textContent = skip;
-    document.getElementById('apm-skip-note').textContent =
-      skip > 0 ? skip + ' unready shot' + (skip === 1 ? '' : 's') + ' will be skipped.' : '';
-    const modal = document.getElementById('approve-modal');
-    modal.style.display = 'flex';
-  };
-  window.scCloseApproveModal = function() {
-    document.getElementById('approve-modal').style.display = 'none';
-  };
-  document.getElementById('approve-modal').addEventListener('click', function(e) {
-    if (e.target === this) scCloseApproveModal();
   });
 
 })();
