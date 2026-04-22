@@ -18,11 +18,12 @@ import r2_storage
 
 logger = logging.getLogger(__name__)
 
-ATLAS_BASE_URL   = "https://api.atlascloud.ai/api/v1/model"
-VIDEO_MODEL      = "alibaba/wan-2.6/image-to-video"
-ASPECT_RATIO     = "16:9"
-DEFAULT_DURATION = 5       # seconds
-MAX_DURATION     = 10      # seconds (AtlasCloud I2V cap)
+ATLAS_BASE_URL          = "https://api.atlascloud.ai/api/v1/model"
+VIDEO_MODEL             = "alibaba/wan-2.6/image-to-video"
+ASPECT_RATIO            = "16:9"
+DEFAULT_DURATION        = 5       # seconds
+MAX_DURATION            = 10      # seconds (AtlasCloud I2V cap)
+MOTION_PROMPT_MAX_CHARS = 400     # WAN 2.6 sweet spot — change here when switching models
 FPS              = 24
 RESOLUTION       = "1080p"
 POLL_INTERVAL_S  = 5

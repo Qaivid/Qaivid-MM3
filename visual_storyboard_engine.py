@@ -847,7 +847,7 @@ class VisualStoryboardEngine:
                 builder = MotionRenderPromptBuilder()
                 prompt = builder.build_prompt(shot_event)
                 if prompt:
-                    return prompt[:250] if len(prompt) > 250 else prompt
+                    return prompt
         except Exception:
             pass
         return fallback_prompt

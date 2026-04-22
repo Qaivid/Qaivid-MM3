@@ -807,7 +807,7 @@ def _render_shot(project_id: str, shot: dict,
 
         _update_shot(project_id, idx, "rendering",
                      prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
-                     motion_prompt=(shot.get("motion_prompt") or "")[:250] or None)
+                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)  # safety cap — builder already sizes to model limit
         try:
             url = generate_shot_still(
                 shot, character_ref_url, project_id,
@@ -2639,7 +2639,7 @@ def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
             if idx is None:
                 continue
             prompt = (shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000]
-            motion = (shot.get("motion_prompt") or "")[:250] or None
+            motion = (shot.get("motion_prompt") or "")[:400] or None  # safety cap — builder already sizes to model limit
             cur.execute(
                 """
                 INSERT INTO shot_assets (project_id, shot_index, status, prompt, motion_prompt)
