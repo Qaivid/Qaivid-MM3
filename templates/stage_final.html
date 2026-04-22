@@ -28,9 +28,21 @@
                     Download Shot List JSON
                 </a>
                 {% endif %}
+                <button id="btn-share-final"
+                        onclick="toggleShare('{{ project.id }}', this)"
+                        class="btn-stage {% if project.shared %}btn-share-active{% else %}btn-secondary{% endif %}"
+                        style="display:inline-flex;align-items:center;gap:6px;">
+                    {% if project.shared %}✦ Shared on Qaivid{% else %}↗ Share to Qaivid{% endif %}
+                </button>
                 <a href="{{ url_for('project_detail', project_id=project.id, at='videos_review') }}"
                    class="btn-stage btn-secondary">← Back to clips</a>
             </div>
+            {% if project.shared %}
+            <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">
+                This video is visible on the <a href="{{ url_for('index') }}#showcase" style="color:var(--accent);">Qaivid homepage</a>.
+                Click the button above to remove it.
+            </p>
+            {% endif %}
         </div>
         {% else %}
         <div class="assembly-note" style="margin:24px 0;">
@@ -44,4 +56,44 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function toggleShare(projectId, btn) {
+    btn.disabled = true;
+    const oldText = btn.textContent.trim();
+    btn.textContent = 'Saving…';
+    try {
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.content : '';
+        const res = await fetch(`/project/${projectId}/share`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const note = document.getElementById('share-note');
+            if (data.shared) {
+                btn.textContent = '✦ Shared on Qaivid';
+                btn.classList.add('btn-share-active');
+                btn.classList.remove('btn-secondary');
+                if (note) note.style.display = 'block';
+            } else {
+                btn.textContent = '↗ Share to Qaivid';
+                btn.classList.remove('btn-share-active');
+                btn.classList.add('btn-secondary');
+                if (note) note.style.display = 'none';
+            }
+        } else {
+            btn.textContent = data.error || 'Error — try again';
+            setTimeout(() => { btn.textContent = oldText; }, 2500);
+        }
+    } catch(e) {
+        btn.textContent = 'Error — try again';
+        setTimeout(() => { btn.textContent = oldText; }, 2500);
+    }
+    btn.disabled = false;
+}
+</script>
 {% endblock %}

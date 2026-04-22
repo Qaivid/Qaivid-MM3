@@ -559,10 +559,44 @@ def _stage_progress(stage: str) -> dict:
 
 @app.route("/")
 def index():
+    shared_videos = []
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT p.id, p.name, p.genre,
+                       p.final_video_url,
+                       p.postprod_config,
+                       p.shared_at,
+                       u.email
+                FROM projects p
+                JOIN users u ON u.id = p.user_id
+                WHERE p.shared = TRUE
+                  AND (p.final_video_url IS NOT NULL
+                       OR (p.postprod_config->>'quick_video_url') IS NOT NULL)
+                ORDER BY p.shared_at DESC
+                LIMIT 12
+            """)
+            rows = cur.fetchall()
+        for r in rows:
+            pc = r.get("postprod_config") or {}
+            video_url = r.get("final_video_url") or pc.get("quick_video_url")
+            email = r.get("email") or ""
+            handle = email.split("@")[0] if email else "creator"
+            shared_videos.append({
+                "id": r["id"],
+                "name": r["name"],
+                "genre": r["genre"] or "song",
+                "video_url": video_url,
+                "handle": handle,
+                "shared_at": r.get("shared_at"),
+            })
+    except Exception:
+        pass
     return render_template(
         "landing.html",
         api_key_set=bool(_api_key()),
         fal_set=_fal_set(),
+        shared_videos=shared_videos,
     )
 
 
@@ -1362,6 +1396,33 @@ def project_status(project_id: str):
             for v in video_assets
         ],
     })
+
+
+@app.route("/project/<project_id>/share", methods=["POST"])
+@login_required
+def project_share_toggle(project_id: str):
+    user = current_user()
+    project = _get_project(project_id, user["id"])
+    if not project:
+        abort(404)
+    final_url = project.get("final_video_url") or (project.get("postprod_config") or {}).get("quick_video_url")
+    if not final_url:
+        return jsonify({"ok": False, "error": "No video available to share yet."}), 400
+    currently_shared = bool(project.get("shared"))
+    new_state = not currently_shared
+    with _db() as conn, conn.cursor() as cur:
+        if new_state:
+            cur.execute(
+                "UPDATE projects SET shared=TRUE, shared_at=NOW() WHERE id=%s AND user_id=%s",
+                (project_id, user["id"]),
+            )
+        else:
+            cur.execute(
+                "UPDATE projects SET shared=FALSE, shared_at=NULL WHERE id=%s AND user_id=%s",
+                (project_id, user["id"]),
+            )
+        conn.commit()
+    return jsonify({"ok": True, "shared": new_state})
 
 
 @app.route("/project/<project_id>/entities")

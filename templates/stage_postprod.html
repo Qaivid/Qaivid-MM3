@@ -21,6 +21,12 @@
       <a class="pp-btn pp-btn-download" id="btn-download" href="{{ quick_video_url }}" download target="_blank">
         ⬇ Download
       </a>
+      <button id="btn-share-quick"
+              onclick="toggleShareQuick('{{ project.id }}', this)"
+              class="pp-btn {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
+              title="Share this quick video on the Qaivid homepage">
+        {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
+      </button>
       {% else %}
       <a class="pp-btn pp-btn-download pp-btn-download-hidden" id="btn-download" href="#" download target="_blank">
         ⬇ Download
@@ -1486,5 +1492,39 @@
   });
 
 })();
+</script>
+<script>
+async function toggleShareQuick(projectId, btn) {
+    btn.disabled = true;
+    const oldText = btn.textContent.trim();
+    btn.textContent = '…';
+    try {
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.content : '';
+        const res = await fetch(`/project/${projectId}/share`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (data.shared) {
+                btn.textContent = '✦ Shared';
+                btn.classList.remove('pp-btn-share');
+                btn.classList.add('pp-btn-shared');
+            } else {
+                btn.textContent = '↗ Share';
+                btn.classList.remove('pp-btn-shared');
+                btn.classList.add('pp-btn-share');
+            }
+        } else {
+            btn.textContent = 'Error';
+            setTimeout(() => { btn.textContent = oldText; }, 2500);
+        }
+    } catch(e) {
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = oldText; }, 2500);
+    }
+    btn.disabled = false;
+}
 </script>
 {% endblock %}

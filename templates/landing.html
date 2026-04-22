@@ -355,6 +355,39 @@
     </div>
 </section>
 
+{# ── MADE WITH QAIVID SHOWCASE ─────────────────────────────────── #}
+{% if shared_videos %}
+<section class="lp-section lp-showcase" id="showcase">
+    <div class="lp-section-inner">
+        <div class="lp-section-eyebrow">Community</div>
+        <h2 class="lp-section-title">Made with <span class="lp-title-accent">Qaivid</span></h2>
+        <p class="lp-section-sub">Real projects created by our community — shared directly from the studio.</p>
+        <div class="lp-showcase-grid">
+            {% for v in shared_videos %}
+            <div class="lp-showcase-card">
+                <div class="lp-showcase-video-wrap">
+                    <video src="{{ v.video_url }}" preload="none" muted loop playsinline
+                           class="lp-showcase-video"
+                           onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0;">
+                    </video>
+                    <div class="lp-showcase-overlay">
+                        <span class="lp-showcase-play">▶</span>
+                    </div>
+                </div>
+                <div class="lp-showcase-meta">
+                    <span class="lp-showcase-name">{{ v.name }}</span>
+                    <span class="lp-showcase-genre">{{ v.genre }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="lp-showcase-cta-hint">
+            Finish your project and hit <strong>Share to Qaivid</strong> to appear here.
+        </p>
+    </div>
+</section>
+{% endif %}
+
 {# ── FINAL CTA ────────────────────────────────────────────────────── #}
 <section class="lp-section lp-cta-banner">
     <div class="lp-cta-radial"></div>
