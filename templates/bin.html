@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Bin — Qaivid{% endblock %}
+{% block content %}
+<div class="bin-page">
+    <div class="bin-header">
+        <div>
+            <h1>Bin</h1>
+            <p class="bin-sub">Projects moved to the bin. Restore them or permanently delete.</p>
+        </div>
+        <a href="{{ url_for('projects') }}" class="bin-back-btn">← My Projects</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    {% if projects %}
+    <div class="bin-grid">
+        {% for p in projects %}
+        <div class="bin-card">
+            <div class="bin-card-head">
+                <div class="bin-card-name">{{ p.name or 'Untitled' }}</div>
+                {% if p.genre %}<span class="bin-genre">{{ p.genre }}</span>{% endif %}
+            </div>
+            <div class="bin-card-meta">
+                Deleted {{ p.deleted_at.strftime('%d %b %Y') if p.deleted_at else '—' }}
+            </div>
+            <div class="bin-card-actions">
+                <form action="{{ url_for('project_restore', project_id=p.id) }}" method="post" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="bin-btn bin-btn-restore">↩ Restore</button>
+                </form>
+                <form action="{{ url_for('project_delete_permanent', project_id=p.id) }}" method="post"
+                      style="display:inline;"
+                      onsubmit="return confirm('Permanently delete \'{{ p.name | replace(\'"\', \'&quot;\') }}\' — this cannot be undone.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="bin-btn bin-btn-delete">🗑 Delete forever</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bin-empty">
+        <div class="bin-empty-icon">🗑</div>
+        <div class="bin-empty-title">Bin is empty</div>
+        <p class="bin-empty-sub">Projects you delete will appear here. You can restore or permanently remove them.</p>
+        <a href="{{ url_for('projects') }}" class="bin-empty-link">Go to My Projects →</a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.bin-page { max-width: 960px; margin: 40px auto; padding: 0 24px 60px; }
+.bin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+.bin-header h1 { margin: 0 0 4px; font-size: 32px; }
+.bin-sub { color: #777; font-size: 14px; margin: 0; }
+.bin-back-btn {
+    padding: 8px 18px;
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+    color: #aaa;
+    text-decoration: none;
+    font-size: 14px;
+    transition: border-color .15s, color .15s;
+}
+.bin-back-btn:hover { border-color: #555; color: #ddd; }
+
+.flash { padding: 10px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+.flash-info { background: rgba(56,225,255,.1); border: 1px solid rgba(56,225,255,.25); color: #6cdaff; }
+.flash-success { background: rgba(100,255,160,.1); border: 1px solid rgba(100,255,160,.25); color: #88ffb0; }
+.flash-error { background: rgba(255,80,80,.1); border: 1px solid rgba(255,80,80,.25); color: #ff9090; }
+
+.bin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.bin-card {
+    background: #101015;
+    border: 1px solid #22222c;
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0.88;
+}
+.bin-card-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.bin-card-name { font-size: 15px; font-weight: 600; color: #ccc; flex: 1; }
+.bin-genre {
+    font-size: 11px; padding: 2px 8px; border-radius: 6px;
+    background: #1e1e2e; color: #7888a8; white-space: nowrap;
+}
+.bin-card-meta { font-size: 12px; color: #555; }
+.bin-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.bin-btn {
+    padding: 7px 14px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid;
+    transition: background .15s;
+    text-decoration: none;
+}
+.bin-btn-restore {
+    background: rgba(100,255,160,.08);
+    border-color: rgba(100,255,160,.3);
+    color: #88ffb0;
+}
+.bin-btn-restore:hover { background: rgba(100,255,160,.16); }
+.bin-btn-delete {
+    background: rgba(255,80,80,.08);
+    border-color: rgba(255,80,80,.3);
+    color: #ff8a96;
+}
+.bin-btn-delete:hover { background: rgba(255,80,80,.18); }
+
+.bin-empty {
+    text-align: center;
+    padding: 80px 24px;
+}
+.bin-empty-icon { font-size: 48px; margin-bottom: 16px; }
+.bin-empty-title { font-size: 20px; font-weight: 700; color: #ccc; margin-bottom: 8px; }
+.bin-empty-sub { color: #666; font-size: 14px; max-width: 400px; margin: 0 auto 24px; line-height: 1.6; }
+.bin-empty-link { color: #d4ff3a; text-decoration: none; font-weight: 600; font-size: 14px; }
+.bin-empty-link:hover { text-decoration: underline; }
+</style>
+{% endblock %}

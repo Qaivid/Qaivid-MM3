@@ -14,17 +14,13 @@
 <body class="{% if current_user and current_user.is_admin %}is-admin {% endif %}{% block body_class %}{% endblock %}">
     <header class="topbar">
         <div class="topbar-bg">
-            <!-- real film strip image -->
             <div class="topbar-film-img"></div>
-            <!-- brand colour washes over the strip -->
             <div class="topbar-tint-l"></div>
             <div class="topbar-tint-r"></div>
-            <!-- darken left zone so logo stays legible -->
             <div class="topbar-logo-shield"></div>
-            <!-- bottom gradient melts header into page -->
             <div class="topbar-fade-b"></div>
         </div>
-        <div class="topbar-inner">
+        <div class="topbar-main">
             <a class="brand{% if sc.site_logo_url %} brand--has-logo{% endif %}" href="{{ url_for('index') }}">
                 {%- if sc.site_logo_url -%}
                 <img src="{{ sc.site_logo_url }}" alt="{{ sc.site_name }}"
@@ -32,27 +28,109 @@
                 {%- endif -%}
                 <span class="brand-name" style="color:{{ sc.site_brand_name_color }};font-size:{{ sc.site_brand_name_size }};font-weight:{{ sc.site_brand_name_weight }};font-style:{{ sc.site_brand_name_style }};">{{ sc.site_name }}</span><span class="brand-sub" style="color:{{ sc.site_brand_sub_color }};font-size:{{ sc.site_brand_sub_size }};font-weight:{{ sc.site_brand_sub_weight }};font-style:{{ sc.site_brand_sub_style }};">MetaMind 3.1</span>
             </a>
-            <div class="topbar-tagline">{% block topbar_tagline %}{% endblock %}</div>
-        </div>
-        <nav class="topbar-nav">
-            {% if current_user %}
-                <a href="{{ url_for('projects') }}" class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}">My Projects</a>
-                <a href="{{ url_for('new_project') }}" class="nav-link nav-cta {% if request.endpoint == 'new_project' %}active{% endif %}">+ New Project</a>
-                {% if current_user.is_admin %}
-                    <a href="{{ url_for('admin') }}" class="nav-link nav-admin {% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">&#9881; Admin</a>
+
+            <nav class="tnl-nav">
+                <a href="{{ url_for('index') }}" class="tnl{% if request.endpoint == 'index' %} tnl-active{% endif %}">Home</a>
+                {% if current_user %}
+                <a href="{{ url_for('projects') }}" class="tnl{% if request.endpoint == 'projects' %} tnl-active{% endif %}">Projects</a>
                 {% endif %}
-                <span class="nav-user" title="Signed in as {{ current_user.email }}">{{ current_user.email }}{% if current_user.is_admin %} <span class="nav-admin-pill">ADMIN</span>{% endif %}{% if current_user.plan and current_user.plan != 'free' %} <span class="nav-plan-pill nav-plan-{{ current_user.plan }}">{{ current_user.plan | upper }}</span>{% endif %}</span>
-                <a href="{{ url_for('account') }}" class="nav-link {% if request.endpoint == 'account' %}active{% endif %}">Account</a>
-                <form action="{{ url_for('logout') }}" method="post" class="nav-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="nav-link-btn">Sign out</button>
-                </form>
-            {% else %}
-                <a href="{{ url_for('login') }}" class="nav-link">Sign in</a>
-                <a href="{{ url_for('signup') }}" class="nav-link nav-cta">Sign up</a>
+                <a href="{{ url_for('billing.pricing') }}" class="tnl{% if request.endpoint and 'pricing' in request.endpoint %} tnl-active{% endif %}">Pricing</a>
+                <a href="{{ url_for('contact') }}" class="tnl{% if request.endpoint == 'contact' %} tnl-active{% endif %}">Contact</a>
+            </nav>
+
+            <div class="topbar-actions">
+                {% if current_user %}
+                <a href="{{ url_for('new_project') }}" class="topbar-new-btn">+ New Project</a>
+                <div class="ta-user-wrap" id="ta-user-wrap">
+                    <button class="ta-user-btn" id="ta-user-btn" onclick="toggleUserMenu(event)" type="button">
+                        <div class="ta-avatar">{{ current_user.email[0] | upper }}</div>
+                        <span class="ta-username">{{ current_user.email.split('@')[0] }}</span>
+                        <span class="ta-chevron">▾</span>
+                    </button>
+                    <div class="ta-dropdown" id="ta-dropdown">
+                        <div class="ta-dropdown-header">
+                            <div class="ta-dh-name">{{ current_user.email.split('@')[0] }}</div>
+                            <div class="ta-dh-email">{{ current_user.email }}</div>
+                            {% if current_user.plan and current_user.plan != 'free' %}
+                            <span class="ta-dh-plan ta-plan-{{ current_user.plan }}">{{ current_user.plan | upper }}</span>
+                            {% endif %}
+                        </div>
+                        <a href="{{ url_for('account') }}" class="ta-item">⚙ Account</a>
+                        <a href="{{ url_for('billing.pricing') }}" class="ta-item">♛ Plans &amp; Pricing</a>
+                        <a href="{{ url_for('projects') }}" class="ta-item">◫ My Projects</a>
+                        <a href="{{ url_for('bin_page') }}" class="ta-item">⊘ Bin</a>
+                        {% if current_user.is_admin %}
+                        <a href="{{ url_for('admin') }}" class="ta-item ta-item-admin">⚡ Admin Panel</a>
+                        {% endif %}
+                        <div class="ta-divider"></div>
+                        <form action="{{ url_for('logout') }}" method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="ta-item ta-item-signout">↩ Sign out</button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="topbar-signin-btn">Sign in</a>
+                <a href="{{ url_for('signup') }}" class="topbar-signup-btn">Sign up</a>
+                {% endif %}
+                <button class="topbar-mobile-btn" onclick="toggleMobileMenu()" type="button" aria-label="Menu">
+                    <span class="mob-icon-open">☰</span>
+                    <span class="mob-icon-close" style="display:none;">✕</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="topbar-mobile" id="topbar-mobile">
+            <a href="{{ url_for('index') }}" class="mob-link">Home</a>
+            {% if current_user %}
+            <a href="{{ url_for('projects') }}" class="mob-link">Projects</a>
             {% endif %}
-        </nav>
+            <a href="{{ url_for('billing.pricing') }}" class="mob-link">Pricing</a>
+            <a href="{{ url_for('contact') }}" class="mob-link">Contact</a>
+            {% if current_user %}
+            <div class="mob-divider"></div>
+            <a href="{{ url_for('new_project') }}" class="mob-link mob-link-cta">+ New Project</a>
+            <a href="{{ url_for('account') }}" class="mob-link">Account</a>
+            <a href="{{ url_for('bin_page') }}" class="mob-link">Bin</a>
+            {% if current_user.is_admin %}
+            <a href="{{ url_for('admin') }}" class="mob-link">Admin Panel</a>
+            {% endif %}
+            <form action="{{ url_for('logout') }}" method="post" style="display:block;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="mob-link mob-link-signout">Sign out</button>
+            </form>
+            {% else %}
+            <div class="mob-divider"></div>
+            <a href="{{ url_for('login') }}" class="mob-link">Sign in</a>
+            <a href="{{ url_for('signup') }}" class="mob-link mob-link-cta">Sign up</a>
+            {% endif %}
+        </div>
     </header>
+    <script>
+    function toggleUserMenu(e) {
+        e.stopPropagation();
+        document.getElementById('ta-dropdown').classList.toggle('ta-open');
+    }
+    document.addEventListener('click', function(e) {
+        var wrap = document.getElementById('ta-user-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+            var dd = document.getElementById('ta-dropdown');
+            if (dd) dd.classList.remove('ta-open');
+        }
+    });
+    function toggleMobileMenu() {
+        var mob = document.getElementById('topbar-mobile');
+        var open = document.querySelector('.mob-icon-open');
+        var close = document.querySelector('.mob-icon-close');
+        if (mob.classList.toggle('mob-open')) {
+            if (open) open.style.display = 'none';
+            if (close) close.style.display = '';
+        } else {
+            if (open) open.style.display = '';
+            if (close) close.style.display = 'none';
+        }
+    }
+    </script>
 
     {% if sc.site_banner_enabled == 'true' and sc.site_banner_text %}
     <div class="site-announcement-banner" style="background:{{ sc.site_banner_color }};color:#0a0a0f;">

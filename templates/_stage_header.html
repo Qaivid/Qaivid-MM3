@@ -1,90 +1,94 @@
-{# Reusable stage header. Renders:
-   1) breadcrumb back to "My Projects" + admin banner if applicable
-   2) clickable stage wizard (done steps link back via ?at=<stage>)
-   Expects: project (with _viewing_as_admin, _owner_email, _viewing_stage,
-            _actual_stage, _is_review_only), active_stage (string)
+{#
+  Studio sidebar. Renders a collapsible left column inside .stage-wrap / .pp-wrap.
+  Expects: project, active_stage (set in each stage template as {% set active_stage = '...' %})
 #}
 {% set actual = project._actual_stage %}
 {% set viewing = project._viewing_stage or active_stage %}
 {% set steps = [
-    ('audio_review', '0', 'Acoustic Audit'),
-    ('context_review', '1', 'Context Engine'),
-    ('assumptions_review', '2', 'METAMAN Dialogue'),
-    ('creative_brief_review', '3', 'Creative Brief'),
-    ('storyboard_review', '4', 'Storyboard'),
-    ('references_review', '5', 'References'),
-    ('stills_review', '6', 'Stills'),
-    ('post_production', '7', 'Post Production'),
-    ('videos_review', '8', 'Videos'),
-    ('final_review', '9', 'Final Cut'),
+    ('audio_review',          '1',  'Acoustic Audit',     '🎙'),
+    ('context_review',        '2',  'Context Engine',     '🧠'),
+    ('assumptions_review',    '3',  'METAMAN Dialogue',   '💬'),
+    ('creative_brief_review', '4',  'Creative Brief',     '🎨'),
+    ('storyboard_review',     '5',  'Storyboard',         '🎞'),
+    ('references_review',     '6',  'References',         '👤'),
+    ('stills_review',         '7',  'Stills',             '🖼'),
+    ('post_production',       '8',  'Post Production',    '🎬'),
+    ('videos_review',         '9',  'Videos',             '▶'),
+    ('final_review',          '10', 'Final Cut',          '✦'),
 ] %}
 {% set stage_order = ['audio_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_review','post_production','videos_review','final_review'] %}
-{# Map any canonical pipeline stage that the wizard doesn't render
-   directly (style_review, stills_control, complete, failed, etc.)
-   onto the closest wizard step so past stages still light up as
-   clickable links. Without this, a project sitting at e.g.
-   `stills_control` produced actual_idx = -1 and every step rendered
-   as a non-clickable <span>. #}
 {% set _stage_alias = {
-    'style_review':       'audio_review',
-    'stills_control':     'stills_review',
-    'running_audio':      'audio_review',
-    'running_context':    'context_review',
-    'running_assumptions':'assumptions_review',
-    'running_brief':      'creative_brief_review',
-    'running_storyboard': 'storyboard_review',
-    'running_references': 'references_review',
-    'running_stills':     'stills_review',
-    'running_videos':     'videos_review',
-    'running_final':      'final_review',
-    'complete':           'final_review',
+    'style_review':        'audio_review',
+    'stills_control':      'stills_review',
+    'running_audio':       'audio_review',
+    'running_context':     'context_review',
+    'running_assumptions': 'assumptions_review',
+    'running_brief':       'creative_brief_review',
+    'running_storyboard':  'storyboard_review',
+    'running_references':  'references_review',
+    'running_stills':      'stills_review',
+    'running_videos':      'videos_review',
+    'running_final':       'final_review',
+    'running_5':           'final_review',
+    'complete':            'final_review',
+    'final_review':        'final_review',
+    'awaiting_review':     'final_review',
 } %}
 {% set actual_norm = _stage_alias.get(actual, actual) %}
-{# If actual_stage is unknown/new/failed, treat as no-progress so no forward jumps are exposed. #}
 {% set actual_idx = stage_order.index(actual_norm) if actual_norm in stage_order else -1 %}
 
-<div class="proj-breadcrumb">
-    <a href="{{ url_for('projects') }}" class="back-link">← My Projects</a>
-    <span class="proj-breadcrumb-name">{{ project.name }}</span>
-    {% if project._is_review_only %}
-    <span class="proj-review-badge">↩ reviewing earlier step — <a href="{{ url_for('project_detail', project_id=project.id) }}">jump to current ({{ actual }})</a></span>
-    {% endif %}
-</div>
-
-{% if project.status == 'failed' and project.error %}
-<div class="recovery-banner">
-    <strong>⚠ {{ project._actual_stage_label or 'Pipeline' }} step failed.</strong>
-    You're now back at the last successfully completed step. Re-run it to try again.
-    <details style="margin-top:6px;">
-        <summary style="cursor:pointer;">Show error details</summary>
-        <pre style="white-space:pre-wrap;font-size:12px;margin-top:6px;">{{ project.error }}</pre>
-    </details>
-</div>
-{% endif %}
-
-{% if project._viewing_as_admin %}
-<div class="admin-banner">
-    ⚙ <strong>Viewing as Admin</strong> — this project belongs to <strong>{{ project._owner_email or 'unknown user' }}</strong>.
-    Your edits and stage advances will affect their project.
-    <a href="{{ url_for('admin') }}" class="admin-banner-link">Back to Admin →</a>
-</div>
-{% endif %}
-
-<div class="stage-wizard">
-    <div class="stage-wizard-steps">
-        {% for stage_key, num, label in steps %}
-            {% set sidx = loop.index0 %}
-            {% set is_active = (viewing == stage_key) %}
-            {% set is_done = (sidx < actual_idx) and not is_active %}
-            {% set is_clickable = sidx <= actual_idx %}
-            {% if is_clickable and not is_active %}
-                <a class="swiz-step {% if is_done %}done{% endif %}"
-                   href="{{ url_for('project_detail', project_id=project.id, at=stage_key) }}"
-                   title="Jump to {{ label }}">{{ num }} {{ label }}</a>
-            {% else %}
-                <span class="swiz-step {% if is_active %}active{% elif is_done %}done{% endif %}">{{ num }} {{ label }}</span>
-            {% endif %}
-            {% if not loop.last %}<span class="swiz-sep">→</span>{% endif %}
-        {% endfor %}
+<aside class="studio-sidebar" id="studio-sidebar">
+    <div class="ss-top">
+        <a href="{{ url_for('projects') }}" class="ss-back">← Projects</a>
+        <div class="ss-project-name" title="{{ project.name }}">{{ project.name }}</div>
+        {% if project._is_review_only %}
+        <div class="ss-review-note">
+            Viewing earlier step —
+            <a href="{{ url_for('project_detail', project_id=project.id) }}" class="ss-review-link">go to current</a>
+        </div>
+        {% endif %}
     </div>
-</div>
+
+    <nav class="ss-nav">
+        {% for stage_key, num, label, icon in steps %}
+        {% set sidx = loop.index0 %}
+        {% set is_active = (viewing == stage_key) %}
+        {% set is_done = (sidx < actual_idx) %}
+        {% set is_clickable = sidx <= actual_idx and not is_active %}
+        <div class="ss-nav-item {% if is_active %}ss-active{% elif is_done %}ss-done{% endif %}">
+            {% if is_clickable %}
+            <a href="{{ url_for('project_detail', project_id=project.id, at=stage_key) }}"
+               class="ss-nav-link" title="{{ label }}">
+                <span class="ss-icon">{{ icon }}</span>
+                <span class="ss-label">{{ label }}</span>
+                {% if is_done %}<span class="ss-check">✓</span>{% endif %}
+            </a>
+            {% else %}
+            <span class="ss-nav-link {% if is_active %}ss-link-active{% endif %}" title="{{ label }}">
+                <span class="ss-icon">{{ icon }}</span>
+                <span class="ss-label">{{ label }}</span>
+                {% if is_active %}<span class="ss-dot"></span>{% endif %}
+            </span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </nav>
+
+    <div class="ss-bottom">
+        {% if project.status == 'failed' and project.error %}
+        <div class="ss-error-badge">
+            ⚠ Step failed
+            <details class="ss-error-detail">
+                <summary>Details</summary>
+                <pre>{{ project.error[:300] }}</pre>
+            </details>
+        </div>
+        {% endif %}
+        {% if project._viewing_as_admin %}
+        <div class="ss-admin-badge">
+            ⚙ Admin view · <strong>{{ project._owner_email or 'unknown' }}</strong>
+            <a href="{{ url_for('admin') }}" class="ss-admin-link">← Admin</a>
+        </div>
+        {% endif %}
+    </div>
+</aside>

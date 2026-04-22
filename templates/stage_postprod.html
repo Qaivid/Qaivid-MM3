@@ -527,7 +527,24 @@
 {% block extra_scripts %}
 <style>
 /* ── Layout ──────────────────────────────────────────────────────────── */
-.pp-wrap { max-width: 1400px; margin: 0 auto; padding: 0 20px 60px; }
+.pp-wrap {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: calc(100vh - 64px);
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  align-items: start;
+}
+.pp-wrap > *:not(.studio-sidebar) {
+  grid-column: 2;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+@media (max-width: 640px) {
+  .pp-wrap { grid-template-columns: 1fr; }
+  .pp-wrap > *:not(.studio-sidebar) { grid-column: 1; }
+}
 
 .pp-toolbar {
   display: flex; align-items: center; justify-content: space-between;

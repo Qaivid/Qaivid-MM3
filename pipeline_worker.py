@@ -140,6 +140,7 @@ def ensure_schema() -> None:
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress JSONB;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT FALSE;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;")
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;")
         cur.execute(
             "ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id INTEGER "
             "REFERENCES users(id) ON DELETE CASCADE;"

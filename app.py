@@ -317,7 +317,7 @@ def _list_projects(user_id: int) -> list[dict]:
             SELECT id, name, genre, status, stage, created_at, updated_at,
                    COALESCE((summary->>'styled_timeline_shot_count')::int, 0) AS shot_count
             FROM projects
-            WHERE user_id = %s
+            WHERE user_id = %s AND (deleted_at IS NULL)
             ORDER BY updated_at DESC NULLS LAST, created_at DESC
             LIMIT 100
             """,
@@ -2690,15 +2690,72 @@ def project_retry_ref(project_id: str, role: str):
 @app.route("/project/<project_id>/delete", methods=["POST"])
 @login_required
 def project_delete(project_id: str):
-    project = _get_project(project_id, current_user()["id"])
+    user = current_user()
+    project = _get_project(project_id, user["id"])
     if not project:
+        abort(404)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET deleted_at=NOW() WHERE id=%s AND user_id=%s",
+            (project_id, user["id"]),
+        )
+        conn.commit()
+    flash(f"'{project.get('name')}' moved to bin. You can restore it from the Bin page.", "info")
+    return redirect(url_for("projects"))
+
+
+@app.route("/project/<project_id>/restore", methods=["POST"])
+@login_required
+def project_restore(project_id: str):
+    user = current_user()
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET deleted_at=NULL WHERE id=%s AND user_id=%s",
+            (project_id, user["id"]),
+        )
+        conn.commit()
+    flash("Project restored to My Projects.", "success")
+    return redirect(url_for("bin_page"))
+
+
+@app.route("/project/<project_id>/delete/permanent", methods=["POST"])
+@login_required
+def project_delete_permanent(project_id: str):
+    user = current_user()
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT name FROM projects WHERE id=%s AND user_id=%s AND deleted_at IS NOT NULL",
+            (project_id, user["id"]),
+        )
+        row = cur.fetchone()
+    if not row:
         abort(404)
     cleanup_project_assets(project_id)
     with db() as conn, conn.cursor() as cur:
-        cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+        cur.execute("DELETE FROM projects WHERE id=%s AND user_id=%s", (project_id, user["id"]))
         conn.commit()
-    flash(f"Project '{project.get('name')}' deleted.", "success")
-    return redirect(url_for("projects"))
+    flash(f"'{row['name']}' permanently deleted.", "success")
+    return redirect(url_for("bin_page"))
+
+
+@app.route("/bin")
+@login_required
+def bin_page():
+    user = current_user()
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, name, genre, status, stage, deleted_at,
+                   COALESCE((summary->>'styled_timeline_shot_count')::int, 0) AS shot_count
+            FROM projects
+            WHERE user_id=%s AND deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+            LIMIT 100
+            """,
+            (user["id"],),
+        )
+        deleted = cur.fetchall()
+    return render_template("bin.html", projects=deleted)
 
 
 @app.route("/project/<project_id>/export.json")
@@ -3202,6 +3259,11 @@ def privacy():
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
 
 
 if __name__ == "__main__":

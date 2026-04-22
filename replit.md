@@ -129,8 +129,10 @@ projects/<project_id>/
 Assets are served read-only at `/p/<project_id>/<sub>/<filename>` with a
 whitelist of subfolders (`refs|shots|uploads`). `pipeline_worker.ensure_schema()`
 runs at app startup so a fresh DB works with no manual SQL.
-`POST /project/<id>/delete` removes the project folder and DB rows
-(FK cascade) in one shot.
+`POST /project/<id>/delete` soft-deletes the project (sets `deleted_at = NOW()`).
+`POST /project/<id>/restore` restores from bin.
+`POST /project/<id>/delete/permanent` hard-deletes + cleans up assets.
+`GET /bin` — shows all soft-deleted projects for the current user.
 
 ## Build Roadmap
 
