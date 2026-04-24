@@ -51,6 +51,7 @@ from video_generator import VideoGenerationError, generate_shot_video
 from character_materializer import materialize_characters
 from location_materializer import materialize_locations
 from motif_materializer import materialize_motifs
+from materializer_engine_v2 import run_materializer
 import r2_storage
 import dataset_collector
 
@@ -969,9 +970,41 @@ def _render_location_plate(project_id: str, location_id: int,
 
 
 def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> None:
-    """Update shot_assets.character_id / location_id based on expression_mode."""
+    """Update shot_assets.character_id / location_id based on expression_mode.
+
+    Prefers brain.materializer_packet for name signals (richer identity anchors
+    from the v2 brief-aware materializer). Falls back to DB rows for both name
+    resolution and integer FK IDs (the DB is always populated by run_materializer
+    before this function is called).
+    """
     if not styled_timeline:
         return
+
+    # ── Brain-first: load materializer_packet for additional name signals ─
+    # The v2 materializer may have produced richer/alternate names for
+    # characters and locations than what the legacy materializer wrote.
+    # We use those as supplementary lookup entries so shot-text matching
+    # finds a DB row more reliably when the name was written differently.
+    _extra_char_names: list[str] = []
+    _extra_loc_names: list[str] = []
+    try:
+        with _db() as conn:
+            _link_brain = ProjectBrain.load(project_id, conn)
+        _mat = _link_brain.read("materializer_packet") or {}
+        for ch in (_mat.get("character_bible") or {}).get("characters") or []:
+            if isinstance(ch, dict):
+                for field in ("character_id", "archetype", "identity_seed"):
+                    v = str(ch.get(field) or "").strip().lower()
+                    if v and len(v) > 2:
+                        _extra_char_names.append(v)
+        for loc in (_mat.get("location_bible") or {}).get("locations") or []:
+            if isinstance(loc, dict):
+                for field in ("location_id", "world"):
+                    v = str(loc.get(field) or "").strip().lower()
+                    if v and len(v) > 2:
+                        _extra_loc_names.append(v)
+    except Exception:
+        logger.debug("_link_shots_to_entities: brain read failed (non-fatal); using DB only")
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -991,6 +1024,7 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"), None)
     primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
 
+    # DB rows are authoritative for integer IDs; brain signals are bonus hints.
     char_lookup: list[tuple[str, int]] = [(c["name"].lower(), c["id"]) for c in chars]
     loc_lookup:  list[tuple[str, int]] = [(l["name"].lower(), l["id"]) for l in locs]
 
@@ -2465,33 +2499,14 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                 if k in src and styled.get(k) is None:
                     styled[k] = src[k]
 
-        # Materialize characters + locations
-        # Pass the resolved vocal_gender (audio analysis or user override)
-        # so the speaker character row is created with the correct gender
-        # and its appearance prompt leads with "<gender>-presenting".
-        # If the user picked "instrumental", pass that through explicitly so
-        # the materializer doesn't quietly fall back to the LLM's lyric-only
-        # gender guess for a no-vocal track.
-        _vg_final = str(audio_data_blob.get("vocal_gender_final") or "").strip().lower()
-        _vg_for_mat = (
-            _vg_final if _vg_final in ("male", "female", "mixed", "instrumental")
-            else (str(audio_data_blob.get("vocal_gender") or "").strip().lower() or None)
-        )
-        if _vg_for_mat not in ("male", "female", "mixed", "instrumental"):
-            _vg_for_mat = None
-        try:
-            materialize_characters(
-                project_id, context_packet,
-                vocal_gender=_vg_for_mat,
-            )
-            materialize_locations(project_id, context_packet)
-            materialize_motifs(project_id, context_packet)
-        except Exception:
-            logger.exception("Materializer failed (non-fatal)")
-
+        # Entity materialization (characters / locations / motifs) has moved to
+        # the start of _stage_refs_job — it now runs AFTER the Creative Brief
+        # is locked so it can read brain.creative_briefs for richer identity
+        # anchors. Shot rows are seeded here so the UI can show progress, but
+        # entity linking (_link_shots_to_entities) also happens in refs once
+        # the entity rows exist.
         shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in styled_timeline]
         _seed_shot_rows(project_id, shot_indices)
-        _link_shots_to_entities(project_id, styled_timeline)
 
         # Export JSON
         from asset_export_module import AssetExportModule
@@ -2600,8 +2615,55 @@ def _stage_refs_job(project_id: str,
     can fix any plate (regenerate / upload) before stills are rendered.
 
     Legacy projects with no character/location rows skip straight to stills_review.
+
+    Stage 7 — Materializer v2 runs first (reads creative_briefs, context,
+    narrative, style, settings from brain → produces materializer_packet →
+    populates DB chars/locs/motifs for the UI and the entity-linking step).
     """
     try:
+        # ── Stage 7: Materializer v2 ─────────────────────────────────────
+        # Must run before querying chars/locs because it creates those rows.
+        # Non-fatal: if it fails, refs stage continues with whatever legacy
+        # rows already exist (or empty, which triggers the skip-to-stills path).
+        try:
+            with _db() as conn:
+                _mat_brain = ProjectBrain.load(project_id, conn)
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT audio_data, styled_timeline FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                _mat_prj = cur.fetchone() or {}
+            _mat_audio = dict(_mat_prj.get("audio_data") or {})
+            _vg_final  = str(_mat_audio.get("vocal_gender_final") or "").strip().lower()
+            _vg_for_mat = (
+                _vg_final if _vg_final in ("male", "female", "mixed", "instrumental")
+                else (str(_mat_audio.get("vocal_gender") or "").strip().lower() or None)
+            )
+            if _vg_for_mat not in ("male", "female", "mixed", "instrumental"):
+                _vg_for_mat = None
+            mat_packet = run_materializer(project_id, _mat_brain, vocal_gender=_vg_for_mat)
+            with _db() as conn:
+                _mat_brain.save(conn)
+                conn.commit()
+            # Link shots to the freshly created entity rows.
+            _raw_timeline = list(_mat_prj.get("styled_timeline") or [])
+            if _raw_timeline:
+                _link_shots_to_entities(project_id, _raw_timeline)
+            logger.info(
+                "Materializer v2 completed for project=%s: %d chars, %d locs",
+                project_id,
+                len((mat_packet.get("character_bible") or {}).get("characters") or []),
+                len((mat_packet.get("location_bible") or {}).get("locations") or []),
+            )
+        except Exception:
+            logger.exception(
+                "_stage_refs_job: Materializer v2 failed (non-fatal) for project=%s — "
+                "refs will use any legacy entity rows that exist",
+                project_id,
+            )
+
+        # ── Read chars/locs (now populated by the Materializer above) ────
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT context_packet, style_profile FROM projects WHERE id=%s",

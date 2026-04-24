@@ -42,6 +42,7 @@ NAMESPACES: List[str] = [
     "style_packet",
     "storyboard_packet",
     "creative_briefs",
+    "materializer_packet",
     "character_bible",
     "location_bible",
     "reference_assets",
@@ -52,21 +53,25 @@ NAMESPACES: List[str] = [
 ]
 
 NAMESPACE_OWNERS: Dict[str, str] = {
-    "raw_input":         "stage_0",
-    "project_settings":  "stage_0",
-    "input_structure":   "stage_1_input",
-    "context_packet":   "stage_2_context",
-    "narrative_packet": "stage_3_narrative",
-    "style_packet":     "stage_4_style",
-    "storyboard_packet":"stage_5_storyboard",
-    "creative_briefs":  "stage_6_brief",
-    "character_bible":  "stage_7_materializer",
-    "location_bible":   "stage_7_materializer",
-    "reference_assets": "stage_8_refs",
-    "shot_plan":        "stage_9_stills",
-    "continuity_state": "cross_stage",
-    "render_outputs":   "stage_10_assembly",
-    "validation_notes": "cross_stage",
+    "raw_input":            "stage_0",
+    "project_settings":     "stage_0",
+    "input_structure":      "stage_1_input",
+    "context_packet":       "stage_2_context",
+    "narrative_packet":     "stage_3_narrative",
+    "style_packet":         "stage_4_style",
+    "storyboard_packet":    "stage_5_storyboard",
+    "creative_briefs":      "stage_6_brief",
+    # Stage 7 — Materializer: materializer_packet is the authoritative output.
+    # character_bible and location_bible are mirrors kept for backward compat
+    # (older stages that read brain.character_bible still work unchanged).
+    "materializer_packet":  "stage_7_materializer",
+    "character_bible":      "stage_7_materializer",
+    "location_bible":       "stage_7_materializer",
+    "reference_assets":     "stage_8_refs",
+    "shot_plan":            "stage_9_stills",
+    "continuity_state":     "cross_stage",
+    "render_outputs":       "stage_10_assembly",
+    "validation_notes":     "cross_stage",
 }
 
 

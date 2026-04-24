@@ -2102,25 +2102,54 @@ def rerun_from_stage(project_id: str, target_stage: str):
     _cb = dict(cp.get("creative_brief") or {})
     _cb_pending = dict(_cb.get("_pending_overrides") or {})
 
-    # Targets at or before storyboard_review (and creative_brief_review itself)
-    # invalidate the v2 brief — clear it from the brain so the next brief run
-    # starts clean and downstream stages don't read stale picks. Storyboard
-    # itself no longer reads creative_briefs, but the UI does, and brief
-    # regen reads from storyboard fresh anyway.
-    REDO_CLEARS_BRIEF  = {"audio_review", "context_review", "narrative_review",
-                          "style_review", "storyboard_review",
-                          "creative_brief_review"}
+    # Brain namespace clearing based on what each target invalidates.
+    #
+    # BRIEF NAMESPACES (creative_briefs):
+    #   Invalidated by anything at or before creative_brief_review.
+    # MATERIALIZER NAMESPACES (materializer_packet, character_bible, location_bible):
+    #   Invalidated by anything at or before references_review (materializer
+    #   re-runs at the start of each refs job, so stale data must be cleared).
+    REDO_CLEARS_BRIEF        = {"audio_review", "context_review", "narrative_review",
+                                "style_review", "storyboard_review",
+                                "creative_brief_review"}
+    REDO_CLEARS_MATERIALIZER = REDO_CLEARS_BRIEF | {"references_review"}
+
+    _brain_writes: dict = {}
     if target_stage in REDO_CLEARS_BRIEF:
+        _brain_writes["creative_briefs"] = {}
+    if target_stage in REDO_CLEARS_MATERIALIZER:
+        _brain_writes["materializer_packet"] = {}
+        _brain_writes["character_bible"] = {}
+        _brain_writes["location_bible"] = {}
+
+    if _brain_writes:
         try:
             with db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
-                brain.write("creative_briefs", {})
+                for ns, empty_val in _brain_writes.items():
+                    brain.write(ns, empty_val)
                 brain.save(conn)
                 conn.commit()
         except Exception:
             log.exception(
-                "rerun_from_stage: failed to clear brain.creative_briefs for project=%s",
-                project_id,
+                "rerun_from_stage: failed to clear brain namespaces %s for project=%s",
+                list(_brain_writes.keys()), project_id,
+            )
+
+    # For targets at or before references_review, also wipe the materializer DB
+    # rows (characters, locations, motifs) so the v2 engine starts clean.
+    # Any user edits to these rows will be lost — this is correct because the
+    # re-run will re-derive and re-present them from the updated brief.
+    if target_stage in REDO_CLEARS_MATERIALIZER:
+        try:
+            with db() as conn, conn.cursor() as cur:
+                cur.execute("DELETE FROM characters WHERE project_id=%s", (project_id,))
+                cur.execute("DELETE FROM locations  WHERE project_id=%s", (project_id,))
+                cur.execute("DELETE FROM motifs     WHERE project_id=%s", (project_id,))
+                conn.commit()
+        except Exception:
+            log.exception(
+                "rerun_from_stage: failed to delete entity rows for project=%s", project_id
             )
 
     REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
