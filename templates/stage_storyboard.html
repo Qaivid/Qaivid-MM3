@@ -112,6 +112,9 @@
                     <div class="sb-real-grid">
                         {% for real in _reals %}
                         <div class="sb-real-card">
+                            {% if real is string %}
+                            <p class="sb-real-card-desc">{{ real }}</p>
+                            {% else %}
                             <p class="sb-real-card-title">
                                 {{ real.name or real.realization_id or ('Option ' ~ loop.index) }}
                             </p>
@@ -123,6 +126,7 @@
                                 {% if real.energy %}<span>energy: {{ real.energy }}</span>{% endif %}
                                 {% if real.framing %}<span>framing: {{ real.framing }}</span>{% endif %}
                             </div>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
