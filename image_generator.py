@@ -410,33 +410,84 @@ def generate_character_plate(character: dict, project_id: str,
     return _save_to_r2(fal_url, r2_key), prompt
 
 
+_TOD_PHRASES = {
+    "golden_hour": "a golden-hour evening",
+    "dawn":        "early morning",
+    "morning":     "a gentle morning",
+    "afternoon":   "a quiet afternoon",
+    "dusk":        "a dusky evening",
+    "evening":     "a warm evening",
+    "night":       "a still night",
+    "midnight":    "deep night",
+}
+
+
 def build_location_plate_prompt(location: dict) -> str:
-    """Build a deterministic environment-plate prompt for a location row."""
-    name = (location.get("name") or "location").strip()
-    desc = (location.get("description") or "").strip()
-    geo = (location.get("geography") or "").strip()
-    arch = (location.get("architecture_style") or "").strip()
-    weather = (location.get("weather_or_atmosphere") or "").strip()
-    tod = (location.get("time_of_day") or "").strip()
-    mood = (location.get("mood") or "").strip()
-    visual = (location.get("visual_details") or "").strip()
-    cultural = (location.get("cultural_notes") or "").strip()
-    period = (location.get("time_period") or "").strip()
+    """Build a director-style cinematic prompt for a location.
 
-    parts: list[str] = []
-    if desc: parts.append(desc)
-    if geo: parts.append(f"Geography: {geo}.")
-    if period: parts.append(f"Era: {period}.")
-    if arch: parts.append(f"Architecture: {arch}.")
-    if weather: parts.append(f"Atmosphere: {weather}.")
-    if tod: parts.append(f"Time of day: {tod}.")
-    if mood: parts.append(f"Mood: {mood}.")
-    if visual: parts.append(f"Visual details: {visual}.")
-    if cultural: parts.append(f"Cultural context: {cultural}.")
+    Rather than a structured field checklist (which over-constrains image
+    models and produces identical-looking scenes), this writes flowing prose
+    that gives the model a cultural/geographic anchor and scene mood, then
+    lets it compose cinematically.  The architecture_style field is
+    intentionally omitted — it is the same world-DNA string for every
+    location in a project, so including it forces identical architectural
+    elements into every scene.
+    """
+    name     = (location.get("name")                  or "").strip()
+    desc     = (location.get("description")            or "").strip()
+    geo      = (location.get("geography")              or "").strip()
+    weather  = (location.get("weather_or_atmosphere")  or "").strip()
+    tod_raw  = (location.get("time_of_day")            or "").strip()
+    cultural = (location.get("cultural_notes")         or "").strip()
+    social   = (location.get("social_layer")           or "").strip()
 
-    return (
-        f"Environment reference plate of {name}. {' '.join(parts)} {ENV_REF_HINT}."
-    ).strip()
+    # Clean props: visual_details often starts with the location name as a
+    # copy-pasted prefix — strip it so only the actual prop list remains.
+    raw_visual = (location.get("visual_details") or "").strip()
+    if not raw_visual or raw_visual.lower() == name.lower():
+        props = ""
+    elif name and raw_visual.lower().startswith(name.lower()):
+        props = raw_visual[len(name):].lstrip(";., ").strip()
+    else:
+        props = raw_visual
+
+    # ── Opening line: time + cultural anchor ────────────────────────────────
+    tod_phrase = _TOD_PHRASES.get(tod_raw.lower(), tod_raw or "a timeless moment")
+    anchor_parts = [p for p in [cultural, geo] if p]
+    anchor = ", ".join(anchor_parts)
+    opening = f"{tod_phrase.capitalize()} in {anchor}." if anchor else f"{tod_phrase.capitalize()}."
+
+    # ── Scene identity ───────────────────────────────────────────────────────
+    # Use the narrative desc if available; fall back to the location name.
+    scene_sentence = desc if desc else (f"{name}." if name else "")
+
+    # ── Props woven in naturally ─────────────────────────────────────────────
+    props_sentence = (
+        f"The scene carries traces of everyday life — {props} — "
+        f"present but unhurried, without people in frame."
+        if props else
+        "The space feels lived-in yet quietly empty, without people in frame."
+    )
+
+    # ── Atmospheric cue ──────────────────────────────────────────────────────
+    if weather and weather.lower() not in {"unknown", "clear"}:
+        atmo_sentence = (
+            f"The air carries the quality of {weather.lower()}: "
+            f"gentle, still, shaped by light and season."
+        )
+    else:
+        atmo_sentence = "Natural light shapes the depth and mood of the scene."
+
+    # ── Cinematic framing ────────────────────────────────────────────────────
+    framing = (
+        "The frame is an establishing wide-angle view, grounded and immersive, "
+        "with natural light carving texture and depth into the environment."
+    )
+
+    # ── Assemble ─────────────────────────────────────────────────────────────
+    parts = [opening, scene_sentence, props_sentence, atmo_sentence,
+             framing, ENV_REF_HINT + "."]
+    return " ".join(" ".join(p.split()) for p in parts if p)
 
 
 def generate_location_plate(location: dict, project_id: str,
