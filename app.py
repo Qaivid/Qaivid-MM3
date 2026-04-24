@@ -2395,7 +2395,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
         kick_stage_0(
             project_id=project_id,
             audio_path=audio_path_for_kick,
-            text="",
+            text=project.get("text") or "",
             genre=project.get("genre") or "",
         )
         flash(f"Re-running audio analysis. You'll land on {label} when ready.", "info")
