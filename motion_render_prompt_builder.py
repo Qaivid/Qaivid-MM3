@@ -48,6 +48,52 @@ _MOTION_MODES = {
     "drift":         "subtle camera drift, organic handheld quality",
 }
 
+# Aliases mapping common camera_plan.movement strings → canonical spec mode keys
+_MOTION_ALIASES = {
+    # static / hold
+    "hold": "static", "fixed": "static", "locked": "static", "still": "static",
+    "lockdown": "static", "tripod": "static", "no_movement": "static",
+    "none": "static", "": "static",
+    # zoom in
+    "zoom_in": "slow_zoom_in", "push_in": "slow_zoom_in", "dolly_in": "slow_zoom_in",
+    "slow_push": "slow_zoom_in", "push": "slow_zoom_in",
+    # zoom out
+    "zoom_out": "slow_zoom_out", "pull_out": "slow_zoom_out", "dolly_out": "slow_zoom_out",
+    "pull_back": "slow_zoom_out", "pullback": "slow_zoom_out", "pull": "slow_zoom_out",
+    # pans
+    "pan": "pan_right", "slow_pan": "pan_right", "pan_r": "pan_right",
+    "pan_l": "pan_left", "tilt": "pan_right", "tilt_up": "pan_right",
+    "tilt_down": "pan_left", "whip_pan": "pan_right",
+    # drift / handheld
+    "handheld": "drift", "shake": "drift", "wobble": "drift", "float": "drift",
+    "drift_left": "drift", "drift_right": "drift", "subtle_drift": "drift",
+    "tracking": "drift", "track": "drift",
+}
+
+
+def normalize_camera_movement(raw: str) -> str:
+    """Map any camera_plan.movement string to a canonical spec mode key.
+
+    Returns one of: static, slow_zoom_in, slow_zoom_out, pan_left, pan_right, drift.
+    Falls back to 'static' if the input cannot be parsed.
+    """
+    key = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if key in _MOTION_MODES:
+        return key
+    if key in _MOTION_ALIASES:
+        return _MOTION_ALIASES[key]
+    if "zoom_in" in key or "push" in key:
+        return "slow_zoom_in"
+    if "zoom_out" in key or "pull" in key:
+        return "slow_zoom_out"
+    if "pan_left" in key or "left" in key:
+        return "pan_left"
+    if "pan_right" in key or "right" in key or "pan" in key:
+        return "pan_right"
+    if "drift" in key or "hand" in key or "track" in key:
+        return "drift"
+    return "static"
+
 
 def _camera_clause(camera: Dict) -> str:
     movement  = camera.get("movement", "")

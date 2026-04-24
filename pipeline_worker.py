@@ -650,10 +650,37 @@ def _render_video(project_id: str, shot: dict) -> None:
         if _char_entry:
             identity_seed = str(_char_entry.get("identity_seed") or "").strip() or None
 
-        # link_status — resolved only when BOTH FKs are exact matches from shot_assets
+        # Resolve SEMANTIC IDs (string slugs from materializer):
+        #   1. via DB ID → bible.character_id / location_id
+        #   2. else via shot.character_name / location_name → name match in bible
+        character_semantic_id: Optional[str] = None
+        location_semantic_id:  Optional[str] = None
+        if _char_entry:
+            character_semantic_id = (_char_entry.get("character_id") or "").strip() or None
+        else:
+            _cname = str(shot.get("character_name") or "").strip().lower()
+            if _cname:
+                _m = next((c for c in _cb if isinstance(c, dict)
+                           and str(c.get("name") or "").strip().lower() == _cname), None)
+                if _m:
+                    character_semantic_id = (_m.get("character_id") or "").strip() or None
+        if _loc_entry:
+            location_semantic_id = (_loc_entry.get("location_id") or "").strip() or None
+        else:
+            _lname = str(shot.get("location_name") or shot.get("scene_location") or "").strip().lower()
+            if _lname:
+                _m = next((l for l in _lb if isinstance(l, dict)
+                           and str(l.get("name") or "").strip().lower() == _lname), None)
+                if _m:
+                    location_semantic_id = (_m.get("location_id") or "").strip() or None
+
+        # link_status spec:
+        #   resolved      — both DB FKs exact-matched
+        #   semantic_only — at least one semantic ID exists but DB link incomplete
+        #   unresolved    — no semantic IDs and no DB IDs
         if character_db_id is not None and location_db_id is not None:
             link_status = "resolved"
-        elif character_db_id is not None or location_db_id is not None:
+        elif character_semantic_id or location_semantic_id or character_db_id is not None or location_db_id is not None:
             link_status = "semantic_only"
         else:
             link_status = "unresolved"
@@ -699,17 +726,23 @@ def _render_video(project_id: str, shot: dict) -> None:
             continuity_rules=continuity_rules,
         )
 
-        # If brain prompt is empty, fall back to shot dict or stored DB value
-        motion_prompt = brain_motion_prompt or (shot.get("motion_prompt") or "").strip() or \
-            _get_shot_motion_prompt(project_id, idx)
+        # If brain prompt is empty, fall back to shot dict or stored DB value.
+        # _get_shot_motion_prompt may return None — coerce to str at every step.
+        motion_prompt = (
+            (brain_motion_prompt or "").strip()
+            or (shot.get("motion_prompt") or "").strip()
+            or (_get_shot_motion_prompt(project_id, idx) or "")
+        )
+        motion_prompt = motion_prompt or ""  # final null-safety guarantee
 
         logger.debug(
             "_render_video: project=%s shot=%s link_status=%s motion_philosophy=%s "
-            "char_db_id=%s loc_db_id=%s char_ref=%s prompt_len=%d",
+            "char_db_id=%s loc_db_id=%s char_sem=%s loc_sem=%s char_ref=%s prompt_len=%d",
             project_id, idx, link_status, motion_philosophy,
             character_db_id, location_db_id,
+            character_semantic_id, location_semantic_id,
             "yes" if char_ref_url else "no",
-            len(motion_prompt),
+            len(motion_prompt or ""),
         )
 
         public_url = generate_shot_video(project_id, idx, still_url, prompt, duration,
@@ -3243,56 +3276,81 @@ def _build_video_sequence_packet(
     _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
     _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
 
+    # Index bible by db_id (int FK) AND by name (string) for semantic lookup
+    _char_by_dbid = {int(c["db_id"]): c for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)}
+    _loc_by_dbid  = {int(l["db_id"]): l for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)}
+    _char_by_name = {str(c.get("name") or "").strip().lower(): c for c in _cb if isinstance(c, dict) and c.get("name")}
+    _loc_by_name  = {str(l.get("name") or "").strip().lower(): l for l in _lb if isinstance(l, dict) and l.get("name")}
+
     shots_plan = []
     for shot in styled_timeline:
         idx      = shot.get("shot_index") or shot.get("timeline_index")
         duration = shot.get("duration")
 
-        # Resolve character/location IDs from shot_entity_map only — no primary fallback.
-        # IDs stay null if shot_assets had no FK for this shot.
+        # Resolve DB IDs from shot_entity_map only — no primary fallback.
         char_db_id: Optional[int] = None
         loc_db_id:  Optional[int] = None
         if shot_entity_map and idx in shot_entity_map:
             char_db_id, loc_db_id = shot_entity_map[idx]
 
-        # link_status
+        # Resolve SEMANTIC IDs (string slugs from materializer):
+        #   1. via DB ID → bible.character_id
+        #   2. else via shot.character_name → name match in bible
+        char_semantic_id: Optional[str] = None
+        loc_semantic_id:  Optional[str] = None
+        if char_db_id is not None and char_db_id in _char_by_dbid:
+            char_semantic_id = (_char_by_dbid[char_db_id].get("character_id") or "").strip() or None
+        else:
+            _cname = str(shot.get("character_name") or "").strip().lower()
+            if _cname and _cname in _char_by_name:
+                char_semantic_id = (_char_by_name[_cname].get("character_id") or "").strip() or None
+        if loc_db_id is not None and loc_db_id in _loc_by_dbid:
+            loc_semantic_id = (_loc_by_dbid[loc_db_id].get("location_id") or "").strip() or None
+        else:
+            _lname = str(shot.get("location_name") or shot.get("scene_location") or "").strip().lower()
+            if _lname and _lname in _loc_by_name:
+                loc_semantic_id = (_loc_by_name[_lname].get("location_id") or "").strip() or None
+
+        # link_status spec:
+        #   resolved      — both DB FKs present (exact link to characters/locations rows)
+        #   semantic_only — at least one semantic ID exists but DB link incomplete
+        #   unresolved    — no semantic IDs and no DB IDs
         if char_db_id is not None and loc_db_id is not None:
             link_status = "resolved"
-        elif char_db_id is not None or loc_db_id is not None:
+        elif char_semantic_id or loc_semantic_id or char_db_id is not None or loc_db_id is not None:
             link_status = "semantic_only"
         else:
             link_status = "unresolved"
 
-        # Derive motion from camera_plan.movement first, fall back to intensity scaling
+        # Derive motion: normalize camera_plan.movement to a canonical spec mode.
+        # If absent, fall back to intensity-scaled mode based on motion_philosophy.
+        from motion_render_prompt_builder import _MOTION_MODES, normalize_camera_movement
         camera = shot.get("camera_plan") or {}
-        cam_movement = (camera.get("movement") or "").strip()
+        cam_movement_raw = (camera.get("movement") or "").strip()
         raw_int = shot.get("emotional_intensity") or "medium"
-        if cam_movement:
-            # Use camera_plan movement as primary source; intensity modifies quality
-            from motion_render_prompt_builder import _MOTION_MODES
-            mapped = _MOTION_MODES.get(cam_movement)
-            if mapped:
-                motion_applied = mapped
-            else:
-                # Camera movement string not a spec mode — use it directly
-                motion_applied = cam_movement
+        if cam_movement_raw:
+            canonical_mode = normalize_camera_movement(cam_movement_raw)
+            motion_applied = _MOTION_MODES[canonical_mode]
         else:
+            canonical_mode = ""
             motion_applied = _motion_mode_for_intensity(
                 _intensity_float(raw_int), motion_philosophy
             )
 
-        # Transitions derived from camera movement
-        transition = _camera_to_transition(cam_movement)
+        # Transitions derived from camera movement (use raw or canonical)
+        transition = _camera_to_transition(canonical_mode or cam_movement_raw)
 
         shots_plan.append({
-            "shot_id":        idx,
-            "duration":       duration,
-            "motion_applied": motion_applied,
-            "transition_in":  transition,
-            "transition_out": transition,
-            "character_id":   char_db_id,
-            "location_id":    loc_db_id,
-            "link_status":    link_status,
+            "shot_id":          idx,
+            "duration":         duration,
+            "motion_applied":   motion_applied,
+            "transition_in":    transition,
+            "transition_out":   transition,
+            "character_id":     char_semantic_id,   # semantic slug (e.g. "primary_speaker")
+            "location_id":      loc_semantic_id,    # semantic slug (e.g. "rural_punjab_world")
+            "character_db_id":  char_db_id,         # integer FK → characters.id
+            "location_db_id":   loc_db_id,          # integer FK → locations.id
+            "link_status":      link_status,
         })
 
     return {
@@ -3422,18 +3480,20 @@ def _stage4_job(project_id: str) -> None:
                     {},
                 )
                 _clips.append({
-                    "clip_id":        f"clip_{_si}",
-                    "shot_id":        _si,
-                    "mode":           "image_to_video",
-                    "input_image":    _still_by_idx.get(_si) or "",
-                    "duration":       _seq_shot.get("duration"),
-                    "motion_applied": _seq_shot.get("motion_applied"),
-                    "transition_in":  _seq_shot.get("transition_in", "cut"),
+                    "clip_id":         f"clip_{_si}",
+                    "shot_id":         _si,
+                    "mode":            "image_to_video",
+                    "input_image":     _still_by_idx.get(_si) or "",
+                    "duration":        _seq_shot.get("duration"),
+                    "motion_applied":  _seq_shot.get("motion_applied"),
+                    "transition_in":   _seq_shot.get("transition_in", "cut"),
                     "transition_out": _seq_shot.get("transition_out", "cut"),
-                    "character_id":   _seq_shot.get("character_id"),
-                    "location_id":    _seq_shot.get("location_id"),
-                    "link_status":    _seq_shot.get("link_status", "unresolved"),
-                    "video_url":      _fpath,
+                    "character_id":    _seq_shot.get("character_id"),       # semantic slug
+                    "location_id":     _seq_shot.get("location_id"),        # semantic slug
+                    "character_db_id": _seq_shot.get("character_db_id"),    # int FK
+                    "location_db_id":  _seq_shot.get("location_db_id"),     # int FK
+                    "link_status":     _seq_shot.get("link_status", "unresolved"),
+                    "video_url":       _fpath,
                     "render_status":  _st,
                 })
 
