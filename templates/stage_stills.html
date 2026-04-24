@@ -11,7 +11,7 @@
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
                 Per-shot stills have been rendered. Review each frame, retry any that failed,
-                then animate the stills into video clips.
+                then continue to Post Production to build your video — or go straight to AI video animation.
                 {% set ok = shots|selectattr('status','equalto','ready')|list|length %}
                 {% set fail = shots|selectattr('status','equalto','failed')|list|length %}
                 <strong>{{ ok }}/{{ shots|length }} ready</strong>{% if fail %} · <span style="color:#ff6b6b;">{{ fail }} failed</span>{% endif %}.
@@ -86,10 +86,15 @@
         </div>
 
         <div class="stage-actions">
-            <form method="post" action="{{ url_for('advance_stage_4', project_id=project.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-stage-primary">Animate into Video Clips →</button>
-            </form>
+            <a href="{{ url_for('postprod_page', project_id=project.id) }}"
+               class="btn-stage-primary">Continue to Post Production →</a>
+            <div style="margin-top:10px; font-size:13px; color:#6b7280; text-align:center;">
+                Or skip straight to AI video:
+                <form method="post" action="{{ url_for('advance_stage_4', project_id=project.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" style="background:none;border:none;color:#9aa6b2;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Animate into AI Video Clips →</button>
+                </form>
+            </div>
             {% include '_redo_panel.html' %}
         </div>
     </div>
