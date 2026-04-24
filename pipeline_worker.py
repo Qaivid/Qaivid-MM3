@@ -3506,6 +3506,16 @@ def _stage4_job(project_id: str) -> None:
                 "(non-fatal) for project=%s",
                 project_id,
             )
+        # Defensive telemetry: if the assembly gate was bypassed somehow,
+        # the packet won't exist and we'd fall back to per-shot defaults.
+        # Loud warning makes any unintended direct-render path easy to spot.
+        if not _vsp.get("shots"):
+            logger.warning(
+                "_stage4_job: starting render with NO video_sequence_packet "
+                "for project=%s — Video Assembly review gate may have been "
+                "bypassed; per-shot motion defaults will be used.",
+                project_id,
+            )
 
         _set_status(project_id, "running",
                     {"stage": "videos",
