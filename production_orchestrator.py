@@ -90,18 +90,20 @@ class ProductionOrchestrator:
         genre: str,
         pre_analysis: Optional[Dict[str, Any]] = None,
         style_profile: Optional[Dict[str, Any]] = None,
+        input_packet: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         text = self._validate_text(text)
         genre = self._validate_genre(genre)
         pre_analysis = self._validate_optional_dict(pre_analysis)
-        style_profile = self._validate_optional_dict(style_profile)
+        # style_profile intentionally not forwarded — Stage 4 is downstream of Stage 2.
 
-        # PIPELINE CHAIN RULE: Stage 2 (Context Engine) does not see
-        # style_profile — Style is Stage 4, which is downstream of Context.
+        # When input_packet is supplied (brain path), Context Engine reads
+        # directly from Stage 1 structured output — no re-parsing raw text.
         context_packet = await self.context_engine.generate(
             text=text,
             genre=genre,
             pre_analysis=pre_analysis,
+            input_packet=input_packet or None,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
         return context_packet

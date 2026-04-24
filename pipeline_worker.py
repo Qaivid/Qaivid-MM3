@@ -31,6 +31,7 @@ from psycopg.types.json import Json
 
 from audio_processor import AudioProcessor
 from input_processor import InputProcessor
+from project_brain import ProjectBrain
 from production_orchestrator import ProductionOrchestrator
 from asset_export_module import AssetExportModule
 from image_generator import (
@@ -345,6 +346,11 @@ def ensure_schema() -> None:
         # Post Production Stage — Quick Video (Task #100)
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS postprod_config JSONB;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS quick_video_url TEXT;")
+
+        # Project Brain — single JSONB accumulator for all pipeline stage outputs
+        cur.execute(
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_brain JSONB;"
+        )
 
         # Outpaint / wide-format expansion columns for shot stills
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_url TEXT;")
@@ -1665,6 +1671,7 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
         )
 
         # Persist audio data + transcript + input_packet (+ timed lyrics if available)
+        # Also write Stage 0 and Stage 1-Input namespaces into the Project Brain.
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS lyrics_timed JSONB;"
@@ -1682,6 +1689,21 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
                  project_id),
             )
             conn.commit()
+
+        # ── Project Brain: write Stage 0 + Stage 1-Input namespaces ───────────
+        with _db() as conn:
+            brain = ProjectBrain(project_id)
+            brain.write("raw_input", {
+                "text":         transcript,
+                "genre":        genre,
+                "audio_meta":   audio_data,
+                "pre_analysis": pre_analysis,
+                "timed_lyrics": timed_lyrics,
+            })
+            brain.write("input_structure", input_packet)
+            brain.save(conn)
+            conn.commit()
+        logger.info("ProjectBrain: wrote raw_input + input_structure for project=%s", project_id)
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "audio", "label": "Acoustic audit complete. Review and continue."},
@@ -1767,21 +1789,36 @@ def _stage1_job(project_id: str) -> None:
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set in Replit secrets.")
 
-        with _db() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT text, genre, audio_data, style_profile FROM projects WHERE id=%s",
-                (project_id,),
-            )
-            row = cur.fetchone()
-        if not row:
-            raise RuntimeError("Project not found.")
+        # ── Read from Project Brain (Stage 2 reads Stage 1 output) ──────────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
 
-        text = row["text"] or ""
-        genre = row["genre"] or "song"
-        audio_data_blob = row.get("audio_data") or {}
-        pre_analysis = audio_data_blob.pop("_pre_analysis", {})
-        _raw_sp = dict(row.get("style_profile") or {})
-        style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
+        input_structure = brain.read("input_structure")  # Stage 1 output
+        raw_input       = brain.read("raw_input")        # Stage 0 output
+
+        # Fallback: if brain is empty (project predates brain), read from columns
+        if not input_structure:
+            logger.warning(
+                "Stage 1: brain has no input_structure for project=%s — "
+                "falling back to legacy columns.", project_id
+            )
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT text, genre, audio_data, input_packet FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+            if not row:
+                raise RuntimeError("Project not found.")
+            text       = row["text"] or ""
+            genre      = row["genre"] or "song"
+            audio_blob = dict(row.get("audio_data") or {})
+            pre_analysis = audio_blob.pop("_pre_analysis", {})
+            input_structure = dict(row.get("input_packet") or {})
+        else:
+            text         = raw_input.get("text", "")
+            genre        = raw_input.get("genre", "song")
+            pre_analysis = raw_input.get("pre_analysis", {})
 
         _set_status(project_id, "running",
                     {"stage": "context", "label": "Running 5W Context Audit…"}, stage="running_1")
@@ -1789,17 +1826,25 @@ def _stage1_job(project_id: str) -> None:
         orchestrator = ProductionOrchestrator(api_key)
         context_packet = _run_async(
             orchestrator.run_context_only(
-                text=text, genre=genre, pre_analysis=pre_analysis,
-                style_profile=style_profile,
+                text=text,
+                genre=genre,
+                pre_analysis=pre_analysis,
+                input_packet=input_structure or None,
             )
         )
 
-        with _db() as conn, conn.cursor() as cur:
-            cur.execute(
-                "UPDATE projects SET context_packet=%s, updated_at=NOW() WHERE id=%s",
-                (Json(context_packet), project_id),
-            )
+        # ── Write context_packet to brain + keep legacy column in sync ───────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("context_packet", context_packet)
+            brain.save(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE projects SET context_packet=%s, updated_at=NOW() WHERE id=%s",
+                    (Json(context_packet), project_id),
+                )
             conn.commit()
+        logger.info("ProjectBrain: wrote context_packet for project=%s", project_id)
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "context", "label": "Context analysis complete. Review and continue."},

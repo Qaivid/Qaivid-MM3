@@ -1967,6 +1967,7 @@ class UnifiedContextEngine(MetaMindContextEngineFinal):
         hinted_type: Optional[str] = None,
         explicit_culture_pack: Optional[str] = None,
         locked_assumptions: Optional[Dict[str, Any]] = None,
+        input_packet: Optional[Dict[str, Any]] = None,
         **_ignored_downstream: Any,
     ) -> Dict[str, Any]:
         # PIPELINE CHAIN RULE: Stage 2 must not consume any downstream
@@ -1990,4 +1991,5 @@ class UnifiedContextEngine(MetaMindContextEngineFinal):
             pre_analysis=pre_analysis,
             explicit_culture_pack=explicit_culture_pack,
             locked_assumptions=locked_assumptions,
+            input_packet=input_packet,
         )
