@@ -31,6 +31,7 @@ from psycopg.types.json import Json
 
 from audio_processor import AudioProcessor
 from input_processor import InputProcessor
+from narrative_engine import generate_narrative_intelligence
 from project_brain import ProjectBrain
 from production_orchestrator import ProductionOrchestrator
 from asset_export_module import AssetExportModule
@@ -1691,6 +1692,9 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
             conn.commit()
 
         # ── Project Brain: write Stage 0 + Stage 1-Input namespaces ───────────
+        # Also write project_settings so every downstream stage (including
+        # Narrative Engine) can read platform/duration/genre without touching DB.
+        _audio_duration = float(audio_data.get("duration_seconds") or 0) or None
         with _db() as conn:
             brain = ProjectBrain(project_id)
             brain.write("raw_input", {
@@ -1701,9 +1705,18 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
                 "timed_lyrics": timed_lyrics,
             })
             brain.write("input_structure", input_packet)
+            brain.write("project_settings", {
+                "genre":            genre,
+                "duration_seconds": _audio_duration,
+                "platform":         None,
+                "style_preset":     None,
+            })
             brain.save(conn)
             conn.commit()
-        logger.info("ProjectBrain: wrote raw_input + input_structure for project=%s", project_id)
+        logger.info(
+            "ProjectBrain: wrote raw_input + input_structure + project_settings "
+            "for project=%s", project_id
+        )
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "audio", "label": "Acoustic audit complete. Review and continue."},
@@ -1854,6 +1867,110 @@ def _stage1_job(project_id: str) -> None:
         logger.exception("Stage 1 failed for project=%s", project_id)
         _set_status(project_id, "failed",
                     {"stage": "error", "label": "Stage 1 failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
+def _stage_narrative_job(project_id: str) -> None:
+    """Stage 3 — Narrative Intelligence: reads context_packet from brain,
+    calls generate_narrative_intelligence(), writes narrative_packet to brain,
+    parks at narrative_review."""
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY is not set in Replit secrets.")
+
+        # ── Read from Project Brain ──────────────────────────────────────────
+        # Stage 3 reads: context_packet (Stage 2), input_structure (Stage 1),
+        # raw_input (Stage 0), and project_settings (Stage 0).
+        # All must be written to the brain by upstream stages before this runs.
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+
+        context_packet   = brain.read("context_packet")
+        input_structure  = brain.read("input_structure")
+        project_settings = brain.read("project_settings")
+        # raw_input available for nuance verification if needed
+        raw_input_data   = brain.read("raw_input")
+
+        # Fallback: if brain has no context_packet (pre-brain project), read
+        # from legacy columns. input_structure and project_settings will be
+        # empty dicts — narrative engine handles both gracefully.
+        if not context_packet:
+            logger.warning(
+                "Stage narrative: brain has no context_packet for project=%s — "
+                "falling back to legacy column.", project_id
+            )
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT context_packet, genre, audio_data FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+            if not row:
+                raise RuntimeError("Project not found.")
+            context_packet = dict(row.get("context_packet") or {})
+            _audio = dict(row.get("audio_data") or {})
+            project_settings = {
+                "genre":            row.get("genre") or "song",
+                "duration_seconds": _audio.get("duration_seconds"),
+                "platform":         None,
+                "style_preset":     None,
+            }
+
+        # Merge style_preset into project_settings if brain project_settings
+        # was written before style was chosen (style_preset=None at Stage 0).
+        if not project_settings.get("style_preset"):
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT style_profile FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                sp_row = cur.fetchone()
+            if sp_row:
+                _sp = dict(sp_row.get("style_profile") or {})
+                if _sp.get("preset"):
+                    project_settings = dict(project_settings)
+                    project_settings["style_preset"] = _sp["preset"]
+
+        _set_status(project_id, "running",
+                    {"stage": "narrative", "label": "Running Narrative Intelligence…"},
+                    stage="running_narrative")
+
+        narrative_packet = _run_async(
+            generate_narrative_intelligence(
+                api_key=api_key,
+                context_packet=context_packet,
+                input_structure=input_structure or {},
+                project_settings=project_settings or {},
+            )
+        )
+
+        # ── Write narrative_packet to brain + legacy column ──────────────────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("narrative_packet", narrative_packet)
+            brain.save(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+                    "narrative_packet JSONB;"
+                )
+                cur.execute(
+                    "UPDATE projects SET narrative_packet=%s, updated_at=NOW() "
+                    "WHERE id=%s",
+                    (Json(narrative_packet), project_id),
+                )
+            conn.commit()
+        logger.info("ProjectBrain: wrote narrative_packet for project=%s", project_id)
+
+        _set_status(project_id, "awaiting_review",
+                    {"stage": "narrative", "label": "Narrative intelligence ready. Review and continue."},
+                    stage="narrative_review")
+
+    except Exception as exc:
+        logger.exception("Stage narrative failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Narrative stage failed."},
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
@@ -2471,6 +2588,11 @@ def kick_stage_style(project_id: str) -> None:
 
 def kick_stage_1(project_id: str) -> None:
     _EXECUTOR.submit(_stage1_job, project_id)
+
+
+def kick_stage_narrative(project_id: str) -> None:
+    """Stage 3 — Narrative Intelligence. Reads context_packet from brain."""
+    _EXECUTOR.submit(_stage_narrative_job, project_id)
 
 
 def kick_stage_2(project_id: str, name: str, overrides: dict) -> None:

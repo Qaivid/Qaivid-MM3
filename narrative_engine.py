@@ -13,17 +13,28 @@ Rules (per master spec):
   - Lock meaning, keep visual expression open
   - Be decisive — pick one clear option per field
 
-Output (stored as context_packet["narrative_intelligence"]):
-  storytelling_mode     — observational | expressive | symbolic | performative
-  presence_logic        — always_visible | fragmented | memory_only | absent
-  timeline_behavior     — linear | fragmented | memory_based | cyclical
-  emotional_progression — building | releasing | oscillating | still
-  repetition_strategy   — visual_variation | emotional_shift | reinforce | none
-  motion_philosophy     — still_dominant | dynamic_dominant | mixed
-  expression_channels   — ordered list of what carries meaning most (character,
-                          environment, objects, time, light, performance)
-  continuity_style      — strict | associative | symbolic
-  director_note         — one sentence: overall visual storytelling approach
+Brain reads (all data must already exist on Project Brain before this runs):
+  - raw_input         (Stage 0) — clean text, genre, audio meta, timed lyrics
+  - input_structure   (Stage 1) — input_type, language, sections, units,
+                                   repetition_map, speaker_boundaries, uncertainties
+  - context_packet    (Stage 2) — core_theme, emotional_arc, speaker/addressee,
+                                   timeline_nature, must_preserve, creative_freedom
+  - project_settings  (Stage 0) — genre, duration_target, style_preset (optional)
+
+Output written to brain["narrative_packet"]:
+  storytelling_mode             — observational | expressive | symbolic | performative
+  perspective                   — first_person | third_person_close | observer | omniscient
+  timeline_strategy             — linear | fragmented | memory_based | cyclical
+  presence_strategy             — always_visible | fragmented | memory_only | absent
+  emotional_progression_strategy — building | releasing | oscillating | still
+  repetition_strategy           — visual_variation | emotional_shift | reinforce | none
+  motion_philosophy             — still_dominant | dynamic_dominant | mixed
+  expression_channels           — ordered list: character, environment, objects,
+                                   time, light, performance
+  continuity_rules              — strict | associative | symbolic
+  scene_interpretation_rules    — one rule sentence for how scenes connect
+  variation_allowance           — strict | guided | open
+  director_note                 — one sentence: overall visual storytelling approach
 """
 
 from __future__ import annotations
@@ -42,15 +53,20 @@ _MODEL = "gpt-4o-mini"
 async def generate_narrative_intelligence(
     api_key: str,
     context_packet: Dict[str, Any],
+    input_structure: Optional[Dict[str, Any]] = None,
+    project_settings: Optional[Dict[str, Any]] = None,
     **_ignored_downstream: Any,
 ) -> Dict[str, Any]:
     """
     Stage 3 — Narrative Intelligence.
 
-    Consumes ONLY the immediate predecessor's output (context_packet from
-    Stage 2). MUST NOT read style_profile, storyboard, brief, or anything
-    from a stage further downstream. Any unexpected kwargs are silently
-    ignored so legacy callers don't crash while they get cleaned up.
+    Reads from Project Brain:
+      - context_packet    (required) — core meaning from Context Engine
+      - input_structure   (optional) — structural facts from Input Processor
+      - project_settings  (optional) — platform, duration, style preference
+
+    Must NOT read style_profile directly, storyboard, brief, or anything
+    from a stage further downstream.
 
     Output is purely strategic — no scenes, no locations, no camera.
     On LLM failure the pipeline continues with safe defaults.
@@ -65,7 +81,11 @@ async def generate_narrative_intelligence(
         return _fallback()
 
     client = AsyncOpenAI(api_key=api_key)
-    system_msg, user_msg = _build_prompts(context_packet)
+    system_msg, user_msg = _build_prompts(
+        context_packet,
+        input_structure=input_structure or {},
+        project_settings=project_settings or {},
+    )
 
     try:
         response = await client.chat.completions.create(
@@ -76,7 +96,7 @@ async def generate_narrative_intelligence(
             ],
             response_format={"type": "json_object"},
             temperature=0.4,
-            max_tokens=500,
+            max_tokens=700,
         )
         raw = response.choices[0].message.content or "{}"
         data = json.loads(raw)
@@ -90,7 +110,13 @@ async def generate_narrative_intelligence(
 # Prompt builders
 # ---------------------------------------------------------------------------
 
-def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
+def _build_prompts(
+    cp: Dict[str, Any],
+    input_structure: Dict[str, Any],
+    project_settings: Dict[str, Any],
+) -> tuple[str, str]:
+
+    # ── Context packet fields ───────────────────────────────────────────────
     wa   = cp.get("world_assumptions") or {}
     spk  = cp.get("speaker") or {}
     addr = cp.get("addressee") or {}
@@ -99,25 +125,43 @@ def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
     meta = cp.get("meta") or {}
     lines = cp.get("line_meanings") or []
 
-    # --- Structure summary (item 3 of the input contract) -----------------
-    # Pass through the actual verse / chorus / bridge / etc. breakdown,
-    # not just a "has_repetition" boolean. Counts are enough for narrative
-    # strategy — the engine doesn't need the full text.
-    structure_counts: Dict[str, int] = {}
-    for lm in lines:
-        fn = str(lm.get("function") or "").strip().lower()
-        if fn:
-            structure_counts[fn] = structure_counts.get(fn, 0) + 1
-    has_repetition = any(
+    # ── Structural facts from input_structure (Brain read) ──────────────────
+    # If input_structure is available (Stage 1 brain output), prefer its
+    # repetition_map and speaker_boundaries directly. Fall back to deriving
+    # from context_packet line_meanings for backward compatibility.
+    repetition_map = input_structure.get("repetition_map") or {}
+    speaker_boundaries = input_structure.get("speaker_boundaries") or []
+    uncertainties = input_structure.get("uncertainty_flags") or []
+    sections = input_structure.get("sections") or []
+    ip_input_type = input_structure.get("input_type")
+    ip_language = input_structure.get("languages") or input_structure.get("language")
+    lyrical_patterns = input_structure.get("lyrical_patterns") or {}
+
+    # Section counts derived from input_structure sections (preferred) or
+    # fall back to context_packet line_meanings for structure_counts.
+    section_counts: Dict[str, int] = {}
+    if sections:
+        for sec in sections:
+            label = str(sec.get("label") or "").strip().lower()
+            if label:
+                section_counts[label] = section_counts.get(label, 0) + 1
+    else:
+        for lm in lines:
+            fn = str(lm.get("function") or "").strip().lower()
+            if fn:
+                section_counts[fn] = section_counts.get(fn, 0) + 1
+
+    has_repetition = bool(repetition_map) or any(
         str(lm.get("repeat_status", "")).lower() == "repeat" for lm in lines
     )
 
-    # --- Audio rhythm (item 7 of the input contract, optional) ------------
-    # BPM rides through Context as cp["audio_meta"]["bpm"] when available.
-    # Per-line timestamps are attached by the orchestrator as
-    # line_meanings[].lyric_start_seconds / lyric_end_seconds. Total
-    # duration is derived from the last timed line. Everything is optional;
-    # a piece with no audio simply omits these fields.
+    # Speaker count from speaker_boundaries
+    unique_speakers = len({
+        sb.get("speaker") for sb in speaker_boundaries
+        if sb.get("speaker") and sb["speaker"] != "narrator"
+    })
+
+    # ── Audio rhythm from context_packet (or project_settings) ─────────────
     audio_meta = cp.get("audio_meta") or {}
     bpm = audio_meta.get("bpm")
     timed_lines = [
@@ -132,17 +176,24 @@ def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
                 max(float(lm["lyric_end_seconds"]) for lm in timed_lines), 2
             )
         except (TypeError, ValueError):
-            total_duration_s = None
+            pass
+    # Fall back to project_settings duration if available
+    if total_duration_s is None:
+        total_duration_s = project_settings.get("duration_seconds")
 
+    # ── Compose the payload the LLM will reason over ───────────────────────
     context_summary: Dict[str, Any] = {
-        "input_type":        cp.get("input_type") or cp.get("recognized_type"),
-        "narrative_mode":    cp.get("narrative_mode"),
-        "location_dna":      cp.get("location_dna"),
-        # 1. Meaning of the input
-        "core_theme":        cp.get("core_theme"),
-        "dramatic_premise":  cp.get("dramatic_premise"),
-        "narrative_spine":   cp.get("narrative_spine"),
-        # 2. Voice / perspective
+        # ── From context_packet (Stage 2 output) ──
+        "input_type":       ip_input_type or cp.get("input_type") or cp.get("recognized_type"),
+        "language":         ip_language,
+        "narrative_mode":   cp.get("narrative_mode"),
+        "location_dna":     cp.get("location_dna"),
+        "core_theme":       cp.get("core_theme"),
+        "dramatic_premise": cp.get("dramatic_premise"),
+        "narrative_spine":  cp.get("narrative_spine"),
+        "must_preserve":    cp.get("must_preserve"),
+        "creative_freedom": cp.get("creative_freedom"),
+        # ── Voice / perspective ──
         "speaker": {
             "identity":                  spk.get("identity"),
             "gender":                    spk.get("gender"),
@@ -157,49 +208,55 @@ def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
             "relationship": addr.get("relationship"),
             "presence":     addr.get("presence"),
         },
-        # 4. Timeline nature + 5. Cultural / world grounding
+        # ── World / timeline ──
         "world": {
-            "geography":      wa.get("geography"),
-            "era":            wa.get("era"),
-            "season":         wa.get("season"),
+            "geography":       wa.get("geography"),
+            "era":             wa.get("era"),
+            "season":          wa.get("season"),
             "timeline_nature": wa.get("timeline_nature"),
-            "social_context": wa.get("social_context"),
+            "social_context":  wa.get("social_context"),
         },
-        # 6. Emotional progression
+        # ── Emotional arc ──
         "emotional_arc": {
             "opening":     arc.get("opening"),
             "development": arc.get("development"),
             "climax":      arc.get("climax"),
             "resolution":  arc.get("resolution"),
         },
-        # 1c. Conflict
+        # ── Conflict / motivation ──
         "motivation": {
             "inciting_cause":    mot.get("inciting_cause"),
             "underlying_desire": mot.get("underlying_desire"),
             "stakes":            mot.get("stakes"),
             "obstacle":          mot.get("obstacle"),
         },
-        # 3. Structure
+        # ── Structure (from input_structure — Brain read) ──
         "structure": {
-            "function_counts": structure_counts or None,
-            "has_repetition":  has_repetition,
-            "line_count":      len(lines),
+            "section_counts":    section_counts or None,
+            "has_repetition":    has_repetition,
+            "unique_speakers":   unique_speakers if unique_speakers > 0 else None,
+            "line_count":        len(lines) or len(sections),
+            "repetition_map":    repetition_map if repetition_map else None,
+            "lyrical_patterns":  lyrical_patterns if lyrical_patterns else None,
+            "uncertainties":     uncertainties[:3] if uncertainties else None,
         },
-        # 7. Duration / rhythm (optional)
+        # ── Audio / rhythm ──
         "rhythm": {
-            "bpm":                bpm,
-            "total_duration_s":   total_duration_s,
-            "timed_line_count":   len(timed_lines) or None,
+            "bpm":              bpm,
+            "total_duration_s": total_duration_s,
+            "timed_line_count": len(timed_lines) or None,
         },
-        # Meta — abstraction guidance for storytelling tone
+        # ── Meta ──
         "symbolic_density":  meta.get("symbolic_density"),
         "abstraction_level": meta.get("abstraction_level"),
+        # ── Project settings (from Brain project_settings namespace) ──
+        "project_settings": {
+            "genre":         project_settings.get("genre"),
+            "style_preset":  project_settings.get("style_preset"),
+            "platform":      project_settings.get("platform"),
+            "duration_target_s": project_settings.get("duration_seconds"),
+        } if project_settings else None,
     }
-
-    # PIPELINE CHAIN RULE: No style_profile here. Style is Stage 4 — it
-    # comes AFTER Narrative, so Narrative cannot see it. style_line is kept
-    # as an empty string so existing string interpolation below still works.
-    style_line = ""
 
     system_msg = """\
 You are a senior narrative director — the layer between story analysis and
@@ -222,13 +279,16 @@ Return ONLY valid JSON with exactly these keys:
 
 {
   "storytelling_mode": "observational|expressive|symbolic|performative",
-  "presence_logic": "always_visible|fragmented|memory_only|absent",
-  "timeline_behavior": "linear|fragmented|memory_based|cyclical",
-  "emotional_progression": "building|releasing|oscillating|still",
+  "perspective": "first_person|third_person_close|observer|omniscient",
+  "timeline_strategy": "linear|fragmented|memory_based|cyclical",
+  "presence_strategy": "always_visible|fragmented|memory_only|absent",
+  "emotional_progression_strategy": "building|releasing|oscillating|still",
   "repetition_strategy": "visual_variation|emotional_shift|reinforce|none",
   "motion_philosophy": "still_dominant|dynamic_dominant|mixed",
   "expression_channels": ["ordered list from most to least important — choose from: character, environment, objects, time, light, performance"],
-  "continuity_style": "strict|associative|symbolic",
+  "continuity_rules": "strict|associative|symbolic",
+  "scene_interpretation_rules": "one rule sentence for how scenes connect or flow (strategy only, no visuals)",
+  "variation_allowance": "strict|guided|open",
   "director_note": "one sentence capturing the overall visual storytelling approach"
 }
 
@@ -239,17 +299,23 @@ Field guidance:
     symbolic       — meaning carried by objects, nature, abstraction
     performative   — artist performs directly; energy is the message
 
-  presence_logic:
-    always_visible — character on screen throughout
-    fragmented     — character appears and disappears; present in parts
-    memory_only    — character seen only in flashback or imagination
-    absent         — no character; world carries the story
+  perspective:
+    first_person       — story experienced through the speaker's eyes
+    third_person_close — story follows the speaker closely but from outside
+    observer           — story watched from a neutral external viewpoint
+    omniscient         — story moves freely between all viewpoints
 
-  timeline_behavior:
+  timeline_strategy:
     linear        — story moves forward in time
     fragmented    — time cuts between moments non-linearly
     memory_based  — past and present intercut
     cyclical      — returns to the same moment or image
+
+  presence_strategy:
+    always_visible — character on screen throughout
+    fragmented     — character appears and disappears; present in parts
+    memory_only    — character seen only in flashback or imagination
+    absent         — no character; world carries the story
 
   repetition_strategy (for songs with chorus/hook):
     visual_variation  — same lyric, different visual treatment each time
@@ -257,42 +323,56 @@ Field guidance:
     reinforce         — same visual used as anchor motif
     none              — no special handling (not a song or no repetition)
 
-  expression_channels: what carries meaning — order them by importance for THIS piece
+  continuity_rules:
+    strict       — scenes must connect logically and chronologically
+    associative  — scenes connect by mood, feeling, or theme
+    symbolic     — scenes connect through recurring symbols or motifs
+
+  variation_allowance:
+    strict  — downstream must follow strategy exactly; minimal deviation
+    guided  — downstream may interpret within defined emotional bounds
+    open    — downstream has creative freedom within the stated mode
+
+  scene_interpretation_rules:
+    Write ONE concise rule about HOW scenes relate to each other.
+    Strategy only — no visuals, no camera, no locations.
+    Examples:
+      "Each scene is a memory fragment drifting further from the present."
+      "Scenes follow the speaker's internal state, not external events."
+      "Every chorus returns the viewer to the same emotional anchor."
 
 INPUTS YOU RECEIVE (and how to use them):
   speaker + addressee
-    — Use the relationship_to_addressee, addressee.presence and
-      addressee.relationship to decide presence_logic. If the addressee is
-      "absent" or "memory_only", lean toward fragmented or memory_only
-      presence. If the addressee is on-screen and reciprocal, prefer
-      always_visible.
+    — Use relationship_to_addressee and addressee.presence to decide
+      presence_strategy and perspective. Absent addressee → lean toward
+      memory_only or fragmented presence.
   world.timeline_nature
-    — real_time   → linear timeline_behavior is most natural
-    — memory      → memory_based or fragmented
-    — cyclical    → cyclical
-    — ambiguous   → fragmented or symbolic, your call
-  world.social_context + world.geography
-    — Inform whether the storytelling_mode should feel intimate
-      (observational), heightened (expressive), allegorical (symbolic), or
-      direct (performative). They never become locations or visuals.
-  structure.function_counts
-    — Counts of verse / chorus / bridge / etc. lines. A high chorus count
-      means the repetition_strategy field matters; a flat structure (no
-      chorus) makes "none" appropriate. Bridges usually warrant an
-      emotional_progression shift around their position.
+    — real_time → linear timeline_strategy is most natural
+    — memory    → memory_based or fragmented
+    — cyclical  → cyclical
+    — ambiguous → fragmented or symbolic, your call
+  structure.section_counts + structure.repetition_map
+    — If high chorus count or repetition_map is non-empty:
+      repetition_strategy matters significantly.
+    — Flat structure (no chorus) → "none" for repetition_strategy.
+  structure.unique_speakers
+    — Multiple speakers → presence_strategy and perspective become critical
+      to narrative coherence.
   rhythm.bpm + rhythm.total_duration_s
     — High BPM + short duration → motion_philosophy=dynamic_dominant.
-    — Low BPM + long duration → still_dominant.
-    — Mixed energy → mixed.
-    — These are optional; if missing, decide from the emotional arc alone.
+    — Low BPM + long duration  → still_dominant.
+    — Mixed energy             → mixed.
+    — Missing → decide from emotional arc alone.
   symbolic_density + abstraction_level
-    — Higher symbolic density / abstraction → favor symbolic storytelling
-      and associative or symbolic continuity_style."""
+    — Higher values → favor symbolic storytelling_mode and symbolic/
+      associative continuity_rules.
+  project_settings.style_preset
+    — If present, use as soft guidance for motion_philosophy and
+      variation_allowance. Do not let it override emotional truth."""
 
     user_msg = f"""\
 Content to analyze:
 {json.dumps(context_summary, ensure_ascii=False, indent=2)}
-{style_line}
 
 Decide the narrative strategy. Return JSON only."""
 
@@ -304,23 +384,27 @@ Decide the narrative strategy. Return JSON only."""
 # ---------------------------------------------------------------------------
 
 _VALID: Dict[str, set] = {
-    "storytelling_mode":    {"observational", "expressive", "symbolic", "performative"},
-    "presence_logic":       {"always_visible", "fragmented", "memory_only", "absent"},
-    "timeline_behavior":    {"linear", "fragmented", "memory_based", "cyclical"},
-    "emotional_progression":{"building", "releasing", "oscillating", "still"},
-    "repetition_strategy":  {"visual_variation", "emotional_shift", "reinforce", "none"},
-    "motion_philosophy":    {"still_dominant", "dynamic_dominant", "mixed"},
-    "continuity_style":     {"strict", "associative", "symbolic"},
+    "storytelling_mode":              {"observational", "expressive", "symbolic", "performative"},
+    "perspective":                    {"first_person", "third_person_close", "observer", "omniscient"},
+    "timeline_strategy":              {"linear", "fragmented", "memory_based", "cyclical"},
+    "presence_strategy":              {"always_visible", "fragmented", "memory_only", "absent"},
+    "emotional_progression_strategy": {"building", "releasing", "oscillating", "still"},
+    "repetition_strategy":            {"visual_variation", "emotional_shift", "reinforce", "none"},
+    "motion_philosophy":              {"still_dominant", "dynamic_dominant", "mixed"},
+    "continuity_rules":               {"strict", "associative", "symbolic"},
+    "variation_allowance":            {"strict", "guided", "open"},
 }
 
 _DEFAULTS: Dict[str, str] = {
-    "storytelling_mode":    "expressive",
-    "presence_logic":       "always_visible",
-    "timeline_behavior":    "linear",
-    "emotional_progression":"building",
-    "repetition_strategy":  "visual_variation",
-    "motion_philosophy":    "mixed",
-    "continuity_style":     "associative",
+    "storytelling_mode":              "expressive",
+    "perspective":                    "third_person_close",
+    "timeline_strategy":              "linear",
+    "presence_strategy":              "always_visible",
+    "emotional_progression_strategy": "building",
+    "repetition_strategy":            "visual_variation",
+    "motion_philosophy":              "mixed",
+    "continuity_rules":               "associative",
+    "variation_allowance":            "guided",
 }
 
 _VALID_CHANNELS = {"character", "environment", "objects", "time", "light", "performance"}
@@ -329,6 +413,7 @@ _DEFAULT_CHANNELS = ["character", "environment", "objects", "time", "light"]
 
 def _repair(data: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+
     for key, valid_set in _VALID.items():
         val = str(data.get(key) or "").strip().lower()
         out[key] = val if val in valid_set else _DEFAULTS[key]
@@ -341,18 +426,25 @@ def _repair(data: Dict[str, Any]) -> Dict[str, Any]:
     else:
         out["expression_channels"] = _DEFAULT_CHANNELS
 
+    out["scene_interpretation_rules"] = (
+        str(data.get("scene_interpretation_rules") or "").strip()
+        or "Scenes connect by emotional state, not chronological order."
+    )
+
     out["director_note"] = (
         str(data.get("director_note") or "").strip()
         or "Let the emotional arc drive visual interpretation."
     )
+
     return out
 
 
 def _fallback() -> Dict[str, Any]:
     return {
         **_DEFAULTS,
-        "expression_channels": _DEFAULT_CHANNELS,
-        "director_note": "Let the emotional arc drive visual interpretation.",
+        "expression_channels":       _DEFAULT_CHANNELS,
+        "scene_interpretation_rules": "Scenes connect by emotional state, not chronological order.",
+        "director_note":             "Let the emotional arc drive visual interpretation.",
     }
 
 
@@ -370,12 +462,15 @@ def format_for_prompt(ni: Dict[str, Any]) -> str:
 
     return f"""\
 NARRATIVE INTELLIGENCE (defines HOW this story is told — follow this strategy):
-  Storytelling mode:     {ni.get('storytelling_mode')}
-  Character presence:    {ni.get('presence_logic')}
-  Timeline behavior:     {ni.get('timeline_behavior')}
-  Emotional progression: {ni.get('emotional_progression')}
-  Repetition strategy:   {ni.get('repetition_strategy')}
-  Motion philosophy:     {ni.get('motion_philosophy')}
-  Expression channels:   {channels}  (ordered most → least important)
-  Continuity style:      {ni.get('continuity_style')}
-  Director's approach:   {ni.get('director_note')}"""
+  Storytelling mode:       {ni.get('storytelling_mode')}
+  Perspective:             {ni.get('perspective')}
+  Timeline strategy:       {ni.get('timeline_strategy')}
+  Character presence:      {ni.get('presence_strategy')}
+  Emotional progression:   {ni.get('emotional_progression_strategy')}
+  Repetition strategy:     {ni.get('repetition_strategy')}
+  Motion philosophy:       {ni.get('motion_philosophy')}
+  Expression channels:     {channels}  (ordered most → least important)
+  Continuity rules:        {ni.get('continuity_rules')}
+  Scene rules:             {ni.get('scene_interpretation_rules')}
+  Variation allowance:     {ni.get('variation_allowance')}
+  Director's approach:     {ni.get('director_note')}"""

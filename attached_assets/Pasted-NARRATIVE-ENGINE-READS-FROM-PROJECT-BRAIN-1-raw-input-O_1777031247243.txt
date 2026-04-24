@@ -1,0 +1,144 @@
+NARRATIVE ENGINE READS FROM PROJECT BRAIN
+
+1. raw_input
+- Original text/audio transcript
+- Read-only backup only
+- Used to verify nuance, not reinterpret everything
+
+2. input_structure
+- input type
+- language
+- sections
+- text units
+- order
+- repetition map
+- timestamps
+- speaker boundaries
+- uncertainty flags
+
+3. context_packet
+- core theme
+- core conflict
+- speaker/addressee context
+- emotional world
+- emotional arc
+- cultural/geographical grounding
+- timeline nature
+- narrative mode
+- must_preserve rules
+- creative_freedom rules
+
+4. user_intent / project_settings
+- target format
+- video length
+- platform
+- user-selected style preference if provided
+- strictness level
+- variation preference
+
+5. audio_packet, if available
+- duration
+- BPM
+- tempo feel
+- intensity markers
+- section timing
+
+And it writes back:
+
+NARRATIVE ENGINE WRITES TO PROJECT BRAIN
+
+narrative_packet:
+- storytelling_mode
+- perspective
+- timeline_strategy
+- presence_strategy
+- emotional_progression_strategy
+- repetition_strategy
+- motion_philosophy
+- expression_channels
+- continuity_rules
+- scene_interpretation_rules
+- variation_allowance
+
+Core rule:
+
+Narrative Engine reads context + structure + project constraints.
+It writes storytelling logic only.
+It does not create scenes, visuals, characters, locations, or prompts.
+  whatever it needs should be on project brain already? as the two step before it should have alredy wrote their all input on project brain
+
+Yes — correct, with one precise condition:
+👉 Everything Narrative Engine needs must already exist on the Project Brain because upstream steps have written it there.
+
+🔒 FINAL ARCHITECTURE RULE
+👉 Narrative Engine should be:
+
+READ-ONLY (from Brain) + WRITE (its own packet)
+
+It must NOT depend on:
+* direct external input
+* hidden data
+* side channels
+
+🧠 WHAT MUST EXIST ON PROJECT BRAIN BEFORE NARRATIVE RUNS
+From Input Processing:
+
+- raw_input
+- clean_text
+- input_type
+- language
+- structure (sections, units)
+- repetition_map
+- speaker_boundaries
+- timestamps (if any)
+- uncertainties
+
+
+From Context Engine:
+
+- core_theme
+- core_conflict
+- speaker_context
+- addressee_context
+- emotional_world
+- emotional_arc
+- cultural_grounding
+- timeline_nature
+- narrative_mode
+- must_preserve rules
+- creative_freedom rules
+
+
+From System / User (if any):
+
+- project_settings
+- style preference (optional)
+- duration target (optional)
+- platform target (optional)
+
+
+✅ IF ALL THIS EXISTS
+👉 Narrative Engine should NOT need anything else 👉 No re-reading input externally 👉 No re-processing structure 👉 No guessing missing data
+
+⚠️ IMPORTANT EDGE CASE (DON’T MISS THIS)
+👉 Narrative Engine MAY read:
+
+raw_input / clean_text
+
+BUT ONLY:
+* to verify nuance
+* to resolve ambiguity
+* NOT to reinterpret full meaning
+
+❌ WHAT SHOULD NEVER HAPPEN
+* Narrative Engine asking:
+    * “what is the theme?”
+    * “who is the speaker?”
+    * “what is the structure?”
+👉 If it does → your upstream failed
+
+🔥 GOLDEN RULE
+👉 Project Brain must be complete before Narrative runs
+
+🎯 ONE LINE ANSWER
+👉 Yes — Narrative Engine should get 100% of its required data from the Project Brain, written by upstream steps.

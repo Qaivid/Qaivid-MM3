@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% set active_stage = 'narrative_review' %}
+{% block title %}{{ project.name }} — Narrative Intelligence · Qaivid{% endblock %}
+{% block content %}
+{% set np = project.narrative_packet or {} %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 3 — Narrative Intelligence</span>
+            <h1>Storytelling Strategy</h1>
+            <p class="stage-sub">
+                The Narrative Engine has defined <em>how</em> this story is told — not what
+                it shows. These decisions guide the Creative Brief and Storyboard downstream.
+                They are strategic, not visual.
+            </p>
+        </div>
+
+        {% if np %}
+        <div class="narrative-grid">
+
+            <div class="narrative-row">
+                <div class="narrative-item">
+                    <div class="narrative-label">Storytelling Mode</div>
+                    <div class="narrative-value">{{ np.storytelling_mode or '—' }}</div>
+                </div>
+                <div class="narrative-item">
+                    <div class="narrative-label">Perspective</div>
+                    <div class="narrative-value">{{ np.perspective or '—' }}</div>
+                </div>
+            </div>
+
+            <div class="narrative-row">
+                <div class="narrative-item">
+                    <div class="narrative-label">Timeline Strategy</div>
+                    <div class="narrative-value">{{ np.timeline_strategy or '—' }}</div>
+                </div>
+                <div class="narrative-item">
+                    <div class="narrative-label">Character Presence</div>
+                    <div class="narrative-value">{{ np.presence_strategy or '—' }}</div>
+                </div>
+            </div>
+
+            <div class="narrative-row">
+                <div class="narrative-item">
+                    <div class="narrative-label">Emotional Progression</div>
+                    <div class="narrative-value">{{ np.emotional_progression_strategy or '—' }}</div>
+                </div>
+                <div class="narrative-item">
+                    <div class="narrative-label">Repetition Strategy</div>
+                    <div class="narrative-value">{{ np.repetition_strategy or '—' }}</div>
+                </div>
+            </div>
+
+            <div class="narrative-row">
+                <div class="narrative-item">
+                    <div class="narrative-label">Motion Philosophy</div>
+                    <div class="narrative-value">{{ np.motion_philosophy or '—' }}</div>
+                </div>
+                <div class="narrative-item">
+                    <div class="narrative-label">Continuity Rules</div>
+                    <div class="narrative-value">{{ np.continuity_rules or '—' }}</div>
+                </div>
+            </div>
+
+            <div class="narrative-row">
+                <div class="narrative-item">
+                    <div class="narrative-label">Variation Allowance</div>
+                    <div class="narrative-value">{{ np.variation_allowance or '—' }}</div>
+                </div>
+                <div class="narrative-item">
+                    <div class="narrative-label">Expression Channels</div>
+                    <div class="narrative-value">
+                        {% if np.expression_channels %}
+                            {{ np.expression_channels | join(' → ') }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="narrative-full">
+                <div class="narrative-label">Scene Interpretation Rules</div>
+                <div class="narrative-value narrative-rule">{{ np.scene_interpretation_rules or '—' }}</div>
+            </div>
+
+            <div class="narrative-full">
+                <div class="narrative-label">Director's Approach</div>
+                <div class="narrative-value narrative-rule">{{ np.director_note or '—' }}</div>
+            </div>
+
+        </div>
+        {% else %}
+        <p class="stage-sub">Narrative packet not available.</p>
+        {% endif %}
+
+        <form method="POST" action="/project/{{ project.id }}/advance/narrative" class="stage-actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">
+                Continue to Creative Brief
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+.narrative-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 1.5rem 0 2rem;
+}
+.narrative-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+.narrative-full {
+    grid-column: 1 / -1;
+}
+.narrative-item,
+.narrative-full {
+    background: var(--bg-card, #1a1a2e);
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+}
+.narrative-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted, rgba(255,255,255,0.45));
+    margin-bottom: 0.35rem;
+}
+.narrative-value {
+    font-size: 0.95rem;
+    color: var(--text, #e8e8f0);
+    font-weight: 500;
+    text-transform: capitalize;
+}
+.narrative-rule {
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.5;
+}
+</style>
+{% endblock %}

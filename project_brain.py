@@ -11,6 +11,7 @@ Architecture rule:
 
 Namespaces (in pipeline order):
     raw_input          Stage 0  — original text/audio/genre submitted by user
+    project_settings   Stage 0  — genre, duration, platform, style_preset (user/system config)
     input_structure    Stage 1  — InputProcessor output (sections, units, repetition map…)
     context_packet     Stage 2  — Context Engine output (meaning, world, speaker…)
     narrative_packet   Stage 3  — Narrative Engine output (motifs, arc, story logic…)
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 NAMESPACES: List[str] = [
     "raw_input",
+    "project_settings",
     "input_structure",
     "context_packet",
     "narrative_packet",
@@ -50,8 +52,9 @@ NAMESPACES: List[str] = [
 ]
 
 NAMESPACE_OWNERS: Dict[str, str] = {
-    "raw_input":        "stage_0",
-    "input_structure":  "stage_1_input",
+    "raw_input":         "stage_0",
+    "project_settings":  "stage_0",
+    "input_structure":   "stage_1_input",
     "context_packet":   "stage_2_context",
     "narrative_packet": "stage_3_narrative",
     "style_packet":     "stage_4_style",

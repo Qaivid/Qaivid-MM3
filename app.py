@@ -30,6 +30,7 @@ from pipeline_worker import (
     kick_pipeline,
     kick_stage_0,
     kick_stage_1,
+    kick_stage_narrative,
     kick_stage_style,
     kick_stage_2,
     kick_stage_brief,
@@ -521,6 +522,7 @@ STAGE_ORDER = [
     "style_review",
     "context_review",
     "assumptions_review",
+    "narrative_review",
     "creative_brief_review",
     "storyboard_review",
     "references_review",
@@ -537,6 +539,7 @@ STAGE_LABELS = {
     "style_review": "Style Profile",
     "context_review": "Context Engine",
     "assumptions_review": "METAMAN Dialogue",
+    "narrative_review": "Narrative Engine",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
     "references_review": "References",
@@ -1200,6 +1203,9 @@ def project_detail(project_id: str):
     if stage == "assumptions_review":
         return render_template("stage_assumptions.html", project=project)
 
+    if stage == "narrative_review":
+        return render_template("stage_narrative.html", project=project)
+
     if stage == "creative_brief_review":
         return render_template("stage_creative_brief.html", project=project)
 
@@ -1731,9 +1737,41 @@ def advance_stage_2b(project_id: str):
         "era":          pending.get("era"),
         "style_preset": pending.get("style_preset") or "cinematic_natural",
     }
-    # Task #69 — instead of jumping straight to Storyboard, kick the new
-    # Creative Brief stage which generates director treatment variants and
-    # parks at creative_brief_review for the user to lock one.
+    # Pipeline chain: after METAMAN dialogue → Narrative Engine (Stage 3),
+    # which reads the resolved context_packet from the brain and writes
+    # narrative_packet before the Creative Brief stage.
+    kick_stage_narrative(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/advance/narrative", methods=["POST"])
+@login_required
+def advance_narrative(project_id: str):
+    """User approved the Narrative Intelligence review — kick Creative Brief."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET status=%s, stage=%s, error=NULL, updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='narrative_review' "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+
+    cp = dict(project.get("context_packet") or {})
+    pending = cp.get("_pending_overrides") or {}
+    overrides = {
+        "speaker_name": pending.get("speaker_name"),
+        "location":     pending.get("location"),
+        "era":          pending.get("era"),
+        "style_preset": pending.get("style_preset") or "cinematic_natural",
+    }
     kick_stage_brief(project_id, overrides)
     return redirect(url_for("project_detail", project_id=project_id))
 
