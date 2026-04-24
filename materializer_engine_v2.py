@@ -430,6 +430,22 @@ async def run_materializer(
             "Materializer v2: LLM call failed — falling back to DB synthesis for project=%s",
             project_id,
         )
+        # Ensure DB tables are populated before synthesizing the fallback packet.
+        # (Rerun may have cleared characters/locations/motifs rows, so we must
+        # re-run the legacy materializers here in the failure branch so that
+        # _build_fallback_from_db finds real rows rather than an empty DB.)
+        try:
+            from character_materializer import materialize_characters
+            from location_materializer import materialize_locations
+            from motif_materializer import materialize_motifs
+            materialize_characters(project_id, context_packet, vocal_gender=vocal_gender)
+            materialize_locations(project_id, context_packet)
+            materialize_motifs(project_id, context_packet)
+        except Exception:
+            logger.exception(
+                "Materializer v2: legacy materializers failed in fallback branch (non-fatal) for project=%s",
+                project_id,
+            )
         mat_packet = _build_fallback_from_db(project_id, context_packet)
 
     # ── Write to brain ────────────────────────────────────────────────────

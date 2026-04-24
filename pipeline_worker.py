@@ -998,46 +998,54 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"), None)
     primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
 
-    # Build base lookup from DB rows (authoritative for integer IDs).
-    char_lookup: list[tuple[str, int]] = [(c["name"].lower(), c["id"]) for c in chars]
-    loc_lookup:  list[tuple[str, int]] = [(l["name"].lower(), l["id"]) for l in locs]
+    # DB rows always queried (authoritative source for integer FK IDs).
+    db_char_lookup: list[tuple[str, int]] = [(c["name"].lower(), c["id"]) for c in chars]
+    db_loc_lookup:  list[tuple[str, int]] = [(l["name"].lower(), l["id"]) for l in locs]
 
-    # ── Brain-first augmentation: extend lookup with materializer_packet aliases ──
-    # If brain.materializer_packet is populated (set by run_materializer before
-    # this function is called), each brain character's identity descriptors
-    # (character_id slug, archetype) are added to char_lookup paired with the
-    # primary speaker DB ID.  Likewise for location aliases → world_dna DB ID.
-    # This is intentionally conservative: we do not attempt index-based pairing
-    # of brain entries to arbitrary DB rows, because entity order is not
-    # guaranteed to match.  All brain character aliases → primary speaker (the
-    # single authoritative character FK for most projects); all brain location
-    # aliases → primary world_dna location.  DB name entries remain the
-    # fallback for any shot text that does not match a brain alias.
-    if primary_char_id is not None or primary_loc_id is not None:
-        try:
-            with _db() as conn:
-                _link_brain = ProjectBrain.load(project_id, conn)
-            _mat = _link_brain.read("materializer_packet") or {}
+    # ── Brain-first name resolution ───────────────────────────────────────
+    # Load materializer_packet from brain (written by run_materializer just
+    # before this function is called). Brain aliases take precedence: they are
+    # placed at the START of char_lookup/loc_lookup so _best_char/_best_loc
+    # match them before falling through to plain DB names.
+    #
+    # FK safety: all brain character aliases → primary speaker DB ID; all
+    # brain location aliases → primary world_dna DB ID.  No index-based
+    # pairing — entity order between brain and DB is not guaranteed.
+    # If brain.materializer_packet is empty or missing, we fall back to DB-only.
+    char_lookup: list[tuple[str, int]] = []
+    loc_lookup:  list[tuple[str, int]] = []
+    try:
+        with _db() as conn:
+            _link_brain = ProjectBrain.load(project_id, conn)
+        _mat = _link_brain.read("materializer_packet") or {}
 
-            if primary_char_id is not None:
-                for _brain_ch in (_mat.get("character_bible") or {}).get("characters") or []:
-                    if not isinstance(_brain_ch, dict):
-                        continue
-                    for _field in ("character_id", "archetype"):
-                        _alias = str(_brain_ch.get(_field) or "").strip().lower()
-                        if _alias and len(_alias) > 2 and (_alias, primary_char_id) not in char_lookup:
-                            char_lookup.append((_alias, primary_char_id))
+        if primary_char_id is not None:
+            for _brain_ch in (_mat.get("character_bible") or {}).get("characters") or []:
+                if not isinstance(_brain_ch, dict):
+                    continue
+                for _field in ("character_id", "archetype"):
+                    _alias = str(_brain_ch.get(_field) or "").strip().lower()
+                    if _alias and len(_alias) > 2 and (_alias, primary_char_id) not in char_lookup:
+                        char_lookup.append((_alias, primary_char_id))
 
-            if primary_loc_id is not None:
-                for _brain_loc in (_mat.get("location_bible") or {}).get("locations") or []:
-                    if not isinstance(_brain_loc, dict):
-                        continue
-                    for _field in ("location_id", "world"):
-                        _alias = str(_brain_loc.get(_field) or "").strip().lower()
-                        if _alias and len(_alias) > 2 and (_alias, primary_loc_id) not in loc_lookup:
-                            loc_lookup.append((_alias, primary_loc_id))
-        except Exception:
-            logger.debug("_link_shots_to_entities: brain augmentation failed (non-fatal); using DB names only")
+        if primary_loc_id is not None:
+            for _brain_loc in (_mat.get("location_bible") or {}).get("locations") or []:
+                if not isinstance(_brain_loc, dict):
+                    continue
+                for _field in ("location_id", "world"):
+                    _alias = str(_brain_loc.get(_field) or "").strip().lower()
+                    if _alias and len(_alias) > 2 and (_alias, primary_loc_id) not in loc_lookup:
+                        loc_lookup.append((_alias, primary_loc_id))
+    except Exception:
+        logger.debug("_link_shots_to_entities: brain load failed (non-fatal); using DB names only")
+
+    # Append DB names after brain aliases so they serve as fallback.
+    for entry in db_char_lookup:
+        if entry not in char_lookup:
+            char_lookup.append(entry)
+    for entry in db_loc_lookup:
+        if entry not in loc_lookup:
+            loc_lookup.append(entry)
 
     def _best_char(shot_text: str) -> Optional[int]:
         for name, cid in char_lookup:
