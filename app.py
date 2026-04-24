@@ -82,6 +82,7 @@ from auth import (
     update_user_plan,
     verify_password,
 )
+from project_brain import ProjectBrain
 from disposable_domains import is_disposable_email
 from email_utils import send_password_reset_email, send_verification_email
 import r2_storage
@@ -143,15 +144,16 @@ def _recover_stalled_jobs():
     log = logging.getLogger("startup_recovery")
 
     stage_kickers = {
-        "running_0": kick_stage_0,
-        "running_style": kick_stage_style,
-        "running_1": kick_stage_1,
-        "running_brief": kick_stage_brief,
-        "running_2": kick_stage_2,
-        "running_refs": kick_stage_refs,
-        "running_3": kick_stage_3,
-        "running_4": kick_stage_4,
-        "running_5": kick_stage_5,
+        "running_0":         kick_stage_0,
+        "running_1":         kick_stage_1,
+        "running_narrative": kick_stage_narrative,
+        "running_style":     kick_stage_style,
+        "running_brief":     kick_stage_brief,
+        "running_2":         kick_stage_2,
+        "running_refs":      kick_stage_refs,
+        "running_3":         kick_stage_3,
+        "running_4":         kick_stage_4,
+        "running_5":         kick_stage_5,
     }
 
     try:
@@ -1533,6 +1535,10 @@ def advance_stage_style(project_id: str):
     from style_profile_registry import StyleProfileRegistry
     style_profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
 
+    # ── Persist the chosen style: legacy column + Project Brain (Stage 4) ──
+    # The brain.style_packet namespace is owned by Stage 4 — writing the
+    # user-approved profile here is the canonical "Style Engine output".
+    # Downstream stages (Brief, Storyboard, References) read from brain.
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE projects SET style_profile=%s, status=%s, stage=%s, "
@@ -1540,6 +1546,23 @@ def advance_stage_style(project_id: str):
             (Json(style_profile), "queued", "queued", project_id),
         )
         conn.commit()
+
+    try:
+        with db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("style_packet", style_profile)
+            brain.save(conn)
+            conn.commit()
+        app.logger.info(
+            "ProjectBrain: wrote style_packet for project=%s (preset=%s)",
+            project_id, style_profile.get("preset"),
+        )
+    except Exception:
+        # Brain write must not block the user's pick — log and continue.
+        app.logger.exception(
+            "advance_stage_style: failed to write style_packet to brain for project=%s",
+            project_id,
+        )
 
     # Carry forward user-confirmed context edits (speaker name, location, era)
     # so they survive into Brief regardless of repick vs first-time pick.
@@ -2048,7 +2071,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
         abort(404)
 
     RERUNNABLE = [
-        "audio_review", "style_review", "context_review",
+        "audio_review", "context_review", "narrative_review", "style_review",
         "creative_brief_review", "storyboard_review", "references_review",
         "stills_control", "videos_control", "post_production",
     ]
@@ -2185,17 +2208,43 @@ def rerun_from_stage(project_id: str, target_stage: str):
 
         elif target_stage == "context_review":
             # Context is now stage 2. Rerun clears context_packet + every
-            # downstream artefact: narrative_packet (lives in cp/brain),
-            # style_suggestions, style_profile, creative brief, storyboard,
-            # references, stills and videos.
+            # downstream artefact: narrative_packet, style_suggestions,
+            # style_profile, creative brief, storyboard, references, stills,
+            # videos and post-production.
             cur.execute(
-                "UPDATE projects SET context_packet=NULL,"
+                "UPDATE projects SET context_packet=NULL, narrative_packet=NULL,"
                 " style_suggestions=NULL, style_profile=NULL,"
                 " styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
                 (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "narrative_review":
+            # Narrative is now stage 3. Rerun clears narrative_packet + every
+            # downstream artefact (style suggestions/profile, brief, storyboard,
+            # refs, stills, videos, post-production). Context stays intact.
+            cp.pop("creative_brief", None)
+            cur.execute(
+                "UPDATE projects SET context_packet=%s, narrative_packet=NULL,"
+                " style_suggestions=NULL, style_profile=NULL,"
+                " styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (Json(cp), project_id),
             )
             cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
             cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))

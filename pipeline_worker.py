@@ -352,6 +352,12 @@ def ensure_schema() -> None:
         cur.execute(
             "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_brain JSONB;"
         )
+        # Narrative Engine output — also kept as a top-level JSONB column for
+        # legacy reads (Style fallback, etc.). Lazily added by _stage_narrative_job
+        # historically; bootstrap here so any earlier-running stage can SELECT it.
+        cur.execute(
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS narrative_packet JSONB;"
+        )
 
         # Outpaint / wide-format expansion columns for shot stills
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_url TEXT;")
@@ -1730,12 +1736,22 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
 
 
 def _stage_style_job(project_id: str) -> None:
-    """Style Profile Engine — suggest 2-3 style profiles, park at style_review."""
+    """Style Profile Engine (Stage 4) — suggest 2-3 style profiles, park at style_review.
+
+    Reads from Project Brain (per master spec):
+      • context_packet  (Stage 2) — locked meaning, world, speaker, motivation
+      • narrative_packet (Stage 3) — storytelling mode, perspective, motifs
+    These are passed to the engine so suggestions are grounded in the locked
+    story decisions, not inferred from lyrics + audio alone.
+
+    Falls back to legacy text/genre/audio-only mode for pre-brain projects.
+    """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set in Replit secrets.")
 
+        # ── Read raw row + brain in parallel ─────────────────────────────────
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT text, genre, audio_data FROM projects WHERE id=%s",
@@ -1749,6 +1765,44 @@ def _stage_style_job(project_id: str) -> None:
         genre = row["genre"] or "song"
         audio_data_blob = dict(row.get("audio_data") or {})
         audio_data_blob.pop("_pre_analysis", None)
+
+        # ── Brain reads (defensive — empty dicts if pre-brain project) ──────
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+            context_packet   = brain.read("context_packet") or {}
+            narrative_packet = brain.read("narrative_packet") or {}
+        except Exception:
+            logger.exception(
+                "Stage style: failed to load ProjectBrain for project=%s — "
+                "falling back to lyrics+audio only.", project_id
+            )
+            context_packet, narrative_packet = {}, {}
+
+        # Legacy fallback: if brain has no context_packet, try the JSONB column.
+        if not context_packet:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT context_packet, narrative_packet FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                _legacy = cur.fetchone()
+            if _legacy:
+                context_packet   = dict(_legacy.get("context_packet") or {})
+                if not narrative_packet:
+                    narrative_packet = dict(_legacy.get("narrative_packet") or {})
+
+        if context_packet:
+            logger.info(
+                "Stage style: using context_packet (%d keys) + narrative_packet "
+                "(%d keys) from brain for project=%s",
+                len(context_packet), len(narrative_packet), project_id,
+            )
+        else:
+            logger.info(
+                "Stage style: no upstream packets available for project=%s — "
+                "running in lyrics+audio fallback mode.", project_id
+            )
 
         # Surface the user-confirmed (or auto-detected) singer gender so the
         # style engine can tailor its suggestions to female-led / male-led /
@@ -1774,6 +1828,8 @@ def _stage_style_job(project_id: str) -> None:
             text=text,
             genre=genre,
             audio_analytics=audio_data_blob,
+            context_packet=context_packet,
+            narrative_packet=narrative_packet,
         ))
 
         with _db() as conn, conn.cursor() as cur:

@@ -44,18 +44,33 @@ class StyleProfileEngine:
         genre: str,
         audio_analytics: Optional[Dict[str, Any]] = None,
         culture_pack_id: Optional[str] = None,
+        context_packet: Optional[Dict[str, Any]] = None,
+        narrative_packet: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Suggest 2-3 style profiles for this content.
+
+        Reads from Project Brain (per master spec — Style is Stage 4):
+          • context_packet  (Stage 2) — meaning, world, speaker, motivation
+          • narrative_packet (Stage 3) — storytelling mode, perspective, arc, motifs
+
+        These ground the visual recommendations in the locked story decisions
+        instead of guessing from lyrics alone. They are optional — if not
+        provided the engine falls back to lyrics + audio only (legacy mode).
 
         Returns a list of style_profile dicts, each fully resolved from the registry.
         Each dict has keys: production, cinematic, preset, justification.
         """
         audio_analytics = audio_analytics or {}
         culture_pack_id = culture_pack_id or "none"
+        context_packet = context_packet or {}
+        narrative_packet = narrative_packet or {}
 
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(text, genre, audio_analytics, culture_pack_id)
+        user_prompt = self._build_user_prompt(
+            text, genre, audio_analytics, culture_pack_id,
+            context_packet, narrative_packet,
+        )
 
         try:
             raw = await self._call_model(system_prompt, user_prompt)
@@ -121,6 +136,8 @@ Rules:
         genre: str,
         audio_analytics: Dict[str, Any],
         culture_pack_id: str,
+        context_packet: Optional[Dict[str, Any]] = None,
+        narrative_packet: Optional[Dict[str, Any]] = None,
     ) -> str:
         bpm = audio_analytics.get("bpm") or "unknown"
         energy = audio_analytics.get("avg_energy") or audio_analytics.get("energy") or "unknown"
@@ -137,6 +154,9 @@ Rules:
 
         lyrics_excerpt = text[:800].strip() if text else "(no lyrics provided)"
 
+        context_block = self._build_context_block(context_packet or {})
+        narrative_block = self._build_narrative_block(narrative_packet or {})
+
         return f"""
 SONG / CONTENT:
 Genre: {genre}
@@ -146,12 +166,97 @@ BPM: {bpm}
 Energy profile: {energy_profile}
 Avg energy: {energy}
 Brightness: {brightness}{gender_line}
-
+{context_block}{narrative_block}
 LYRICS (excerpt):
 {lyrics_excerpt}
 
 Suggest 2-3 style profile combinations that would make a great music video for this content.
+When STORY CONTEXT and NARRATIVE INTELLIGENCE are present above, your suggestions
+MUST honour them — choose visual styles that serve the locked meaning, world,
+speaker, and storytelling strategy. Reference these decisions in your justifications.
 """.strip()
+
+    def _build_context_block(self, ctx: Dict[str, Any]) -> str:
+        """Compact STORY CONTEXT block from the locked context_packet (Stage 2).
+
+        Returns "" if the packet is empty so legacy / pre-brain projects keep
+        working unchanged.
+        """
+        if not isinstance(ctx, dict) or not ctx:
+            return ""
+
+        lines: List[str] = []
+
+        meaning = ctx.get("meaning") or ctx.get("theme")
+        if isinstance(meaning, dict):
+            meaning = meaning.get("summary") or meaning.get("statement") or ""
+        if meaning:
+            lines.append(f"  Meaning / theme:    {str(meaning)[:240].strip()}")
+
+        speaker = ctx.get("speaker") if isinstance(ctx.get("speaker"), dict) else {}
+        if speaker:
+            sp_bits = []
+            for key in ("name", "identity", "gender", "age", "archetype"):
+                val = speaker.get(key)
+                if val:
+                    sp_bits.append(f"{key}={val}")
+            if sp_bits:
+                lines.append(f"  Speaker:            {', '.join(sp_bits)}")
+
+        loc = ctx.get("location_dna") or ctx.get("location")
+        if isinstance(loc, dict):
+            loc = loc.get("summary") or loc.get("name") or ""
+        if loc:
+            lines.append(f"  Location DNA:       {str(loc)[:160].strip()}")
+
+        era = ctx.get("era")
+        if era:
+            lines.append(f"  Era:                {str(era)[:80].strip()}")
+
+        world = ctx.get("world_assumptions") if isinstance(ctx.get("world_assumptions"), dict) else {}
+        if world:
+            world_bits = []
+            for key in ("geography", "season", "characteristic_time",
+                        "social_context", "architecture_style",
+                        "characteristic_setting"):
+                val = world.get(key)
+                if val:
+                    world_bits.append(f"{key}={val}")
+            if world_bits:
+                lines.append(f"  World:              {', '.join(world_bits)}")
+
+        motivation = ctx.get("motivation") if isinstance(ctx.get("motivation"), dict) else {}
+        if motivation:
+            mot_bits = []
+            for key in ("inciting_cause", "underlying_desire", "stakes", "obstacle"):
+                val = motivation.get(key)
+                if val:
+                    mot_bits.append(f"{key}: {str(val)[:80]}")
+            if mot_bits:
+                lines.append(f"  Motivation:         {' | '.join(mot_bits)}")
+
+        if not lines:
+            return ""
+
+        return "\nSTORY CONTEXT (locked by Stage 2 — visuals must serve this meaning):\n" + "\n".join(lines) + "\n"
+
+    def _build_narrative_block(self, narr: Dict[str, Any]) -> str:
+        """Compact NARRATIVE INTELLIGENCE block from narrative_packet (Stage 3).
+
+        Reuses narrative_engine.format_for_prompt for a stable, shared rendering.
+        Returns "" if the packet is empty.
+        """
+        if not isinstance(narr, dict) or not narr:
+            return ""
+        try:
+            from narrative_engine import format_for_prompt
+            block = format_for_prompt(narr)
+            if not block:
+                return ""
+            return "\n" + block + "\n"
+        except Exception:
+            logger.exception("StyleProfileEngine: failed to format narrative_packet")
+            return ""
 
     async def _call_model(self, system_prompt: str, user_prompt: str) -> str:
         response = await self.client.chat.completions.create(
