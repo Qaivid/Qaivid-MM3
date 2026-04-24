@@ -2218,17 +2218,24 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         audio_data_blob.pop("_pre_analysis", None)
         timed_lyrics: list[dict] = list(row.get("lyrics_timed") or [])
 
+        # Resolve each legacy packet independently so per-namespace fallback
+        # never depends on whether a different namespace fell back or not.
+        _legacy_context = dict(row.get("context_packet") or {})
+        _legacy_narr    = dict(row.get("narrative_packet") or {})
+        _legacy_sp      = dict(row.get("style_profile") or {})
+        _legacy_briefs  = dict(_legacy_context.get("creative_brief") or {})
+
         # Brain wins, legacy fills gaps — pre-brain projects keep working.
-        context_packet   = brain_context or dict(row.get("context_packet") or {})
+        context_packet   = brain_context or _legacy_context
         # narrative_packet read but not directly used here — orchestrator's
         # storyboard engine consumes it indirectly via context. Logged for trace.
-        _legacy_narr     = dict(row.get("narrative_packet") or {})
         narrative_packet = brain_narrative or _legacy_narr
-        _legacy_sp       = dict(row.get("style_profile") or {})
         style_profile    = brain_style or _legacy_sp or StyleProfileRegistry.default_style_profile()
-        # If brain has the locked Creative Brief (variants+chosen+used_fallback),
-        # prefer it over the legacy splice in cp["creative_brief"]. Same shape.
-        creative_brief_for_orch = brain_briefs or context_packet.get("creative_brief")
+        # Per-namespace fallback for the locked Creative Brief: prefer brain,
+        # fall back to legacy regardless of where context came from. Otherwise
+        # a brain-context + missing-brain-brief project could silently drop
+        # the chosen variant even when the legacy column has it.
+        creative_brief_for_orch = brain_briefs or _legacy_briefs or None
 
         # Apply user overrides
         if overrides.get("speaker_name"):
