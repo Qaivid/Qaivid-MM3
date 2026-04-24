@@ -2031,15 +2031,41 @@ def _stage_narrative_job(project_id: str) -> None:
 
 
 def _stage_brief_job(project_id: str, overrides: dict) -> None:
-    """Task #69 — Generate Creative Brief variants and park at creative_brief_review."""
+    """Creative Brief Engine (Stage 5) — generate treatment variants, park at creative_brief_review.
+
+    Reads from Project Brain (per master spec):
+      • context_packet   (Stage 2) — locked meaning, world, speaker, motivation
+      • narrative_packet (Stage 3) — storytelling mode, perspective, motifs
+      • style_packet     (Stage 4) — chosen production + cinematic style profile
+    These ground every variant in the locked story + visual decisions.
+
+    Falls back to legacy JSONB columns on a per-namespace basis for pre-brain
+    projects so existing rows keep working unchanged.
+    """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set in Replit secrets.")
 
+        # ── Brain reads (defensive — empty dicts if pre-brain project) ──────
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+            brain_context   = brain.read("context_packet") or {}
+            brain_narrative = brain.read("narrative_packet") or {}
+            brain_style     = brain.read("style_packet") or {}
+        except Exception:
+            logger.exception(
+                "Stage brief: failed to load ProjectBrain for project=%s — "
+                "falling back to legacy columns.", project_id
+            )
+            brain_context, brain_narrative, brain_style = {}, {}, {}
+
+        # ── Always read legacy columns (also need transcript/lyrics_timed) ──
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT context_packet, style_profile, transcript, lyrics_timed "
+                "SELECT context_packet, narrative_packet, style_profile,"
+                " transcript, text, lyrics_timed "
                 "FROM projects WHERE id=%s",
                 (project_id,),
             )
@@ -2047,7 +2073,12 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         if not row:
             raise RuntimeError("Project not found.")
 
-        context_packet = dict(row.get("context_packet") or {})
+        # Brain wins, legacy fills gaps — keeps pre-brain projects working.
+        context_packet   = brain_context   or dict(row.get("context_packet")   or {})
+        narrative_packet = brain_narrative or dict(row.get("narrative_packet") or {})
+        _legacy_sp       = dict(row.get("style_profile") or {})
+        style_profile    = brain_style or _legacy_sp or StyleProfileRegistry.default_style_profile()
+
         # Apply pending overrides (speaker_name/location/era) so the brief
         # is generated against the user-locked context, not the raw LLM output.
         if overrides.get("speaker_name"):
@@ -2059,9 +2090,6 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         if overrides.get("era"):
             context_packet["era"] = overrides["era"]
 
-        _raw_sp = dict(row.get("style_profile") or {})
-        style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
-
         # Fetch lyrics so scene locations can be derived from actual song imagery.
         # Some legacy projects populate only `text` (not `transcript`).
         lyrics_text = (
@@ -2070,6 +2098,14 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         lyrics_timed_raw = row.get("lyrics_timed")
         lyrics_timed = (
             list(lyrics_timed_raw) if isinstance(lyrics_timed_raw, list) else None
+        )
+
+        logger.info(
+            "Stage brief: brain inputs context=%s narrative=%s style=%s for project=%s",
+            "yes" if brain_context else "fallback",
+            "yes" if brain_narrative else ("fallback" if narrative_packet else "none"),
+            "yes" if brain_style else "fallback",
+            project_id,
         )
 
         _set_status(project_id, "running",
@@ -2084,6 +2120,7 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             n=3,
             lyrics=lyrics_text,
             lyrics_timed=lyrics_timed,
+            narrative_packet=narrative_packet,
         ))
 
         creative_brief = dict(context_packet.get("creative_brief") or {})
@@ -2100,6 +2137,27 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                 (Json(context_packet), project_id),
             )
             conn.commit()
+
+        # ── Write creative_briefs to brain (Stage 5 namespace) ──────────────
+        # The chosen variant is added later by advance_brief.
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+                brain.write("creative_briefs", {
+                    "variants":      variants,
+                    "used_fallback": used_fallback,
+                })
+                brain.save(conn)
+                conn.commit()
+            logger.info(
+                "ProjectBrain: wrote creative_briefs for project=%s (%d variants, fallback=%s)",
+                project_id, len(variants), used_fallback,
+            )
+        except Exception:
+            logger.exception(
+                "Stage brief: failed to write creative_briefs to brain for project=%s",
+                project_id,
+            )
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "brief",

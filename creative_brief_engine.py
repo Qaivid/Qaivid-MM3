@@ -423,6 +423,7 @@ def _user_prompt(
     entity_names: List[str],
     lyrics: Optional[str] = None,
     lyrics_timed: Optional[List[Dict[str, Any]]] = None,
+    narrative_packet: Optional[Dict[str, Any]] = None,
 ) -> str:
     spk = context_packet.get("speaker") or {}
     motivation = context_packet.get("motivation") or {}
@@ -489,9 +490,30 @@ def _user_prompt(
                 + scene_count_instruction
             )
 
+    # ── Narrative Intelligence (Stage 3) ──────────────────────────────────
+    # When narrative_packet is provided (post-brain pipeline), inject the
+    # locked narrative strategy so every variant honours storytelling mode,
+    # perspective, motion philosophy, etc. — not just the raw context+style.
+    narrative_block = ""
+    if isinstance(narrative_packet, dict) and narrative_packet:
+        try:
+            from narrative_engine import format_for_prompt
+            _ni_block = format_for_prompt(narrative_packet)
+            if _ni_block:
+                narrative_block = (
+                    "\n\n" + _ni_block
+                    + "\n\nEvery variant below MUST honour the NARRATIVE INTELLIGENCE "
+                    "above (storytelling mode, perspective, motion philosophy, "
+                    "expression channels). Treatments that contradict the locked "
+                    "strategy are invalid."
+                )
+        except Exception:
+            logger.exception("CreativeBriefEngine: failed to format narrative_packet")
+
     return (
         "Context for this song:\n"
         + json.dumps(payload, indent=2)
+        + narrative_block
         + lyric_block
         + "\n\nReturn JSON of the form:\n"
         + "{\n"
@@ -645,11 +667,19 @@ async def generate_variants(
     n: int = 3,
     lyrics: Optional[str] = None,
     lyrics_timed: Optional[List[Dict[str, Any]]] = None,
+    narrative_packet: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Generate `n` (clamped 2–4) distinct creative-brief variants.
 
-    lyrics and lyrics_timed are used to derive scene-specific locations from
-    the actual imagery in the song rather than generic cultural defaults.
+    Inputs (per master spec — Brief is Stage 5):
+      • context_packet   (Stage 2) — locked meaning, world, speaker, motivation
+      • narrative_packet (Stage 3) — storytelling mode, perspective, motifs
+      • style_profile    (Stage 4) — chosen production + cinematic style
+      • lyrics / lyrics_timed     — drive scene-specific locations
+
+    narrative_packet is optional for backward compatibility with pre-brain
+    projects. When provided, every variant must honour the locked narrative
+    strategy.
 
     Returns a tuple of (variants, used_fallback) where used_fallback is True
     when the LLM failed to produce enough valid variants and hardcoded defaults
@@ -663,7 +693,11 @@ async def generate_variants(
         client = AsyncOpenAI(api_key=api_key)
         cultural_grounding = _build_cultural_grounding(context_packet or {})
         user_content = (
-            _user_prompt(context_packet, sp, entity_names, lyrics, lyrics_timed)
+            _user_prompt(
+                context_packet, sp, entity_names,
+                lyrics, lyrics_timed,
+                narrative_packet=narrative_packet,
+            )
             + f"\n\nProduce exactly {n} variants."
         )
         resp = await client.chat.completions.create(

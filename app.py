@@ -1952,6 +1952,28 @@ def advance_brief(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
+    # ── Mirror the chosen variant into brain.creative_briefs (Stage 5) ─────
+    # Stage 5's brain output is the variants list + the user-locked "chosen"
+    # variant. Downstream stages (Storyboard) read brain.creative_briefs.
+    try:
+        with db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            briefs = dict(brain.read("creative_briefs") or {})
+            briefs["chosen"] = chosen_in
+            brain.write("creative_briefs", briefs)
+            brain.save(conn)
+            conn.commit()
+        app.logger.info(
+            "ProjectBrain: wrote chosen creative brief for project=%s (variant_id=%s)",
+            project_id, chosen_in.get("variant_id"),
+        )
+    except Exception:
+        # Brain write must not block the user's pick — log and continue.
+        app.logger.exception(
+            "advance_brief: failed to write chosen variant to brain for project=%s",
+            project_id,
+        )
+
     overrides = {
         "speaker_name": pending.get("speaker_name"),
         "location":     pending.get("location"),
