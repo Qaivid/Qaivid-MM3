@@ -1,0 +1,218 @@
+MATERIALIZER — FINAL SPEC (WITH PROJECT BRAIN)
+
+ROLE:
+Convert abstract scene directions into CONSISTENT visual identity anchors
+for characters and locations, without locking exact visuals.
+
+Materializer ensures:
+- continuity across scenes
+- cultural correctness
+- controlled variation
+
+It does NOT create scenes or shots.
+
+--------------------------------------------------
+
+WHAT MATERIALIZER READS FROM PROJECT BRAIN
+
+1. creative_brief_packet
+- scene list
+- subject_focus
+- character_presence
+- character_identity_hint
+- environment_type
+- key_elements (general)
+- continuity_hooks
+- motif_usage
+
+2. context_packet
+- cultural_grounding
+- must_preserve rules
+- creative_freedom rules
+
+3. narrative_packet (light use)
+- presence_strategy
+- expression_channels
+- continuity_rules
+
+4. style_packet (light influence)
+- cinematic_style
+- color_psychology
+- texture_profile
+- realism_level
+
+5. project_settings (optional)
+- variation preference
+- output constraints
+
+--------------------------------------------------
+
+WHAT MATERIALIZER MUST DO
+
+1. BUILD CHARACTER BIBLE
+
+For each primary and secondary character:
+
+- define identity_seed (for consistency across scenes)
+- define archetype (e.g. young rural woman)
+- define age range (broad, not exact)
+- define physical range (not exact features)
+- define wardrobe logic (rules, not specific outfit)
+- define grooming / styling logic
+- define emotional baseline expression
+- define behavior traits (slow, restrained, tense, etc.)
+- define variation boundaries (what can change vs must remain)
+
+IMPORTANT:
+- allow multiple visual realizations of the same character
+- but ensure recognizability across scenes
+
+--------------------------------------------------
+
+2. BUILD LOCATION BIBLE
+
+For each environment type:
+
+- define region / world (e.g. rural Punjab)
+- define architecture style
+- define structural elements (lanes, doors, courtyards, etc.)
+- define surface textures
+- define environmental density (empty / moderate / busy)
+- define color palette (range, not exact color)
+- define lighting tendencies (soft, harsh, diffused)
+- define environmental rules (what belongs / what is forbidden)
+
+IMPORTANT:
+- allow variation in layout and composition
+- maintain world consistency
+
+--------------------------------------------------
+
+3. DEFINE MOTIF ANCHORS
+
+From creative brief:
+
+- identify recurring motifs
+- define how they appear visually (general form)
+- define variation range (not exact repetition)
+
+--------------------------------------------------
+
+4. DEFINE CONTINUITY RULES
+
+- same character identity across scenes (via seed)
+- same world rules across scenes
+- consistent tone and texture
+- motif recurrence logic
+
+--------------------------------------------------
+
+5. DEFINE VARIATION BOUNDARIES
+
+- what can vary:
+  - face details
+  - clothing variations
+  - layout of environment
+  - minor objects
+
+- what must remain stable:
+  - character identity (seed)
+  - cultural authenticity
+  - emotional tone
+  - world consistency
+
+--------------------------------------------------
+
+WHAT MATERIALIZER MUST NOT DO
+
+- Do NOT define exact face details
+- Do NOT define exact outfits
+- Do NOT define exact props
+- Do NOT define scene compositions
+- Do NOT define camera or shots
+- Do NOT generate prompts
+- Do NOT collapse variation
+
+--------------------------------------------------
+
+WHAT MATERIALIZER WRITES TO PROJECT BRAIN
+
+materializer_packet:
+
+{
+  "character_bible": {
+    "characters": [
+      {
+        "character_id": "",
+        "identity_seed": "",
+        "archetype": "",
+        "age_range": "",
+        "physical_range": "",
+        "wardrobe_logic": "",
+        "styling_logic": "",
+        "emotional_baseline": "",
+        "behavior_traits": "",
+        "variation_rules": {
+          "allowed": [],
+          "restricted": []
+        }
+      }
+    ]
+  },
+
+  "location_bible": {
+    "locations": [
+      {
+        "location_id": "",
+        "world": "",
+        "architecture_style": "",
+        "structural_elements": [],
+        "textures": [],
+        "environment_density": "",
+        "color_palette": [],
+        "lighting_tendency": "",
+        "environment_rules": []
+      }
+    ]
+  },
+
+  "motif_anchors": [
+    {
+      "motif_id": "",
+      "general_form": "",
+      "variation_range": ""
+    }
+  ],
+
+  "continuity_rules": {
+    "character_consistency": true,
+    "world_consistency": true,
+    "motif_consistency": true,
+    "tone_consistency": true
+  }
+}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Materializer is correct ONLY IF:
+
+- Same character feels consistent across scenes
+- World feels unified and believable
+- Variation is allowed but controlled
+- No over-specification exists
+- Cultural grounding is preserved
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+Materializer defines identity and world rules,
+not exact visual outcomes.
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Create consistent character and world anchors that guide visuals without locking them.
