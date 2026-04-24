@@ -15,6 +15,7 @@ import io
 import logging
 import mimetypes
 import os
+import random
 import time
 import uuid
 from pathlib import Path
@@ -191,14 +192,16 @@ def _save_bytes_to_r2(img_bytes: bytes, r2_key: str) -> str:
     return r2_storage.upload_bytes(img_bytes, r2_key, content_type="image/png")
 
 CHARACTER_REF_HINT = (
-    "studio portrait, photorealistic, soft cinematic lighting, neutral background, "
-    "sharp facial detail, eye-level framing, looking toward camera, clean focus on the face, "
-    "natural skin texture, head-and-shoulders composition"
+    "photorealistic portrait, cinematic lighting, sharp facial detail, "
+    "natural skin texture, head-and-shoulders composition, "
+    "culturally authentic appearance, regionally accurate clothing and features"
 )
 
 ENV_REF_HINT = (
     "establishing shot, photorealistic, cinematic wide angle, atmospheric lighting, "
-    "no people, rich environmental detail, naturalistic color"
+    "no people, rich environmental detail, naturalistic color, "
+    "geographically and architecturally authentic, true to local culture and heritage, "
+    "accurate regional architecture and materials"
 )
 
 
@@ -335,8 +338,9 @@ def generate_character_ref(speaker: dict, location_dna: str, project_id: str) ->
     result = _run_fal(REF_MODEL, {
         "prompt": prompt,
         "image_size": "portrait_4_3",
-        "num_inference_steps": 4,
+        "num_inference_steps": 8,
         "num_images": 1,
+        "seed": random.randint(1, 2**32 - 1),
         "enable_safety_checker": False,
     })
     fal_url = _extract_image_url(result)
@@ -396,8 +400,9 @@ def generate_character_plate(character: dict, project_id: str,
     result = _run_fal(REF_MODEL, {
         "prompt": prompt[:1800],
         "image_size": "portrait_4_3",
-        "num_inference_steps": 4,
+        "num_inference_steps": 8,
         "num_images": 1,
+        "seed": random.randint(1, 2**32 - 1),
         "enable_safety_checker": False,
     })
     fal_url = _extract_image_url(result)
@@ -455,8 +460,9 @@ def generate_location_plate(location: dict, project_id: str,
     result = _run_fal(REF_MODEL, {
         "prompt": prompt[:1800],
         "image_size": "landscape_16_9",
-        "num_inference_steps": 4,
+        "num_inference_steps": 8,
         "num_images": 1,
+        "seed": random.randint(1, 2**32 - 1),
         "enable_safety_checker": False,
     })
     fal_url = _extract_image_url(result)
@@ -487,8 +493,9 @@ def generate_environment_ref(location_dna: str, motifs: list, project_id: str) -
     result = _run_fal(REF_MODEL, {
         "prompt": prompt,
         "image_size": "landscape_16_9",
-        "num_inference_steps": 4,
+        "num_inference_steps": 8,
         "num_images": 1,
+        "seed": random.randint(1, 2**32 - 1),
         "enable_safety_checker": False,
     })
     fal_url = _extract_image_url(result)

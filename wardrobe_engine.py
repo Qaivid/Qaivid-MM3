@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -488,8 +489,9 @@ def generate_look_plates(project_id: str,
                     result = _run_fal(REF_MODEL, {
                         "prompt": prompt[:1800],
                         "image_size": "portrait_4_3",
-                        "num_inference_steps": 4,
+                        "num_inference_steps": 8,
                         "num_images": 1,
+                        "seed": random.randint(1, 2**32 - 1),
                         "enable_safety_checker": False,
                     })
                 fal_url = _extract_image_url(result)
