@@ -345,6 +345,25 @@ def ensure_schema() -> None:
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS postprod_config JSONB;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS quick_video_url TEXT;")
 
+        # Outpaint / wide-format expansion columns for shot stills
+        cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_url TEXT;")
+        cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_status TEXT;")
+
+        # Credit ledger — append-only audit log of credit transactions
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS credit_ledger (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                project_id  TEXT REFERENCES projects(id) ON DELETE SET NULL,
+                credits     INTEGER NOT NULL DEFAULT 0,
+                label       TEXT NOT NULL,
+                deducted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS credit_ledger_user_idx ON credit_ledger(user_id);"
+        )
+
         conn.commit()
 
 
