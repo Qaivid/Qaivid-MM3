@@ -7,13 +7,13 @@
 
     <div class="stage-card">
         <div class="stage-header">
-            <span class="stage-badge">Stage 4 — Video Clips</span>
+            <span class="stage-badge">Stage 11 — Video Clips</span>
             <h1>{{ project.name }}</h1>
             {% set ok = videos.values()|selectattr('status','equalto','ready')|list|length %}
             {% set fail = videos.values()|selectattr('status','equalto','failed')|list|length %}
             <p class="stage-sub">
                 Video clips have been generated. Review each clip below. Retry any that failed.
-                Final assembly (Stage 5) will stitch all clips with the audio track.
+                Final assembly (Stage 13) will stitch all clips with the audio track.
                 <strong>{{ ok }}/{{ shots|length }} ready</strong>{% if fail %} · <span style="color:#ff6b6b;">{{ fail }} failed</span>{% endif %}.
             </p>
         </div>
@@ -65,7 +65,7 @@
 
         <div class="stage-actions">
             <div class="assembly-note">
-                <strong>Stage 5 — Final Cut</strong> stitches every ready clip in beat order and muxes the original audio into a single MP4.
+                <strong>Stage 13 — Final Cut</strong> stitches every ready clip in beat order and muxes the original audio into a single MP4.
                 {% if fail %}<br><span style="color:#ff6b6b;">{{ fail }} clip(s) still failed — retry them before assembling.</span>{% endif %}
             </div>
             {% if project.export_path %}
