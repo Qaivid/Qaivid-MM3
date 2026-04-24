@@ -665,13 +665,14 @@ class MetaMindContextEngineFinal:
         pre_analysis: Optional[Dict[str, Any]] = None,
         explicit_culture_pack: Optional[str] = None,
         locked_assumptions: Optional[Dict[str, Any]] = None,
+        input_packet: Optional[Dict[str, Any]] = None,
         **_ignored_downstream: Any,
     ) -> Dict[str, Any]:
-        # PIPELINE CHAIN RULE: this is Stage 2. It must not consume any
-        # parameters from downstream stages (Style is Stage 4, Storyboard is
-        # Stage 5, Brief is Stage 6, etc.). Any unexpected kwargs are
-        # absorbed (so legacy callers don't crash) but logged loudly so the
-        # chain violation is visible and gets cleaned up at the call site.
+        # PIPELINE CHAIN RULE: this is Stage 2.
+        # When input_packet is supplied it is the SOLE source of text,
+        # structure, language and type — Stage 1 output consumed directly.
+        # Any unexpected kwargs are absorbed (legacy callers don't crash)
+        # but logged loudly so the chain violation is visible.
         if _ignored_downstream:
             logger.warning(
                 "Context Engine (Stage 2) received downstream kwargs %s — "
@@ -681,18 +682,31 @@ class MetaMindContextEngineFinal:
         pre_analysis = pre_analysis or {}
         locked_assumptions = locked_assumptions or {}
 
-        parsed_input = self.parser.parse(raw_input)
-        cleaned_text = parsed_input["cleaned_text"]
-        lines = parsed_input["lines"]
-
-        if not cleaned_text.strip():
-            raise ValueError("Input is empty after parsing.")
-
-        if len(lines) <= 1 and len(cleaned_text) > 120:
-            lines = self._segment_blob_into_lines(cleaned_text)
-
-        routed = self.router.detect(cleaned_text, hinted_type=hinted_type)
-        language_info = self._detect_language(cleaned_text)
+        if input_packet:
+            # ---------------------------------------------------------------
+            # CHAIN-COMPLIANT PATH — Stage 1 output consumed directly.
+            # No re-parsing, no re-routing, no re-detecting language.
+            # ---------------------------------------------------------------
+            cleaned_text = input_packet.get("clean_text", "")
+            if not cleaned_text.strip():
+                raise ValueError("Input is empty after parsing.")
+            parsed_input  = self._parsed_input_from_packet(input_packet)
+            lines         = self._lines_from_packet(input_packet)
+            routed        = self._routed_from_packet(input_packet, cleaned_text)
+            language_info = self._language_info_from_packet(input_packet)
+        else:
+            # ---------------------------------------------------------------
+            # LEGACY PATH — raw text passed directly (no Stage 1 packet).
+            # ---------------------------------------------------------------
+            parsed_input = self.parser.parse(raw_input)
+            cleaned_text = parsed_input["cleaned_text"]
+            lines = parsed_input["lines"]
+            if not cleaned_text.strip():
+                raise ValueError("Input is empty after parsing.")
+            if len(lines) <= 1 and len(cleaned_text) > 120:
+                lines = self._segment_blob_into_lines(cleaned_text)
+            routed = self.router.detect(cleaned_text, hinted_type=hinted_type)
+            language_info = self._detect_language(cleaned_text)
 
         culture_pack_id = CulturePackRegistry.detect_pack(cleaned_text, explicit_pack=explicit_culture_pack)
         culture_pack = CulturePackRegistry.get_pack(culture_pack_id)
@@ -700,15 +714,16 @@ class MetaMindContextEngineFinal:
         genre_cfg = GenreSpecialization.get(routed["recognized_type"])
 
         hard_logic = {
-            "parsed_input": parsed_input,
-            "routing": routed,
-            "language": language_info,
+            "parsed_input":  parsed_input,
+            "routing":       routed,
+            "language":      language_info,
             "genre_directive": genre_cfg["directive"],
-            "pre_analysis": pre_analysis,
+            "pre_analysis":  pre_analysis,
             "culture_pack_id": culture_pack_id,
-            "culture_pack": culture_pack,
+            "culture_pack":  culture_pack,
             "active_metaphors": active_metaphors,
             "locked_assumptions": locked_assumptions,
+            "input_packet":  input_packet,  # None when legacy path
         }
 
         system_prompt = self._build_system_prompt(hard_logic)
@@ -724,6 +739,163 @@ class MetaMindContextEngineFinal:
         )
         self._normalize_by_genre(validated)
         return validated
+
+    # -------------------------------------------------------------------------
+    # INPUT PACKET → INTERNAL STRUCTURES  (Stage 1 → Stage 2 conversion)
+    # -------------------------------------------------------------------------
+
+    def _parsed_input_from_packet(self, pkt: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the parsed_input structure that hard_logic expects, from the
+        Stage 1 input_packet.  No text re-parsing."""
+        return {
+            "source_format": pkt.get("source_format", "plain_text"),
+            "cleaned_text":  pkt.get("clean_text", ""),
+            "lines":         [],  # populated separately via _lines_from_packet
+            "sections":      pkt.get("sections", []),
+        }
+
+    def _lines_from_packet(self, pkt: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Convert Stage 1 units → the line format Context Engine expects."""
+        sections_by_id = {s["id"]: s for s in pkt.get("sections", [])}
+        lines: List[Dict[str, Any]] = []
+        for unit in pkt.get("units", []):
+            sec = sections_by_id.get(unit.get("section_id", ""), {})
+            lines.append({
+                "line_index":      unit.get("index", len(lines) + 1),
+                "text":            unit.get("text", ""),
+                "start_time":      unit.get("start_time"),
+                "end_time":        unit.get("end_time"),
+                "section_label":   sec.get("label"),
+                "section_type":    sec.get("type"),
+                "annotation_tags": [],
+                "speaker":         unit.get("speaker"),
+                "speaker_type":    unit.get("speaker_type"),
+                "unit_type":       unit.get("unit_type"),
+                "is_inferred":     unit.get("is_inferred", False),
+            })
+        return lines
+
+    def _routed_from_packet(
+        self, pkt: Dict[str, Any], cleaned_text: str
+    ) -> Dict[str, Any]:
+        """Build the routing dict from Stage 1 data.
+        symbolic_density and abstraction_level still run on the clean text
+        (they analyse text signals, not downstream data — no chain violation)."""
+        input_type  = pkt.get("input_type", "unknown")
+        sections    = pkt.get("sections", [])
+        rep_map     = pkt.get("repetition_map", {})
+        has_rep     = bool(rep_map.get("section_repetitions")) or bool(
+            rep_map.get("unit_repetitions")
+        )
+        inferred    = [s for s in sections if s.get("is_inferred")]
+        if not sections:
+            quality = "low"
+        elif len(inferred) == 0:
+            quality = "explicit"
+        elif len(inferred) == len(sections):
+            quality = "inferred"
+        else:
+            quality = "partial"
+
+        return {
+            "recognized_type":  input_type,
+            "raw_detected_type": pkt.get("sub_type", input_type),
+            "is_mixed_input":   input_type == "mixed",
+            "structure_quality": quality,
+            "has_repetition":   has_rep,
+            "symbolic_density": self.router._infer_symbolic_density(cleaned_text),
+            "abstraction_level": self.router._infer_abstraction_level(cleaned_text),
+        }
+
+    # Language label from Input Engine → {primary, script, dialect}
+    _LANG_LABEL_MAP: Dict[str, Dict[str, str]] = {
+        "punjabi":   {"primary": "Punjabi",          "script": "Gurmukhi",         "dialect": ""},
+        "urdu":      {"primary": "Urdu",              "script": "Arabic/Shahmukhi", "dialect": ""},
+        "hindi":     {"primary": "Hindi",             "script": "Devanagari",       "dialect": ""},
+        "bengali":   {"primary": "Bengali",           "script": "Bengali",          "dialect": ""},
+        "korean":    {"primary": "Korean",            "script": "Hangul",           "dialect": ""},
+        "japanese":  {"primary": "Japanese",          "script": "CJK",              "dialect": ""},
+        "mandarin":  {"primary": "Mandarin Chinese",  "script": "CJK",              "dialect": ""},
+        "chinese":   {"primary": "Chinese",           "script": "CJK",              "dialect": ""},
+        "arabic":    {"primary": "Arabic",            "script": "Arabic",           "dialect": ""},
+        "persian":   {"primary": "Persian",           "script": "Arabic/Naskh",     "dialect": ""},
+        "turkish":   {"primary": "Turkish",           "script": "Latin",            "dialect": ""},
+        "french":    {"primary": "French",            "script": "Latin",            "dialect": ""},
+        "spanish":   {"primary": "Spanish",           "script": "Latin",            "dialect": ""},
+        "portuguese":{"primary": "Portuguese",        "script": "Latin",            "dialect": ""},
+        "german":    {"primary": "German",            "script": "Latin",            "dialect": ""},
+        "italian":   {"primary": "Italian",           "script": "Latin",            "dialect": ""},
+        "latin":     {"primary": "English/Romanized", "script": "Latin",            "dialect": ""},
+        "english":   {"primary": "English/Romanized", "script": "Latin",            "dialect": ""},
+    }
+
+    def _language_info_from_packet(self, pkt: Dict[str, Any]) -> Dict[str, str]:
+        """Convert Stage 1 languages list → {primary, script, dialect}."""
+        langs = pkt.get("languages") or []
+        primary_label = (langs[0] if langs else "").lower()
+        return self._LANG_LABEL_MAP.get(
+            primary_label,
+            {"primary": primary_label.title() or "Unknown", "script": "", "dialect": ""},
+        )
+
+    def _structure_block_from_packet(self, pkt: Dict[str, Any]) -> str:
+        """Build the STRUCTURE FROM INPUT PROCESSOR block for the user prompt."""
+        sections      = pkt.get("sections", [])
+        rep_map       = pkt.get("repetition_map", {})
+        lyr           = pkt.get("lyrical_patterns", {})
+        spk_types     = pkt.get("speaker_types", {})
+        timing        = pkt.get("timing", {})
+        uncertainties = pkt.get("uncertainties", [])
+        sub_type      = pkt.get("sub_type", "")
+
+        lines: List[str] = ["STRUCTURE FROM INPUT PROCESSOR (Stage 1):"]
+
+        if sub_type:
+            lines.append(f"- Sub-type: {sub_type}")
+
+        if sections:
+            lines.append(f"- Sections ({len(sections)} total):")
+            for s in sections:
+                inferred_tag = " [inferred]" if s.get("is_inferred") else ""
+                rep_of = f" [repeat of {s['repeat_of']}]" if s.get("repeat_of") else ""
+                trans  = f" → {s['scene_transition']}" if s.get("scene_transition") else ""
+                lines.append(
+                    f"    {s['id']} | {s['type']:10s} | {s['label']}{inferred_tag}{rep_of}{trans}"
+                    f" ({len(s.get('unit_ids', []))} lines)"
+                )
+
+        rep_ids = rep_map.get("repeated_section_ids", [])
+        if rep_ids:
+            lines.append(f"- Repeated sections: {', '.join(rep_ids)}")
+
+        if lyr.get("rhyme_repetition_detected"):
+            lines.append("- Lyrical pattern: rhyme repetition detected")
+
+        if spk_types:
+            narrators   = [n for n, t in spk_types.items() if t == "narrator"]
+            characters  = [n for n, t in spk_types.items() if t == "character"]
+            if narrators:
+                lines.append(f"- Narrator voice(s): {', '.join(narrators)}")
+            if characters:
+                lines.append(f"- Character voice(s): {', '.join(characters)}")
+
+        if timing.get("bpm"):
+            lines.append(f"- BPM: {timing['bpm']}")
+        if timing.get("duration_seconds"):
+            lines.append(f"- Duration: {timing['duration_seconds']}s")
+        if timing.get("timed_units", 0) > 0:
+            lines.append(
+                f"- Timed lines: {timing['timed_units']}/{timing['total_units']} "
+                f"({int(timing.get('coverage', 0) * 100)}% coverage)"
+            )
+
+        if uncertainties:
+            lines.append(
+                "- Input uncertainties: "
+                + "; ".join(u.get("code", "") for u in uncertainties)
+            )
+
+        return "\n".join(lines)
 
     # -------------------------------------------------------------------------
     # INPUT SPLITTING
@@ -1084,6 +1256,9 @@ Return ONLY valid JSON.
                 "Be true to the Italian cultural world."
             )
 
+        pkt = hard_logic.get("input_packet")
+        structure_block = self._structure_block_from_packet(pkt) if pkt else ""
+
         return f"""
 TEXT TO INTERPRET:
 {text}
@@ -1101,6 +1276,8 @@ HELPFUL CONTEXT:
 - Abstraction level: {hard_logic["routing"]["abstraction_level"]}
 
 {cultural_hint}
+
+{structure_block}
 
 OPTIONAL PRE-ANALYSIS:
 {json.dumps(hard_logic.get("pre_analysis", {}), ensure_ascii=False)}
