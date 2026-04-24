@@ -56,7 +56,12 @@ class RhythmicAssemblyEngine:
                 raw_snap = round(
                     round(float(lyric_ts) / beat_duration) * beat_duration, 3
                 )
-                current_timestamp = max(raw_snap, prev_shot_start)
+                # First shot always starts at 0 so a pre-lyric intro is covered.
+                # Every subsequent shot snaps to its lyric position as before.
+                if i == 0:
+                    current_timestamp = 0.0
+                else:
+                    current_timestamp = max(raw_snap, prev_shot_start)
                 any_lyric_anchor_used = True
 
             shot_intensity = self._clamp_float(
@@ -160,7 +165,11 @@ class RhythmicAssemblyEngine:
             )
             for j in range(len(timeline) - 1):
                 gap = timeline[j + 1]["start_time"] - timeline[j]["start_time"]
-                dur = int(max(int(self.min_shot_duration), min(int(self.max_shot_duration), round(gap))))
+                # Shot 0 may span a pre-lyric intro that is longer than the
+                # normal max cap — allow it to be as long as the gap so the
+                # intro is fully covered.  All other shots keep the normal cap.
+                max_cap = max(self.max_shot_duration, gap) if j == 0 else self.max_shot_duration
+                dur = int(max(int(self.min_shot_duration), min(int(max_cap), round(gap))))
                 timeline[j]["duration"] = dur
                 timeline[j]["end_time"] = round(timeline[j]["start_time"] + dur, 3)
                 timeline[j]["lyric_anchored"] = True
