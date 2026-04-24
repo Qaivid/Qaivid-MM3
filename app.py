@@ -14,6 +14,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    session,
     stream_with_context,
     url_for,
 )
@@ -38,6 +39,8 @@ from pipeline_worker import (
     kick_stage_4,
     kick_stage_5,
     kick_stage_refs,
+    kick_stage_materializer,
+    kick_stage_video_assembly,
     kick_ai_postprod,
     kick_quick_video,
     regenerate_entity_plate,
@@ -144,16 +147,18 @@ def _recover_stalled_jobs():
     log = logging.getLogger("startup_recovery")
 
     stage_kickers = {
-        "running_0":         kick_stage_0,
-        "running_1":         kick_stage_1,
-        "running_narrative": kick_stage_narrative,
-        "running_style":     kick_stage_style,
-        "running_brief":     kick_stage_brief,
-        "running_2":         kick_stage_2,
-        "running_refs":      kick_stage_refs,
-        "running_3":         kick_stage_3,
-        "running_4":         kick_stage_4,
-        "running_5":         kick_stage_5,
+        "running_0":               kick_stage_0,
+        "running_1":               kick_stage_1,
+        "running_narrative":       kick_stage_narrative,
+        "running_style":           kick_stage_style,
+        "running_brief":           kick_stage_brief,
+        "running_2":               kick_stage_2,
+        "running_materializer":    kick_stage_materializer,
+        "running_refs":            kick_stage_refs,
+        "running_3":               kick_stage_3,
+        "running_video_assembly":  kick_stage_video_assembly,
+        "running_4":               kick_stage_4,
+        "running_5":               kick_stage_5,
     }
 
     try:
@@ -526,12 +531,14 @@ STAGE_ORDER = [
     "style_review",
     "storyboard_review",
     "creative_brief_review",
+    "materializer_review",
     "references_review",
     "stills_control",
     "stills_review",
     "videos_control",
-    "post_production",
+    "video_assembly_review",
     "videos_review",
+    "post_production",
     "final_review",
 ]
 STAGE_LABELS = {
@@ -542,9 +549,11 @@ STAGE_LABELS = {
     "narrative_review": "Narrative Engine",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
+    "materializer_review": "Cast & World Bible",
     "references_review": "References",
     "stills_control": "Stills",
     "stills_review": "Stills (Legacy)",
+    "video_assembly_review": "Video Assembly",
     "videos_control": "Video Studio",
     "post_production": "Post Production",
     "videos_review": "Video Clips",
@@ -1221,6 +1230,28 @@ def project_detail(project_id: str):
         return render_template("stage_storyboard.html", project=project,
                                shot_assets=shot_assets)
 
+    if stage == "materializer_review":
+        # Read the locked Cast & World Bible from the brain so the user can
+        # inspect identity rules + world anchors before the Reference Engine
+        # generates plates from them.
+        try:
+            with db() as _mconn:
+                _mbrain = ProjectBrain.load(project_id, _mconn)
+            mat_packet = dict(_mbrain.read("materializer_packet") or {})
+        except Exception:
+            mat_packet = {}
+        characters = list((mat_packet.get("character_bible") or {}).get("characters") or [])
+        locations  = list((mat_packet.get("location_bible")  or {}).get("locations")  or [])
+        motifs     = list(mat_packet.get("motif_anchors") or [])
+        return render_template(
+            "stage_materializer.html",
+            project=project,
+            characters=characters,
+            locations=locations,
+            motifs=motifs,
+            mat_packet=mat_packet,
+        )
+
     if stage == "references_review":
         characters = _get_characters(project_id)
         locations = _get_locations(project_id)
@@ -1324,6 +1355,30 @@ def project_detail(project_id: str):
                  for a in shot_assets]
         return render_template("stage_stills.html", project=project,
                                shots=shots, refs=refs)
+
+    if stage == "video_assembly_review":
+        # Read the locked motion plan (video_sequence_packet) so the user
+        # can review per-shot camera + transitions before any clip renders.
+        try:
+            with db() as _vconn:
+                _vbrain = ProjectBrain.load(project_id, _vconn)
+            vsp = dict(_vbrain.read("video_sequence_packet") or {})
+        except Exception:
+            vsp = {}
+        plan_shots = list(vsp.get("shots") or [])
+        # Pair each plan-shot with its still URL for visual context.
+        shot_assets = _get_shot_assets(project_id)
+        still_by_idx = {a["shot_index"]: _asset_url(a.get("file_path"))
+                        for a in shot_assets}
+        for ps in plan_shots:
+            if isinstance(ps, dict):
+                ps["still_url"] = still_by_idx.get(ps.get("shot_id"))
+        return render_template(
+            "stage_video_assembly.html",
+            project=project,
+            plan_shots=plan_shots,
+            sequence_packet=vsp,
+        )
 
     if stage == "videos_control":
         return redirect(url_for("video_studio_page", project_id=project_id))
@@ -1899,13 +1954,14 @@ def update_shot_styled_visual_prompt(project_id: str, shot_index: int):
 @app.route("/project/<project_id>/advance/brief", methods=["POST"])
 @login_required
 def advance_brief(project_id: str):
-    """User approved the v2 Creative Brief — kick the Reference Engine.
+    """User approved the v2 Creative Brief — kick the Materializer (Stage 7).
 
     The brief is auto-generated by the LLM (controlled selection over the
     storyboard's valid_realizations). The user just approves the locked set
     of per-scene directions; if they want a different mix they hit Regenerate
     instead. Optional speaker / environment reference photos are uploaded
-    here and forwarded to the Reference Engine.
+    here and stashed in the brain — the Reference Engine (kicked AFTER the
+    Materializer review gate) will pick them up.
 
     Atomic gate: only transitions if currently parked at creative_brief_review.
     """
@@ -1913,8 +1969,8 @@ def advance_brief(project_id: str):
     if not project:
         abort(404)
 
-    # Optional reference uploads (moved from advance_stage_3 — under the new
-    # order, Refs is kicked from here, so the photos must be collected here).
+    # Optional reference uploads — stash to brain.pending_ref_uploads so the
+    # Reference Engine can pick them up after the Materializer review gate.
     char_ref_url: str | None = None
     env_ref_url: str | None = None
     try:
@@ -1926,7 +1982,7 @@ def advance_brief(project_id: str):
         flash(str(exc), "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
-    # Atomic gate: only kick refs if project is parked at creative_brief_review.
+    # Atomic gate: only kick materializer if parked at creative_brief_review.
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE projects SET status=%s, stage=%s, error=NULL, "
@@ -1940,7 +1996,7 @@ def advance_brief(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
-    # ── Mark brief.approved=True in brain.creative_briefs (Stage 6) ─────
+    # ── Mark brief.approved=True in brain ──────────────────────────────
     try:
         with db() as conn:
             brain = ProjectBrain.load(project_id, conn)
@@ -1957,6 +2013,64 @@ def advance_brief(project_id: str):
         # Brain write must not block the user advancing — log and continue.
         app.logger.exception(
             "advance_brief: failed to mark brief approved in brain for project=%s",
+            project_id,
+        )
+
+    # Stash any uploaded refs in the user session so the Materializer review
+    # gate can forward them to the Reference Engine after approval. Session is
+    # safe here because both /advance/brief and /advance/materializer run in
+    # the same user's request context.
+    if char_ref_url or env_ref_url:
+        pending = dict(session.get("pending_ref_uploads") or {})
+        pending[project_id] = {
+            "character_ref_url": char_ref_url,
+            "environment_ref_url": env_ref_url,
+        }
+        session["pending_ref_uploads"] = pending
+
+    kick_stage_materializer(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/advance/materializer", methods=["POST"])
+@login_required
+def advance_stage_materializer(project_id: str):
+    """User approved the Cast & World Bible — kick the Reference Engine.
+
+    Atomic gate: only transitions if currently parked at materializer_review.
+    Reads any pending reference uploads stashed at advance_brief and forwards
+    them to the Reference Engine job.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET status=%s, stage=%s, error=NULL, "
+            "       updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='materializer_review' "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+
+    # Read any stashed reference uploads from session and forward to refs job.
+    char_ref_url: str | None = None
+    env_ref_url: str | None = None
+    try:
+        pending = dict(session.get("pending_ref_uploads") or {})
+        uploads = pending.pop(project_id, None) or {}
+        char_ref_url = uploads.get("character_ref_url") or None
+        env_ref_url = uploads.get("environment_ref_url") or None
+        # Clear after consumption so a later rerun doesn't re-apply them.
+        session["pending_ref_uploads"] = pending
+    except Exception:
+        app.logger.exception(
+            "advance_stage_materializer: failed to read pending_ref_uploads for project=%s",
             project_id,
         )
 
@@ -2071,8 +2185,10 @@ def rerun_from_stage(project_id: str, target_stage: str):
 
     RERUNNABLE = [
         "audio_review", "context_review", "narrative_review", "style_review",
-        "creative_brief_review", "storyboard_review", "references_review",
-        "stills_control", "videos_control", "post_production",
+        "creative_brief_review", "storyboard_review",
+        "materializer_review", "references_review",
+        "stills_control", "video_assembly_review",
+        "videos_control", "post_production",
     ]
     if target_stage not in RERUNNABLE:
         flash("Invalid stage selected for rerun.", "error")
@@ -2373,6 +2489,23 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 (project_id,)
             )
 
+        elif target_stage == "materializer_review":
+            # Rerun the Materializer (Stage 7) — clears bible-derived state +
+            # everything downstream (refs, stills, videos, postprod). The
+            # creative_briefs / styled_timeline / context / narrative are kept
+            # intact since the materializer reads from them.
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage='queued', status='queued',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            # Materializer DB rows (chars/locs/motifs) were already collected
+            # + deleted above when REDO_CLEARS_MATERIALIZER applied.
+
         elif target_stage == "references_review":
             cur.execute(
                 "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
@@ -2412,6 +2545,17 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 " postprod_config=NULL, stage=%s, status='awaiting_review',"
                 " error=NULL, updated_at=NOW() WHERE id=%s",
                 (target_stage, project_id),
+            )
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+
+        elif target_stage == "video_assembly_review":
+            # Rerun the Video Assembly stage — invalidates the motion plan
+            # and any rendered video clips. Stills + refs stay intact.
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage='queued', status='queued',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (project_id,),
             )
             cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
 
@@ -2484,11 +2628,17 @@ def rerun_from_stage(project_id: str, target_stage: str):
         }
         kick_stage_2(project_id, project.get("name") or "Qaivid_Project", overrides)
         flash(f"Storyboard engine is re-running. You'll land on {label} when ready.", "info")
+    elif target_stage == "materializer_review":
+        kick_stage_materializer(project_id)
+        flash(f"Re-running the Cast & World Bible. You'll land on {label} when ready.", "info")
     elif target_stage == "references_review":
         kick_stage_refs(project_id)
         flash(f"Re-generating reference plates. You'll land on {label} when ready.", "info")
     elif target_stage == "stills_control":
         flash(f"Pipeline reset to {label}. Trigger still generation for each shot when ready.", "info")
+    elif target_stage == "video_assembly_review":
+        kick_stage_video_assembly(project_id)
+        flash(f"Re-planning video motion. You'll land on {label} when ready.", "info")
     elif target_stage == "videos_control":
         flash(f"Pipeline reset to {label}. Re-run video generation when ready.", "info")
     elif target_stage == "post_production":
@@ -2690,10 +2840,58 @@ def references_approve(project_id: str):
 @app.route("/project/<project_id>/advance/4", methods=["POST"])
 @login_required
 def advance_stage_4(project_id: str):
-    """User approved the stills — kick Video generation (Stage 4)."""
+    """User approved the stills — kick Video Assembly (Stage 10).
+
+    Builds the per-shot motion plan and parks at video_assembly_review so
+    the user can confirm camera/transitions before any clips are rendered.
+    Atomic gate: only transitions if currently parked at videos_control or
+    stills_review (legacy auto-pass).
+    """
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET status=%s, stage=%s, error=NULL, "
+            "       updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage IN ('videos_control', 'stills_review') "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+
+    kick_stage_video_assembly(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/advance/video_assembly", methods=["POST"])
+@login_required
+def advance_stage_video_assembly(project_id: str):
+    """User approved the motion plan — kick Video Rendering (Stage 11).
+
+    Atomic gate: only transitions if currently parked at video_assembly_review.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET status=%s, stage=%s, error=NULL, "
+            "       updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='video_assembly_review' "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+
     kick_stage_4(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 

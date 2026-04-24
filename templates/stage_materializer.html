@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% set active_stage = 'materializer_review' %}
+{% block title %}{{ project.name }} — Cast & World Bible · Qaivid{% endblock %}
+{% block content %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 7 — Cast &amp; World Bible</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">
+                The Materializer has translated your storyboard + creative brief into
+                <strong>identity rules</strong> for each character and <strong>world anchors</strong> for each
+                location. These define what stays consistent across every shot — the Reference Engine and the
+                Stills/Video stages will all generate against this bible.
+                <strong>{{ characters|length }} character(s) · {{ locations|length }} location(s){% if motifs %} · {{ motifs|length }} motif(s){% endif %}</strong>.
+            </p>
+        </div>
+
+        {% if not characters and not locations %}
+        <div class="muted" style="padding:20px;border:1px dashed #444;border-radius:8px;">
+            No characters or locations were extracted for this project. Continue to the Reference Engine —
+            the legacy fallback path will be used.
+        </div>
+        {% endif %}
+
+        {% if characters %}
+        <h2 style="margin-top:24px;">Characters</h2>
+        <div class="bible-grid">
+            {% for c in characters %}
+            <div class="bible-card">
+                <div class="bible-card-head">
+                    <span class="bible-card-id">{{ c.character_id or 'character' }}</span>
+                    {% if c.archetype %}<span class="bible-card-tag">{{ c.archetype }}</span>{% endif %}
+                    {% if c.age_range %}<span class="bible-card-tag">{{ c.age_range }}</span>{% endif %}
+                </div>
+                {% if c.identity_seed %}
+                <p class="bible-card-seed"><strong>Identity:</strong> {{ c.identity_seed }}</p>
+                {% endif %}
+                <dl class="bible-dl">
+                    {% if c.physical_range %}<dt>Physical range</dt><dd>{{ c.physical_range }}</dd>{% endif %}
+                    {% if c.wardrobe_logic %}<dt>Wardrobe logic</dt><dd>{{ c.wardrobe_logic }}</dd>{% endif %}
+                    {% if c.styling_logic %}<dt>Styling</dt><dd>{{ c.styling_logic }}</dd>{% endif %}
+                    {% if c.emotional_baseline %}<dt>Emotional baseline</dt><dd>{{ c.emotional_baseline }}</dd>{% endif %}
+                    {% if c.behavior_traits %}<dt>Behavior</dt><dd>{{ c.behavior_traits }}</dd>{% endif %}
+                </dl>
+                {% if c.variation_rules %}
+                <div class="bible-rules">
+                    {% if c.variation_rules.allowed %}
+                    <div class="bible-rule-block">
+                        <span class="bible-rule-label bible-rule-allow">Allowed to vary</span>
+                        <ul>{% for v in c.variation_rules.allowed %}<li>{{ v }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                    {% if c.variation_rules.restricted %}
+                    <div class="bible-rule-block">
+                        <span class="bible-rule-label bible-rule-restrict">Must stay constant</span>
+                        <ul>{% for v in c.variation_rules.restricted %}<li>{{ v }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if locations %}
+        <h2 style="margin-top:24px;">Locations</h2>
+        <div class="bible-grid">
+            {% for l in locations %}
+            <div class="bible-card">
+                <div class="bible-card-head">
+                    <span class="bible-card-id">{{ l.location_id or 'location' }}</span>
+                    {% if l.environment_density %}<span class="bible-card-tag">{{ l.environment_density }}</span>{% endif %}
+                </div>
+                {% if l.world %}
+                <p class="bible-card-seed"><strong>World:</strong> {{ l.world }}</p>
+                {% endif %}
+                <dl class="bible-dl">
+                    {% if l.architecture_style %}<dt>Architecture</dt><dd>{{ l.architecture_style }}</dd>{% endif %}
+                    {% if l.lighting_tendency %}<dt>Lighting</dt><dd>{{ l.lighting_tendency }}</dd>{% endif %}
+                    {% if l.structural_elements %}<dt>Structural</dt><dd>{{ l.structural_elements|join(', ') }}</dd>{% endif %}
+                    {% if l.textures %}<dt>Textures</dt><dd>{{ l.textures|join(', ') }}</dd>{% endif %}
+                    {% if l.color_palette %}<dt>Palette</dt><dd>{{ l.color_palette|join(', ') }}</dd>{% endif %}
+                </dl>
+                {% if l.environment_rules %}
+                <div class="bible-rules">
+                    <div class="bible-rule-block">
+                        <span class="bible-rule-label">Environment rules</span>
+                        <ul>{% for v in l.environment_rules %}<li>{{ v }}</li>{% endfor %}</ul>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if motifs %}
+        <h2 style="margin-top:24px;">Motif Anchors</h2>
+        <div class="bible-grid">
+            {% for m in motifs %}
+            <div class="bible-card">
+                <div class="bible-card-head">
+                    <span class="bible-card-id">{{ m.motif_id or 'motif' }}</span>
+                </div>
+                <dl class="bible-dl">
+                    {% if m.general_form %}<dt>General form</dt><dd>{{ m.general_form }}</dd>{% endif %}
+                    {% if m.variation_range %}<dt>Variation range</dt><dd>{{ m.variation_range }}</dd>{% endif %}
+                </dl>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="stage-actions" style="margin-top:32px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+            {% if not project._is_review_only %}
+            <form method="post" action="{{ url_for('advance_stage_materializer', project_id=project.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-primary">
+                    Approve &amp; Generate References →
+                </button>
+            </form>
+            <span class="muted" style="font-size:12px;">
+                Once you continue, the Reference Engine will render one identity plate per character and one
+                environment plate per location.
+            </span>
+            {% endif %}
+            {% include '_redo_panel.html' %}
+        </div>
+    </div>
+</div>
+
+<style>
+.bible-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+.bible-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    padding: 16px;
+}
+.bible-card-head {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    margin-bottom: 10px;
+}
+.bible-card-id {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: #c9b8ff;
+    background: #2b1f55;
+    padding: 2px 8px; border-radius: 999px;
+}
+.bible-card-tag {
+    font-size: 11px;
+    color: #aaa;
+    background: #232323;
+    padding: 2px 8px; border-radius: 999px;
+}
+.bible-card-seed {
+    font-size: 13px; color: #ddd;
+    margin: 6px 0 12px;
+    line-height: 1.45;
+}
+.bible-dl { margin: 0 0 8px 0; font-size: 12.5px; }
+.bible-dl dt { color: #888; font-weight: 600; margin-top: 6px; }
+.bible-dl dd { margin: 2px 0 0 0; color: #ddd; line-height: 1.45; }
+.bible-rules { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.bible-rule-block ul {
+    margin: 4px 0 0 16px; padding: 0; font-size: 12px; color: #bbb; line-height: 1.5;
+}
+.bible-rule-label {
+    display: inline-block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; color: #888;
+}
+.bible-rule-label.bible-rule-allow { color: #6cd47a; }
+.bible-rule-label.bible-rule-restrict { color: #ff9b7a; }
+</style>
+{% endblock %}

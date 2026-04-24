@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% set active_stage = 'video_assembly_review' %}
+{% block title %}{{ project.name }} — Video Assembly · Qaivid{% endblock %}
+{% block content %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 10 — Video Assembly</span>
+            <h1>{{ project.name }}</h1>
+            <p class="stage-sub">
+                The motion plan is locked: each shot has been assigned a camera movement, transition,
+                duration and identity link. Review the plan below — when you approve, every shot will be
+                animated against this exact plan.
+                <strong>{{ plan_shots|length }} shot(s)</strong>
+                {% if sequence_packet.motion_philosophy %}
+                · philosophy: <em>{{ sequence_packet.motion_philosophy }}</em>
+                {% endif %}.
+            </p>
+        </div>
+
+        {% if not plan_shots %}
+        <div class="muted" style="padding:20px;border:1px dashed #444;border-radius:8px;">
+            No motion plan was produced. Approve and the renderer will fall back to per-shot defaults.
+        </div>
+        {% endif %}
+
+        {% if plan_shots %}
+        <div class="va-grid">
+            {% for sh in plan_shots %}
+            <div class="va-card">
+                <div class="va-still-wrap">
+                    {% if sh.still_url %}
+                    <img src="{{ sh.still_url }}" alt="Still {{ sh.shot_id }}" loading="lazy" class="va-still">
+                    {% else %}
+                    <div class="still-placeholder">No still</div>
+                    {% endif %}
+                    <span class="va-shot-num">Shot {{ sh.shot_id }}</span>
+                </div>
+                <div class="va-meta">
+                    <div class="va-pill-row">
+                        <span class="va-pill va-pill-motion">{{ sh.motion_applied or 'static' }}</span>
+                        {% if sh.duration is not none %}
+                        <span class="va-pill">{{ "%.1f"|format(sh.duration|float) }}s</span>
+                        {% endif %}
+                        {% if sh.intensity is not none %}
+                        <span class="va-pill">int {{ "%.2f"|format(sh.intensity|float) }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="va-pill-row" style="margin-top:6px;">
+                        <span class="va-pill va-pill-trans">in: {{ sh.transition_in or 'cut' }}</span>
+                        <span class="va-pill va-pill-trans">out: {{ sh.transition_out or 'cut' }}</span>
+                    </div>
+                    {% if sh.character_id or sh.location_id %}
+                    <div class="va-link-row">
+                        {% if sh.character_id %}
+                        <span class="va-link" title="Character link">👤 {{ sh.character_id }}</span>
+                        {% endif %}
+                        {% if sh.location_id %}
+                        <span class="va-link" title="Location link">📍 {{ sh.location_id }}</span>
+                        {% endif %}
+                        {% if sh.link_status and sh.link_status != 'resolved' %}
+                        <span class="va-link va-link-warn">{{ sh.link_status }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if sh.meaning %}
+                    <div class="va-note">{{ sh.meaning[:160] }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if sequence_packet.render_warnings %}
+        <div class="va-warn-banner" style="margin-top:18px;">
+            <strong>⚠ {{ sequence_packet.render_warnings|length }} planning warning(s):</strong>
+            <ul style="margin:6px 0 0 18px; font-size:12px;">
+                {% for w in sequence_packet.render_warnings[:6] %}<li>{{ w }}</li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="stage-actions" style="margin-top:32px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+            {% if not project._is_review_only %}
+            <form method="post" action="{{ url_for('advance_stage_video_assembly', project_id=project.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-primary">
+                    Approve &amp; Render Clips →
+                </button>
+            </form>
+            <span class="muted" style="font-size:12px;">
+                Once you continue, every shot will be rendered against the locked motion plan above.
+            </span>
+            {% endif %}
+            {% include '_redo_panel.html' %}
+        </div>
+    </div>
+</div>
+
+<style>
+.va-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+.va-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+}
+.va-still-wrap { position: relative; aspect-ratio: 16/9; background: #0e0e0e; }
+.va-still { width: 100%; height: 100%; object-fit: cover; display: block; }
+.va-shot-num {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(0,0,0,.7); color: #fff;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+}
+.va-meta { padding: 12px; }
+.va-pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.va-pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: #232323; color: #ccc;
+}
+.va-pill-motion { background: #2b1f55; color: #c9b8ff; }
+.va-pill-trans  { background: #1f3247; color: #9bd2ff; }
+.va-link-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.va-link {
+    font-size: 11px; padding: 2px 8px; border-radius: 6px;
+    background: #1f1f1f; color: #bbb;
+}
+.va-link-warn { background: #4a2a1a; color: #ff9b7a; }
+.va-note { color: #999; font-size: 12px; line-height: 1.4; margin-top: 8px; }
+.va-warn-banner {
+    background: #2a1f1f; border: 1px solid #553030;
+    color: #ff9b7a; border-radius: 8px; padding: 12px 14px;
+}
+</style>
+{% endblock %}

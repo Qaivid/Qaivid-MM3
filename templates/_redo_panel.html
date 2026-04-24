@@ -7,19 +7,21 @@
 {% if not project._is_review_only and not project.deleted_at %}
 {% set _is_running = project.status == 'running' %}
 {% set _redo_stages = [
-    ('audio_review',          'Acoustic Audit',    'Clears audio analysis, context, narrative, style profile, brief, storyboard, references, stills, videos and post-production.'),
-    ('context_review',        'Context Engine',    'Clears context, narrative, style profile, brief, storyboard, references, stills, videos and post-production.'),
-    ('narrative_review',      'Narrative Engine',  'Clears narrative, style profile, brief, storyboard, references, stills and video clips.'),
-    ('style_review',          'Style Profile',     'Clears style profile, brief, storyboard, references, stills, videos and post-production.'),
-    ('creative_brief_review', 'Creative Brief',    'Clears brief, storyboard, references, stills and videos.'),
-    ('storyboard_review',     'Storyboard',        'Clears references, all stills and videos.'),
-    ('references_review',     'References',        'Clears all reference plates, stills and videos.'),
-    ('stills_control',        'Stills',            'Clears all generated stills and video clips. References are preserved.'),
-    ('videos_control',        'Video Studio',      'Clears all video clips and post-production.'),
-    ('post_production',       'Post Production',   'Clears rendered output and final cut.'),
+    ('audio_review',           'Acoustic Audit',     'Clears audio analysis, context, narrative, style profile, storyboard, brief, bible, references, stills, motion plan, videos and post-production.'),
+    ('context_review',         'Context Engine',     'Clears context, narrative, style, storyboard, brief, bible, references, stills, motion plan, videos and post-production.'),
+    ('narrative_review',       'Narrative Engine',   'Clears narrative, style, storyboard, brief, bible, references, stills, motion plan and video clips.'),
+    ('style_review',           'Style Profile',      'Clears style profile, storyboard, brief, bible, references, stills, motion plan, videos and post-production.'),
+    ('storyboard_review',      'Storyboard',         'Clears storyboard, brief, bible, references, all stills, motion plan and videos.'),
+    ('creative_brief_review',  'Creative Brief',     'Clears brief, bible, references, stills, motion plan and videos.'),
+    ('materializer_review',    'Cast & World Bible', 'Clears the cast & world bible, references, stills, motion plan and videos.'),
+    ('references_review',      'References',         'Clears all reference plates, stills, motion plan and videos.'),
+    ('stills_control',         'Stills',             'Clears all generated stills, motion plan and video clips. References are preserved.'),
+    ('videos_control',         'Video Studio',       'Clears the motion plan and all video clips.'),
+    ('video_assembly_review',  'Video Assembly',     'Clears the per-shot motion plan and all video clips.'),
+    ('post_production',        'Post Production',    'Clears rendered output and final cut.'),
 ] %}
 {# Full pipeline order for index comparison — includes display-only stages not in _redo_stages #}
-{% set _redo_order = ['audio_review','context_review','narrative_review','style_review','creative_brief_review','storyboard_review','references_review','stills_control','stills_review','videos_control','post_production','videos_review','final_review'] %}
+{% set _redo_order = ['audio_review','context_review','narrative_review','style_review','storyboard_review','creative_brief_review','materializer_review','references_review','stills_control','stills_review','videos_control','video_assembly_review','videos_review','post_production','final_review'] %}
 {% set _cur_stage = project._viewing_stage or project.stage %}
 {% set _ns = namespace(cur_idx=-1) %}
 {% for s in _redo_order %}{% if s == _cur_stage %}{% set _ns.cur_idx = loop.index0 %}{% endif %}{% endfor %}

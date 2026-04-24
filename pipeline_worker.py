@@ -2841,6 +2841,142 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
+def _stage_materializer_job(project_id: str) -> None:
+    """Stage 7 — Materializer v2.
+
+    Runs after Creative Brief approval, BEFORE Reference Assets generation.
+    Reads creative_briefs, context, narrative, style, settings from brain
+    → produces materializer_packet (character_bible + location_bible +
+    motif_anchors) → populates DB chars/locs/motifs rows → links each
+    storyboard shot to its character/location FK → parks at
+    `materializer_review` so the director can inspect the cast & world
+    bible before any reference image generation begins.
+    """
+    try:
+        _set_status(project_id, "running",
+                    {"stage": "materializer",
+                     "label": "Building character + location bible…"},
+                    stage="running_materializer")
+
+        with _db() as conn:
+            _mat_brain = ProjectBrain.load(project_id, conn)
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_data, styled_timeline FROM projects WHERE id=%s",
+                (project_id,),
+            )
+            _mat_prj = cur.fetchone() or {}
+        _mat_audio = dict(_mat_prj.get("audio_data") or {})
+        _vg_final  = str(_mat_audio.get("vocal_gender_final") or "").strip().lower()
+        _vg_for_mat = (
+            _vg_final if _vg_final in ("male", "female", "mixed", "instrumental")
+            else (str(_mat_audio.get("vocal_gender") or "").strip().lower() or None)
+        )
+        if _vg_for_mat not in ("male", "female", "mixed", "instrumental"):
+            _vg_for_mat = None
+
+        mat_packet = run_materializer_sync(project_id, _mat_brain, vocal_gender=_vg_for_mat)
+        # Save brain FIRST — brain is authoritative before DB population.
+        with _db() as conn:
+            _mat_brain.save(conn)
+            conn.commit()
+
+        # Now run legacy materializers to populate DB tables (chars/locs/motifs)
+        # in the exact ordered sequence specified by the stage contract.
+        _mat_ctx = dict(_mat_brain.read("context_packet") or {})
+        try:
+            materialize_characters(project_id, _mat_ctx, vocal_gender=_vg_for_mat)
+            materialize_locations(project_id, _mat_ctx)
+            materialize_motifs(project_id, _mat_ctx)
+        except Exception:
+            logger.exception(
+                "_stage_materializer_job: legacy materializers failed (non-fatal) for project=%s",
+                project_id,
+            )
+
+        # ── Enrich brain with DB integer IDs ─────────────────────────────
+        # After DB rows are created, read their integer PKs and store them
+        # directly in the materializer_packet entries (brain.character_bible
+        # characters[i].db_id / location_bible.locations[i].db_id).
+        # This gives _link_shots_to_entities exact IDs without any guessing.
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, entity_type FROM characters WHERE project_id=%s ORDER BY id",
+                    (project_id,),
+                )
+                _enriched_chars = cur.fetchall() or []
+                cur.execute(
+                    "SELECT id, entity_type FROM locations WHERE project_id=%s ORDER BY id",
+                    (project_id,),
+                )
+                _enriched_locs = cur.fetchall() or []
+
+            _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
+            _ep_cb = (_ep.get("character_bible") or {}).get("characters") or []
+            _ep_lb = (_ep.get("location_bible")  or {}).get("locations")  or []
+            _db_spk = [c for c in _enriched_chars if c["entity_type"] == "speaker"]
+            _db_wdn = [l for l in _enriched_locs  if l["entity_type"] == "world_dna"]
+
+            for _i, _bch in enumerate(_ep_cb):
+                if isinstance(_bch, dict) and _i < len(_db_spk):
+                    _bch["db_id"] = _db_spk[_i]["id"]
+            for _i, _bloc in enumerate(_ep_lb):
+                if isinstance(_bloc, dict) and _i < len(_db_wdn):
+                    _bloc["db_id"] = _db_wdn[_i]["id"]
+
+            _mat_brain.write("materializer_packet", _ep)
+            _mat_brain.write("character_bible", _ep.get("character_bible") or {})
+            _mat_brain.write("location_bible",  _ep.get("location_bible")  or {})
+            with _db() as conn:
+                _mat_brain.save(conn)
+                conn.commit()
+            logger.info(
+                "_stage_materializer_job: enriched materializer_packet with DB IDs for project=%s",
+                project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage_materializer_job: failed to enrich materializer_packet with DB IDs "
+                "(non-fatal) for project=%s",
+                project_id,
+            )
+
+        # Link shots to the freshly created entity rows so References + Stills
+        # + Video Assembly can resolve per-shot character_id / location_id FKs.
+        _raw_timeline = list(_mat_prj.get("styled_timeline") or [])
+        if _raw_timeline:
+            try:
+                _link_shots_to_entities(project_id, _raw_timeline)
+            except Exception:
+                logger.exception(
+                    "_stage_materializer_job: shot↔entity linking failed "
+                    "(non-fatal) for project=%s",
+                    project_id,
+                )
+
+        _chars_n = len((mat_packet.get("character_bible") or {}).get("characters") or [])
+        _locs_n  = len((mat_packet.get("location_bible")  or {}).get("locations")  or [])
+        logger.info(
+            "Materializer v2 completed for project=%s: %d chars, %d locs",
+            project_id, _chars_n, _locs_n,
+        )
+
+        _set_status(
+            project_id, "awaiting_review",
+            {"stage": "materializer",
+             "label": f"Cast & world bible ready — {_chars_n} character(s), {_locs_n} location(s). "
+                      "Review and continue."},
+            stage="materializer_review",
+        )
+
+    except Exception as exc:
+        logger.exception("Materializer stage failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Materializer stage failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
 def _stage_refs_job(project_id: str,
                     uploaded_character_ref_url: Optional[str] = None,
                     uploaded_env_ref_url: Optional[str] = None) -> None:
@@ -2848,117 +2984,17 @@ def _stage_refs_job(project_id: str,
     environment plate per location. Parks at `references_review` so the user
     can fix any plate (regenerate / upload) before stills are rendered.
 
-    Legacy projects with no character/location rows skip straight to stills_review.
-
-    Stage 7 — Materializer v2 runs first (reads creative_briefs, context,
-    narrative, style, settings from brain → produces materializer_packet →
-    populates DB chars/locs/motifs for the UI and the entity-linking step).
+    Reads the locked character_bible + location_bible written by the
+    Materializer stage (Stage 7) — does NOT re-run the materializer here.
+    Legacy projects with no character/location rows skip straight to stills.
     """
     try:
-        # ── Stage 7: Materializer v2 ─────────────────────────────────────
-        # Must run before querying chars/locs because it creates those rows.
-        # Non-fatal: if it fails, refs stage continues with whatever legacy
-        # rows already exist (or empty, which triggers the skip-to-stills path).
-        try:
-            with _db() as conn:
-                _mat_brain = ProjectBrain.load(project_id, conn)
-            with _db() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT audio_data, styled_timeline FROM projects WHERE id=%s",
-                    (project_id,),
-                )
-                _mat_prj = cur.fetchone() or {}
-            _mat_audio = dict(_mat_prj.get("audio_data") or {})
-            _vg_final  = str(_mat_audio.get("vocal_gender_final") or "").strip().lower()
-            _vg_for_mat = (
-                _vg_final if _vg_final in ("male", "female", "mixed", "instrumental")
-                else (str(_mat_audio.get("vocal_gender") or "").strip().lower() or None)
-            )
-            if _vg_for_mat not in ("male", "female", "mixed", "instrumental"):
-                _vg_for_mat = None
-            mat_packet = run_materializer_sync(project_id, _mat_brain, vocal_gender=_vg_for_mat)
-            # Save brain FIRST — brain is authoritative before DB population.
-            with _db() as conn:
-                _mat_brain.save(conn)
-                conn.commit()
-            # Now run legacy materializers to populate DB tables (chars/locs/motifs)
-            # in the exact ordered sequence specified by the stage contract.
-            _mat_ctx = dict(_mat_brain.read("context_packet") or {})
-            try:
-                materialize_characters(project_id, _mat_ctx, vocal_gender=_vg_for_mat)
-                materialize_locations(project_id, _mat_ctx)
-                materialize_motifs(project_id, _mat_ctx)
-            except Exception:
-                logger.exception(
-                    "_stage_refs_job: legacy materializers failed (non-fatal) for project=%s",
-                    project_id,
-                )
+        # Brain handle for downstream brain reads/writes (was previously
+        # _mat_brain inside the inline materializer block).
+        with _db() as conn:
+            _mat_brain = ProjectBrain.load(project_id, conn)
 
-            # ── Enrich brain with DB integer IDs ─────────────────────────
-            # After DB rows are created, read their integer PKs and store them
-            # directly in the materializer_packet entries (brain.character_bible
-            # characters[i].db_id / location_bible.locations[i].db_id).
-            # This gives _link_shots_to_entities exact IDs without any guessing.
-            try:
-                with _db() as conn, conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT id, entity_type FROM characters WHERE project_id=%s ORDER BY id",
-                        (project_id,),
-                    )
-                    _enriched_chars = cur.fetchall() or []
-                    cur.execute(
-                        "SELECT id, entity_type FROM locations WHERE project_id=%s ORDER BY id",
-                        (project_id,),
-                    )
-                    _enriched_locs = cur.fetchall() or []
-
-                _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
-                _ep_cb = (_ep.get("character_bible") or {}).get("characters") or []
-                _ep_lb = (_ep.get("location_bible")  or {}).get("locations")  or []
-                _db_spk = [c for c in _enriched_chars if c["entity_type"] == "speaker"]
-                _db_wdn = [l for l in _enriched_locs  if l["entity_type"] == "world_dna"]
-
-                for _i, _bch in enumerate(_ep_cb):
-                    if isinstance(_bch, dict) and _i < len(_db_spk):
-                        _bch["db_id"] = _db_spk[_i]["id"]
-                for _i, _bloc in enumerate(_ep_lb):
-                    if isinstance(_bloc, dict) and _i < len(_db_wdn):
-                        _bloc["db_id"] = _db_wdn[_i]["id"]
-
-                _mat_brain.write("materializer_packet", _ep)
-                _mat_brain.write("character_bible", _ep.get("character_bible") or {})
-                _mat_brain.write("location_bible",  _ep.get("location_bible")  or {})
-                with _db() as conn:
-                    _mat_brain.save(conn)
-                    conn.commit()
-                logger.info(
-                    "_stage_refs_job: enriched materializer_packet with DB IDs for project=%s",
-                    project_id,
-                )
-            except Exception:
-                logger.exception(
-                    "_stage_refs_job: failed to enrich materializer_packet with DB IDs (non-fatal) for project=%s",
-                    project_id,
-                )
-
-            # Link shots to the freshly created entity rows.
-            _raw_timeline = list(_mat_prj.get("styled_timeline") or [])
-            if _raw_timeline:
-                _link_shots_to_entities(project_id, _raw_timeline)
-            logger.info(
-                "Materializer v2 completed for project=%s: %d chars, %d locs",
-                project_id,
-                len((mat_packet.get("character_bible") or {}).get("characters") or []),
-                len((mat_packet.get("location_bible") or {}).get("locations") or []),
-            )
-        except Exception:
-            logger.exception(
-                "_stage_refs_job: Materializer v2 failed (non-fatal) for project=%s — "
-                "refs will use any legacy entity rows that exist",
-                project_id,
-            )
-
-        # ── Read chars/locs (now populated by the Materializer above) ────
+        # ── Read chars/locs (populated by the Materializer stage) ────────
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT context_packet, style_profile FROM projects WHERE id=%s",
@@ -3354,12 +3390,96 @@ def _build_video_sequence_packet(
     }
 
 
-def _stage4_job(project_id: str) -> None:
-    """Stage 4 — Video clips: animate each still into a short clip.
+def _stage_video_assembly_job(project_id: str) -> None:
+    """Stage 10 — Video Assembly (motion plan, review gate).
+
+    Builds the per-shot motion plan (`video_sequence_packet`) by
+    normalising each shot's camera_plan + intensity into a canonical
+    motion mode + transition, then resolves character/location FKs for
+    each shot from `shot_assets`. Parks at `video_assembly_review` so the
+    director can inspect the planned camera movement, transitions,
+    identity links and durations before any clips are actually rendered.
 
     Brain writes:
-        video_sequence_packet — per-shot render plan (before rendering)
-        video_render_packet   — per-shot clip manifest (after rendering)
+        video_sequence_packet — per-shot render plan
+    """
+    try:
+        _set_status(project_id, "running",
+                    {"stage": "video_assembly",
+                     "label": "Planning per-shot motion + transitions…"},
+                    stage="running_video_assembly")
+
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute("SELECT styled_timeline FROM projects WHERE id=%s", (project_id,))
+            row = cur.fetchone()
+        if not row or not row.get("styled_timeline"):
+            raise RuntimeError("No storyboard found for project.")
+
+        styled_timeline = list(row["styled_timeline"])
+
+        with _db() as conn:
+            _vabrain = ProjectBrain.load(project_id, conn)
+        _va_mat = dict(_vabrain.read("materializer_packet") or {})
+        _va_nar = dict(_vabrain.read("narrative_packet")     or {})
+
+        # Pre-load per-shot entity FKs from shot_assets so the packet builder
+        # can resolve character_id / location_id per shot (not just primary).
+        _va_shot_entity_map: dict = {}
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT shot_index, character_id, location_id "
+                    "  FROM shot_assets WHERE project_id=%s",
+                    (project_id,),
+                )
+                for _sa_row in (cur.fetchall() or []):
+                    _va_shot_entity_map[_sa_row.get("shot_index")] = (
+                        _sa_row.get("character_id"),
+                        _sa_row.get("location_id"),
+                    )
+        except Exception:
+            logger.debug(
+                "_stage_video_assembly_job: could not pre-load shot entity map "
+                "(non-fatal) for project=%s",
+                project_id,
+            )
+
+        _vsp = _build_video_sequence_packet(
+            styled_timeline, _va_mat, _va_nar,
+            shot_entity_map=_va_shot_entity_map or None,
+        )
+        _vabrain.write("video_sequence_packet", _vsp)
+        with _db() as conn:
+            _vabrain.save(conn)
+            conn.commit()
+        logger.info(
+            "_stage_video_assembly_job: wrote video_sequence_packet "
+            "(%d shots, philosophy=%s) for project=%s",
+            _vsp.get("total_shots", 0), _vsp.get("motion_philosophy"), project_id,
+        )
+
+        _set_status(
+            project_id, "awaiting_review",
+            {"stage": "video_assembly",
+             "label": f"Motion plan ready — {_vsp.get('total_shots', 0)} shot(s). "
+                      "Review and approve before rendering clips."},
+            stage="video_assembly_review",
+        )
+
+    except Exception as exc:
+        logger.exception("Video Assembly stage failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Video Assembly stage failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
+def _stage4_job(project_id: str) -> None:
+    """Stage 11 — Video Rendering: animate each still into a short clip.
+
+    Reads the locked `video_sequence_packet` written by the Video Assembly
+    stage and renders one clip per shot. Does NOT rebuild the sequence
+    packet — that's the assembly stage's job. Writes `video_render_packet`
+    after all clips complete.
     """
     try:
         with _db() as conn, conn.cursor() as cur:
@@ -3372,53 +3492,18 @@ def _stage4_job(project_id: str) -> None:
         shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in styled_timeline]
         _seed_video_rows(project_id, shot_indices)
 
-        # Initialise so the render_packet builder can reference it even if
-        # the sequence_packet write fails (non-fatal path).
+        # Read the locked sequence packet from brain (written by the assembly
+        # stage). Falls back to an empty dict if missing — render_packet
+        # builder will gracefully skip per-shot fields it can't find.
         _vsp: dict = {}
-
-        # ── Write video_sequence_packet to brain (before rendering) ──────────
         try:
             with _db() as conn:
                 _s4brain = ProjectBrain.load(project_id, conn)
-            _s4_mat = dict(_s4brain.read("materializer_packet") or {})
-            _s4_nar = dict(_s4brain.read("narrative_packet")     or {})
-
-            # Pre-load per-shot entity FKs from shot_assets so _build_video_sequence_packet
-            # can resolve character_id / location_id per shot (not just primary global).
-            _s4_shot_entity_map: dict = {}
-            try:
-                with _db() as conn, conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT shot_index, character_id, location_id "
-                        "  FROM shot_assets WHERE project_id=%s",
-                        (project_id,),
-                    )
-                    for _sa_row in (cur.fetchall() or []):
-                        _s4_shot_entity_map[_sa_row.get("shot_index")] = (
-                            _sa_row.get("character_id"),
-                            _sa_row.get("location_id"),
-                        )
-            except Exception:
-                logger.debug(
-                    "_stage4_job: could not pre-load shot entity map (non-fatal) for project=%s",
-                    project_id,
-                )
-
-            _vsp = _build_video_sequence_packet(
-                styled_timeline, _s4_mat, _s4_nar,
-                shot_entity_map=_s4_shot_entity_map or None,
-            )
-            _s4brain.write("video_sequence_packet", _vsp)
-            with _db() as conn:
-                _s4brain.save(conn)
-                conn.commit()
-            logger.info(
-                "_stage4_job: wrote video_sequence_packet (%d shots, philosophy=%s) for project=%s",
-                _vsp.get("total_shots", 0), _vsp.get("motion_philosophy"), project_id,
-            )
+            _vsp = dict(_s4brain.read("video_sequence_packet") or {})
         except Exception:
             logger.exception(
-                "_stage4_job: failed to write video_sequence_packet (non-fatal) for project=%s",
+                "_stage4_job: failed to read video_sequence_packet from brain "
+                "(non-fatal) for project=%s",
                 project_id,
             )
 
@@ -3553,11 +3638,21 @@ def kick_stage_brief(project_id: str, overrides: dict) -> None:
     _EXECUTOR.submit(_stage_brief_job, project_id, overrides)
 
 
+def kick_stage_materializer(project_id: str) -> None:
+    """Stage 7 — Materializer v2 (parks at materializer_review)."""
+    _EXECUTOR.submit(_stage_materializer_job, project_id)
+
+
 def kick_stage_refs(project_id: str,
                     uploaded_character_ref_url: Optional[str] = None,
                     uploaded_env_ref_url: Optional[str] = None) -> None:
     _EXECUTOR.submit(_stage_refs_job, project_id,
                      uploaded_character_ref_url, uploaded_env_ref_url)
+
+
+def kick_stage_video_assembly(project_id: str) -> None:
+    """Stage 10 — Video Assembly motion plan (parks at video_assembly_review)."""
+    _EXECUTOR.submit(_stage_video_assembly_job, project_id)
 
 
 def kick_stage_3(project_id: str,
