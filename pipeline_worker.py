@@ -970,34 +970,46 @@ def _render_location_plate(project_id: str, location_id: int,
 
 
 def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> None:
-    """Update shot_assets.character_id / location_id using deterministic 1:1 matching.
+    """Update shot_assets.character_id / location_id based on expression_mode.
 
-    Linking is ONLY performed when there is an unambiguous one-to-one match
-    between the brain materializer_packet entity count and the DB entity rows
-    of the corresponding type (speaker / world_dna).
+    Brain-first: reads materializer_packet from the project brain and uses the
+    character/location descriptors (identity_seed, archetype, world label) as
+    the primary name signals for shot-text matching.  Falls back to plain DB
+    character/location names when the brain is absent or empty.
 
-    Rules:
-    - Exactly 1 brain character  AND exactly 1 DB "speaker" row  → assign that FK
-    - Exactly 1 brain location   AND exactly 1 DB "world_dna" row → assign that FK
-    - Any other count on either side → FK left NULL; warning logged
-    - No alias matching, no name similarity, no partial label guessing
+    FK resolution is done within entity-type buckets (speakers → speaker DB
+    rows; world locations → world_dna DB rows) using positional alignment
+    within that bucket — never across buckets and never by fuzzy name
+    similarity across different entity types.
 
-    expression_mode governs which FK column is populated per shot:
+    expression_mode governs which FK column is written per shot:
     - "face" / "body" → character_id set; location_id NULL
-    - anything else   → character_id NULL; location_id set (if confident)
+    - anything else   → character_id NULL; location_id set
     """
     if not styled_timeline:
         return
 
-    # ── Query DB entity rows ──────────────────────────────────────────────
+    # ── Brain-first: load materializer_packet ────────────────────────────
+    brain_chars: list[dict] = []
+    brain_locs:  list[dict] = []
+    try:
+        with _db() as conn:
+            _lb = ProjectBrain.load(project_id, conn)
+        _mat = _lb.read("materializer_packet") or {}
+        brain_chars = list((_mat.get("character_bible") or {}).get("characters") or [])
+        brain_locs  = list((_mat.get("location_bible")  or {}).get("locations")  or [])
+    except Exception:
+        logger.debug("_link_shots_to_entities: brain load failed (non-fatal)")
+
+    # ── DB: authoritative source for integer FK IDs ───────────────────────
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT id, entity_type FROM characters WHERE project_id = %s",
+            "SELECT id, name, entity_type FROM characters WHERE project_id = %s ORDER BY id",
             (project_id,),
         )
         chars = cur.fetchall()
         cur.execute(
-            "SELECT id, entity_type FROM locations WHERE project_id = %s",
+            "SELECT id, name, entity_type FROM locations WHERE project_id = %s ORDER BY id",
             (project_id,),
         )
         locs = cur.fetchall()
@@ -1005,55 +1017,85 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     if not chars and not locs:
         return
 
-    db_speakers  = [c for c in chars if c["entity_type"] == "speaker"]
-    db_world_dna = [l for l in locs  if l["entity_type"] == "world_dna"]
+    primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"),   None)
+    primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
 
-    # ── Read brain entity counts ──────────────────────────────────────────
-    brain_char_count = 0
-    brain_loc_count  = 0
-    try:
-        with _db() as conn:
-            _lb = ProjectBrain.load(project_id, conn)
-        _mat = _lb.read("materializer_packet") or {}
-        brain_char_count = len((_mat.get("character_bible") or {}).get("characters") or [])
-        brain_loc_count  = len((_mat.get("location_bible")  or {}).get("locations")  or [])
-    except Exception:
-        logger.debug("_link_shots_to_entities: brain load failed (non-fatal)")
+    # ── Build lookup lists: brain descriptors first, DB names after ───────
+    # Brain names are paired with DB FK IDs by positional alignment within
+    # the same entity_type bucket (speaker[0]↔speaker[0], etc.).  This is
+    # safe because both the v2 materializer and the legacy materializers
+    # derive their entity lists from the same context_packet in the same
+    # order.  If the brain has more entries than the DB bucket, extras fall
+    # back to the primary entity of that type.
+    char_lookup: list[tuple[str, int]] = []
+    loc_lookup:  list[tuple[str, int]] = []
 
-    # ── Determine confident FKs ───────────────────────────────────────────
-    confident_char_id: Optional[int] = None
-    confident_loc_id:  Optional[int] = None
+    if brain_chars:
+        db_speakers = [c for c in chars if c["entity_type"] == "speaker"]
+        for i, bch in enumerate(brain_chars):
+            if not isinstance(bch, dict):
+                continue
+            fk = db_speakers[i]["id"] if i < len(db_speakers) else primary_char_id
+            if fk is None:
+                continue
+            for field in ("identity_seed", "archetype"):
+                val = str(bch.get(field) or "").strip().lower()
+                if val and len(val) > 2 and (val, fk) not in char_lookup:
+                    char_lookup.append((val, fk))
 
-    if brain_char_count == 1 and len(db_speakers) == 1:
-        confident_char_id = db_speakers[0]["id"]
-    else:
-        logger.warning(
-            "_link_shots_to_entities: no confident character FK for project=%s "
-            "(brain_chars=%d, db_speakers=%d) — character_id left NULL",
-            project_id, brain_char_count, len(db_speakers),
-        )
+    if brain_locs:
+        db_world_dna = [l for l in locs if l["entity_type"] == "world_dna"]
+        for i, bloc in enumerate(brain_locs):
+            if not isinstance(bloc, dict):
+                continue
+            fk = db_world_dna[i]["id"] if i < len(db_world_dna) else primary_loc_id
+            if fk is None:
+                continue
+            for field in ("world", "location_id"):
+                val = str(bloc.get(field) or "").strip().lower()
+                if val and len(val) > 2 and (val, fk) not in loc_lookup:
+                    loc_lookup.append((val, fk))
 
-    if brain_loc_count == 1 and len(db_world_dna) == 1:
-        confident_loc_id = db_world_dna[0]["id"]
-    else:
-        logger.warning(
-            "_link_shots_to_entities: no confident location FK for project=%s "
-            "(brain_locs=%d, db_world_dna=%d) — location_id left NULL",
-            project_id, brain_loc_count, len(db_world_dna),
-        )
+    # DB names appended as fallback (always present regardless of brain state).
+    for c in chars:
+        name = (c.get("name") or "").lower()
+        if name and (name, c["id"]) not in char_lookup:
+            char_lookup.append((name, c["id"]))
+    for l in locs:
+        name = (l.get("name") or "").lower()
+        if name and (name, l["id"]) not in loc_lookup:
+            loc_lookup.append((name, l["id"]))
 
-    # ── Write FK columns on shot_assets ──────────────────────────────────
+    def _best_char(shot_text: str) -> Optional[int]:
+        for name, cid in char_lookup:
+            if name and name in shot_text:
+                return cid
+        return primary_char_id
+
+    def _best_loc(shot_text: str) -> Optional[int]:
+        for name, lid in loc_lookup:
+            if name and name in shot_text:
+                return lid
+        return primary_loc_id
+
     human_modes = {"face", "body"}
     with _db() as conn, conn.cursor() as cur:
         for shot in styled_timeline:
             idx  = shot.get("shot_index") or shot.get("timeline_index")
             mode = shot.get("expression_mode", "environment")
+            shot_text = " ".join(filter(None, [
+                str(shot.get("visual_prompt")   or ""),
+                str(shot.get("shot_meaning")    or ""),
+                str(shot.get("character_name")  or ""),
+            ])).lower()
+
             if mode in human_modes:
-                char_id = confident_char_id
+                char_id = _best_char(shot_text)
                 loc_id  = None
             else:
                 char_id = None
-                loc_id  = confident_loc_id
+                loc_id  = _best_loc(shot_text)
+
             cur.execute(
                 """
                 UPDATE shot_assets
@@ -1063,10 +1105,7 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
                 (char_id, loc_id, project_id, idx),
             )
         conn.commit()
-    logger.info(
-        "Linked shots to entities for project=%s (char_fk=%s, loc_fk=%s)",
-        project_id, confident_char_id, confident_loc_id,
-    )
+    logger.info("Linked shots to entities for project=%s", project_id)
 
 
 def _run_async(coro):

@@ -2136,13 +2136,39 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 list(_brain_writes.keys()), project_id,
             )
 
+    REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
+                          "narrative_review",
+                          "creative_brief_review",
+                          "storyboard_review", "references_review"}
+    REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS | {"stills_control"}
+    REDO_CLEARS_VIDEOS = REDO_CLEARS_SHOTS | {"videos_control"}
+
+    # r2_urls is initialised here (before any DELETE) so that every collector
+    # block below can append to it, and a single delete_objects_by_url call
+    # cleans up everything at the end.
+    r2_urls: list = []
+    deleted_shots_count = 0
+    deleted_videos_count = 0
+
     # For targets at or before references_review, also wipe the materializer DB
     # rows (characters, locations, motifs) so the v2 engine starts clean.
-    # Any user edits to these rows will be lost — this is correct because the
-    # re-run will re-derive and re-present them from the updated brief.
+    # R2 ref-image URLs MUST be collected before the DELETE to prevent leaks;
+    # they are appended to r2_urls here and cleaned up in the single batch call.
     if target_stage in REDO_CLEARS_MATERIALIZER:
         try:
             with db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ref_image_url FROM characters WHERE project_id=%s "
+                    "AND ref_image_url IS NOT NULL",
+                    (project_id,),
+                )
+                r2_urls += [r["ref_image_url"] for r in (cur.fetchall() or []) if r.get("ref_image_url")]
+                cur.execute(
+                    "SELECT ref_image_url FROM locations WHERE project_id=%s "
+                    "AND ref_image_url IS NOT NULL",
+                    (project_id,),
+                )
+                r2_urls += [r["ref_image_url"] for r in (cur.fetchall() or []) if r.get("ref_image_url")]
                 cur.execute("DELETE FROM characters WHERE project_id=%s", (project_id,))
                 cur.execute("DELETE FROM locations  WHERE project_id=%s", (project_id,))
                 cur.execute("DELETE FROM motifs     WHERE project_id=%s", (project_id,))
@@ -2152,17 +2178,6 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 "rerun_from_stage: failed to delete entity rows for project=%s", project_id
             )
 
-    REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
-                          "narrative_review",
-                          "creative_brief_review",
-                          "storyboard_review", "references_review"}
-    REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS | {"stills_control"}
-    REDO_CLEARS_VIDEOS = REDO_CLEARS_SHOTS | {"videos_control"}
-
-    r2_urls: list = []
-    deleted_shots_count = 0
-    deleted_videos_count = 0
-
     with db() as conn, conn.cursor() as cur:
         if target_stage in REDO_CLEARS_REFS:
             cur.execute(
@@ -2170,16 +2185,21 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 (project_id,)
             )
             r2_urls += [r["file_path"] for r in cur.fetchall()]
-            cur.execute(
-                "SELECT ref_image_url FROM characters WHERE project_id=%s AND ref_image_url IS NOT NULL",
-                (project_id,)
-            )
-            r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
-            cur.execute(
-                "SELECT ref_image_url FROM locations WHERE project_id=%s AND ref_image_url IS NOT NULL",
-                (project_id,)
-            )
-            r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
+            # Note: character/location ref_image_urls are already collected above
+            # (before the DELETE) when REDO_CLEARS_MATERIALIZER applies.
+            # For REDO_CLEARS_REFS targets that do NOT clear materializer rows,
+            # collect them here in the normal path.
+            if target_stage not in REDO_CLEARS_MATERIALIZER:
+                cur.execute(
+                    "SELECT ref_image_url FROM characters WHERE project_id=%s AND ref_image_url IS NOT NULL",
+                    (project_id,)
+                )
+                r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
+                cur.execute(
+                    "SELECT ref_image_url FROM locations WHERE project_id=%s AND ref_image_url IS NOT NULL",
+                    (project_id,)
+                )
+                r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
 
         if target_stage in REDO_CLEARS_SHOTS:
             cur.execute(
