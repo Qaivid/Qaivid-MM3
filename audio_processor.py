@@ -47,20 +47,26 @@ class AudioProcessor:
 
         bpm = self._estimate_tempo_robust(onset_env=onset_env, sr=sr)
 
-        # Now seed beat tracking with the real estimate so it doesn't fall
-        # back to the 120 BPM prior on ambiguous material.
+        # Seed beat tracking with our estimate. tightness=80 (vs the librosa
+        # default of 100) gives the tracker just enough slack to lock onto the
+        # actual beat grid instead of rigidly following the initial BPM prior.
         try:
             _bt_tempo, beat_frames = librosa.beat.beat_track(
                 onset_envelope=onset_env,
                 sr=sr,
                 start_bpm=bpm,
-                tightness=100,
+                tightness=80,
             )
         except Exception as exc:
             logger.warning("beat_track failed (%s); falling back to default", exc)
             _bt_tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
 
         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+
+        # Refine BPM from actual inter-beat intervals (IBIs).  The tempogram
+        # works in discrete frequency bins so its precision is limited; the
+        # median IBI of the tracked beats is much more precise.
+        bpm = self._refine_bpm_from_ibi(beat_times, bpm)
 
         rms = librosa.feature.rms(y=y)[0]
         normalized_rms = self._normalize_array(rms)
@@ -367,6 +373,38 @@ class AudioProcessor:
         except Exception as exc:
             logger.warning("Octave tempogram check failed: %s", exc)
         return bpm
+
+    @staticmethod
+    def _refine_bpm_from_ibi(beat_times: List[float], bpm_estimate: float) -> float:
+        """Compute a precise BPM from the median inter-beat interval.
+
+        The tempogram works in discrete frequency bins, limiting its precision
+        (e.g. 71.8 when the true BPM is 73).  Once we have actual beat
+        timestamps we can derive BPM directly from the median gap between
+        consecutive beats, which is much more accurate.
+
+        The refined value is only accepted when it is within ±15 % of the
+        tempogram estimate and the beat set is large enough to be statistically
+        meaningful (at least 8 beats).
+        """
+        if len(beat_times) < 8:
+            return bpm_estimate
+        try:
+            ibis = np.diff(beat_times)
+            # Keep only intervals that correspond to tempos in [40, 240] BPM
+            ibis = ibis[(ibis >= 0.25) & (ibis <= 1.5)]
+            if len(ibis) < 4:
+                return bpm_estimate
+            refined = round(60.0 / float(np.median(ibis)), 1)
+            # Sanity: must be within 15 % of original estimate
+            if abs(refined - bpm_estimate) / max(bpm_estimate, 1) <= 0.15:
+                logger.debug(
+                    "IBI BPM refinement: %.2f -> %.1f", bpm_estimate, refined
+                )
+                return refined
+        except Exception as exc:
+            logger.warning("IBI BPM refinement failed: %s", exc)
+        return bpm_estimate
 
     def _repair_bpm(self, tempo: Any) -> float:
         bpm = self._safe_float(tempo, 120.0)
