@@ -521,7 +521,6 @@ STAGE_ORDER = [
     "audio_review",
     "style_review",
     "context_review",
-    "assumptions_review",
     "narrative_review",
     "creative_brief_review",
     "storyboard_review",
@@ -538,7 +537,6 @@ STAGE_LABELS = {
     "audio_review": "Acoustic Audit",
     "style_review": "Style Profile",
     "context_review": "Context Engine",
-    "assumptions_review": "METAMAN Dialogue",
     "narrative_review": "Narrative Engine",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
@@ -1011,10 +1009,12 @@ def project_detail(project_id: str):
                 _has_plate = _rcur.fetchone() is not None
             recovery_stage = "references_review" if _has_plate else "storyboard_review"
         elif cp_for_recovery.get("locked_assumptions") or cp_for_recovery.get("_pending_overrides"):
-            # User already passed through context review; resume at the dialogue.
+            # User already passed through context review.
             # If the Creative Brief variants were already generated (stage
             # failed at running_brief after LLM call succeeded), land them at
             # the brief review so they don't lose the generated variants.
+            # Otherwise fall back to context_review so the user can re-confirm
+            # and re-kick the chain (METAMAN dialogue removed from pipeline).
             _brief_variants = ((cp_for_recovery.get("creative_brief") or {}).get("variants") or [])
             if _brief_variants:
                 recovery_stage = "creative_brief_review"
@@ -1031,21 +1031,18 @@ def project_detail(project_id: str):
                 actual_stage = "creative_brief_review"
                 status = "awaiting_review"
             else:
-                recovery_stage = "assumptions_review"
-                # Reset the DB row so /advance/2b's atomic gate will accept
-                # the next submit (gate requires stage=assumptions_review &
-                # status=awaiting_review).
+                recovery_stage = "context_review"
                 with db() as _rconn, _rconn.cursor() as _rcur:
                     _rcur.execute(
-                        "UPDATE projects SET stage='assumptions_review', "
+                        "UPDATE projects SET stage='context_review', "
                         "       status='awaiting_review', error=NULL, updated_at=NOW() "
                         " WHERE id=%s AND status='failed'",
                         (project_id,),
                     )
                     _rconn.commit()
-                project["stage"] = "assumptions_review"
+                project["stage"] = "context_review"
                 project["status"] = "awaiting_review"
-                actual_stage = "assumptions_review"
+                actual_stage = "context_review"
                 status = "awaiting_review"
         elif cp_for_recovery:
             recovery_stage = "context_review"
@@ -1199,9 +1196,6 @@ def project_detail(project_id: str):
 
         return render_template("stage_context.html", project=project,
                                lyrics_timed=lyrics_timed)
-
-    if stage == "assumptions_review":
-        return render_template("stage_assumptions.html", project=project)
 
     if stage == "narrative_review":
         return render_template("stage_narrative.html", project=project)
@@ -1593,11 +1587,13 @@ def restyle_project(project_id: str):
 @app.route("/project/<project_id>/advance/2", methods=["POST"])
 @login_required
 def advance_stage_2(project_id: str):
-    """User approved the 5W context — open the METAMAN Surfaced-Assumptions Dialogue.
+    """User approved the 5W context — auto-lock surfaced assumptions and kick Narrative Engine.
 
-    No worker is kicked here. Free-text overrides + style preset are stashed
-    in context_packet so the dialogue stage can finalize them. The actual
-    storyboard worker is kicked from advance_stage_2b.
+    METAMAN Dialogue removed: any low-confidence values surfaced by the
+    Context Engine are silently auto-accepted (their original values are
+    used as locked_assumptions) so downstream stages still see resolved
+    fields. WHY-panel overrides + free-text overrides typed into the
+    Context review screen are persisted before the Narrative job is kicked.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
@@ -1609,10 +1605,11 @@ def advance_stage_2(project_id: str):
         "style_preset": (request.form.get("style_preset") or "cinematic_natural").strip(),
     }
     cp = dict(project.get("context_packet") or {})
-    cp["_pending_overrides"] = {k: v for k, v in overrides.items() if v}
+    pending_overrides = {k: v for k, v in overrides.items() if v}
+    cp["_pending_overrides"] = pending_overrides
 
     # WHY overrides — persist directly into the motivation block so the
-    # storyboard prompt + METAMAN dialogue see the user's edits immediately.
+    # Narrative Engine sees the user's edits immediately.
     motivation = dict(cp.get("motivation") or {})
     _why_keys = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
     _changed = False
@@ -1622,8 +1619,8 @@ def advance_stage_2(project_id: str):
             motivation[key] = val
             _changed = True
     if _changed:
-        # The user explicitly refined the WHY block — bump confidence so the
-        # METAMAN dialogue stops surfacing motivation as low-confidence.
+        # User explicitly refined the WHY block — bump confidence to 0.9
+        # so it is no longer flagged as low-confidence anywhere downstream.
         try:
             _prev_conf = float(motivation.get("confidence") or 0.0)
         except (TypeError, ValueError):
@@ -1633,97 +1630,33 @@ def advance_stage_2(project_id: str):
         scores = dict(cp.get("confidence_scores") or {})
         scores["motivation"] = motivation["confidence"]
         cp["confidence_scores"] = scores
-    with db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "UPDATE projects SET context_packet=%s, stage=%s, status=%s, "
-            "error=NULL, updated_at=NOW() WHERE id=%s",
-            (Json(cp), "assumptions_review", "awaiting_review", project_id),
-        )
-    return redirect(url_for("project_detail", project_id=project_id))
 
-
-@app.route("/project/<project_id>/advance/2b", methods=["POST"])
-@login_required
-def advance_stage_2b(project_id: str):
-    """User completed the METAMAN Dialogue — apply locked_assumptions, kick Storyboard."""
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(404)
-
-    cp = dict(project.get("context_packet") or {})
+    # METAMAN-Dialogue replacement: auto-accept every surfaced assumption
+    # (use the inferred value verbatim) so downstream stages always see a
+    # resolved field. The user can still re-confirm/edit at the Context
+    # review screen via the form fields above before this point.
     surfaced = cp.get("surfaced_assumptions") or []
     locked: dict = dict(cp.get("locked_assumptions") or {})
-    flags = list(cp.get("ambiguity_flags") or [])
-
-    # ── WHY panel ── motivation fields have their own dedicated form inputs
-    # (why_action_<field> / why_value_<field>) so they are processed here,
-    # BEFORE the generic surfaced_assumptions loop.  This prevents the same
-    # field from being double-processed if it also appears in surfaced_assumptions.
-    _WHY_SUBFIELDS = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
-    _WHY_LOCK_KEYS = {f"motivation_{wf}" for wf in _WHY_SUBFIELDS}
-    motivation_block = dict(cp.get("motivation") or {})
-    for wf in _WHY_SUBFIELDS:
-        action = (request.form.get(f"why_action_{wf}") or "").strip()
-        if not action:
-            continue
-        lock_key = f"motivation_{wf}"
-        if action == "reject":
-            locked.pop(lock_key, None)
-            flags.append({
-                "field": lock_key,
-                "reason": "Marked as ambiguous by user during METAMAN Dialogue.",
-                "confidence": 0.0,
-            })
-        else:
-            val = (request.form.get(f"why_value_{wf}") or "").strip()
-            if action == "override" and val:
-                chosen = val
-            else:
-                chosen = str(motivation_block.get(wf) or "").strip()
-            if chosen:
-                locked[lock_key] = chosen
-
-    for i, item in enumerate(surfaced):
+    for item in surfaced:
         if not isinstance(item, dict):
             continue
         field = item.get("field")
-        if not field:
-            continue
-        # Skip motivation fields already handled by the WHY panel above so
-        # the generic action_<i> loop cannot override what the user set there.
-        if field in _WHY_LOCK_KEYS:
-            continue
-        action = (request.form.get(f"action_{i}") or "accept").strip()
-        override_value = (request.form.get(f"value_{i}") or "").strip()
-        if action == "reject":
-            flags.append({
-                "field": field,
-                "reason": "Marked as ambiguous by user during METAMAN Dialogue.",
-                "confidence": 0.0,
-            })
-            locked.pop(field, None)
-            continue
-        chosen = override_value if action == "override" and override_value else item.get("value")
-        if chosen:
-            locked[field] = chosen
-
-    # Apply locks back into the packet so downstream stages see resolved values.
+        value = item.get("value")
+        if field and value and field not in locked:
+            locked[field] = value
     _apply_locked_assumptions_inplace(cp, locked)
     cp["locked_assumptions"] = locked
-    cp["ambiguity_flags"] = flags
 
-    pending = cp.pop("_pending_overrides", {}) or {}
-
-    # Atomic gate: only transition + kick the worker if the project is
-    # actually parked at this dialogue stage AND awaiting review. This both
-    # blocks crafted POSTs that try to skip the dialogue from prior states,
-    # and prevents a rapid double-submit from queueing the storyboard twice.
+    # Atomic gate: only transition + kick narrative if project is parked at
+    # context_review awaiting review. Blocks crafted POSTs that try to
+    # skip the chain, and prevents a rapid double-submit from queueing
+    # narrative twice.
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET context_packet=%s, status=%s, "
-            "       stage=%s, error=NULL, updated_at=NOW() "
+            "UPDATE projects SET context_packet=%s, stage=%s, status=%s, "
+            "       error=NULL, updated_at=NOW() "
             " WHERE id=%s "
-            "   AND stage='assumptions_review' "
+            "   AND stage='context_review' "
             "   AND status='awaiting_review'",
             (Json(cp), "queued", "queued", project_id),
         )
@@ -1731,15 +1664,6 @@ def advance_stage_2b(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
-    overrides = {
-        "speaker_name": pending.get("speaker_name"),
-        "location":     pending.get("location"),
-        "era":          pending.get("era"),
-        "style_preset": pending.get("style_preset") or "cinematic_natural",
-    }
-    # Pipeline chain: after METAMAN dialogue → Narrative Engine (Stage 3),
-    # which reads the resolved context_packet from the brain and writes
-    # narrative_packet before the Creative Brief stage.
     kick_stage_narrative(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
@@ -2132,7 +2056,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
         abort(404)
 
     RERUNNABLE = [
-        "audio_review", "style_review", "context_review", "assumptions_review",
+        "audio_review", "style_review", "context_review",
         "creative_brief_review", "storyboard_review", "references_review",
         "stills_control", "videos_control", "post_production",
     ]
@@ -2165,7 +2089,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
     _cb_pending = dict(_cb.get("_pending_overrides") or {})
 
     REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
-                          "assumptions_review", "creative_brief_review",
+                          "creative_brief_review",
                           "storyboard_review", "references_review"}
     REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS | {"stills_control"}
     REDO_CLEARS_VIDEOS = REDO_CLEARS_SHOTS | {"videos_control"}
@@ -2268,26 +2192,6 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
-                (project_id,),
-            )
-            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
-            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
-            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
-            cur.execute(
-                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
-                (project_id,)
-            )
-            cur.execute(
-                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
-                (project_id,)
-            )
-
-        elif target_stage == "assumptions_review":
-            cur.execute(
-                "UPDATE projects SET styled_timeline=NULL, summary=NULL,"
-                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
-                " stage='assumptions_review', status='awaiting_review',"
-                " error=NULL, updated_at=NOW() WHERE id=%s",
                 (project_id,),
             )
             cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
@@ -2440,11 +2344,6 @@ def rerun_from_stage(project_id: str, target_stage: str):
     elif target_stage == "context_review":
         kick_stage_1(project_id)
         flash(f"Context Engine is re-running. You'll land on {label} when ready.", "info")
-    elif target_stage == "assumptions_review":
-        flash(
-            f"Pipeline reset to {label}. Review METAMAN's questions and continue.",
-            "info",
-        )
     elif target_stage == "creative_brief_review":
         overrides = {
             "speaker_name": _cb_pending.get("speaker_name"),

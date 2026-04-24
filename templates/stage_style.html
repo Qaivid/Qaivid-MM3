@@ -10,7 +10,7 @@
         <div class="stage-header">
             <span class="stage-badge">Style Profile</span>
             <h1>{{ project.name }}</h1>
-            <p class="stage-sub">METAMAN has analysed the content and suggested the following visual directions. Select one to lock the cinematic DNA for this project — or use the manual picker below.</p>
+            <p class="stage-sub">Suggested visual directions based on the content. Select one to lock the cinematic DNA for this project — or use the manual picker below.</p>
             {% if is_repick %}
             <div class="repick-banner">
                 <strong>You're changing your Style Profile.</strong>
@@ -37,7 +37,7 @@
                         <span class="style-badge style-badge--prod">{{ s.production.label }}</span>
                         <span class="style-badge style-badge--cin">{{ s.cinematic.label }}</span>
                         {% if loop.first %}
-                        <span class="style-badge style-badge--ai">METAMAN Top Pick</span>
+                        <span class="style-badge style-badge--ai">Top Pick</span>
                         {% endif %}
                     </div>
                     <p class="style-justification">{{ s.justification or s.cinematic.description[:180] }}</p>

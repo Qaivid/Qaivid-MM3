@@ -378,7 +378,7 @@ def test_regenerate_brief_style_preset_defaults_to_cinematic_natural(client, fak
 
 def test_regenerate_brief_rejected_when_stage_is_wrong(client, fake_user):
     """regenerate_brief must not touch the DB or call kick when stage is wrong."""
-    project = _make_project(stage="assumptions_review", status="awaiting_review")
+    project = _make_project(stage="context_review", status="awaiting_review")
     sink = []
     kick_mock = MagicMock()
     patches = _patches_for(project, sink, fake_user, kick_mock)
