@@ -349,33 +349,61 @@ def generate_character_ref(speaker: dict, location_dna: str, project_id: str) ->
 
 
 def build_character_plate_prompt(character: dict, location_dna: str = "Universal") -> str:
-    """Build a deterministic identity-plate prompt for a character row."""
-    name = (character.get("name") or "person").strip()
-    role = (character.get("role") or character.get("entity_type") or "").strip()
-    age = (character.get("age_range") or "").strip()
-    gender = (character.get("gender") or "").strip()
-    ethnicity = (character.get("ethnicity") or "").strip()
-    complexion = (character.get("complexion") or "").strip()
-    wardrobe = (character.get("wardrobe") or "").strip()
-    grooming = (character.get("grooming") or "").strip()
-    appearance = (character.get("appearance") or "").strip()
+    """Build a director-style casting-brief prompt for a character.
+
+    Uses flowing prose rather than a labelled checklist so the image model
+    can interpret the character naturally.  The `appearance` field is skipped
+    because it is typically an auto-generated concatenation of the other
+    fields, which would just repeat information already present.
+    """
+    name     = (character.get("name")    or "").strip()
+    role     = (character.get("role")    or character.get("entity_type") or "").strip()
+    age      = (character.get("age_range")  or "").strip()
+    gender   = (character.get("gender")     or "").strip()
+    ethnicity= (character.get("ethnicity")  or "").strip()
+    complexion=(character.get("complexion") or "").strip()
+    wardrobe = (character.get("wardrobe")   or "").strip()
+    grooming = (character.get("grooming")   or "").strip()
     cultural = (character.get("cultural_notes") or "").strip()
 
-    descriptors = [d for d in [age, gender, ethnicity, complexion, role]
-                   if d and d.lower() not in {"unclear", "unknown", "any"}]
-    descriptor_str = ", ".join(descriptors) if descriptors else "adult"
+    # Pronoun based on gender
+    gender_low = gender.lower()
+    if gender_low in {"female", "woman", "girl"}:
+        pronoun = "She"
+    elif gender_low in {"male", "man", "boy"}:
+        pronoun = "He"
+    else:
+        pronoun = "They"
 
-    extras: list[str] = []
-    if wardrobe: extras.append(f"Wardrobe: {wardrobe}.")
-    if grooming: extras.append(f"Grooming: {grooming}.")
-    if appearance: extras.append(f"Appearance: {appearance}.")
-    if cultural: extras.append(f"Cultural context: {cultural}.")
-    region_hint = f" Consistent with {location_dna}." if location_dna and location_dna.lower() != "universal" else ""
+    # ── Who they are ────────────────────────────────────────────────────────
+    identity_parts = [p for p in [age, ethnicity, gender_low if gender_low not in {"male","female"} else ("woman" if gender_low=="female" else "man")]
+                      if p and p.lower() not in {"unclear","unknown","any"}]
+    identity = ", ".join(identity_parts) if identity_parts else "adult"
+    role_clause = f", carrying the emotional weight of a {role.lower()}" if role and role.lower() not in {"unclear","unknown"} else ""
+    who_line = f"A {identity}{role_clause}."
 
-    return (
-        f"Identity reference plate of {name} — a single {descriptor_str} character.{region_hint} "
-        f"{' '.join(extras)} {CHARACTER_REF_HINT}."
-    ).strip()
+    # ── Complexion ──────────────────────────────────────────────────────────
+    complexion_line = (
+        f"{pronoun} has a {complexion.lower()} complexion." if complexion else ""
+    )
+
+    # ── Wardrobe and grooming in natural prose ───────────────────────────────
+    if wardrobe and grooming:
+        look_line = f"{pronoun} wears {wardrobe.lower()}, with {grooming.lower()}."
+    elif wardrobe:
+        look_line = f"{pronoun} wears {wardrobe.lower()}."
+    elif grooming:
+        look_line = f"{pronoun} has {grooming.lower()}."
+    else:
+        look_line = ""
+
+    # ── Cultural world ───────────────────────────────────────────────────────
+    world_parts = [p for p in [cultural, location_dna] if p and p.lower() not in {"universal",""}]
+    world = world_parts[0] if world_parts else ""
+    world_line = f"{pronoun} belongs to the world of {world}." if world else ""
+
+    parts = [who_line, complexion_line, look_line, world_line, CHARACTER_REF_HINT + "."]
+    return " ".join(" ".join(p.split()) for p in parts if p)
 
 
 def generate_character_plate(character: dict, project_id: str,
