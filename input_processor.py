@@ -181,6 +181,7 @@ class InputProcessor:
         timing = self._build_timing_summary(audio_meta, timed_segments, units)
 
         return {
+            "schema_version":  1,
             "raw_text":        raw_text_preserved,
             "clean_text":      clean_text,
             "source_format":   source_format,
@@ -196,6 +197,7 @@ class InputProcessor:
             "timing":          timing,
             "audio_meta":      self._compact_audio_meta(audio_meta),
             "uncertainties":   uncertainties,
+            "resegmented_by_llm": False,
         }
 
     # -----------------------------------------------------------------------
