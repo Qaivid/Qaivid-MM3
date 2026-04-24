@@ -1,0 +1,192 @@
+INPUT PROCESSING — COMPLETE CAPABILITIES (FOR ALL 5 INPUT TYPES)
+
+GOAL:
+Prepare clean, structured, and reliable data so Context Engine can extract meaning correctly.
+NO interpretation. NO visuals. NO storytelling.
+
+--------------------------------------------------
+
+COMMON CAPABILITIES (APPLY TO ALL INPUT TYPES)
+
+- Detect input type:
+  song / script / story / document / audio
+
+- Detect language(s)
+
+- Preserve original input (raw_text)
+
+- Create cleaned version (clean_text)
+  - fix encoding issues
+  - normalize spacing
+  - remove noise without altering meaning
+
+- Segment content into units:
+  - line / stanza / paragraph / dialogue / scene
+
+- Assign unique IDs to:
+  - sections
+  - text units
+
+- Maintain strict ordering
+
+- Detect and label structure if present:
+  - intro / verse / chorus / bridge / outro
+  - act / scene
+  - paragraph / section
+
+- Infer structure if missing (mark as inferred)
+
+- Detect repetition:
+  - repeated sections (chorus)
+  - repeated lines
+  - repeated phrases
+
+- Build repetition map
+
+- Detect speaker boundaries if present:
+  - dialogue separation
+  - narrator vs character
+
+- Flag uncertainties:
+  - missing structure
+  - unclear segmentation
+  - mixed language
+
+- Output structured data (no meaning)
+
+--------------------------------------------------
+
+1. SONG / LYRICS — CAPABILITIES
+
+- Detect song structure:
+  intro / verse / chorus / bridge / outro
+
+- Identify repeated chorus sections
+
+- Group lines into stanzas
+
+- Detect lyrical patterns:
+  rhyme repetition
+  hook lines
+
+- Detect timing if audio present
+
+- Align lyrics to timestamps (if possible)
+
+- Detect tempo (if audio present)
+
+- Mark emotional repetition sections (for downstream)
+
+OUTPUT MUST INCLUDE:
+- sectioned lyrics
+- repetition map
+- timing (if available)
+
+--------------------------------------------------
+
+2. SCRIPT — CAPABILITIES
+
+- Detect scenes and acts
+
+- Identify dialogue vs action lines
+
+- Detect speaker names
+
+- Separate dialogues by character
+
+- Detect scene transitions
+
+- Maintain scene order
+
+OUTPUT MUST INCLUDE:
+- scene blocks
+- dialogue units
+- speaker tags
+
+--------------------------------------------------
+
+3. STORY / NARRATIVE TEXT — CAPABILITIES
+
+- Split into paragraphs
+
+- Detect narrative shifts (light segmentation)
+
+- Identify dialogue segments if present
+
+- Preserve paragraph flow
+
+OUTPUT MUST INCLUDE:
+- paragraph units
+- inferred sections (if needed)
+
+--------------------------------------------------
+
+4. DOCUMENT / CONCEPT / IDEA — CAPABILITIES
+
+- Detect sections or headings
+
+- Split into logical blocks
+
+- Identify key statements or ideas
+
+- Preserve hierarchy (if structured)
+
+OUTPUT MUST INCLUDE:
+- section blocks
+- idea units
+
+--------------------------------------------------
+
+5. AUDIO INPUT — CAPABILITIES
+
+- Transcribe audio to text
+
+- Detect language from audio
+
+- Extract timing:
+  timestamps per segment
+
+- Detect BPM / tempo (if music)
+
+- Segment audio into units:
+  phrases / lines / sections
+
+- Align transcription with timing
+
+OUTPUT MUST INCLUDE:
+- transcript
+- timestamped segments
+- audio metadata (duration, tempo)
+
+--------------------------------------------------
+
+FINAL OUTPUT REQUIREMENTS (FOR CONTEXT ENGINE)
+
+The output must provide:
+
+- Clean structured text
+- Clear segmentation
+- Repetition mapping
+- Structural labeling
+- Speaker separation (if applicable)
+- Timing data (if available)
+- No interpretation
+
+--------------------------------------------------
+
+CORE RULE:
+
+Input Processing prepares structure and clarity.
+
+It must NOT:
+- interpret meaning
+- infer emotion deeply
+- create visuals
+- define characters beyond labels
+- influence storytelling
+
+--------------------------------------------------
+
+ONE LINE SUMMARY:
+
+Clean → Segment → Label → Preserve → Pass Forward

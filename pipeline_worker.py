@@ -30,6 +30,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
 from audio_processor import AudioProcessor
+from input_processor import InputProcessor
 from production_orchestrator import ProductionOrchestrator
 from asset_export_module import AssetExportModule
 from image_generator import (
@@ -1644,17 +1645,40 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
         # multiple shots. A paragraph with no newlines collapses into 1 shot.
         transcript = _normalize_lyrics_for_context(transcript)
 
-        # Persist audio data + transcript (+ timed lyrics if available)
+        # ── Stage 1: Input Processing ──────────────────────────────────────
+        # Run InputProcessor to produce a clean, structured input_packet.
+        # This is purely structural — no meaning, no visuals.
+        ip = InputProcessor()
+        input_packet = ip.process(
+            raw_text=transcript,
+            genre_hint=genre,
+            audio_meta=audio_data if audio_data else {},
+            timed_segments=timed_lyrics if timed_lyrics else [],
+        )
+        logger.info(
+            "InputProcessor: type=%s sub_type=%s sections=%d units=%d langs=%s",
+            input_packet.get("input_type"),
+            input_packet.get("sub_type"),
+            len(input_packet.get("sections") or []),
+            len(input_packet.get("units") or []),
+            input_packet.get("languages"),
+        )
+
+        # Persist audio data + transcript + input_packet (+ timed lyrics if available)
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS lyrics_timed JSONB;"
             )
             cur.execute(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_packet JSONB;"
+            )
+            cur.execute(
                 "UPDATE projects SET audio_data=%s, transcript=%s, text=%s, "
-                "lyrics_timed=%s, updated_at=NOW() WHERE id=%s",
+                "lyrics_timed=%s, input_packet=%s, updated_at=NOW() WHERE id=%s",
                 (Json({**audio_data, "_pre_analysis": pre_analysis}),
                  transcript, transcript,
                  Json(timed_lyrics) if timed_lyrics else None,
+                 Json(input_packet),
                  project_id),
             )
             conn.commit()
