@@ -270,25 +270,13 @@
         </div>
 
         <div class="stage-actions">
-            <form method="post" action="{{ url_for('advance_stage_3', project_id=project.id) }}"
-                  enctype="multipart/form-data">
+            <form method="post" action="{{ url_for('advance_stage_3', project_id=project.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <p class="muted" style="margin:0 0 10px;">
-                    Next we'll generate ONE locked face plate per character and ONE locked
-                    environment plate per location. You'll review and approve them before any
-                    per-shot still is rendered.
+                    Storyboard = possibilities. Next, the Creative Brief locks ONE direction
+                    per scene from the realizations above and parks for your review.
                 </p>
-                <div class="ref-upload-row">
-                    <label class="ref-upload-label">
-                        Optional speaker photo <span class="muted">(skip the AI face plate)</span>
-                        <input type="file" name="character_ref" accept="image/*">
-                    </label>
-                    <label class="ref-upload-label">
-                        Optional environment photo <span class="muted">(skip the AI plate)</span>
-                        <input type="file" name="environment_ref" accept="image/*">
-                    </label>
-                </div>
-                <button type="submit" class="btn-stage-primary">Generate Reference Plates →</button>
+                <button type="submit" class="btn-stage-primary">Lock Creative Brief →</button>
             </form>
             {% include '_redo_panel.html' %}
             {% if not project._is_review_only %}
@@ -300,27 +288,6 @@
                     Change Style Profile →
                 </a>
             </p>
-            <div class="muted sb-restyle-row" style="margin-top:.5rem;">
-                Want a different direction?
-                <form method="post" action="{{ url_for('reset_brief', project_id=project.id) }}"
-                      style="display:inline;" id="form-reset-brief">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="sb-restyle-link btn-link"
-                            title="Go back to the Creative Brief and pick a different variant. Existing variants are kept — no regeneration needed.">
-                        Change Brief →
-                    </button>
-                </form>
-                <span class="muted"> or </span>
-                <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
-                      style="display:inline;" id="form-regen-brief">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="sb-restyle-link btn-link"
-                            title="Discard the current brief variants and generate three fresh treatments. Your audio and context work are preserved."
-                            onclick="return confirm('Generate brand-new brief variants? This will discard the existing ones.')">
-                        Regenerate variants →
-                    </button>
-                </form>
-            </div>
             {% endif %}
         </div>
     </div>

@@ -1,0 +1,189 @@
+CREATIVE BRIEF — FINAL SPEC (WITH PROJECT BRAIN)
+
+ROLE:
+Convert storyboard possibilities into ONE executable direction per scene,
+while preserving flexibility, continuity, and controlled variation.
+
+This is the FIRST COMMITMENT LAYER.
+
+--------------------------------------------------
+
+WHAT CREATIVE BRIEF READS FROM PROJECT BRAIN
+
+1. storyboard_packet
+- ordered scenes
+- scene purpose
+- narrative phase
+- emotional intensity (if available)
+- valid_realizations (multiple options per scene)
+- continuity hooks
+- motif usage
+- motion density
+
+2. narrative_packet
+- storytelling_mode
+- perspective
+- timeline_strategy
+- presence_strategy
+- emotional_progression_strategy
+- repetition_strategy
+- motion_philosophy
+- expression_channels
+- continuity_rules
+- scene_interpretation_rules
+- variation_allowance
+
+3. context_packet
+- core_theme
+- emotional_world
+- cultural_grounding
+- must_preserve rules
+- creative_freedom rules
+
+4. style_packet
+- cinematic_style
+- camera_language (high level only)
+- lighting_logic
+- color_psychology
+- texture_profile
+- realism_level
+- style_variability
+
+5. input_structure (light use)
+- section type (intro, chorus, etc.)
+- repetition_map
+- timestamps (if any)
+
+6. project_settings (optional)
+- duration
+- platform
+- user preferences
+
+--------------------------------------------------
+
+WHAT CREATIVE BRIEF MUST DO
+
+1. SELECT ONE REALIZATION PER SCENE
+- Choose from valid_realizations
+- Selection must be non-deterministic within constraints
+- Respect narrative + context + continuity
+- Ensure all selections remain contextually valid
+
+2. DEFINE SCENE EXPRESSION (EXECUTABLE BUT NOT OVER-SPECIFIED)
+
+For each scene, define:
+
+- scene expression (how the purpose is expressed, not literal description)
+- environment type (not exact location)
+- subject focus (character / environment / object)
+- character presence level (continuous / intermittent / minimal)
+- character identity hint (for downstream consistency, not appearance)
+- key elements (max 3–5, general, non-specific)
+- emotional state (micro-state)
+- emotional intensity (low / medium / high)
+- lighting condition (general, not technical)
+- movement type (static / slow / dynamic)
+- timeline mode (present / memory / mixed)
+- motion density
+
+3. APPLY NARRATIVE LOGIC
+
+- follow presence_strategy
+- follow motion_philosophy
+- follow expression_channels
+- follow repetition_strategy
+- follow continuity_rules
+
+4. APPLY STYLE GUIDANCE
+
+- apply tone, texture, color logic
+- DO NOT override narrative decisions
+
+5. MAINTAIN CONTINUITY
+
+- maintain consistent character identity (via hints)
+- maintain consistent world (culture, geography)
+- maintain emotional progression across scenes
+- maintain motif continuity
+
+6. CONTROL VARIATION
+
+- allow different selections per run
+- keep variation within narrative and context constraints
+- ensure outputs remain coherent across runs
+
+--------------------------------------------------
+
+WHAT CREATIVE BRIEF MUST NOT DO
+
+- Do NOT define exact character appearance
+- Do NOT define exact props (only general elements)
+- Do NOT define camera shots (no lens, no angles)
+- Do NOT define shot count
+- Do NOT generate prompts
+- Do NOT over-specify details
+- Do NOT collapse flexibility
+
+--------------------------------------------------
+
+WHAT CREATIVE BRIEF WRITES TO PROJECT BRAIN
+
+creative_brief_packet:
+
+- ordered list of resolved scenes
+
+Each scene:
+
+{
+  "scene_id": "",
+  "source_section": "",
+  "narrative_phase": "",
+  "scene_purpose": "",
+  "chosen_direction": "",
+  "selection_basis": "",
+  "variation_anchor": "",
+  "subject_focus": "",
+  "character_presence": "",
+  "character_identity_hint": "",
+  "environment_type": "",
+  "key_elements": [],
+  "emotional_state": "",
+  "emotional_intensity": "",
+  "lighting_condition": "",
+  "movement_type": "",
+  "timeline_mode": "",
+  "motion_density": "",
+  "repetition_handling": "",
+  "motif_usage": [],
+  "continuity_hooks": {
+    "character": "",
+    "motifs": []
+  }
+}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Creative Brief is correct ONLY IF:
+
+- Each scene has ONE clear direction
+- Multiple visual executions are still possible downstream
+- No over-specification exists
+- Narrative logic is respected
+- Context is preserved
+- Variation remains controlled and meaningful
+- Different runs can produce different briefs without breaking consistency
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+Storyboard = possibilities
+Creative Brief = controlled selection + variation anchoring
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Select one valid direction per scene, anchor variation, and prepare scenes for execution without locking visual output.

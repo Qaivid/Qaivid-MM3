@@ -2033,16 +2033,22 @@ def _stage_narrative_job(project_id: str) -> None:
 
 
 def _stage_brief_job(project_id: str, overrides: dict) -> None:
-    """Creative Brief Engine (Stage 5) — generate treatment variants, park at creative_brief_review.
+    """Creative Brief Engine v2 (Stage 6) — controlled selection + variation anchoring.
+
+    The FIRST commitment layer. Reads the storyboard's possibilities and
+    locks ONE direction per scene with full per-scene execution intent
+    (subject_focus, environment_type, character_presence, key_elements,
+    emotional_state/intensity, lighting_condition, movement_type,
+    timeline_mode, motion_density, repetition_handling, motif_usage,
+    continuity_hooks). Parks at creative_brief_review for user yes/regenerate.
 
     Reads from Project Brain (per master spec):
-      • context_packet   (Stage 2) — locked meaning, world, speaker, motivation
-      • narrative_packet (Stage 3) — storytelling mode, perspective, motifs
-      • style_packet     (Stage 4) — chosen production + cinematic style profile
-    These ground every variant in the locked story + visual decisions.
-
-    Falls back to legacy JSONB columns on a per-namespace basis for pre-brain
-    projects so existing rows keep working unchanged.
+      • storyboard_packet (Stage 5) — scenes + valid_realizations  ← REQUIRED
+      • narrative_packet  (Stage 3) — story logic to honor
+      • context_packet    (Stage 2) — locked meaning, world, speaker
+      • style_packet      (Stage 4) — high-level visual guidance only
+      • input_structure   (Stage 1) — section type, repetition_map (light)
+      • project_settings  (Stage 0) — duration, platform, prefs (optional)
     """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -2053,21 +2059,29 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         try:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
-            brain_context   = brain.read("context_packet") or {}
-            brain_narrative = brain.read("narrative_packet") or {}
-            brain_style     = brain.read("style_packet") or {}
+            brain_storyboard = brain.read("storyboard_packet") or {}
+            brain_narrative  = brain.read("narrative_packet")  or {}
+            brain_context    = brain.read("context_packet")    or {}
+            brain_style      = brain.read("style_packet")      or {}
+            brain_input      = brain.read("input_structure")   or {}
+            brain_settings   = brain.read("project_settings")  or {}
         except Exception:
             logger.exception(
-                "Stage brief: failed to load ProjectBrain for project=%s — "
-                "falling back to legacy columns.", project_id
+                "Stage brief v2: failed to load ProjectBrain for project=%s",
+                project_id,
             )
-            brain_context, brain_narrative, brain_style = {}, {}, {}
+            brain_storyboard = {}
+            brain_narrative  = {}
+            brain_context    = {}
+            brain_style      = {}
+            brain_input      = {}
+            brain_settings   = {}
 
-        # ── Always read legacy columns (also need transcript/lyrics_timed) ──
+        # Legacy column fallbacks for context/narrative/style only —
+        # storyboard_packet must come from the brain (v2 intent layer).
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT context_packet, narrative_packet, style_profile,"
-                " transcript, text, lyrics_timed "
+                "SELECT context_packet, narrative_packet, style_profile "
                 "FROM projects WHERE id=%s",
                 (project_id,),
             )
@@ -2075,63 +2089,75 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         if not row:
             raise RuntimeError("Project not found.")
 
-        # Brain wins, legacy fills gaps — keeps pre-brain projects working.
         context_packet   = brain_context   or dict(row.get("context_packet")   or {})
         narrative_packet = brain_narrative or dict(row.get("narrative_packet") or {})
-        _legacy_sp       = dict(row.get("style_profile") or {})
-        style_profile    = brain_style or _legacy_sp or StyleProfileRegistry.default_style_profile()
+        style_profile    = (brain_style
+                            or dict(row.get("style_profile") or {})
+                            or StyleProfileRegistry.default_style_profile())
 
-        # Apply pending overrides (speaker_name/location/era) so the brief
-        # is generated against the user-locked context, not the raw LLM output.
-        if overrides.get("speaker_name"):
-            speaker = dict(context_packet.get("speaker") or {})
-            speaker["name"] = overrides["speaker_name"]
-            context_packet["speaker"] = speaker
-        if overrides.get("location"):
-            context_packet["location_dna"] = overrides["location"]
-        if overrides.get("era"):
-            context_packet["era"] = overrides["era"]
-
-        # Fetch lyrics so scene locations can be derived from actual song imagery.
-        # Some legacy projects populate only `text` (not `transcript`).
-        lyrics_text = (
-            str(row.get("transcript") or row.get("text") or "").strip() or None
-        )
-        lyrics_timed_raw = row.get("lyrics_timed")
-        lyrics_timed = (
-            list(lyrics_timed_raw) if isinstance(lyrics_timed_raw, list) else None
-        )
+        scenes = list(brain_storyboard.get("scenes") or [])
 
         logger.info(
-            "Stage brief: brain inputs context=%s narrative=%s style=%s for project=%s",
-            "yes" if brain_context else "fallback",
+            "Stage brief v2: brain inputs storyboard.scenes=%d narrative=%s "
+            "context=%s style=%s for project=%s",
+            len(scenes),
             "yes" if brain_narrative else ("fallback" if narrative_packet else "none"),
-            "yes" if brain_style else "fallback",
+            "yes" if brain_context   else ("fallback" if context_packet   else "none"),
+            "yes" if brain_style     else "fallback",
             project_id,
         )
 
         _set_status(project_id, "running",
-                    {"stage": "brief", "label": "Drafting director treatment variants…"},
+                    {"stage": "brief",
+                     "label": "Locking ONE direction per scene…"},
                     stage="running_brief")
 
-        from creative_brief_engine import generate_variants
-        variants, used_fallback = _run_async(generate_variants(
+        from creative_brief_engine_v2 import generate_creative_brief_v2
+        scene_briefs, used_fallback = _run_async(generate_creative_brief_v2(
             api_key=api_key,
+            storyboard_scenes=scenes,
+            narrative_packet=narrative_packet,
             context_packet=context_packet,
             style_profile=style_profile,
-            n=3,
-            lyrics=lyrics_text,
-            lyrics_timed=lyrics_timed,
-            narrative_packet=narrative_packet,
+            input_structure=brain_input,
+            project_settings=brain_settings,
         ))
 
-        creative_brief = dict(context_packet.get("creative_brief") or {})
-        creative_brief["variants"] = variants
-        creative_brief["used_fallback"] = used_fallback
-        # Stash overrides so the next gate (advance_brief) can pass them onward
-        # to kick_stage_2 without forcing the user to re-enter them.
-        creative_brief["_pending_overrides"] = {k: v for k, v in overrides.items() if v}
-        context_packet["creative_brief"] = creative_brief
+        # ── Write creative_briefs to brain (Stage 6 namespace) ──────────────
+        creative_brief_packet = {
+            "schema_version": 2,
+            "scenes":         scene_briefs,
+            "used_fallback":  used_fallback,
+            "approved":       False,
+        }
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+                brain.write("creative_briefs", creative_brief_packet)
+                brain.save(conn)
+                conn.commit()
+            logger.info(
+                "ProjectBrain: wrote creative_briefs v2 for project=%s "
+                "(%d scenes, fallback=%s)",
+                project_id, len(scene_briefs), used_fallback,
+            )
+        except Exception:
+            logger.exception(
+                "Stage brief v2: failed to write creative_briefs to brain for project=%s",
+                project_id,
+            )
+
+        # ── Mirror into legacy context_packet.creative_brief for the UI ─────
+        # Templates that haven't migrated to brain reads still pull from here.
+        creative_brief_legacy = dict(context_packet.get("creative_brief") or {})
+        creative_brief_legacy["schema_version"] = 2
+        creative_brief_legacy["scenes"]         = scene_briefs
+        creative_brief_legacy["used_fallback"]  = used_fallback
+        # Drop legacy v1 keys — they no longer apply under v2.
+        creative_brief_legacy.pop("variants", None)
+        creative_brief_legacy.pop("chosen", None)
+        creative_brief_legacy.pop("_pending_overrides", None)
+        context_packet["creative_brief"] = creative_brief_legacy
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
@@ -2140,49 +2166,34 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             )
             conn.commit()
 
-        # ── Write creative_briefs to brain (Stage 5 namespace) ──────────────
-        # The chosen variant is added later by advance_brief.
-        try:
-            with _db() as conn:
-                brain = ProjectBrain.load(project_id, conn)
-                brain.write("creative_briefs", {
-                    "variants":      variants,
-                    "used_fallback": used_fallback,
-                })
-                brain.save(conn)
-                conn.commit()
-            logger.info(
-                "ProjectBrain: wrote creative_briefs for project=%s (%d variants, fallback=%s)",
-                project_id, len(variants), used_fallback,
-            )
-        except Exception:
-            logger.exception(
-                "Stage brief: failed to write creative_briefs to brain for project=%s",
-                project_id,
-            )
-
         _set_status(project_id, "awaiting_review",
                     {"stage": "brief",
-                     "label": f"{len(variants)} treatment variants ready. Pick one and lock."},
+                     "label": (f"Creative Brief ready ({len(scene_briefs)} scenes "
+                               f"locked). Review and approve."
+                               if scene_briefs else
+                               "Creative Brief produced no scenes — please regenerate.")},
                     stage="creative_brief_review")
 
     except Exception as exc:
-        logger.exception("Stage Brief failed for project=%s", project_id)
+        logger.exception("Stage Brief v2 failed for project=%s", project_id)
         _set_status(project_id, "failed",
                     {"stage": "error", "label": "Creative Brief stage failed."},
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
 def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
-    """Storyboard (Stage 6) — VisualStoryboard → RhythmicAssembly → StyleGrading.
+    """Storyboard (Stage 5) — VisualStoryboard → RhythmicAssembly → StyleGrading.
 
     Reads from Project Brain (per master spec):
       • context_packet   (Stage 2)
       • narrative_packet (Stage 3)
       • style_packet     (Stage 4)
-      • creative_briefs  (Stage 5) — user-locked variant + treatment
+      • input_structure / project_settings (root-level intent inputs)
+    Storyboard is the POSSIBILITIES layer — it MUST NOT read
+    creative_briefs (Stage 6 = SELECTION). Brief runs after this stage
+    and picks one realization per scene.
     Falls back to legacy JSONB columns per-namespace for pre-brain projects.
-    On success, writes brain.storyboard_packet (Stage 6 namespace).
+    On success, writes brain.storyboard_packet (Stage 5 namespace).
     """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -2196,7 +2207,6 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             brain_context   = brain.read("context_packet") or {}
             brain_narrative = brain.read("narrative_packet") or {}
             brain_style     = brain.read("style_packet") or {}
-            brain_briefs    = brain.read("creative_briefs") or {}
             brain_input     = brain.read("input_structure") or {}
             brain_settings  = brain.read("project_settings") or {}
         except Exception:
@@ -2204,7 +2214,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                 "Stage storyboard: failed to load ProjectBrain for project=%s — "
                 "falling back to legacy columns.", project_id
             )
-            brain_context, brain_narrative, brain_style, brain_briefs = {}, {}, {}, {}
+            brain_context, brain_narrative, brain_style = {}, {}, {}
             brain_input, brain_settings = {}, {}
 
         with _db() as conn, conn.cursor() as cur:
@@ -2228,7 +2238,6 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         _legacy_context = dict(row.get("context_packet") or {})
         _legacy_narr    = dict(row.get("narrative_packet") or {})
         _legacy_sp      = dict(row.get("style_profile") or {})
-        _legacy_briefs  = dict(_legacy_context.get("creative_brief") or {})
         _legacy_input   = dict(row.get("input_packet") or {})
         # Resolved packets used by the v2 storyboard intent layer.
         input_structure  = brain_input    or _legacy_input
@@ -2240,11 +2249,10 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # storyboard engine consumes it indirectly via context. Logged for trace.
         narrative_packet = brain_narrative or _legacy_narr
         style_profile    = brain_style or _legacy_sp or StyleProfileRegistry.default_style_profile()
-        # Per-namespace fallback for the locked Creative Brief: prefer brain,
-        # fall back to legacy regardless of where context came from. Otherwise
-        # a brain-context + missing-brain-brief project could silently drop
-        # the chosen variant even when the legacy column has it.
-        creative_brief_for_orch = brain_briefs or _legacy_briefs or None
+        # NOTE: Storyboard MUST NOT read brain.creative_briefs — under the
+        # master spec, Storyboard runs BEFORE Creative Brief (storyboard is
+        # POSSIBILITIES, brief is SELECTION). Reading the brief here would
+        # leak stale data from a prior run/rerun and constrain storyboard.
 
         # Apply user overrides
         if overrides.get("speaker_name"):
@@ -2261,11 +2269,10 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         style_preset = overrides.get("style_preset") or style_profile.get("preset") or "cinematic_natural"
 
         logger.info(
-            "Stage storyboard: brain inputs context=%s narrative=%s style=%s briefs=%s for project=%s",
+            "Stage storyboard: brain inputs context=%s narrative=%s style=%s for project=%s",
             "yes" if brain_context else "fallback",
             "yes" if brain_narrative else ("fallback" if narrative_packet else "none"),
             "yes" if brain_style else "fallback",
-            "yes" if brain_briefs else ("fallback" if creative_brief_for_orch else "none"),
             project_id,
         )
 
@@ -2409,7 +2416,8 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             text=text, genre=genre,
             audio_analytics=audio_data_blob,
             style_profile=style_profile,
-            creative_brief=creative_brief_for_orch,
+            # Brief runs AFTER storyboard now (master spec) — never pass it.
+            creative_brief=None,
             timed_lyrics=timed_lyrics or None,
         ))
         raw_storyboard = pre_result.get("storyboard") or []

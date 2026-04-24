@@ -5,12 +5,52 @@
 <style>
 .sb-restyle-link { color: #ffb142; font-weight: 600; text-decoration: none; }
 .sb-restyle-link:hover { text-decoration: underline; }
-.btn-link { background: none; border: none; padding: 0; cursor: pointer; font-size: inherit; }
+.btn-link { background: none; border: none; padding: 0; cursor: pointer; font-size: inherit; color: inherit; }
+
+.brief-scenes-grid { display: flex; flex-direction: column; gap: 1rem; margin: 1rem 0; }
+.brief-scene-card {
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  background: rgba(255,255,255,.02);
+}
+.brief-scene-head {
+  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+  margin: 0 0 .5rem;
+}
+.brief-scene-head h3 { margin: 0; font-size: 1.05rem; }
+.brief-scene-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,177,66,.12); color: #ffb142;
+  font-size: .75rem; font-weight: 600; letter-spacing: .02em;
+}
+.brief-scene-purpose { color: #c9c9d4; margin: .25rem 0 .6rem; font-size: .92rem; }
+.brief-scene-direction {
+  font-weight: 600; color: #fff; margin: .35rem 0;
+  border-left: 2px solid #ffb142; padding-left: .6rem;
+}
+.brief-scene-basis {
+  color: #9da0aa; font-style: italic; font-size: .85rem; margin: .15rem 0 .5rem;
+}
+.brief-scene-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .35rem .9rem; font-size: .82rem; color: #b9bcc6;
+  margin-top: .55rem;
+}
+.brief-scene-meta strong { color: #e8e8ee; font-weight: 600; }
+.brief-scene-tags { margin-top: .5rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+.brief-scene-tags .pill {
+  display: inline-block; padding: 2px 7px; border-radius: 999px;
+  background: rgba(255,255,255,.06); color: #c9c9d4;
+  font-size: .72rem;
+}
 </style>
+
 {% set cp = project.context_packet or {} %}
 {% set cb = cp.creative_brief or {} %}
-{% set variants = cb.variants or [] %}
-{% set chosen = cb.chosen or {} %}
+{% set scenes = cb.scenes or [] %}
+
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
 
@@ -18,8 +58,8 @@
     <div class="alert-banner alert-banner--warning" id="fallback-warning" role="alert">
         <span class="alert-banner__icon">⚠</span>
         <span class="alert-banner__text">
-            We couldn't generate custom variants for this song — showing defaults instead.
-            You can edit any field below, or
+            We couldn't generate a custom brief for this song — showing a default
+            (first valid realization per scene) instead. You can
             {% if not project._is_review_only %}
             <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
                   style="display:inline;">
@@ -37,148 +77,145 @@
 
     <div class="stage-card">
         <div class="stage-header">
-            <span class="stage-badge">Stage 3 — Creative Brief</span>
-            <h1>Pick the director's treatment</h1>
+            <span class="stage-badge">Stage 6 — Creative Brief</span>
+            <h1>One locked direction per scene</h1>
             <p class="stage-sub">
-                Below are {{ variants|length }} distinct visual treatments for this song.
-                Each variant proposes a different metaphor, scope, and tone.
-                Pick the one closest to your vision, edit any field inline,
-                and add a director's note (e.g. "70s Tarkovsky", "no people, only objects").
-                Locking advances the pipeline to the Storyboard stage.
+                The brief picked ONE realization per storyboard scene and added the
+                execution intent the downstream stages need (subject focus, presence,
+                environment type, lighting, motion, motifs, continuity). Approve to
+                generate reference plates, or regenerate for a fresh selection.
             </p>
         </div>
 
-        {% if not variants %}
+        {% if not scenes %}
         <div class="ctx-block">
-            <p>No variants were generated. The pipeline will fall back to a default treatment.</p>
-            <form method="post" action="{{ url_for('advance_brief', project_id=project.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="variant_id" value="v0"/>
-                <input type="hidden" name="title" value="Default Treatment"/>
-                <button type="submit" class="btn btn-primary">Continue without brief</button>
+            <p>No scenes were locked. Try regenerating the brief.</p>
+            {% if not project._is_review_only %}
+            <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary">Regenerate brief</button>
             </form>
+            {% endif %}
         </div>
         {% else %}
-        <form method="post" action="{{ url_for('advance_brief', project_id=project.id) }}" class="brief-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
-            <p class="ctx-override-hint">
-                Pick a variant with the radio button. The fields under your pick are
-                editable inline — anything you change here overrides the original
-                variant when you lock.
-            </p>
-            <div class="brief-variants">
-            {% for v in variants %}
-                {% set vid = v.id or ('v' ~ loop.index) %}
-                {% set is_chosen = chosen.variant_id == vid or (loop.first and not chosen.variant_id) %}
-                <label class="brief-variant{% if is_chosen %} brief-variant--active{% endif %}" data-vid="{{ vid }}">
-                    <div class="brief-variant-head">
-                        <input type="radio" name="variant_id" value="{{ vid }}"
-                               {% if is_chosen %}checked{% endif %}/>
-                        <h3>{{ v.title }}</h3>
-                        <span class="brief-score" title="Self-critique score">
-                            {{ v.self_critique.score or 7 }}/10
-                        </span>
-                    </div>
-                    <p class="brief-pitch">{{ v.pitch }}</p>
-                    {% if v.justification %}
-                    <p class="brief-justification"><em>Why this works:</em> {{ v.justification }}</p>
+        <div class="brief-scenes-grid">
+            {% for s in scenes %}
+            <article class="brief-scene-card">
+                <header class="brief-scene-head">
+                    <h3>Scene {{ s.scene_id or loop.index }}</h3>
+                    {% if s.source_section %}
+                    <span class="brief-scene-tag">{{ s.source_section }}</span>
                     {% endif %}
+                    {% if s.narrative_phase %}
+                    <span class="brief-scene-tag">{{ s.narrative_phase }}</span>
+                    {% endif %}
+                    {% if s.emotional_intensity %}
+                    <span class="brief-scene-tag">intensity: {{ s.emotional_intensity }}</span>
+                    {% endif %}
+                </header>
 
-                    {# Always-visible comparison rows — shown on every card
-                       so users can compare side-by-side regardless of which
-                       variant is selected. #}
-                    <div class="brief-compare-meta">
-                        <span class="brief-meta-pill"><strong>Metaphor:</strong> {{ v.central_metaphor or '—' }}</span>
-                        <span class="brief-meta-pill"><strong>Cast:</strong>
-                            {% if v.cast_roster %}{{ v.cast_roster|join(', ') }}{% else %}<em>no people</em>{% endif %}
-                        </span>
-                        <span class="brief-meta-pill"><strong>Score:</strong> {{ v.self_critique.score or 7 }}/10</span>
-                    </div>
-                    {% if v.treatment %}
-                    <details class="brief-treatment-preview">
-                        <summary>Treatment preview</summary>
-                        <pre class="brief-treatment">{{ v.treatment[:600] }}{% if v.treatment|length > 600 %}…{% endif %}</pre>
-                    </details>
-                    {% endif %}
+                {% if s.scene_purpose %}
+                <p class="brief-scene-purpose"><em>Purpose:</em> {{ s.scene_purpose }}</p>
+                {% endif %}
 
-                    {# Render editable fields for EVERY variant. Only the
-                       currently-selected variant's inputs are form-active
-                       (data-name swapped to the real form name); the others
-                       are disabled so they're omitted from POST. The radio
-                       click handler below swaps active state on selection. #}
-                    <div class="brief-edit-grid" {% if not is_chosen %}hidden{% endif %}>
-                        <label class="brief-edit-row">
-                            <span>Title</span>
-                            <input type="text" data-name="title" {% if is_chosen %}name="title"{% else %}disabled{% endif %} maxlength="200"
-                                   value="{{ (is_chosen and chosen.title) or v.title or '' }}"/>
-                        </label>
-                        <label class="brief-edit-row">
-                            <span>Pitch</span>
-                            <input type="text" data-name="pitch" {% if is_chosen %}name="pitch"{% else %}disabled{% endif %} maxlength="500"
-                                   value="{{ (is_chosen and chosen.pitch) or v.pitch or '' }}"/>
-                        </label>
-                        <label class="brief-edit-row">
-                            <span>Central metaphor</span>
-                            <input type="text" data-name="central_metaphor" {% if is_chosen %}name="central_metaphor"{% else %}disabled{% endif %} maxlength="300"
-                                   value="{{ (is_chosen and chosen.central_metaphor) or v.central_metaphor or '' }}"/>
-                        </label>
-                        <label class="brief-edit-row">
-                            <span>Cast roster <em>(comma-separated; blank = no people)</em></span>
-                            <input type="text" data-name="cast_roster" {% if is_chosen %}name="cast_roster"{% else %}disabled{% endif %} maxlength="500"
-                                   value="{{ ((is_chosen and chosen.cast_roster) or v.cast_roster or [])|join(', ') }}"/>
-                        </label>
-                        <label class="brief-edit-row brief-edit-row--full">
-                            <span>Treatment</span>
-                            <textarea data-name="treatment" {% if is_chosen %}name="treatment"{% else %}disabled{% endif %} rows="6" maxlength="4000">{{ (is_chosen and chosen.treatment) or v.treatment or '' }}</textarea>
-                        </label>
-                    </div>
+                <p class="brief-scene-direction">{{ s.chosen_direction }}</p>
 
-                    {% if v.scenes %}
-                    <details>
-                        <summary>Scenes ({{ v.scenes|length }})</summary>
-                        <ul class="brief-scenes">
-                            {% for s in v.scenes %}
-                            <li><strong>{{ s.name }}</strong> ({{ s.beat_range }}): {{ s.summary }}</li>
-                            {% endfor %}
-                        </ul>
-                    </details>
+                {% if s.selection_basis %}
+                <p class="brief-scene-basis">Why this pick: {{ s.selection_basis }}</p>
+                {% endif %}
+
+                <div class="brief-scene-meta">
+                    {% if s.subject_focus %}
+                    <div><strong>Subject focus:</strong> {{ s.subject_focus }}</div>
                     {% endif %}
-                    {% if v.self_critique.rationale %}
-                    <p class="brief-critique"><em>Self-critique:</em> {{ v.self_critique.rationale }}</p>
+                    {% if s.character_presence %}
+                    <div><strong>Character presence:</strong> {{ s.character_presence }}</div>
                     {% endif %}
-                </label>
+                    {% if s.environment_type %}
+                    <div><strong>Environment:</strong> {{ s.environment_type }}</div>
+                    {% endif %}
+                    {% if s.lighting_condition %}
+                    <div><strong>Lighting:</strong> {{ s.lighting_condition }}</div>
+                    {% endif %}
+                    {% if s.movement_type %}
+                    <div><strong>Movement:</strong> {{ s.movement_type }}</div>
+                    {% endif %}
+                    {% if s.motion_density %}
+                    <div><strong>Motion density:</strong> {{ s.motion_density }}</div>
+                    {% endif %}
+                    {% if s.timeline_mode %}
+                    <div><strong>Timeline mode:</strong> {{ s.timeline_mode }}</div>
+                    {% endif %}
+                    {% if s.emotional_state %}
+                    <div><strong>Emotional state:</strong> {{ s.emotional_state }}</div>
+                    {% endif %}
+                    {% if s.repetition_handling %}
+                    <div><strong>Repetition:</strong> {{ s.repetition_handling }}</div>
+                    {% endif %}
+                    {% if s.character_identity_hint %}
+                    <div><strong>Identity hint:</strong> {{ s.character_identity_hint }}</div>
+                    {% endif %}
+                    {% if s.variation_anchor %}
+                    <div><strong>Variation anchor:</strong> {{ s.variation_anchor }}</div>
+                    {% endif %}
+                    {% if s.continuity_hooks and s.continuity_hooks.character %}
+                    <div><strong>Continuity:</strong> {{ s.continuity_hooks.character }}</div>
+                    {% endif %}
+                </div>
+
+                {% if s.key_elements %}
+                <div class="brief-scene-tags">
+                    <strong style="color:#e8e8ee; font-size:.78rem; margin-right:.2rem;">Key elements:</strong>
+                    {% for k in s.key_elements %}<span class="pill">{{ k }}</span>{% endfor %}
+                </div>
+                {% endif %}
+
+                {% if s.motif_usage %}
+                <div class="brief-scene-tags">
+                    <strong style="color:#e8e8ee; font-size:.78rem; margin-right:.2rem;">Motifs:</strong>
+                    {% for m in s.motif_usage %}<span class="pill">{{ m }}</span>{% endfor %}
+                </div>
+                {% endif %}
+            </article>
             {% endfor %}
-            </div>
+        </div>
 
-            <div class="ctx-block ctx-full">
-                <h3>Director's note</h3>
-                <p class="ctx-override-hint">
-                    A short freeform direction the cinematography engine will weight (e.g.
-                    "handheld vérité", "Tarkovsky locked frames", "epic drone wides only").
-                </p>
-                <textarea name="director_note" rows="3" maxlength="600"
-                          placeholder="Optional — leave blank to honor the picked variant as-is."
-                >{{ chosen.director_note or '' }}</textarea>
+        {% if not project._is_review_only %}
+        <form method="post" action="{{ url_for('advance_brief', project_id=project.id) }}"
+              enctype="multipart/form-data" class="brief-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <p class="muted" style="margin:0 0 10px;">
+                Next we'll generate ONE face plate per character and ONE environment
+                plate per location. Optionally upload a real photo for either to skip
+                the AI plate.
+            </p>
+            <div class="ref-upload-row">
+                <label class="ref-upload-label">
+                    Optional speaker photo <span class="muted">(skip the AI face plate)</span>
+                    <input type="file" name="character_ref" accept="image/*">
+                </label>
+                <label class="ref-upload-label">
+                    Optional environment photo <span class="muted">(skip the AI plate)</span>
+                    <input type="file" name="environment_ref" accept="image/*">
+                </label>
             </div>
-
-            <div class="brief-actions">
-                <button type="submit" class="btn btn-primary">Lock variant & continue to Storyboard →</button>
+            <div class="brief-actions" style="margin-top:1rem;">
+                <button type="submit" class="btn btn-primary">Approve brief & generate references →</button>
             </div>
         </form>
 
-        {% if not project._is_review_only %}
         <div class="ctx-block" style="margin-top:1.5rem; border-top: 1px solid rgba(255,255,255,.08); padding-top:1rem;">
             <div class="ctx-override-hint" style="margin:0 0 .6rem;">
-                Not happy with any of these treatments?
+                Want a different mix of directions?
                 <form method="post" action="{{ url_for('regenerate_brief', project_id=project.id) }}"
                       style="display:inline;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit"
                             class="sb-restyle-link btn-link"
                             style="font-size:inherit;"
-                            onclick="return confirm('Generate brand-new brief variants? The current options will be replaced.')">
-                        Regenerate variants →
+                            onclick="return confirm('Regenerate the Creative Brief? Current per-scene picks will be replaced.')">
+                        Regenerate brief →
                     </button>
                 </form>
             </div>
@@ -188,37 +225,4 @@
         {% endif %}
     </div>
 </div>
-
-{# Task #69 — Toggle which variant's edit-grid is form-active when the user
-   picks a different radio option. Disabled inputs aren't sent on submit, so
-   only the selected variant's edits are persisted to creative_brief.chosen. #}
-<script>
-(function () {
-  var form = document.querySelector('.brief-form');
-  if (!form) return;
-  function activate(variantEl) {
-    form.querySelectorAll('.brief-variant').forEach(function (label) {
-      var grid = label.querySelector('.brief-edit-grid');
-      var on = label === variantEl;
-      label.classList.toggle('brief-variant--active', on);
-      if (!grid) return;
-      if (on) { grid.removeAttribute('hidden'); } else { grid.setAttribute('hidden', ''); }
-      grid.querySelectorAll('[data-name]').forEach(function (inp) {
-        if (on) {
-          inp.disabled = false;
-          inp.setAttribute('name', inp.dataset.name);
-        } else {
-          inp.disabled = true;
-          inp.removeAttribute('name');
-        }
-      });
-    });
-  }
-  form.querySelectorAll('input[type=radio][name=variant_id]').forEach(function (r) {
-    r.addEventListener('change', function () {
-      if (r.checked) activate(r.closest('.brief-variant'));
-    });
-  });
-})();
-</script>
 {% endblock %}
