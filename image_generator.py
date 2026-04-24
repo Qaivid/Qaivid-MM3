@@ -192,13 +192,21 @@ def ai_build_ref_prompts(
     chars_block = "\n".join(_char_summary(c) for c in characters)
     locs_block  = "\n".join(_loc_summary(l)  for l in locations)
 
+    # Build a compact geographic anchor string for injection into every prompt
+    geo_anchor = " | ".join(filter(None, [
+        wa.get("geography", ""),
+        cp.get("location_dna", ""),
+    ]))
+
     system_msg = (
         "You are a cinematographer and image prompt specialist writing prompts for an AI image generation model. "
         "Your job is to produce clean, visual, descriptive prompts — NOT poetry, NOT metaphor, NOT story narration. "
         "Every word you write must describe something the camera can see. "
         "You never use emotional abstractions ('longing', 'yearning', 'ethereal presence') as substitutes for physical description. "
         "You never put characters or people into LOCATION prompts — locations are always empty spaces. "
-        "You always ground prompts in cultural and geographic authenticity."
+        "You always ground prompts in cultural and geographic authenticity. "
+        "AI image models require EXPLICIT country and region names to generate geographically correct images — "
+        "local architectural terms (kuchha, charpai, etc.) are NOT enough on their own."
     )
 
     user_msg = f"""Write image generation prompts for characters and locations in a music video project.
@@ -217,10 +225,14 @@ End every character prompt with: "Photorealistic portrait, cinematic lighting, s
 
 ───────────────────────────────
 LOCATIONS — write an EMPTY SCENE prompt for each
-RULE: The scene must contain ZERO people, ZERO characters, ZERO human figures.
-Do NOT borrow characters or actions from any description — the description is narrative context only.
-Focus entirely on: architecture, landscape, lighting, props, atmosphere, time of day.
-End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic."
+
+RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZERO human figures. Do NOT borrow characters or actions from any description — the description is narrative context only. Focus entirely on: architecture, landscape, lighting, props, atmosphere, time of day.
+
+RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: AI image models need explicit country/region names to generate the correct visual world. Every location prompt MUST begin with the geographic anchor for this project: "{geo_anchor}". Example opening: "Rural Punjab village in India — [rest of scene]..." Do NOT rely on local terms (kuchha, charpai) alone without the geographic anchor — the model will not know where in the world this is.
+
+RULE 3 — ARCHITECTURE IS SPECIFIC: This project's architecture is: {wa.get('architecture_style', 'traditional local construction')}. Mention these specific elements so the image model renders them correctly.
+
+End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic, geographically authentic."
 
 {locs_block}
 
