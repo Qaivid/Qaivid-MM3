@@ -16,12 +16,12 @@
     ('materializer_review',    'Cast & World Bible', 'Clears the cast & world bible, references, stills, motion plan and videos.'),
     ('references_review',      'References',         'Clears all reference plates, stills, motion plan and videos.'),
     ('stills_control',         'Stills',             'Clears all generated stills, motion plan and video clips. References are preserved.'),
-    ('videos_control',         'Video Studio',       'Clears the motion plan and all video clips.'),
     ('video_assembly_review',  'Video Assembly',     'Clears the per-shot motion plan and all video clips.'),
+    ('videos_control',         'Video Studio',       'Clears all video clips and post-production.'),
     ('post_production',        'Post Production',    'Clears rendered output and final cut.'),
 ] %}
 {# Full pipeline order for index comparison — includes display-only stages not in _redo_stages #}
-{% set _redo_order = ['audio_review','context_review','narrative_review','style_review','storyboard_review','creative_brief_review','materializer_review','references_review','stills_control','stills_review','videos_control','video_assembly_review','videos_review','post_production','final_review'] %}
+{% set _redo_order = ['audio_review','context_review','narrative_review','style_review','storyboard_review','creative_brief_review','materializer_review','references_review','stills_control','stills_review','video_assembly_review','videos_control','videos_review','post_production','final_review'] %}
 {% set _cur_stage = project._viewing_stage or project.stage %}
 {% set _ns = namespace(cur_idx=-1) %}
 {% for s in _redo_order %}{% if s == _cur_stage %}{% set _ns.cur_idx = loop.index0 %}{% endif %}{% endfor %}
