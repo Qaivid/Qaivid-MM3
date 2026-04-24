@@ -23,7 +23,7 @@ import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 import psycopg
 from psycopg.rows import dict_row
@@ -564,6 +564,16 @@ def _get_shot_motion_prompt(project_id: str, shot_index: int) -> Optional[str]:
 
 
 def _render_video(project_id: str, shot: dict) -> None:
+    """Animate one still into a video clip, enriched with Project Brain data.
+
+    Brain reads (non-fatal fallback to legacy on any error):
+      materializer_packet  → identity_seed, continuity_rules, character db_id
+      reference_assets     → (not used for video conditioning but logged)
+      style_packet         → cinematic_style, lighting_logic
+      narrative_packet     → motion_philosophy
+    """
+    from motion_render_prompt_builder import build_video_clip_prompt
+
     idx = shot.get("shot_index") or shot.get("timeline_index")
     still_url = _get_ready_still_url(project_id, idx)
     if not still_url:
@@ -571,14 +581,97 @@ def _render_video(project_id: str, shot: dict) -> None:
                       error="No ready still image found; run stills first.")
         return
     _update_video(project_id, idx, "rendering")
+
+    # ── Brain load (non-fatal) ────────────────────────────────────────────────
+    identity_seed:      Optional[str]       = None
+    continuity_rules:   Optional[List[str]] = None
+    cinematic_style:    Optional[str]       = None
+    lighting_logic:     Optional[str]       = None
+    motion_philosophy:  str                 = "mixed"
+    character_db_id:    Optional[int]       = None
+    location_db_id:     Optional[int]       = None
+    link_status:        str                 = "unresolved"
+
+    try:
+        with _db() as conn:
+            _vbrain = ProjectBrain.load(project_id, conn)
+
+        # materializer_packet — identity + continuity
+        _mp     = _vbrain.read("materializer_packet") or {}
+        _cb     = (_mp.get("character_bible") or {}).get("characters") or []
+        _lb     = (_mp.get("location_bible")  or {}).get("locations")  or []
+        _rules  = _mp.get("continuity_rules") or []
+        continuity_rules = [str(r) for r in _rules] if _rules else None
+
+        # Primary character identity_seed (first speaker entry with db_id)
+        _char_entry = next(
+            (c for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)),
+            None,
+        )
+        if _char_entry:
+            identity_seed   = str(_char_entry.get("identity_seed") or "").strip() or None
+            character_db_id = int(_char_entry["db_id"])
+
+        # Primary location db_id (first world_dna or first entry)
+        _loc_entry = next(
+            (l for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)),
+            None,
+        )
+        if _loc_entry:
+            location_db_id = int(_loc_entry["db_id"])
+
+        # Resolve link_status
+        if character_db_id is not None and location_db_id is not None:
+            link_status = "resolved"
+        elif character_db_id is not None or location_db_id is not None:
+            link_status = "semantic_only"
+        else:
+            link_status = "semantic_only"
+
+        # style_packet — cinematic look + lighting
+        _sp            = _vbrain.read("style_packet") or {}
+        cinematic_style = ((_sp.get("cinematic") or {}).get("look") or "").strip() or None
+        lighting_logic  = (str(_sp.get("lighting_logic") or "")).strip() or None
+
+        # narrative_packet — motion philosophy
+        _np = _vbrain.read("narrative_packet") or {}
+        motion_philosophy = str(_np.get("motion_philosophy") or "mixed").strip() or "mixed"
+
+    except Exception:
+        logger.debug(
+            "_render_video: brain load failed for project=%s shot=%s (non-fatal, using legacy path)",
+            project_id, idx,
+        )
+
     try:
         prompt = shot.get("styled_visual_prompt") or shot.get("visual_prompt") or ""
         duration = shot.get("duration")
-        # Prefer motion_prompt from the shot dict (new projects) or stored DB value (existing projects)
-        motion_prompt = (shot.get("motion_prompt") or "").strip() or _get_shot_motion_prompt(project_id, idx)
+
+        # Build a brain-aware motion prompt; fall back to stored/legacy value if empty
+        brain_motion_prompt = build_video_clip_prompt(
+            shot,
+            motion_philosophy=motion_philosophy,
+            identity_seed=identity_seed,
+            cinematic_style=cinematic_style,
+            lighting_logic=lighting_logic,
+            continuity_rules=continuity_rules,
+        )
+
+        # If brain prompt is empty, fall back to shot dict or stored DB value
+        motion_prompt = brain_motion_prompt or (shot.get("motion_prompt") or "").strip() or \
+            _get_shot_motion_prompt(project_id, idx)
+
+        logger.debug(
+            "_render_video: project=%s shot=%s link_status=%s motion_philosophy=%s "
+            "char_db_id=%s loc_db_id=%s prompt_len=%d",
+            project_id, idx, link_status, motion_philosophy,
+            character_db_id, location_db_id, len(motion_prompt),
+        )
+
         public_url = generate_shot_video(project_id, idx, still_url, prompt, duration,
                                          motion_prompt=motion_prompt)
         _update_video(project_id, idx, "ready", file_path=public_url)
+
     except (VideoGenerationError, Exception) as exc:
         logger.exception("Video render failed for project=%s shot=%s", project_id, idx)
         _update_video(project_id, idx, "failed", error=str(exc))
@@ -3070,8 +3163,70 @@ def _stage3_job(project_id: str,
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
+def _build_video_sequence_packet(
+    styled_timeline: list,
+    materializer_packet: dict,
+    narrative_packet: dict,
+) -> dict:
+    """Build the video_sequence_packet brain entry from the shot timeline.
+
+    Per shot: shot_id, duration, motion_applied (spec mode), transition_in/out,
+    character_id (semantic), location_id (semantic).  No alias guessing.
+    """
+    from motion_render_prompt_builder import _intensity_float, _motion_mode_for_intensity
+
+    motion_philosophy = str(narrative_packet.get("motion_philosophy") or "mixed").strip()
+    _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
+    _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
+
+    # Build semantic-id-to-db_id indexes (exact integer FK only)
+    _char_db_ids: List[Optional[int]] = [
+        int(c["db_id"]) if isinstance(c, dict) and isinstance(c.get("db_id"), int) else None
+        for c in _cb
+    ]
+    _loc_db_ids: List[Optional[int]] = [
+        int(l["db_id"]) if isinstance(l, dict) and isinstance(l.get("db_id"), int) else None
+        for l in _lb
+    ]
+    primary_char_db_id = next((d for d in _char_db_ids if d is not None), None)
+    primary_loc_db_id  = next((d for d in _loc_db_ids  if d is not None), None)
+
+    shots_plan = []
+    for shot in styled_timeline:
+        idx      = shot.get("shot_index") or shot.get("timeline_index")
+        duration = shot.get("duration")
+        raw_int  = shot.get("emotional_intensity") or "medium"
+        motion_mode = _motion_mode_for_intensity(_intensity_float(raw_int), motion_philosophy)
+
+        shots_plan.append({
+            "shot_id":        idx,
+            "duration":       duration,
+            "motion_applied": motion_mode,
+            "transition_in":  "cut",
+            "transition_out": "cut",
+            "character_id":   primary_char_db_id,
+            "location_id":    primary_loc_db_id,
+            "link_status":    (
+                "resolved"     if (primary_char_db_id is not None and primary_loc_db_id is not None)
+                else "semantic_only" if (primary_char_db_id is not None or primary_loc_db_id is not None)
+                else "unresolved"
+            ),
+        })
+
+    return {
+        "motion_philosophy": motion_philosophy,
+        "total_shots":       len(shots_plan),
+        "shots":             shots_plan,
+    }
+
+
 def _stage4_job(project_id: str) -> None:
-    """Stage 4 — Video clips: animate each still into a short clip."""
+    """Stage 4 — Video clips: animate each still into a short clip.
+
+    Brain writes:
+        video_sequence_packet — per-shot render plan (before rendering)
+        video_render_packet   — per-shot clip manifest (after rendering)
+    """
     try:
         with _db() as conn, conn.cursor() as cur:
             cur.execute("SELECT styled_timeline FROM projects WHERE id=%s", (project_id,))
@@ -3082,6 +3237,31 @@ def _stage4_job(project_id: str) -> None:
         styled_timeline = list(row["styled_timeline"])
         shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in styled_timeline]
         _seed_video_rows(project_id, shot_indices)
+
+        # Initialise so the render_packet builder can reference it even if
+        # the sequence_packet write fails (non-fatal path).
+        _vsp: dict = {}
+
+        # ── Write video_sequence_packet to brain (before rendering) ──────────
+        try:
+            with _db() as conn:
+                _s4brain = ProjectBrain.load(project_id, conn)
+            _s4_mat = dict(_s4brain.read("materializer_packet") or {})
+            _s4_nar = dict(_s4brain.read("narrative_packet")     or {})
+            _vsp = _build_video_sequence_packet(styled_timeline, _s4_mat, _s4_nar)
+            _s4brain.write("video_sequence_packet", _vsp)
+            with _db() as conn:
+                _s4brain.save(conn)
+                conn.commit()
+            logger.info(
+                "_stage4_job: wrote video_sequence_packet (%d shots, philosophy=%s) for project=%s",
+                _vsp.get("total_shots", 0), _vsp.get("motion_philosophy"), project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage4_job: failed to write video_sequence_packet (non-fatal) for project=%s",
+                project_id,
+            )
 
         _set_status(project_id, "running",
                     {"stage": "videos",
@@ -3098,6 +3278,66 @@ def _stage4_job(project_id: str) -> None:
                 vf.result()
             except Exception:
                 logger.exception("Video render raised")
+
+        # ── Write video_render_packet to brain (after all clips complete) ────
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT shot_index, file_path, status, error "
+                    "  FROM video_assets WHERE project_id=%s ORDER BY shot_index",
+                    (project_id,),
+                )
+                _va_rows = cur.fetchall() or []
+
+            _clips = []
+            _render_warnings = []
+            for _va in _va_rows:
+                _si    = _va.get("shot_index")
+                _st    = _va.get("status") or "unknown"
+                _fpath = _va.get("file_path") or ""
+                _err   = _va.get("error") or ""
+                if _st == "failed" and _err:
+                    _render_warnings.append(f"shot_{_si}: {_err}")
+                # Corresponding sequence plan entry
+                _seq_shot = next(
+                    (sp for sp in (_vsp.get("shots") or []) if sp.get("shot_id") == _si),
+                    {},
+                )
+                _clips.append({
+                    "shot_id":        _si,
+                    "mode":           "image_to_video",
+                    "duration":       _seq_shot.get("duration"),
+                    "motion_applied": _seq_shot.get("motion_applied"),
+                    "transition_in":  _seq_shot.get("transition_in", "cut"),
+                    "transition_out": _seq_shot.get("transition_out", "cut"),
+                    "character_id":   _seq_shot.get("character_id"),
+                    "location_id":    _seq_shot.get("location_id"),
+                    "link_status":    _seq_shot.get("link_status", "unresolved"),
+                    "video_url":      _fpath,
+                    "render_status":  _st,
+                })
+
+            _vrp = {
+                "total_clips":      len(_clips),
+                "clips":            _clips,
+                "render_warnings":  _render_warnings,
+            }
+
+            with _db() as conn:
+                _vrp_brain = ProjectBrain.load(project_id, conn)
+            _vrp_brain.write("video_render_packet", _vrp)
+            with _db() as conn:
+                _vrp_brain.save(conn)
+                conn.commit()
+            logger.info(
+                "_stage4_job: wrote video_render_packet (%d clips, %d warnings) for project=%s",
+                len(_clips), len(_render_warnings), project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage4_job: failed to write video_render_packet (non-fatal) for project=%s",
+                project_id,
+            )
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "videos", "label": "Video clips complete. Ready for final assembly."},

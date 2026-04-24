@@ -38,6 +38,16 @@ _QUALITY_SUFFIX = (
     "no abrupt transitions, filmic quality"
 )
 
+# Spec motion modes — used by _motion_mode_for_intensity()
+_MOTION_MODES = {
+    "static":        "static hold, minimal camera movement",
+    "slow_zoom_in":  "very slow zoom in, subtle push",
+    "slow_zoom_out": "very slow zoom out, gentle pull",
+    "pan_left":      "slow pan left, drifting reveal",
+    "pan_right":     "slow pan right, drifting reveal",
+    "drift":         "subtle camera drift, organic handheld quality",
+}
+
 
 def _camera_clause(camera: Dict) -> str:
     movement  = camera.get("movement", "")
@@ -47,6 +57,48 @@ def _camera_clause(camera: Dict) -> str:
     if not parts:
         return ""
     return "camera: " + ", ".join(parts)
+
+
+def _motion_mode_for_intensity(
+    emotional_intensity: float,
+    motion_philosophy: str,
+) -> str:
+    """Return a spec motion mode string scaled to emotional intensity and philosophy.
+
+    Intensity bands (spec rule):
+        < 0.35   → static / minimal  (still_dominant philosophies held here)
+        0.35–0.65 → subtle drift or slow zoom
+        > 0.65   → active pan/tilt aligned with motion_philosophy direction
+
+    motion_philosophy values: still_dominant | dynamic_dominant | mixed
+    """
+    phi = (motion_philosophy or "mixed").lower().strip()
+
+    if emotional_intensity < 0.35:
+        return _MOTION_MODES["static"]
+
+    if emotional_intensity <= 0.65:
+        if phi == "still_dominant":
+            return _MOTION_MODES["slow_zoom_in"]
+        return _MOTION_MODES["drift"]
+
+    # High intensity (> 0.65)
+    if phi == "still_dominant":
+        return _MOTION_MODES["slow_zoom_in"]
+    if phi == "dynamic_dominant":
+        return _MOTION_MODES["pan_right"]
+    return _MOTION_MODES["slow_zoom_out"]
+
+
+def _intensity_float(intensity_str: str) -> float:
+    """Convert low/medium/high/peak labels to a 0.0–1.0 float."""
+    _MAP = {
+        "low":    0.2,
+        "medium": 0.5,
+        "high":   0.75,
+        "peak":   0.95,
+    }
+    return _MAP.get((intensity_str or "medium").lower().strip(), 0.5)
 
 
 class MotionRenderPromptBuilder:
@@ -93,3 +145,94 @@ class MotionRenderPromptBuilder:
     def build_sequence(self, events: List[Dict]) -> List[str]:
         """Generate motion prompts for a full shot sequence."""
         return [self.build_prompt(e) for e in events]
+
+
+def build_video_clip_prompt(
+    shot: Dict,
+    *,
+    motion_philosophy: str = "mixed",
+    identity_seed: Optional[str] = None,
+    cinematic_style: Optional[str] = None,
+    lighting_logic: Optional[str] = None,
+    continuity_rules: Optional[List[str]] = None,
+    max_chars: int = _MODEL_MAX_CHARS,
+) -> str:
+    """Build a brain-aware WAN 2.6 Flash video prompt for a single shot.
+
+    Constructs the prompt strictly from provided brain data — no invented
+    content.  Components (in priority order):
+
+        1. Subject / identity (identity_seed or shot subject)
+        2. Action (shot action field)
+        3. Environment (shot environment_interaction or location world)
+        4. Lighting (style_packet.lighting_logic)
+        5. Emotion (shot emotional_micro_state)
+        6. Cinematic style hint (style_packet.cinematic_style)
+        7. Motion instruction (spec motion mode scaled by emotional_intensity)
+        8. Continuity rule excerpt (first rule, if present)
+        9. Quality suffix (if budget allows)
+
+    The output is always <= max_chars and never truncated mid-sentence.
+    """
+    budget = max_chars
+    chosen: List[str] = []
+
+    def _fits(candidate: str) -> bool:
+        tentative = ", ".join(chosen + [candidate])
+        return len(tentative) <= budget
+
+    def _add(clause: str) -> None:
+        clause = clause.strip()
+        if clause and _fits(clause):
+            chosen.append(clause)
+
+    # 1. Subject / identity
+    subject = (identity_seed or shot.get("subject") or shot.get("action") or "").strip()
+    if subject:
+        _add(subject)
+
+    # 2. Action (if distinct from subject)
+    action = (shot.get("action") or "").strip()
+    if action and action != subject:
+        _add(action)
+
+    # 3. Environment
+    env = (shot.get("environment_interaction") or shot.get("environment") or "").strip()
+    if env:
+        _add(env)
+
+    # 4. Lighting
+    if lighting_logic:
+        _add(lighting_logic.strip())
+
+    # 5. Emotional micro-state
+    emotion = (shot.get("emotional_micro_state") or shot.get("emotional_shift") or "").strip()
+    if emotion:
+        _add(emotion)
+
+    # 6. Cinematic style hint (brief)
+    if cinematic_style:
+        hint = cinematic_style.strip()
+        _add(hint)
+
+    # 7. Motion instruction — scaled to emotional_intensity + motion_philosophy
+    raw_intensity = shot.get("emotional_intensity") or "medium"
+    intensity_f = _intensity_float(raw_intensity)
+    motion_clause = _motion_mode_for_intensity(intensity_f, motion_philosophy)
+    if motion_clause:
+        _add(motion_clause)
+
+    # 8. First continuity rule (brief excerpt)
+    rules = continuity_rules or []
+    if rules:
+        rule = str(rules[0]).strip()
+        if len(rule) > 80:
+            rule = rule[:80].rsplit(" ", 1)[0]
+        if rule:
+            _add(rule)
+
+    # 9. Quality suffix — lowest priority
+    _add(_QUALITY_SUFFIX)
+
+    prompt = ", ".join(chosen)
+    return prompt.strip()

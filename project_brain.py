@@ -21,10 +21,12 @@ Namespaces (in pipeline order):
     character_bible    Stage 7  — Materializer character anchors
     location_bible     Stage 7  — Materializer location anchors
     reference_assets   Stage 8  — Reference image metadata
-    shot_plan          Stage 9  — Final shot asset plan
-    continuity_state   Cross    — Running continuity rules (updated by multiple stages)
-    render_outputs     Stage 10/11 — Final video / assembly outputs
-    validation_notes   Cross    — Warnings and flags accumulated across stages
+    shot_plan              Stage 9  — Final shot asset plan
+    video_sequence_packet  Stage 10 — Per-shot video render plan (before rendering)
+    video_render_packet    Stage 10 — Per-shot clip manifest (after rendering)
+    continuity_state       Cross    — Running continuity rules (updated by multiple stages)
+    render_outputs         Stage 10/11 — Final video / assembly outputs
+    validation_notes       Cross    — Warnings and flags accumulated across stages
 """
 
 import json
@@ -47,31 +49,35 @@ NAMESPACES: List[str] = [
     "location_bible",
     "reference_assets",
     "shot_plan",
+    "video_sequence_packet",
+    "video_render_packet",
     "continuity_state",
     "render_outputs",
     "validation_notes",
 ]
 
 NAMESPACE_OWNERS: Dict[str, str] = {
-    "raw_input":            "stage_0",
-    "project_settings":     "stage_0",
-    "input_structure":      "stage_1_input",
-    "context_packet":       "stage_2_context",
-    "narrative_packet":     "stage_3_narrative",
-    "style_packet":         "stage_4_style",
-    "storyboard_packet":    "stage_5_storyboard",
-    "creative_briefs":      "stage_6_brief",
+    "raw_input":              "stage_0",
+    "project_settings":       "stage_0",
+    "input_structure":        "stage_1_input",
+    "context_packet":         "stage_2_context",
+    "narrative_packet":       "stage_3_narrative",
+    "style_packet":           "stage_4_style",
+    "storyboard_packet":      "stage_5_storyboard",
+    "creative_briefs":        "stage_6_brief",
     # Stage 7 — Materializer: materializer_packet is the authoritative output.
     # character_bible and location_bible are mirrors kept for backward compat
     # (older stages that read brain.character_bible still work unchanged).
-    "materializer_packet":  "stage_7_materializer",
-    "character_bible":      "stage_7_materializer",
-    "location_bible":       "stage_7_materializer",
-    "reference_assets":     "stage_8_refs",
-    "shot_plan":            "stage_9_stills",
-    "continuity_state":     "cross_stage",
-    "render_outputs":       "stage_10_assembly",
-    "validation_notes":     "cross_stage",
+    "materializer_packet":    "stage_7_materializer",
+    "character_bible":        "stage_7_materializer",
+    "location_bible":         "stage_7_materializer",
+    "reference_assets":       "stage_8_refs",
+    "shot_plan":              "stage_9_stills",
+    "video_sequence_packet":  "stage_10_video",
+    "video_render_packet":    "stage_10_video",
+    "continuity_state":       "cross_stage",
+    "render_outputs":         "stage_10_assembly",
+    "validation_notes":       "cross_stage",
 }
 
 
