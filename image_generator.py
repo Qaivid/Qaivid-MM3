@@ -163,30 +163,28 @@ def ai_build_ref_prompts(
         return " | ".join(parts)
 
     # ── Serialise locations ──────────────────────────────────────────────────
-    # CRITICAL: The 'description' field is a NARRATIVE SCENE DESCRIPTION that
-    # mentions characters and story actions.  We deliberately exclude it and
-    # pass only physical/environment fields so GPT cannot put people in scenes.
+    # Keep this lean: name + time + weather is all the AI needs.
+    # Architecture is intentionally omitted — the AI knows what spaces in this
+    # geographic world look like.  description is excluded (narrative with people).
+    # architecture_style is excluded (over-constrains every location to look identical).
+    # cultural_notes / social_layer are thematic, not spatial — excluded.
     def _loc_summary(l: dict) -> str:
         parts = [f"ID:{l['id']} Name:{(l.get('name') or 'location').strip()}"]
-        for k, label in [
-            ("geography",             "Geography"),
-            ("time_of_day",           "Time of day"),
-            ("weather_or_atmosphere", "Weather / atmosphere"),
-            ("architecture_style",    "Architecture"),
-            ("cultural_dna",          "Cultural DNA"),
-            ("cultural_notes",        "Cultural notes"),
-            ("social_layer",          "Social layer"),
-        ]:
-            v = (l.get(k) or "").strip()
-            if v:
-                parts.append(f"{label}:{v}")
-        # visual_details often starts with the location name as a prefix — strip it
+        if (l.get("time_of_day") or "").strip():
+            parts.append(f"Time:{l['time_of_day'].strip()}")
+        if (l.get("weather_or_atmosphere") or "").strip():
+            parts.append(f"Weather:{l['weather_or_atmosphere'].strip()}")
+        # Only include props that are actual physical objects — strip name prefix
+        # if present, and skip if what remains is just the architecture boilerplate
         raw_vd   = (l.get("visual_details") or "").strip()
         loc_name = (l.get("name") or "").strip()
         if raw_vd and raw_vd.lower() != loc_name.lower():
-            props = raw_vd[len(loc_name):].lstrip(";., ").strip() if (loc_name and raw_vd.lower().startswith(loc_name.lower())) else raw_vd
-            if props:
-                parts.append(f"Props / details:{props}")
+            props = raw_vd[len(loc_name):].lstrip(";., ").strip() \
+                    if (loc_name and raw_vd.lower().startswith(loc_name.lower())) \
+                    else raw_vd
+            # Skip if it's the architecture boilerplate (contains 'clay roof' or 'plaster')
+            if props and "clay roof" not in props.lower() and "plaster" not in props.lower():
+                parts.append(f"Props:{props}")
         return " | ".join(parts)
 
     chars_block = "\n".join(_char_summary(c) for c in characters)
@@ -228,9 +226,9 @@ LOCATIONS — write an EMPTY SCENE prompt for each
 
 RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZERO human figures. Do NOT borrow characters or actions from any description — the description is narrative context only. Focus entirely on: architecture, landscape, lighting, props, atmosphere, time of day.
 
-RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: AI image models need explicit country/region names to generate the correct visual world. Every location prompt MUST begin with the geographic anchor for this project: "{geo_anchor}". Example opening: "Rural Punjab village in India — [rest of scene]..." Do NOT rely on local terms (kuchha, charpai) alone without the geographic anchor — the model will not know where in the world this is.
+RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: Every prompt MUST begin with the geographic anchor: "{geo_anchor}". The image model needs explicit country/region to generate the correct visual world. Do not rely on local-language terms alone.
 
-RULE 3 — ARCHITECTURE IS SPECIFIC: This project's architecture is: {wa.get('architecture_style', 'traditional local construction')}. Mention these specific elements so the image model renders them correctly.
+RULE 3 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: You know the Punjab region of India/Pakistan. A mustard field is open sky and golden crops — no walls, no doors. A village well is stone or brick in open air. A prosperous farmer's haveli has carved wooden pillars and lime-washed arched verandahs, not mud walls. A labourer's simple home has an earthen facade. Each location type looks completely different — render each one from your own knowledge of what that specific space looks and feels like in that part of the world.
 
 End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic, geographically authentic."
 

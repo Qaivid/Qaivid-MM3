@@ -90,12 +90,16 @@ def _upsert_location(cur, project_id: str, loc: dict) -> int:
 
 
 def _build_world_description(location_dna: str, world: dict) -> str:
+    """Build a brief world-context description — geography and cultural DNA only.
+
+    architecture_style and characteristic_setting are intentionally excluded:
+    they should not be baked into every location row as a visual prescription.
+    The storyboard and image engines derive visual detail from story context.
+    """
     bits = [f"World DNA: {location_dna}"] if not _is_vague(location_dna) else []
     for key, label in [
-        ("geography", "geography"),
+        ("geography",   "geography"),
         ("time_period", "time period"),
-        ("architecture_style", "architecture"),
-        ("weather_or_atmosphere", "atmosphere"),
         ("social_layer", "social layer"),
         ("cultural_dna", "cultural DNA"),
     ]:
@@ -106,16 +110,15 @@ def _build_world_description(location_dna: str, world: dict) -> str:
 
 
 def _build_visual_details(location_dna: str, world: dict) -> str:
-    parts = []
-    arch = _norm(world.get("architecture_style"))
-    weather = _norm(world.get("weather_or_atmosphere"))
-    if not _is_vague(arch):
-        parts.append(arch)
-    if not _is_vague(weather):
-        parts.append(weather)
+    """Build a minimal visual anchor — location name only.
+
+    architecture_style is excluded: it was causing every location row to carry
+    the same architectural template regardless of the actual space type.
+    The image engine uses story context + geographic anchor instead.
+    """
     if not _is_vague(location_dna) and location_dna.lower() != "universal":
-        parts.append(location_dna)
-    return ", ".join(parts) if parts else location_dna
+        return location_dna
+    return ""
 
 
 def _world_field(world: dict, *keys: str) -> str:

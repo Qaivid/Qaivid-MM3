@@ -37,21 +37,7 @@ class CulturePackRegistry:
                 "anklet": "feminine adornment, desire, youth, celebration, withheld fulfillment",
             },
             "world_defaults": {
-                "geography": "rural Punjab (South Asia) — village setting, agricultural landscape",
-                "architecture_style": (
-                    "kuchha (mud-plastered) village architecture — thick bare ochre/sand-toned mud walls, "
-                    "flat clay rooftops accessible by exterior stone or mud staircases, small deep-set windows "
-                    "with blue or turquoise painted wooden shutters, heavy carved wooden doors painted blue, "
-                    "smooth plastered parapet walls, no glass or modern cladding; "
-                    "style reference: authentic T-Series Punjabi folk music video locations, not a studio set"
-                ),
-                "characteristic_setting": (
-                    "clean swept earthen vehra (open courtyard) — packed bare mud floor, "
-                    "borders of thick kuchha walls, charpai (rope-strung wooden bed) in open air, "
-                    "terracotta matkas near the entrance, mustard or wheat fields visible beyond the compound wall, "
-                    "open sky overhead, golden or warm afternoon light; "
-                    "no concrete or tile, no synthetic materials"
-                ),
+                "geography": "Punjab region, South Asia",
                 "cultural_dna": "Punjabi rural lament",
             },
             "appearance_defaults": {
@@ -1110,8 +1096,8 @@ REQUIRED JSON SHAPE:
     "characteristic_time": "string  (general emotional time-feel of the song, e.g. 'dawn', 'dusk', 'late night' — this is a cultural default, NOT the time of day for any specific shot; individual scene times are set by the creative brief)",
     "social_context": "string",
     "economic_context": "string",
-    "architecture_style": "string  (MANDATORY: describe in specific physical construction materials and visual form — NOT a generic label. Examples: for Punjabi village: 'kuchha mud-plastered walls, flat clay roof, blue-painted wooden doors and shutters, exterior staircase, smooth ochre plaster'; for French countryside: 'stone farmhouse, timber-frame shutters, slate roof'; for urban Seoul: 'glass and steel high-rise, neon-lit street level'. Never write just 'traditional' or 'rustic' or 'domestic' — always specify the material and construction type.)",
-    "characteristic_setting": "string  (MANDATORY: describe with specific physical environment details — NOT a generic category label. Examples: for Punjabi village: 'clean swept earthen courtyard, charpai in open air, terracotta matkas near entrance, mustard fields beyond the compound wall'; for French countryside: 'stone-walled farmyard, gravel path, vegetable garden, hay barn'; for urban Seoul: 'neon-lit alley, convenience store frontage, street stall'. Never write just 'courtyard-oriented home' or 'domestic interior' — always describe what is physically visible.)"
+    "architecture_style": "string  (OPTIONAL — only if a dominant architectural type is clearly identifiable from the content. One short phrase at most, e.g. 'Punjabi village', 'Parisian Haussmann', 'contemporary Seoul'. Do NOT describe materials, colors, or construction details — that is for the storyboard and image engines to determine.)",
+    "characteristic_setting": "string  (OPTIONAL — one short phrase capturing the general spatial type, e.g. 'open agricultural village', 'urban street', 'coastal town'. No lists, no visual prescriptions.)"
   }},
   "emotional_arc": {{
     "opening": "string",
@@ -1518,16 +1504,9 @@ REQUIREMENTS:
             wa.get("characteristic_setting")
             or wa.get("domestic_setting")
         )
-        # Culture pack is authoritative for visual specifics (architecture_style,
-        # characteristic_setting). The LLM always returns vague generics here
-        # ("Courtyard-oriented home") which are useless downstream. When the pack
-        # has specific values, use them unconditionally — they represent domain
-        # knowledge the LLM cannot reliably reproduce.
-        pack_arch = defaults.get("architecture_style", "")
-        pack_setting = (
-            defaults.get("characteristic_setting")
-            or defaults.get("domestic_setting", "")
-        )
+        # architecture_style and characteristic_setting are now light context hints,
+        # not prescriptive blueprints. Use the LLM output as-is; culture pack
+        # geography/cultural_dna are still good fallbacks for orientation fields.
         data["world_assumptions"] = {
             "geography": self._ensure_string(wa.get("geography"), defaults.get("geography", "Unspecified")),
             "era": self._ensure_string(wa.get("era"), "Unspecified"),
@@ -1535,14 +1514,8 @@ REQUIREMENTS:
             "characteristic_time": self._ensure_string(char_time, "Unspecified"),
             "social_context": self._ensure_string(wa.get("social_context"), "Unspecified"),
             "economic_context": self._ensure_string(wa.get("economic_context"), "Unspecified"),
-            "architecture_style": (
-                pack_arch if pack_arch
-                else self._ensure_string(wa.get("architecture_style"), "Unspecified")
-            ),
-            "characteristic_setting": (
-                pack_setting if pack_setting
-                else self._ensure_string(char_setting, "Unspecified")
-            ),
+            "architecture_style": self._ensure_string(wa.get("architecture_style"), ""),
+            "characteristic_setting": self._ensure_string(char_setting, ""),
         }
 
     def _repair_core_narrative_fields(self, data: Dict[str, Any]) -> None:
