@@ -86,6 +86,121 @@ def _openai_client():
     return OpenAI(api_key=key)
 
 
+def ai_build_ref_prompts(
+    characters: list,
+    locations: list,
+    context_packet: dict,
+    style_profile: dict,
+) -> dict:
+    """Ask GPT to write purpose-built image prompts for every character and location.
+
+    Returns::
+        {
+            "characters": {"<id>": "<prompt>"},
+            "locations":  {"<id>": "<prompt>"},
+        }
+
+    Falls back to an empty dict on any failure — callers then use the
+    template-built prompts as a safe fallback.
+    """
+    if not characters and not locations:
+        return {}
+
+    # ── Summarise story context for the LLM ─────────────────────────────────
+    cp = context_packet or {}
+    sp = style_profile or {}
+    cin = sp.get("cinematic") or {}
+
+    story_summary = "\n".join(filter(None, [
+        f"World: {cp.get('location_dna', '')}",
+        f"Era / setting: {cp.get('world_assumptions', {}).get('era', '') if isinstance(cp.get('world_assumptions'), dict) else ''}",
+        f"Emotional themes: {cp.get('emotional_core', '')}",
+        f"Visual style: {cin.get('look', '')} — {cin.get('palette', '')}",
+        f"Genre: {sp.get('genre', '')}",
+    ]))
+
+    # ── Serialise entities ───────────────────────────────────────────────────
+    def _char_summary(c: dict) -> str:
+        parts = [
+            f"ID:{c['id']} Name:{c.get('name','')}",
+            f"Role:{c.get('role','')} Age:{c.get('age_range','')} Gender:{c.get('gender','')}",
+            f"Ethnicity:{c.get('ethnicity','')} Complexion:{c.get('complexion','')}",
+            f"Wardrobe:{c.get('wardrobe','')} Grooming:{c.get('grooming','')}",
+            f"Cultural:{c.get('cultural_notes','')}",
+        ]
+        return " | ".join(p for p in parts if p.split(":",1)[-1].strip())
+
+    def _loc_summary(l: dict) -> str:
+        parts = [
+            f"ID:{l['id']} Name:{l.get('name','')}",
+            f"Desc:{l.get('description','')}",
+            f"Geography:{l.get('geography','')} Time:{l.get('time_of_day','')}",
+            f"Weather:{l.get('weather_or_atmosphere','')} Mood:{l.get('mood','')}",
+            f"Props:{l.get('visual_details','')} Cultural:{l.get('cultural_notes','')}",
+        ]
+        return " | ".join(p for p in parts if p.split(":",1)[-1].strip())
+
+    chars_block = "\n".join(_char_summary(c) for c in characters)
+    locs_block  = "\n".join(_loc_summary(l)  for l in locations)
+
+    system_msg = (
+        "You are a world-class cinematic image prompt writer for AI image generation models. "
+        "Your prompts read like a director's vision — flowing, evocative, and precise. "
+        "You never use field labels like 'Wardrobe:' or 'Architecture:'. "
+        "You always weave visual details into natural prose that gives the image model "
+        "creative room while anchoring it firmly to the cultural and emotional world of the story."
+    )
+
+    user_msg = f"""You are creating reference image prompts for a music video project.
+
+STORY CONTEXT:
+{story_summary}
+
+CHARACTERS (write a PORTRAIT prompt for each):
+{chars_block}
+
+LOCATIONS (write a SCENE prompt for each):
+{locs_block}
+
+INSTRUCTIONS:
+- CHARACTER prompts: 2-3 sentences. Describe who the person is, their physical presence, emotional bearing, cultural world. Weave wardrobe and grooming in naturally. End with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic appearance, regionally accurate clothing and features."
+- LOCATION prompts: 3-4 sentences. Open with time-of-day + cultural setting. Describe the place cinematically. Mention key props naturally. State the scene is empty (no people). End with: "Establishing wide-angle shot, photorealistic, cinematic, geographically and architecturally authentic, atmospheric lighting, no people."
+- Do NOT copy field labels into prompts. Write freely.
+- Each prompt should feel unique to that specific character or location — not generic.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{{
+  "characters": {{"<id as string>": "<portrait prompt>"}},
+  "locations":  {{"<id as string>": "<scene prompt>"}}
+}}"""
+
+    try:
+        client = _openai_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user",   "content": user_msg},
+            ],
+            temperature=0.7,
+            max_tokens=3000,
+            response_format={"type": "json_object"},
+        )
+        import json as _json
+        raw = response.choices[0].message.content or "{}"
+        result = _json.loads(raw)
+        chars_prompts = {str(k): v for k, v in (result.get("characters") or {}).items()}
+        locs_prompts  = {str(k): v for k, v in (result.get("locations")  or {}).items()}
+        logger.info(
+            "ai_build_ref_prompts: got %d char + %d loc prompts",
+            len(chars_prompts), len(locs_prompts),
+        )
+        return {"characters": chars_prompts, "locations": locs_prompts}
+    except Exception as exc:
+        logger.warning("ai_build_ref_prompts failed (%s) — falling back to templates", exc)
+        return {}
+
+
 def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
                      quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
     """Text-to-image via gpt-image-1.5. Returns raw PNG bytes."""

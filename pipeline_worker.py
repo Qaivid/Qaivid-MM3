@@ -2206,20 +2206,48 @@ def _stage_refs_job(project_id: str,
                      "total": total},
                     stage="running_refs")
 
+        # ── AI-written prompts ────────────────────────────────────────────────
+        # Fetch full entity rows so the LLM has all fields available, then ask
+        # GPT to write purpose-built cinematic prompts for every character and
+        # location in one call.  Falls back silently to template prompts if the
+        # call fails, so the pipeline is never blocked by this step.
+        try:
+            from image_generator import ai_build_ref_prompts
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute("SELECT * FROM characters WHERE project_id=%s ORDER BY id",
+                            (project_id,))
+                chars_full = cur.fetchall() or []
+                cur.execute("SELECT * FROM locations WHERE project_id=%s ORDER BY id",
+                            (project_id,))
+                locs_full = cur.fetchall() or []
+            ai_prompts = ai_build_ref_prompts(
+                chars_full, locs_full, context_packet, _style_profile
+            )
+        except Exception:
+            logger.exception("AI ref-prompt generation failed — using templates")
+            ai_prompts = {}
+
+        char_prompts = ai_prompts.get("characters", {})
+        loc_prompts  = ai_prompts.get("locations",  {})
+
         # Fire plate jobs in parallel; skip ones already 'ready' (uploads, retries).
         futures = []
         for c in chars:
             if c.get("ref_status") == "ready" and c.get("ref_image_url"):
                 continue
+            ai_prompt = char_prompts.get(str(c["id"]))
             futures.append(_SHOT_EXECUTOR.submit(
-                _render_character_plate, project_id, c["id"], location_dna, None,
+                _render_character_plate, project_id, c["id"], location_dna,
+                ai_prompt,        # prompt_override — None falls back to template
                 style_image_suffix,
             ))
         for l in locs:
             if l.get("ref_status") == "ready" and l.get("ref_image_url"):
                 continue
+            ai_prompt = loc_prompts.get(str(l["id"]))
             futures.append(_SHOT_EXECUTOR.submit(
-                _render_location_plate, project_id, l["id"], None,
+                _render_location_plate, project_id, l["id"],
+                ai_prompt,        # prompt_override — None falls back to template
                 style_image_suffix,
             ))
         for f in futures:
