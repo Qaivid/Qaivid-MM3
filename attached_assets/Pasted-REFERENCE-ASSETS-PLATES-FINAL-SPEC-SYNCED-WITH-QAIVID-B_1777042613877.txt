@@ -1,0 +1,203 @@
+REFERENCE ASSETS (PLATES) — FINAL SPEC (SYNCED WITH QAIVID BRAIN SYSTEM)
+
+ROLE:
+Construct visual reference anchors for characters, environments, style, and motifs
+based on Materializer and Creative Brief.
+
+This stage supports downstream generation by providing consistency guidance,
+NOT by making creative or narrative decisions.
+
+--------------------------------------------------
+
+POSITION IN PIPELINE
+
+Input
+→ Context
+→ Narrative
+→ Style
+→ Storyboard
+→ Creative Brief
+→ Materializer
+→ REFERENCE ASSETS (THIS STAGE)
+→ Shot Plan / Stills
+→ Video Assembly
+→ Post Processing
+→ Final Output
+
+--------------------------------------------------
+
+SYSTEM POSITIONING
+
+- Context defines truth
+- Narrative defines storytelling logic
+- Creative Brief defines scene direction
+- Materializer defines identity and world rules
+
+👉 Reference Assets ONLY provide visual anchors
+
+They must NOT:
+- change meaning
+- change narrative
+- change scene direction
+
+--------------------------------------------------
+
+WHAT REFERENCE ASSETS READ FROM PROJECT BRAIN
+
+1. materializer_packet
+- character_bible
+- location_bible
+- motif_anchors
+- continuity_rules
+
+2. creative_brief_packet
+- scene directions
+- subject_focus
+- character_presence
+- environment_type
+- key_elements
+- emotional_state
+- lighting_condition
+
+3. style_packet
+- cinematic_style
+- color_psychology
+- texture_profile
+- lighting_logic
+- realism_level
+
+4. context_packet (light validation only)
+- cultural_grounding
+- must_preserve rules
+
+--------------------------------------------------
+
+WHAT REFERENCE ASSETS MUST DO
+
+1. CONSTRUCT CHARACTER REFERENCE SETS
+
+For each character:
+
+- derive identity from identity_seed
+- create 2–4 consistent visual variants
+- vary:
+  - viewing angle
+  - expression
+  - minor styling
+- maintain:
+  - identity consistency
+  - archetype correctness
+  - emotional baseline
+
+PURPOSE:
+- provide identity anchors for shot generation
+
+--------------------------------------------------
+
+2. CONSTRUCT ENVIRONMENT PLATES
+
+For each environment type:
+
+- derive from location_bible
+- create base environment representations
+- reflect:
+  - architecture
+  - structure
+  - textures
+  - density
+  - palette
+
+- allow layout variation within rules
+
+PURPOSE:
+- ensure world consistency across shots
+
+--------------------------------------------------
+
+3. CONSTRUCT STYLE REFERENCE FRAMES
+
+- represent visual tone from style_packet
+- include:
+  - lighting mood
+  - color direction
+  - texture feel
+
+PURPOSE:
+- align visual output across scenes
+
+--------------------------------------------------
+
+4. CONSTRUCT MOTIF REFERENCE SETS
+
+- derive from motif_anchors
+- create simple, reusable visual forms
+
+PURPOSE:
+- maintain symbolic continuity
+
+--------------------------------------------------
+
+5. ENFORCE SINGLE-CONCEPT RULE
+
+Each reference asset must represent ONE concept only:
+
+VALID:
+- character identity
+- environment
+- lighting/style
+- motif
+
+INVALID:
+- full scene compositions
+- character + environment + action
+- narrative visuals
+
+--------------------------------------------------
+
+WHAT REFERENCE ASSETS MUST NOT DO
+
+- Do NOT create scenes
+- Do NOT create shots
+- Do NOT define composition
+- Do NOT define camera behavior
+- Do NOT generate prompts
+- Do NOT override Creative Brief
+- Do NOT override Narrative or Context
+
+--------------------------------------------------
+
+WHAT REFERENCE ASSETS WRITE TO PROJECT BRAIN
+
+reference_assets_packet:
+
+{
+  "character_references": [...],
+  "environment_plates": [...],
+  "style_frames": [...],
+  "motif_references": [...]
+}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Reference Assets are correct ONLY IF:
+
+- identity consistency is maintained across variations
+- environment reflects a unified world
+- style is clearly communicated
+- assets are simple and isolated
+- no narrative or scene decisions are embedded
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+Reference Assets support execution,
+they do NOT define it.
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Create simple, consistent visual anchors that guide generation without influencing meaning or scene decisions.

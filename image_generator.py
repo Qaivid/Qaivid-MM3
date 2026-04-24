@@ -91,8 +91,14 @@ def ai_build_ref_prompts(
     locations: list,
     context_packet: dict,
     style_profile: dict,
+    materializer_packet: dict | None = None,
+    creative_briefs: dict | None = None,
 ) -> dict:
     """Ask GPT to write purpose-built image prompts for every character and location.
+
+    Reads identity rules from `materializer_packet` (character_bible, location_bible,
+    motif_anchors, continuity_rules) and creative direction from `creative_briefs`
+    so prompts reflect the full REFERENCE ASSETS spec — not just raw DB fields.
 
     Returns::
         {
@@ -106,7 +112,8 @@ def ai_build_ref_prompts(
     if not characters and not locations:
         return {}
 
-    # ── Summarise story context — only include fields that actually have values
+    mp  = materializer_packet or {}
+    cb  = creative_briefs or {}
     cp  = context_packet or {}
     sp  = style_profile  or {}
     cin = sp.get("cinematic") or {}
@@ -114,8 +121,33 @@ def ai_build_ref_prompts(
     if not isinstance(wa, dict):
         wa = {}
 
+    # ── Index brain identity entries by db_id for O(1) lookup ────────────────
+    brain_chars_by_dbid: dict[int, dict] = {}
+    for bch in (mp.get("character_bible") or {}).get("characters") or []:
+        if isinstance(bch, dict) and isinstance(bch.get("db_id"), int):
+            brain_chars_by_dbid[bch["db_id"]] = bch
+
+    brain_locs_by_dbid: dict[int, dict] = {}
+    for bloc in (mp.get("location_bible") or {}).get("locations") or []:
+        if isinstance(bloc, dict) and isinstance(bloc.get("db_id"), int):
+            brain_locs_by_dbid[bloc["db_id"]] = bloc
+
+    motif_anchors    = mp.get("motif_anchors")    or []
+    continuity_rules = mp.get("continuity_rules") or []
+
+    # ── Summarise creative brief context ────────────────────────────────────
+    # Use the first brief entry as the primary creative direction signal.
+    brief_list    = cb.get("briefs") or []
+    primary_brief = brief_list[0] if brief_list else {}
+    brief_fields  = {
+        "lighting_condition": primary_brief.get("lighting_condition") or "",
+        "emotional_state":    primary_brief.get("emotional_state")    or "",
+        "environment_type":   primary_brief.get("environment_type")   or "",
+        "key_elements":       primary_brief.get("key_elements")       or "",
+        "subject_focus":      primary_brief.get("subject_focus")      or "",
+    }
+
     def _v(*keys):
-        """Return first non-empty string value from context_packet or style_profile."""
         for key in keys:
             v = cp.get(key) or sp.get(key) or cin.get(key) or ""
             if isinstance(v, str) and v.strip():
@@ -139,18 +171,35 @@ def ai_build_ref_prompts(
         story_lines.append(f"Visual style: {cin.get('look','')} {cin.get('palette','')}".strip())
     if _v("genre"):
         story_lines.append(f"Genre: {_v('genre')}")
+    # Style packet enrichment (color psychology, texture, lighting logic)
+    if sp.get("color_psychology"):
+        story_lines.append(f"Color psychology: {sp['color_psychology']}")
+    if sp.get("texture_profile"):
+        story_lines.append(f"Texture feel: {sp['texture_profile']}")
+    if sp.get("lighting_logic"):
+        story_lines.append(f"Lighting logic: {sp['lighting_logic']}")
+    if sp.get("realism_level"):
+        story_lines.append(f"Realism level: {sp['realism_level']}")
+    # Creative brief context
+    if brief_fields["lighting_condition"]:
+        story_lines.append(f"Lighting condition: {brief_fields['lighting_condition']}")
+    if brief_fields["emotional_state"]:
+        story_lines.append(f"Emotional state: {brief_fields['emotional_state']}")
+    if brief_fields["key_elements"]:
+        story_lines.append(f"Key visual elements: {brief_fields['key_elements']}")
     story_summary = "\n".join(story_lines) or "No style context provided."
 
-    # ── Serialise characters ─────────────────────────────────────────────────
-    # Only send fields that have actual values; flag characters with no physical
-    # data so GPT knows to write a culturally-generic portrait, not poetry.
+    # ── Serialise characters — DB fields + brain identity rules ─────────────
     def _char_summary(c: dict) -> str:
+        cid = c["id"]
+        brain = brain_chars_by_dbid.get(cid) or {}
+
         physical_fields = {
             k: (c.get(k) or "").strip()
             for k in ["age_range", "gender", "ethnicity", "complexion", "wardrobe", "grooming"]
         }
         has_physical = any(v for v in physical_fields.values())
-        parts = [f"ID:{c['id']} Name:{(c.get('name') or 'unnamed').strip()}"]
+        parts = [f"ID:{cid} Name:{(c.get('name') or 'unnamed').strip()}"]
         if (c.get("role") or "").strip():
             parts.append(f"Role:{c['role'].strip()}")
         for k, v in physical_fields.items():
@@ -158,65 +207,120 @@ def ai_build_ref_prompts(
                 parts.append(f"{k.replace('_',' ').title()}:{v}")
         if (c.get("cultural_notes") or "").strip():
             parts.append(f"Cultural context:{c['cultural_notes'].strip()}")
-        if not has_physical:
+
+        # Brain identity rules — these are the authoritative identity anchors
+        if brain.get("identity_seed"):
+            parts.append(f"Identity seed: {brain['identity_seed']}")
+        if brain.get("archetype"):
+            parts.append(f"Archetype: {brain['archetype']}")
+        if brain.get("emotional_baseline"):
+            parts.append(f"Emotional baseline: {brain['emotional_baseline']}")
+        if brain.get("cultural_markers"):
+            parts.append(f"Cultural markers: {brain['cultural_markers']}")
+
+        char_rules = brain.get("continuity_rules") or []
+        if char_rules:
+            parts.append(f"Continuity rules: {'; '.join(char_rules) if isinstance(char_rules, list) else char_rules}")
+
+        if not has_physical and not brain:
             parts.append("NOTE: No physical appearance data — write an anonymous culturally-authentic portrait")
         return " | ".join(parts)
 
-    # ── Serialise locations ──────────────────────────────────────────────────
-    # Keep this lean: name + time + weather is all the AI needs.
-    # Architecture is intentionally omitted — the AI knows what spaces in this
-    # geographic world look like.  description is excluded (narrative with people).
-    # architecture_style is excluded (over-constrains every location to look identical).
-    # cultural_notes / social_layer are thematic, not spatial — excluded.
+    # ── Serialise locations — DB fields + brain world DNA ───────────────────
     def _loc_summary(l: dict) -> str:
-        parts = [f"ID:{l['id']} Name:{(l.get('name') or 'location').strip()}"]
+        lid = l["id"]
+        brain = brain_locs_by_dbid.get(lid) or {}
+
+        parts = [f"ID:{lid} Name:{(l.get('name') or 'location').strip()}"]
         if (l.get("time_of_day") or "").strip():
             parts.append(f"Time:{l['time_of_day'].strip()}")
         if (l.get("weather_or_atmosphere") or "").strip():
             parts.append(f"Weather:{l['weather_or_atmosphere'].strip()}")
-        # Only include props that are actual physical objects — strip name prefix
-        # if present, and skip if what remains is just the architecture boilerplate
+
         raw_vd   = (l.get("visual_details") or "").strip()
         loc_name = (l.get("name") or "").strip()
         if raw_vd and raw_vd.lower() != loc_name.lower():
             props = raw_vd[len(loc_name):].lstrip(";., ").strip() \
                     if (loc_name and raw_vd.lower().startswith(loc_name.lower())) \
                     else raw_vd
-            # Skip if it's the architecture boilerplate (contains 'clay roof' or 'plaster')
             if props and "clay roof" not in props.lower() and "plaster" not in props.lower():
                 parts.append(f"Props:{props}")
+
+        # Brain world DNA — location_bible identity rules
+        if brain.get("world"):
+            parts.append(f"World DNA: {brain['world']}")
+        if brain.get("environment_type"):
+            parts.append(f"Environment type: {brain['environment_type']}")
+        if brain.get("key_textures"):
+            parts.append(f"Key textures: {brain['key_textures']}")
+        if brain.get("palette_anchor"):
+            parts.append(f"Palette anchor: {brain['palette_anchor']}")
+        if brain.get("architecture"):
+            parts.append(f"Architecture: {brain['architecture']}")
+
         return " | ".join(parts)
 
     chars_block = "\n".join(_char_summary(c) for c in characters)
     locs_block  = "\n".join(_loc_summary(l)  for l in locations)
 
-    # Build a compact geographic anchor string for injection into every prompt
+    # Build geographic anchor string
     geo_anchor = " | ".join(filter(None, [
         wa.get("geography", ""),
         cp.get("location_dna", ""),
     ]))
 
+    # ── Motifs + continuity block ────────────────────────────────────────────
+    motif_block = ""
+    if motif_anchors:
+        motif_lines = []
+        for m in motif_anchors:
+            if isinstance(m, dict):
+                label = m.get("motif") or m.get("symbol") or m.get("name") or ""
+                desc  = m.get("visual_form") or m.get("description") or ""
+                if label:
+                    motif_lines.append(f"- {label}: {desc}" if desc else f"- {label}")
+            elif isinstance(m, str) and m.strip():
+                motif_lines.append(f"- {m.strip()}")
+        if motif_lines:
+            motif_block = "MOTIF ANCHORS (symbolic recurring elements — use where relevant):\n" + "\n".join(motif_lines)
+
+    global_rules_block = ""
+    if continuity_rules:
+        rules_lines = continuity_rules if isinstance(continuity_rules, list) else [str(continuity_rules)]
+        global_rules_block = "GLOBAL CONTINUITY RULES (apply to ALL prompts):\n" + "\n".join(f"- {r}" for r in rules_lines if r)
+
     system_msg = (
-        "You are a cinematographer and image prompt specialist writing prompts for an AI image generation model. "
+        "You are a cinematographer and image prompt specialist writing reference asset prompts "
+        "for an AI image generation model. "
         "Your job is to produce clean, visual, descriptive prompts — NOT poetry, NOT metaphor, NOT story narration. "
         "Every word you write must describe something the camera can see. "
         "You never use emotional abstractions ('longing', 'yearning', 'ethereal presence') as substitutes for physical description. "
         "You never put characters or people into LOCATION prompts — locations are always empty spaces. "
         "You always ground prompts in cultural and geographic authenticity. "
+        "You enforce identity consistency: if an identity_seed or archetype is given, those rules are absolute — "
+        "do not invent physical traits that contradict them. "
         "AI image models require EXPLICIT country and region names to generate geographically correct images — "
-        "local architectural terms (kuchha, charpai, etc.) are NOT enough on their own."
+        "local architectural terms alone are NOT sufficient."
     )
 
-    user_msg = f"""Write image generation prompts for characters and locations in a music video project.
+    extra_blocks = "\n\n".join(filter(None, [motif_block, global_rules_block]))
+    user_msg = f"""Write reference asset image prompts for characters and locations in a music video project.
+These prompts produce visual ANCHORS — simple, isolated, single-concept images.
+They must NOT include scene composition, camera action, or narrative context.
 
 PROJECT WORLD:
 {story_summary}
 
+{extra_blocks}
+
 ───────────────────────────────
 CHARACTERS — write a PORTRAIT prompt for each
 Each prompt must describe PHYSICAL APPEARANCE only: face, skin, age, clothing, hair.
+Use the identity_seed, archetype, and emotional_baseline as the authoritative identity anchor.
+If cultural_markers are provided, embed them visually.
+Honour all continuity_rules absolutely — they define what must stay consistent across all images.
 If a character has no physical data, write a culturally-authentic anonymous portrait
-for someone from that cultural world (e.g. "A young South Asian woman in traditional Punjabi attire...").
+for someone from that cultural world.
 End every character prompt with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
 
 {chars_block}
@@ -224,11 +328,10 @@ End every character prompt with: "Photorealistic portrait, cinematic lighting, s
 ───────────────────────────────
 LOCATIONS — write an EMPTY SCENE prompt for each
 
-RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZERO human figures. Do NOT borrow characters or actions from any description — the description is narrative context only. Focus entirely on: architecture, landscape, lighting, props, atmosphere, time of day.
-
-RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: Every prompt MUST begin with the geographic anchor: "{geo_anchor}". The image model needs explicit country/region to generate the correct visual world. Do not rely on local-language terms alone.
-
-RULE 3 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: You know the Punjab region of India/Pakistan. A mustard field is open sky and golden crops — no walls, no doors. A village well is stone or brick in open air. A prosperous farmer's haveli has carved wooden pillars and lime-washed arched verandahs, not mud walls. A labourer's simple home has an earthen facade. Each location type looks completely different — render each one from your own knowledge of what that specific space looks and feels like in that part of the world.
+RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZERO human figures.
+RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: Every prompt MUST begin with: "{geo_anchor}".
+RULE 3 — USE WORLD DNA: If world DNA, environment_type, key_textures, or palette_anchor are provided, embed them. They define the visual identity of this world.
+RULE 4 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: Each location type looks completely different — render each one from your own knowledge of what that specific space and architectural style look and feel like in this part of the world.
 
 End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic, geographically authentic."
 
@@ -259,8 +362,8 @@ Return ONLY valid JSON, no markdown, no explanation:
         chars_prompts = {str(k): v for k, v in (result.get("characters") or {}).items()}
         locs_prompts  = {str(k): v for k, v in (result.get("locations")  or {}).items()}
         logger.info(
-            "ai_build_ref_prompts: got %d char + %d loc prompts",
-            len(chars_prompts), len(locs_prompts),
+            "ai_build_ref_prompts: got %d char + %d loc prompts (materializer_packet=%s)",
+            len(chars_prompts), len(locs_prompts), bool(mp),
         )
         return {"characters": chars_prompts, "locations": locs_prompts}
     except Exception as exc:

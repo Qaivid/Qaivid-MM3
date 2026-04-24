@@ -2847,8 +2847,16 @@ def _stage_refs_job(project_id: str,
                 cur.execute("SELECT * FROM locations WHERE project_id=%s ORDER BY id",
                             (project_id,))
                 locs_full = cur.fetchall() or []
+            # Read materializer_packet and creative_briefs from the brain so
+            # prompts include the full identity rules (identity_seed, archetype,
+            # emotional_baseline, continuity_rules, motif_anchors, world DNA)
+            # and creative direction (lighting, emotional state, key elements).
+            _ref_mat_packet = dict(_mat_brain.read("materializer_packet") or {})
+            _ref_briefs     = dict(_mat_brain.read("creative_briefs")     or {})
             ai_prompts = ai_build_ref_prompts(
-                chars_full, locs_full, context_packet, _style_profile
+                chars_full, locs_full, context_packet, _style_profile,
+                materializer_packet=_ref_mat_packet,
+                creative_briefs=_ref_briefs,
             )
         except Exception:
             logger.exception("AI ref-prompt generation failed — using templates")
