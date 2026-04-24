@@ -519,9 +519,9 @@ def _shot_payload(asset: dict, shot: dict) -> dict:
 
 STAGE_ORDER = [
     "audio_review",
-    "style_review",
     "context_review",
     "narrative_review",
+    "style_review",
     "creative_brief_review",
     "storyboard_review",
     "references_review",
@@ -1472,7 +1472,12 @@ def project_entities(project_id: str):
 @app.route("/project/<project_id>/advance/1", methods=["POST"])
 @login_required
 def advance_stage_1(project_id: str):
-    """User approved the audio analysis — apply singer-gender choice, kick Style."""
+    """User approved the audio analysis — apply singer-gender choice, kick Context Engine.
+
+    Pipeline order (per master spec): Input → Context → Narrative → Style → Brief.
+    Style now runs at position 4 (after Narrative) so it can be informed by
+    the locked context + narrative packets in the brain.
+    """
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
@@ -1501,20 +1506,22 @@ def advance_stage_1(project_id: str):
         )
         conn.commit()
 
-    kick_stage_style(project_id)
+    kick_stage_1(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/project/<project_id>/advance/style", methods=["POST"])
 @login_required
 def advance_stage_style(project_id: str):
-    """User chose a style profile — save it and kick Context Engine (Stage 1).
+    """User chose a style profile — save it and kick Creative Brief.
 
-    Task #59 — if the project already has a styled_timeline (i.e. the user
-    came back from storyboard_review via the "Change Style" button), this is
-    a re-pick. We skip the audio stage entirely and re-run the
-    context → storyboard → timeline chain by kicking Stage 2 directly.
-    audio_data is preserved on the row.
+    Pipeline order (per master spec): Input → Context → Narrative → Style → Brief.
+    Style is now stage 4: Context + Narrative are already locked in the brain
+    when this route fires, so picking a style hands off straight to Brief.
+
+    If the project already has a styled_timeline (the user came back from
+    storyboard_review or later via "Change Style"), this is a re-pick: we
+    re-kick the Brief which in turn re-runs Storyboard + downstream.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
@@ -1526,37 +1533,25 @@ def advance_stage_style(project_id: str):
     from style_profile_registry import StyleProfileRegistry
     style_profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
 
-    is_repick = bool(project.get("styled_timeline"))
-
     with db() as conn, conn.cursor() as cur:
-        if is_repick:
-            cur.execute(
-                "UPDATE projects SET style_profile=%s, status=%s, stage=%s, "
-                "       error=NULL, updated_at=NOW() WHERE id=%s",
-                (Json(style_profile), "queued", "queued", project_id),
-            )
-        else:
-            cur.execute(
-                "UPDATE projects SET style_profile=%s, updated_at=NOW() WHERE id=%s",
-                (Json(style_profile), project_id),
-            )
+        cur.execute(
+            "UPDATE projects SET style_profile=%s, status=%s, stage=%s, "
+            "       error=NULL, updated_at=NOW() WHERE id=%s",
+            (Json(style_profile), "queued", "queued", project_id),
+        )
         conn.commit()
 
-    if is_repick:
-        # Task #73 — preserve the user's previously-approved context edits
-        # (speaker name, location, era) so they survive the style re-run.
-        cp = dict(project.get("context_packet") or {})
-        _speaker = cp.get("speaker")
-        overrides = {
-            "speaker_name": (_speaker.get("name") if isinstance(_speaker, dict) else None),
-            "location":     cp.get("location_dna"),
-            "era":          cp.get("era"),
-            "style_preset": style_profile.get("preset") or "cinematic_natural",
-        }
-        name = project.get("name") or "Qaivid_Project"
-        kick_stage_2(project_id, name, overrides)
-    else:
-        kick_stage_1(project_id)
+    # Carry forward user-confirmed context edits (speaker name, location, era)
+    # so they survive into Brief regardless of repick vs first-time pick.
+    cp = dict(project.get("context_packet") or {})
+    _speaker = cp.get("speaker")
+    overrides = {
+        "speaker_name": (_speaker.get("name") if isinstance(_speaker, dict) else None),
+        "location":     cp.get("location_dna"),
+        "era":          cp.get("era"),
+        "style_preset": style_profile.get("preset") or "cinematic_natural",
+    }
+    kick_stage_brief(project_id, overrides)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -1671,7 +1666,12 @@ def advance_stage_2(project_id: str):
 @app.route("/project/<project_id>/advance/narrative", methods=["POST"])
 @login_required
 def advance_narrative(project_id: str):
-    """User approved the Narrative Intelligence review — kick Creative Brief."""
+    """User approved the Narrative Intelligence review — kick Style Direction.
+
+    Pipeline order (per master spec): Input → Context → Narrative → Style → Brief.
+    Style now consumes the locked narrative_packet (and context_packet) from
+    the brain to suggest a visual direction tailored to the meaning + arc.
+    """
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
@@ -1688,15 +1688,7 @@ def advance_narrative(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
-    cp = dict(project.get("context_packet") or {})
-    pending = cp.get("_pending_overrides") or {}
-    overrides = {
-        "speaker_name": pending.get("speaker_name"),
-        "location":     pending.get("location"),
-        "era":          pending.get("era"),
-        "style_preset": pending.get("style_preset") or "cinematic_natural",
-    }
-    kick_stage_brief(project_id, overrides)
+    kick_stage_style(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -2167,12 +2159,17 @@ def rerun_from_stage(project_id: str, target_stage: str):
             )
 
         elif target_stage == "style_review":
+            # Style is now stage 4 (after Context + Narrative). Rerun from
+            # here keeps context_packet + narrative state intact and clears
+            # only style_profile, the creative brief, and everything below.
+            cp.pop("creative_brief", None)
             cur.execute(
-                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                "UPDATE projects SET context_packet=%s, style_profile=NULL,"
+                " styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='style_review', status='awaiting_review', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
-                (project_id,),
+                (Json(cp), project_id),
             )
             cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
             cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
@@ -2187,8 +2184,14 @@ def rerun_from_stage(project_id: str, target_stage: str):
             )
 
         elif target_stage == "context_review":
+            # Context is now stage 2. Rerun clears context_packet + every
+            # downstream artefact: narrative_packet (lives in cp/brain),
+            # style_suggestions, style_profile, creative brief, storyboard,
+            # references, stills and videos.
             cur.execute(
-                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                "UPDATE projects SET context_packet=NULL,"
+                " style_suggestions=NULL, style_profile=NULL,"
+                " styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
