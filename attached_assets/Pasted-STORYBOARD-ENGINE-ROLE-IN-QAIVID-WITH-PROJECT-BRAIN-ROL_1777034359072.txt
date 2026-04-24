@@ -1,0 +1,209 @@
+STORYBOARD ENGINE — ROLE IN QAIVID (WITH PROJECT BRAIN)
+
+ROLE:
+Translate narrative logic into structured scene-level intent
+WITHOUT locking visuals, shots, or execution.
+
+It is the first stage where “what could be shown” is explored,
+NOT “what will be shown”.
+
+--------------------------------------------------
+
+WHAT STORYBOARD ENGINE READS FROM PROJECT BRAIN
+
+- input_structure
+  (sections, order, repetition_map, timestamps)
+
+- context_packet
+  (core_theme, emotional_world, emotional_arc, cultural_grounding, must_preserve, creative_freedom)
+
+- narrative_packet
+  (storytelling_mode, perspective, timeline_strategy, presence_strategy,
+   emotional_progression_strategy, repetition_strategy, motion_philosophy,
+   expression_channels, continuity_rules, scene_interpretation_rules,
+   variation_allowance)
+
+- style_packet (light influence only)
+  (cinematic_style, visual tone — NOT to override narrative)
+
+- project_settings (if any)
+  (duration, platform, constraints)
+
+--------------------------------------------------
+
+WHAT STORYBOARD ENGINE MUST DO
+
+1. SEGMENT INTO SCENES
+- Use input structure + emotional arc
+- Map sections (intro, verse, chorus) → scenes
+- Merge/split intelligently based on pacing
+- Maintain correct order
+
+2. ASSIGN NARRATIVE PHASE TO EACH SCENE
+- intro / build / peak / breakdown / resolution
+- Based on emotional progression strategy
+
+3. DEFINE SCENE PURPOSE (CRITICAL)
+Each scene must answer:
+- What is this scene doing emotionally?
+
+Example:
+- establish isolation
+- intensify longing
+- show emotional collapse
+- transition into memory
+- resolve or leave open
+
+4. APPLY NARRATIVE LOGIC TO EACH SCENE
+
+From narrative_packet:
+
+- presence_strategy → how much subject appears
+- expression_channels → how emotion should be expressed
+- motion_philosophy → movement level
+- timeline_strategy → present vs memory vs fragmented
+- repetition_strategy → how chorus scenes behave
+
+5. GENERATE MULTIPLE VALID REALIZATIONS (MOST IMPORTANT)
+
+Each scene MUST contain:
+
+- 3 to 6 different valid ways to express the same purpose
+
+Example:
+
+Scene purpose: “loneliness in familiar space”
+
+valid_realizations:
+- character alone in wide open space
+- empty environment with subtle movement
+- focus on objects left behind
+- partial character presence (hands, silhouette)
+- memory contrast with past presence
+
+RULE:
+- All options must be contextually correct
+- None should be locked or final
+
+6. DEFINE CONTINUITY HOOKS
+
+Track elements across scenes:
+
+- subject continuity (same person)
+- motif continuity (objects, spaces, symbols)
+- emotional continuity
+- world consistency
+
+7. DEFINE MOTIF USAGE
+
+- Introduce, repeat, evolve motifs
+- Ensure motifs align with context and narrative
+
+8. DEFINE MOTION DENSITY PER SCENE
+
+- low / medium / high motion
+- derived from motion_philosophy + emotional phase
+
+9. HANDLE REPETITION (FOR SONGS)
+
+For repeated sections (chorus):
+
+- reuse scene with variation
+- evolve scene visually
+- contrast with previous occurrence
+
+Never duplicate blindly
+
+10. CONTROL PACING
+
+- scene duration logic
+- match BPM or emotional tempo
+- allow variation in length
+
+11. RESPECT STYLE (BUT DO NOT BE OVERRIDDEN)
+
+- Apply tone guidance
+- Do not let style dictate scene content
+
+--------------------------------------------------
+
+WHAT STORYBOARD ENGINE MUST OUTPUT
+
+storyboard_packet:
+
+- ordered list of scenes
+
+Each scene contains:
+
+{
+  "scene_id": "",
+  "source_section": "",
+  "narrative_phase": "",
+  "purpose": "",
+  "emotional_intensity": "",
+  "presence_hint": "",
+  "motion_density": "",
+  "timeline_position": "",
+  "motif_usage": [],
+  "continuity_hooks": {
+    "subject": "",
+    "motifs": []
+  },
+  "valid_realizations": [
+    "",
+    "",
+    "",
+    ""
+  ]
+}
+
+--------------------------------------------------
+
+WHAT STORYBOARD ENGINE MUST NOT DO
+
+- Do NOT create final scenes
+- Do NOT select one realization
+- Do NOT define exact locations
+- Do NOT define exact characters
+- Do NOT define props precisely
+- Do NOT define camera shots
+- Do NOT generate prompts
+- Do NOT over-specify visuals
+
+--------------------------------------------------
+
+CRITICAL QUALITY CHECK
+
+Storyboard is correct ONLY IF:
+
+- Each scene has multiple valid realizations
+- Different runs can pick different realizations
+- Narrative logic is clearly reflected
+- Emotional flow is preserved
+- Context is never broken
+
+--------------------------------------------------
+
+COMMON FAILURE (MUST AVOID)
+
+❌ One scene = one fixed visual idea  
+❌ Literal mapping of lyrics to visuals  
+❌ No variation options  
+❌ Ignoring narrative logic  
+❌ Repeating chorus scenes without evolution  
+
+--------------------------------------------------
+
+FINAL PRINCIPLE
+
+Storyboard defines:
+“What are all the correct ways this moment can be shown?”
+
+It does NOT decide:
+“What will be shown?”
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Structure scenes, define purpose, generate possibilities — never lock execution.

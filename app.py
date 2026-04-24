@@ -2486,6 +2486,33 @@ def advance_stage_3(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
+    # ── Mirror the user-approved storyboard into brain.storyboard_packet ──
+    # The legacy styled_timeline column may carry inline director edits made
+    # during storyboard_review (motion_prompt / framing_directive / meaning /
+    # styled_visual_prompt). Capture that final approved snapshot so Stage 7+
+    # read the user's locked version, not the as-generated one.
+    try:
+        approved_timeline = list(project.get("styled_timeline") or [])
+        with db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            sb = dict(brain.read("storyboard_packet") or {})
+            sb["styled_timeline"] = approved_timeline
+            sb["shot_count"]      = len(approved_timeline)
+            sb["approved"]        = True
+            brain.write("storyboard_packet", sb)
+            brain.save(conn)
+            conn.commit()
+        app.logger.info(
+            "ProjectBrain: mirrored approved storyboard for project=%s (%d shots)",
+            project_id, len(approved_timeline),
+        )
+    except Exception:
+        # Brain mirror must not block the user advancing — log and continue.
+        app.logger.exception(
+            "advance_stage_3: failed to mirror approved storyboard to brain for project=%s",
+            project_id,
+        )
+
     kick_stage_refs(project_id, char_ref_url, env_ref_url)
     return redirect(url_for("project_detail", project_id=project_id))
 

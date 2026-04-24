@@ -2172,16 +2172,40 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
 
 
 def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
-    """Stage 2 — Storyboard: VisualStoryboard → RhythmicAssembly → StyleGrading."""
+    """Storyboard (Stage 6) — VisualStoryboard → RhythmicAssembly → StyleGrading.
+
+    Reads from Project Brain (per master spec):
+      • context_packet   (Stage 2)
+      • narrative_packet (Stage 3)
+      • style_packet     (Stage 4)
+      • creative_briefs  (Stage 5) — user-locked variant + treatment
+    Falls back to legacy JSONB columns per-namespace for pre-brain projects.
+    On success, writes brain.storyboard_packet (Stage 6 namespace).
+    """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set in Replit secrets.")
 
+        # ── Brain reads (defensive — empty if pre-brain project) ───────────
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+            brain_context   = brain.read("context_packet") or {}
+            brain_narrative = brain.read("narrative_packet") or {}
+            brain_style     = brain.read("style_packet") or {}
+            brain_briefs    = brain.read("creative_briefs") or {}
+        except Exception:
+            logger.exception(
+                "Stage storyboard: failed to load ProjectBrain for project=%s — "
+                "falling back to legacy columns.", project_id
+            )
+            brain_context, brain_narrative, brain_style, brain_briefs = {}, {}, {}, {}
+
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT text, genre, audio_data, context_packet, style_profile, "
-                "lyrics_timed FROM projects WHERE id=%s",
+                "SELECT text, genre, audio_data, context_packet, narrative_packet,"
+                " style_profile, lyrics_timed FROM projects WHERE id=%s",
                 (project_id,),
             )
             row = cur.fetchone()
@@ -2192,10 +2216,19 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         genre = row["genre"] or "song"
         audio_data_blob = dict(row.get("audio_data") or {})
         audio_data_blob.pop("_pre_analysis", None)
-        context_packet = dict(row.get("context_packet") or {})
         timed_lyrics: list[dict] = list(row.get("lyrics_timed") or [])
-        _raw_sp = dict(row.get("style_profile") or {})
-        style_profile = _raw_sp if _raw_sp else StyleProfileRegistry.default_style_profile()
+
+        # Brain wins, legacy fills gaps — pre-brain projects keep working.
+        context_packet   = brain_context or dict(row.get("context_packet") or {})
+        # narrative_packet read but not directly used here — orchestrator's
+        # storyboard engine consumes it indirectly via context. Logged for trace.
+        _legacy_narr     = dict(row.get("narrative_packet") or {})
+        narrative_packet = brain_narrative or _legacy_narr
+        _legacy_sp       = dict(row.get("style_profile") or {})
+        style_profile    = brain_style or _legacy_sp or StyleProfileRegistry.default_style_profile()
+        # If brain has the locked Creative Brief (variants+chosen+used_fallback),
+        # prefer it over the legacy splice in cp["creative_brief"]. Same shape.
+        creative_brief_for_orch = brain_briefs or context_packet.get("creative_brief")
 
         # Apply user overrides
         if overrides.get("speaker_name"):
@@ -2210,6 +2243,15 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # Derive style_preset from the resolved style_profile (always populated above),
         # allowing the override param to trump if explicitly set.
         style_preset = overrides.get("style_preset") or style_profile.get("preset") or "cinematic_natural"
+
+        logger.info(
+            "Stage storyboard: brain inputs context=%s narrative=%s style=%s briefs=%s for project=%s",
+            "yes" if brain_context else "fallback",
+            "yes" if brain_narrative else ("fallback" if narrative_packet else "none"),
+            "yes" if brain_style else "fallback",
+            "yes" if brain_briefs else ("fallback" if creative_brief_for_orch else "none"),
+            project_id,
+        )
 
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Building visual storyboard…"}, stage="running_2")
@@ -2310,7 +2352,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             text=text, genre=genre,
             audio_analytics=audio_data_blob,
             style_profile=style_profile,
-            creative_brief=context_packet.get("creative_brief"),
+            creative_brief=creative_brief_for_orch,
             timed_lyrics=timed_lyrics or None,
         ))
         raw_storyboard = pre_result.get("storyboard") or []
@@ -2417,6 +2459,33 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                 ),
             )
             conn.commit()
+
+        # ── Write storyboard_packet to brain (Stage 6 namespace) ───────────
+        # Captures the as-generated storyboard. Per-shot inline edits during
+        # storyboard_review stay in the legacy styled_timeline column; the
+        # final approved snapshot is mirrored back at advance_stage_3.
+        try:
+            with _db() as conn:
+                brain = ProjectBrain.load(project_id, conn)
+                brain.write("storyboard_packet", {
+                    "raw_storyboard":  raw_storyboard,
+                    "styled_timeline": styled_timeline,
+                    "shot_count":      len(styled_timeline),
+                    "total_duration":  round(sum(x.get("duration", 0) for x in raw_timeline), 2),
+                    "style_preset":    style_preset,
+                })
+                brain.save(conn)
+                conn.commit()
+            logger.info(
+                "ProjectBrain: wrote storyboard_packet for project=%s "
+                "(%d shots, %d raw scenes, preset=%s)",
+                project_id, len(styled_timeline), len(raw_storyboard), style_preset,
+            )
+        except Exception:
+            logger.exception(
+                "Stage storyboard: failed to write storyboard_packet to brain for project=%s",
+                project_id,
+            )
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "storyboard", "label": f"Storyboard ready — {len(styled_timeline)} shots. Review and continue."},

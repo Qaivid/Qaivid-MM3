@@ -16,8 +16,8 @@ Namespaces (in pipeline order):
     context_packet     Stage 2  — Context Engine output (meaning, world, speaker…)
     narrative_packet   Stage 3  — Narrative Engine output (motifs, arc, story logic…)
     style_packet       Stage 4  — Style Engine output (visual language, palette…)
-    storyboard_packet  Stage 5  — Storyboard output (scenes, shots…)
-    creative_briefs    Stage 6  — Creative Brief variants
+    creative_briefs    Stage 5  — Creative Brief variants + user-locked chosen
+    storyboard_packet  Stage 6  — Storyboard output (scenes, shots, styled timeline…)
     character_bible    Stage 7  — Materializer character anchors
     location_bible     Stage 7  — Materializer location anchors
     reference_assets   Stage 8  — Reference image metadata
@@ -58,8 +58,8 @@ NAMESPACE_OWNERS: Dict[str, str] = {
     "context_packet":   "stage_2_context",
     "narrative_packet": "stage_3_narrative",
     "style_packet":     "stage_4_style",
-    "storyboard_packet":"stage_5_storyboard",
-    "creative_briefs":  "stage_6_brief",
+    "creative_briefs":  "stage_5_brief",
+    "storyboard_packet":"stage_6_storyboard",
     "character_bible":  "stage_7_materializer",
     "location_bible":   "stage_7_materializer",
     "reference_assets": "stage_8_refs",
