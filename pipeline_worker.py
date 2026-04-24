@@ -980,32 +980,6 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     if not styled_timeline:
         return
 
-    # ── Brain-first: load materializer_packet for additional name signals ─
-    # The v2 materializer may have produced richer/alternate names for
-    # characters and locations than what the legacy materializer wrote.
-    # We use those as supplementary lookup entries so shot-text matching
-    # finds a DB row more reliably when the name was written differently.
-    _extra_char_names: list[str] = []
-    _extra_loc_names: list[str] = []
-    try:
-        with _db() as conn:
-            _link_brain = ProjectBrain.load(project_id, conn)
-        _mat = _link_brain.read("materializer_packet") or {}
-        for ch in (_mat.get("character_bible") or {}).get("characters") or []:
-            if isinstance(ch, dict):
-                for field in ("character_id", "archetype", "identity_seed"):
-                    v = str(ch.get(field) or "").strip().lower()
-                    if v and len(v) > 2:
-                        _extra_char_names.append(v)
-        for loc in (_mat.get("location_bible") or {}).get("locations") or []:
-            if isinstance(loc, dict):
-                for field in ("location_id", "world"):
-                    v = str(loc.get(field) or "").strip().lower()
-                    if v and len(v) > 2:
-                        _extra_loc_names.append(v)
-    except Exception:
-        logger.debug("_link_shots_to_entities: brain read failed (non-fatal); using DB only")
-
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, name, entity_type FROM characters WHERE project_id = %s ORDER BY id",
@@ -1024,9 +998,55 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"), None)
     primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
 
-    # DB rows are authoritative for integer IDs; brain signals are bonus hints.
+    # Build base lookup from DB rows (authoritative for integer IDs).
     char_lookup: list[tuple[str, int]] = [(c["name"].lower(), c["id"]) for c in chars]
     loc_lookup:  list[tuple[str, int]] = [(l["name"].lower(), l["id"]) for l in locs]
+
+    # ── Brain-first augmentation: add extra alias strings from materializer_packet ──
+    # The v2 materializer writes richer identity descriptors (identity_seed,
+    # archetype, character_id slug, location world label) that the shot text
+    # might reference instead of the plain DB name. We pair each brain alias
+    # with the best-matching DB row's integer ID so the lookup stays FK-valid.
+    try:
+        with _db() as conn:
+            _link_brain = ProjectBrain.load(project_id, conn)
+        _mat = _link_brain.read("materializer_packet") or {}
+
+        # Map each brain character to the closest DB char (by entity_type then order).
+        _db_chars_ordered = list(chars)
+        _primary_db_char = next((c for c in _db_chars_ordered if c["entity_type"] == "speaker"), None)
+        for _bi, _brain_ch in enumerate((_mat.get("character_bible") or {}).get("characters") or []):
+            if not isinstance(_brain_ch, dict):
+                continue
+            # Pick the paired DB row: first brain char → speaker, rest → subsequent DB entries.
+            _paired_db = _primary_db_char if _bi == 0 else (
+                _db_chars_ordered[_bi] if _bi < len(_db_chars_ordered) else _primary_db_char
+            )
+            if not _paired_db:
+                continue
+            _pid = _paired_db["id"]
+            for _field in ("character_id", "archetype"):
+                _alias = str(_brain_ch.get(_field) or "").strip().lower()
+                if _alias and len(_alias) > 2 and (_alias, _pid) not in char_lookup:
+                    char_lookup.append((_alias, _pid))
+
+        _db_locs_ordered = list(locs)
+        _primary_db_loc = next((l for l in _db_locs_ordered if l["entity_type"] == "world_dna"), None)
+        for _li, _brain_loc in enumerate((_mat.get("location_bible") or {}).get("locations") or []):
+            if not isinstance(_brain_loc, dict):
+                continue
+            _paired_loc_db = _primary_db_loc if _li == 0 else (
+                _db_locs_ordered[_li] if _li < len(_db_locs_ordered) else _primary_db_loc
+            )
+            if not _paired_loc_db:
+                continue
+            _lid = _paired_loc_db["id"]
+            for _field in ("location_id", "world"):
+                _alias = str(_brain_loc.get(_field) or "").strip().lower()
+                if _alias and len(_alias) > 2 and (_alias, _lid) not in loc_lookup:
+                    loc_lookup.append((_alias, _lid))
+    except Exception:
+        logger.debug("_link_shots_to_entities: brain augmentation failed (non-fatal); using DB names only")
 
     def _best_char(shot_text: str) -> Optional[int]:
         for name, cid in char_lookup:
