@@ -2128,9 +2128,9 @@ def rerun_from_stage(project_id: str, target_stage: str):
 
     REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
                           "assumptions_review", "creative_brief_review",
-                          "storyboard_review", "references_review", "stills_control"}
-    REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS
-    REDO_CLEARS_VIDEOS = REDO_CLEARS_REFS | {"videos_control"}
+                          "storyboard_review", "references_review"}
+    REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS | {"stills_control"}
+    REDO_CLEARS_VIDEOS = REDO_CLEARS_SHOTS | {"videos_control"}
 
     r2_urls: list = []
     deleted_shots_count = 0
@@ -2331,17 +2331,12 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 " error=NULL, updated_at=NOW() WHERE id=%s",
                 (target_stage, project_id),
             )
-            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
-            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE shot_assets SET file_path=NULL, status='pending', error=NULL,"
+                " updated_at=NOW() WHERE project_id=%s",
+                (project_id,)
+            )
             cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
-            cur.execute(
-                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
-                (project_id,)
-            )
-            cur.execute(
-                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
-                (project_id,)
-            )
 
         elif target_stage == "videos_control":
             cur.execute(
