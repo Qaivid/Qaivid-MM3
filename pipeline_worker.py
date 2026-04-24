@@ -583,15 +583,19 @@ def _render_video(project_id: str, shot: dict) -> None:
     _update_video(project_id, idx, "rendering")
 
     # ── Brain load (non-fatal) ────────────────────────────────────────────────
-    identity_seed:      Optional[str]       = None
-    continuity_rules:   Optional[List[str]] = None
-    cinematic_style:    Optional[str]       = None
-    lighting_logic:     Optional[str]       = None
-    motion_philosophy:  str                 = "mixed"
-    character_db_id:    Optional[int]       = None
-    location_db_id:     Optional[int]       = None
-    link_status:        str                 = "unresolved"
-    char_ref_url:       Optional[str]       = None
+    # All vars initialized BEFORE the try block so a brain-load failure cannot
+    # raise UnboundLocalError in the logger or downstream code.
+    identity_seed:          Optional[str]       = None
+    continuity_rules:       Optional[List[str]] = None
+    cinematic_style:        Optional[str]       = None
+    lighting_logic:         Optional[str]       = None
+    motion_philosophy:      str                 = "mixed"
+    character_db_id:        Optional[int]       = None
+    location_db_id:         Optional[int]       = None
+    character_semantic_id:  Optional[str]       = None
+    location_semantic_id:   Optional[str]       = None
+    link_status:            str                 = "unresolved"
+    char_ref_url:           Optional[str]       = None
 
     try:
         with _db() as conn:
@@ -634,53 +638,31 @@ def _render_video(project_id: str, shot: dict) -> None:
                 "for project=%s shot=%s (non-fatal)", project_id, idx,
             )
 
-        # Resolve matched bible entries by exact FK — no alias/primary fallback.
-        # IDs stay null if shot_assets has no FK for this shot.
+        # Strict FK validation: only resolve to bible entry when shot_assets FK
+        # exists in the bible. No name-based / alias / primary fallback.
         _char_entry: Optional[dict] = None
         _loc_entry:  Optional[dict] = None
-        if _shot_char_id is not None:
-            _char_entry = _char_by_dbid.get(_shot_char_id)
-            if _char_entry is not None:
-                character_db_id = _shot_char_id
-        if _shot_loc_id is not None:
-            _loc_entry = _loc_by_dbid.get(_shot_loc_id)
-            if _loc_entry is not None:
-                location_db_id = _shot_loc_id
+        if _shot_char_id is not None and _shot_char_id in _char_by_dbid:
+            _char_entry = _char_by_dbid[_shot_char_id]
+            character_db_id = _shot_char_id
+        if _shot_loc_id is not None and _shot_loc_id in _loc_by_dbid:
+            _loc_entry = _loc_by_dbid[_shot_loc_id]
+            location_db_id = _shot_loc_id
 
+        # identity_seed + semantic IDs derived ONLY from FK-resolved bible entries.
         if _char_entry:
             identity_seed = str(_char_entry.get("identity_seed") or "").strip() or None
-
-        # Resolve SEMANTIC IDs (string slugs from materializer):
-        #   1. via DB ID → bible.character_id / location_id
-        #   2. else via shot.character_name / location_name → name match in bible
-        character_semantic_id: Optional[str] = None
-        location_semantic_id:  Optional[str] = None
-        if _char_entry:
             character_semantic_id = (_char_entry.get("character_id") or "").strip() or None
-        else:
-            _cname = str(shot.get("character_name") or "").strip().lower()
-            if _cname:
-                _m = next((c for c in _cb if isinstance(c, dict)
-                           and str(c.get("name") or "").strip().lower() == _cname), None)
-                if _m:
-                    character_semantic_id = (_m.get("character_id") or "").strip() or None
         if _loc_entry:
             location_semantic_id = (_loc_entry.get("location_id") or "").strip() or None
-        else:
-            _lname = str(shot.get("location_name") or shot.get("scene_location") or "").strip().lower()
-            if _lname:
-                _m = next((l for l in _lb if isinstance(l, dict)
-                           and str(l.get("name") or "").strip().lower() == _lname), None)
-                if _m:
-                    location_semantic_id = (_m.get("location_id") or "").strip() or None
 
-        # link_status spec:
-        #   resolved      — both DB FKs exact-matched
-        #   semantic_only — at least one semantic ID exists but DB link incomplete
-        #   unresolved    — no semantic IDs and no DB IDs
+        # link_status:
+        #   resolved      — both DB FKs validated
+        #   semantic_only — exactly one validated FK
+        #   unresolved    — no validated FK
         if character_db_id is not None and location_db_id is not None:
             link_status = "resolved"
-        elif character_semantic_id or location_semantic_id or character_db_id is not None or location_db_id is not None:
+        elif character_db_id is not None or location_db_id is not None:
             link_status = "semantic_only"
         else:
             link_status = "unresolved"
@@ -3276,48 +3258,45 @@ def _build_video_sequence_packet(
     _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
     _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
 
-    # Index bible by db_id (int FK) AND by name (string) for semantic lookup
+    # Index bible by db_id (int FK) — only entries with valid FK are usable for linking
     _char_by_dbid = {int(c["db_id"]): c for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)}
     _loc_by_dbid  = {int(l["db_id"]): l for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)}
-    _char_by_name = {str(c.get("name") or "").strip().lower(): c for c in _cb if isinstance(c, dict) and c.get("name")}
-    _loc_by_name  = {str(l.get("name") or "").strip().lower(): l for l in _lb if isinstance(l, dict) and l.get("name")}
 
     shots_plan = []
     for shot in styled_timeline:
         idx      = shot.get("shot_index") or shot.get("timeline_index")
         duration = shot.get("duration")
 
-        # Resolve DB IDs from shot_entity_map only — no primary fallback.
+        # Strict FK validation: only set *_db_id when shot_entity_map FK exists in
+        # materializer bible. No name-based / alias guessing.
         char_db_id: Optional[int] = None
         loc_db_id:  Optional[int] = None
+        char_entry: Optional[dict] = None
+        loc_entry:  Optional[dict] = None
         if shot_entity_map and idx in shot_entity_map:
-            char_db_id, loc_db_id = shot_entity_map[idx]
+            _raw_c, _raw_l = shot_entity_map[idx]
+            if _raw_c is not None and _raw_c in _char_by_dbid:
+                char_db_id = _raw_c
+                char_entry = _char_by_dbid[_raw_c]
+            if _raw_l is not None and _raw_l in _loc_by_dbid:
+                loc_db_id = _raw_l
+                loc_entry = _loc_by_dbid[_raw_l]
 
-        # Resolve SEMANTIC IDs (string slugs from materializer):
-        #   1. via DB ID → bible.character_id
-        #   2. else via shot.character_name → name match in bible
+        # Semantic IDs: derived ONLY from FK-resolved bible entries — no name matching.
         char_semantic_id: Optional[str] = None
         loc_semantic_id:  Optional[str] = None
-        if char_db_id is not None and char_db_id in _char_by_dbid:
-            char_semantic_id = (_char_by_dbid[char_db_id].get("character_id") or "").strip() or None
-        else:
-            _cname = str(shot.get("character_name") or "").strip().lower()
-            if _cname and _cname in _char_by_name:
-                char_semantic_id = (_char_by_name[_cname].get("character_id") or "").strip() or None
-        if loc_db_id is not None and loc_db_id in _loc_by_dbid:
-            loc_semantic_id = (_loc_by_dbid[loc_db_id].get("location_id") or "").strip() or None
-        else:
-            _lname = str(shot.get("location_name") or shot.get("scene_location") or "").strip().lower()
-            if _lname and _lname in _loc_by_name:
-                loc_semantic_id = (_loc_by_name[_lname].get("location_id") or "").strip() or None
+        if char_entry:
+            char_semantic_id = (char_entry.get("character_id") or "").strip() or None
+        if loc_entry:
+            loc_semantic_id = (loc_entry.get("location_id") or "").strip() or None
 
-        # link_status spec:
-        #   resolved      — both DB FKs present (exact link to characters/locations rows)
-        #   semantic_only — at least one semantic ID exists but DB link incomplete
-        #   unresolved    — no semantic IDs and no DB IDs
+        # link_status:
+        #   resolved      — both DB FKs validated against bible
+        #   semantic_only — at least one FK validated (semantic ID present from bible)
+        #   unresolved    — no validated FK match
         if char_db_id is not None and loc_db_id is not None:
             link_status = "resolved"
-        elif char_semantic_id or loc_semantic_id or char_db_id is not None or loc_db_id is not None:
+        elif char_db_id is not None or loc_db_id is not None:
             link_status = "semantic_only"
         else:
             link_status = "unresolved"
