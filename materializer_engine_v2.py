@@ -379,42 +379,31 @@ def _build_fallback_from_db(project_id: str, context_packet: dict) -> dict:
     }
 
 
-async def run_materializer_async(
+async def run_materializer(
     project_id: str,
     brain: Any,
     vocal_gender: Optional[str] = None,
 ) -> dict:
-    """Async entry point. Runs the v2 LLM materializer + legacy DB materializers.
+    """Primary async entry point — LLM identity bible only.
 
-    Always writes:
+    Reads five brain namespaces (creative_briefs, context_packet,
+    narrative_packet, style_packet, project_settings), calls the LLM,
+    validates the result, and writes three brain namespaces:
     - brain.materializer_packet  (v2 spec schema)
-    - brain.character_bible      (backward-compat — mirrors character_bible sub-key)
-    - brain.location_bible       (backward-compat — mirrors location_bible sub-key)
+    - brain.character_bible      (backward-compat mirror of character_bible sub-key)
+    - brain.location_bible       (backward-compat mirror of location_bible sub-key)
 
-    Always calls legacy materializers for DB table population (non-fatal).
+    Does NOT call legacy DB materializers — the caller (_stage_refs_job) is
+    responsible for invoking those AFTER brain is saved, in the correct order.
 
     Returns the materializer_packet dict.
     """
-    from character_materializer import materialize_characters
-    from location_materializer import materialize_locations
-    from motif_materializer import materialize_motifs
-
     # ── Read all brain namespaces ──────────────────────────────────────────
-    brief_packet    = dict(brain.read("creative_briefs") or {})
-    context_packet  = dict(brain.read("context_packet") or {})
+    brief_packet     = dict(brain.read("creative_briefs") or {})
+    context_packet   = dict(brain.read("context_packet") or {})
     narrative_packet = dict(brain.read("narrative_packet") or {})
-    style_packet    = dict(brain.read("style_packet") or {})
+    style_packet     = dict(brain.read("style_packet") or {})
     project_settings = dict(brain.read("project_settings") or {})
-
-    # ── Run legacy materializers first (DB population) ────────────────────
-    # These always run so the UI tables (characters, locations, motifs) stay
-    # current regardless of whether the LLM succeeds.
-    try:
-        materialize_characters(project_id, context_packet, vocal_gender=vocal_gender)
-        materialize_locations(project_id, context_packet)
-        materialize_motifs(project_id, context_packet)
-    except Exception:
-        logger.exception("Materializer v2: legacy DB materializers failed (non-fatal) for project=%s", project_id)
 
     # ── Call LLM for the rich identity bible ─────────────────────────────
     mat_packet: Optional[dict] = None
@@ -450,17 +439,17 @@ async def run_materializer_async(
     return mat_packet
 
 
-def run_materializer(
+def run_materializer_sync(
     project_id: str,
     brain: Any,
     vocal_gender: Optional[str] = None,
 ) -> dict:
-    """Synchronous wrapper for the async materializer (for use in pipeline threads)."""
+    """Synchronous wrapper around run_materializer (for use in pipeline threads)."""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(
-            run_materializer_async(project_id, brain, vocal_gender=vocal_gender)
+            run_materializer(project_id, brain, vocal_gender=vocal_gender)
         )
     finally:
         try:

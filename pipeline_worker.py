@@ -51,7 +51,7 @@ from video_generator import VideoGenerationError, generate_shot_video
 from character_materializer import materialize_characters
 from location_materializer import materialize_locations
 from motif_materializer import materialize_motifs
-from materializer_engine_v2 import run_materializer
+from materializer_engine_v2 import run_materializer_sync
 import r2_storage
 import dataset_collector
 
@@ -1002,51 +1002,42 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     char_lookup: list[tuple[str, int]] = [(c["name"].lower(), c["id"]) for c in chars]
     loc_lookup:  list[tuple[str, int]] = [(l["name"].lower(), l["id"]) for l in locs]
 
-    # ── Brain-first augmentation: add extra alias strings from materializer_packet ──
-    # The v2 materializer writes richer identity descriptors (identity_seed,
-    # archetype, character_id slug, location world label) that the shot text
-    # might reference instead of the plain DB name. We pair each brain alias
-    # with the best-matching DB row's integer ID so the lookup stays FK-valid.
-    try:
-        with _db() as conn:
-            _link_brain = ProjectBrain.load(project_id, conn)
-        _mat = _link_brain.read("materializer_packet") or {}
+    # ── Brain-first augmentation: extend lookup with materializer_packet aliases ──
+    # If brain.materializer_packet is populated (set by run_materializer before
+    # this function is called), each brain character's identity descriptors
+    # (character_id slug, archetype) are added to char_lookup paired with the
+    # primary speaker DB ID.  Likewise for location aliases → world_dna DB ID.
+    # This is intentionally conservative: we do not attempt index-based pairing
+    # of brain entries to arbitrary DB rows, because entity order is not
+    # guaranteed to match.  All brain character aliases → primary speaker (the
+    # single authoritative character FK for most projects); all brain location
+    # aliases → primary world_dna location.  DB name entries remain the
+    # fallback for any shot text that does not match a brain alias.
+    if primary_char_id is not None or primary_loc_id is not None:
+        try:
+            with _db() as conn:
+                _link_brain = ProjectBrain.load(project_id, conn)
+            _mat = _link_brain.read("materializer_packet") or {}
 
-        # Map each brain character to the closest DB char (by entity_type then order).
-        _db_chars_ordered = list(chars)
-        _primary_db_char = next((c for c in _db_chars_ordered if c["entity_type"] == "speaker"), None)
-        for _bi, _brain_ch in enumerate((_mat.get("character_bible") or {}).get("characters") or []):
-            if not isinstance(_brain_ch, dict):
-                continue
-            # Pick the paired DB row: first brain char → speaker, rest → subsequent DB entries.
-            _paired_db = _primary_db_char if _bi == 0 else (
-                _db_chars_ordered[_bi] if _bi < len(_db_chars_ordered) else _primary_db_char
-            )
-            if not _paired_db:
-                continue
-            _pid = _paired_db["id"]
-            for _field in ("character_id", "archetype"):
-                _alias = str(_brain_ch.get(_field) or "").strip().lower()
-                if _alias and len(_alias) > 2 and (_alias, _pid) not in char_lookup:
-                    char_lookup.append((_alias, _pid))
+            if primary_char_id is not None:
+                for _brain_ch in (_mat.get("character_bible") or {}).get("characters") or []:
+                    if not isinstance(_brain_ch, dict):
+                        continue
+                    for _field in ("character_id", "archetype"):
+                        _alias = str(_brain_ch.get(_field) or "").strip().lower()
+                        if _alias and len(_alias) > 2 and (_alias, primary_char_id) not in char_lookup:
+                            char_lookup.append((_alias, primary_char_id))
 
-        _db_locs_ordered = list(locs)
-        _primary_db_loc = next((l for l in _db_locs_ordered if l["entity_type"] == "world_dna"), None)
-        for _li, _brain_loc in enumerate((_mat.get("location_bible") or {}).get("locations") or []):
-            if not isinstance(_brain_loc, dict):
-                continue
-            _paired_loc_db = _primary_db_loc if _li == 0 else (
-                _db_locs_ordered[_li] if _li < len(_db_locs_ordered) else _primary_db_loc
-            )
-            if not _paired_loc_db:
-                continue
-            _lid = _paired_loc_db["id"]
-            for _field in ("location_id", "world"):
-                _alias = str(_brain_loc.get(_field) or "").strip().lower()
-                if _alias and len(_alias) > 2 and (_alias, _lid) not in loc_lookup:
-                    loc_lookup.append((_alias, _lid))
-    except Exception:
-        logger.debug("_link_shots_to_entities: brain augmentation failed (non-fatal); using DB names only")
+            if primary_loc_id is not None:
+                for _brain_loc in (_mat.get("location_bible") or {}).get("locations") or []:
+                    if not isinstance(_brain_loc, dict):
+                        continue
+                    for _field in ("location_id", "world"):
+                        _alias = str(_brain_loc.get(_field) or "").strip().lower()
+                        if _alias and len(_alias) > 2 and (_alias, primary_loc_id) not in loc_lookup:
+                            loc_lookup.append((_alias, primary_loc_id))
+        except Exception:
+            logger.debug("_link_shots_to_entities: brain augmentation failed (non-fatal); using DB names only")
 
     def _best_char(shot_text: str) -> Optional[int]:
         for name, cid in char_lookup:
@@ -2662,10 +2653,23 @@ def _stage_refs_job(project_id: str,
             )
             if _vg_for_mat not in ("male", "female", "mixed", "instrumental"):
                 _vg_for_mat = None
-            mat_packet = run_materializer(project_id, _mat_brain, vocal_gender=_vg_for_mat)
+            mat_packet = run_materializer_sync(project_id, _mat_brain, vocal_gender=_vg_for_mat)
+            # Save brain FIRST — brain is authoritative before DB population.
             with _db() as conn:
                 _mat_brain.save(conn)
                 conn.commit()
+            # Now run legacy materializers to populate DB tables (chars/locs/motifs)
+            # in the exact ordered sequence specified by the stage contract.
+            _mat_ctx = dict(_mat_brain.read("context_packet") or {})
+            try:
+                materialize_characters(project_id, _mat_ctx, vocal_gender=_vg_for_mat)
+                materialize_locations(project_id, _mat_ctx)
+                materialize_motifs(project_id, _mat_ctx)
+            except Exception:
+                logger.exception(
+                    "_stage_refs_job: legacy materializers failed (non-fatal) for project=%s",
+                    project_id,
+                )
             # Link shots to the freshly created entity rows.
             _raw_timeline = list(_mat_prj.get("styled_timeline") or [])
             if _raw_timeline:
