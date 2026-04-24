@@ -413,7 +413,7 @@
 }
 .ref-card:hover .ref-edit-hint,
 .ref-card--open .ref-edit-hint { opacity: 1; }
-.ref-card--open .ref-edit-hint { color: #d4ff3a; content: '↑ Close'; }
+.ref-card--open .ref-edit-hint { color: #d4ff3a; }
 
 .ref-card-foot {
     padding: 8px 10px 10px;
@@ -556,7 +556,11 @@ let _openPanel = null;
 
 function _closeAllPanels() {
     document.querySelectorAll('.ref-edit-panel').forEach(p => { p.hidden = true; });
-    document.querySelectorAll('.ref-card').forEach(c => c.classList.remove('ref-card--open'));
+    document.querySelectorAll('.ref-card').forEach(c => {
+        c.classList.remove('ref-card--open');
+        const hint = c.querySelector('.ref-edit-hint');
+        if (hint) hint.textContent = 'Edit ↓';
+    });
     document.querySelectorAll('.ref-look-th').forEach(t => t.classList.remove('ref-look-th--open'));
     document.querySelectorAll('.ref-look-panel').forEach(p => { p.hidden = true; });
     _openPanel = null;
@@ -575,7 +579,11 @@ function refToggle(entityId) {
     }
     _closeAllPanels();
     panel.hidden = false;
-    if (card) card.classList.add('ref-card--open');
+    if (card) {
+        card.classList.add('ref-card--open');
+        const hint = card.querySelector('.ref-edit-hint');
+        if (hint) hint.textContent = '↑ Close';
+    }
     _openPanel = panelId;
     setTimeout(() => {
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
