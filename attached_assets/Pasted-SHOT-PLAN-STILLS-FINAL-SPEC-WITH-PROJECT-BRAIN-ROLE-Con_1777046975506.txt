@@ -1,0 +1,281 @@
+SHOT PLAN / STILLS — FINAL SPEC (WITH PROJECT BRAIN)
+
+ROLE:
+Convert Creative Brief (resolved scene intent) + Reference Assets (visual anchors)
+into precise, executable shot-level definitions and generate still images.
+
+This is the FIRST TRUE EXECUTION STAGE.
+
+--------------------------------------------------
+
+POSITION IN PIPELINE
+
+Input
+→ Context
+→ Narrative
+→ Style
+→ Storyboard
+→ Creative Brief
+→ Materializer
+→ Reference Assets
+→ SHOT PLAN / STILLS (THIS STAGE)
+→ Video Assembly
+→ Post Processing
+→ Final Output
+
+--------------------------------------------------
+
+CORE RULE
+
+- Use semantic IDs from Project Brain (character_id, location_id, motif_id)
+- NEVER rely on alias → DB FK guessing
+- Shots must be deterministic in intent, flexible in rendering
+
+--------------------------------------------------
+
+WHAT THIS STEP READS FROM PROJECT BRAIN
+
+1. creative_brief_packet
+- ordered scenes
+- chosen_direction
+- subject_focus
+- character_presence
+- character_identity_hint
+- environment_type
+- key_elements
+- emotional_state
+- emotional_intensity
+- lighting_condition
+- movement_type
+- timeline_mode
+- motion_density
+- repetition_handling
+- motif_usage
+- continuity_hooks
+
+2. reference_assets_packet
+- character_references (by character_id + identity_seed)
+- environment_plates (by location_id)
+- style_frames
+- motif_references
+
+3. materializer_packet
+- character_bible (identity_seed, variation rules)
+- location_bible (world rules)
+- motif_anchors
+- continuity_rules
+
+4. narrative_packet (execution hints)
+- motion_philosophy
+- perspective
+- timeline_strategy
+- continuity_rules
+
+5. input_structure (timing)
+- sections, repetition_map
+- timestamps / BPM (if available)
+
+--------------------------------------------------
+
+WHAT THIS STEP MUST DO
+
+1. BREAK SCENES INTO SHOTS
+
+For each scene:
+- derive shot count from:
+  - emotional_intensity
+  - motion_density
+  - section duration / BPM
+
+- typical:
+  - low intensity → 2–4 shots
+  - medium → 3–6 shots
+  - high → 4–8 shots
+
+--------------------------------------------------
+
+2. DEFINE EACH SHOT (ONE CLEAR IDEA)
+
+Each shot MUST include:
+
+- shot_id
+- scene_id
+- subject_focus (character / environment / object)
+- primary_subject (ONE)
+- action (ONE)
+- environment_type
+- semantic links:
+  - character_id (if present)
+  - location_id
+  - motif_id (optional)
+
+- framing (wide / medium / close / detail)
+- camera_behavior (static / slow_drift / pan / push / pull)
+- lighting_condition (from brief/style)
+- emotional_micro_state
+- motion_level (low / medium / high)
+
+RULE:
+- ONE subject
+- ONE action
+- MAX 3 supporting elements
+- NO contradictions
+
+--------------------------------------------------
+
+3. USE REFERENCE ASSETS (STRICTLY)
+
+- character shots → must reference character_id + identity_seed
+- environment shots → must reference location_id plates
+- style → must align with style_frames
+- motifs → must align with motif_references
+
+--------------------------------------------------
+
+4. HANDLE REPETITION (SONGS)
+
+For repeated sections:
+
+- if "reuse":
+  - reuse shot structure with minor variation
+- if "evolve":
+  - keep subject but change framing / emotion / motion
+- if "contrast":
+  - invert subject_focus or environment
+
+--------------------------------------------------
+
+5. CONTROL VARIATION (SAFE)
+
+Allow variation ONLY in:
+- framing distance
+- composition balance
+- pose / gesture
+- minor environmental layout
+
+Preserve:
+- identity_seed
+- cultural rules
+- emotional meaning
+- scene intent
+
+--------------------------------------------------
+
+6. GENERATE STILL IMAGES
+
+For each shot:
+
+- build prompt using:
+  - shot definition
+  - reference assets (image conditioning if supported)
+  - style_packet
+
+- generate still image
+- store asset metadata
+
+--------------------------------------------------
+
+SAFE LINKING RULE
+
+For each shot:
+
+- link by semantic IDs first:
+  - character_id
+  - location_id
+  - motif_id
+
+- map to DB FK only if exact match exists
+
+- else:
+  - keep *_db_id = null
+  - set link_status = "semantic_only" / "unresolved" / "ambiguous"
+  - add to link_warnings
+
+NEVER:
+- assign FK by alias guessing
+- assign FK by similarity
+
+--------------------------------------------------
+
+WHAT THIS STEP WRITES TO PROJECT BRAIN
+
+shot_plan_packet:
+
+{
+  "shots": [
+    {
+      "shot_id": "",
+      "scene_id": "",
+
+      "subject_focus": "",
+      "primary_subject": "",
+      "action": "",
+
+      "character_id": "",
+      "character_db_id": null,
+      "location_id": "",
+      "location_db_id": null,
+      "motif_id": "",
+
+      "link_status": "semantic_only",
+
+      "environment_type": "",
+      "framing": "",
+      "camera_behavior": "",
+      "lighting": "",
+      "emotional_micro_state": "",
+      "motion_level": "",
+
+      "reference_links": {
+        "character_ref_ids": [],
+        "environment_plate_ids": [],
+        "style_frame_ids": [],
+        "motif_ref_ids": []
+      },
+
+      "duration_estimate": "",
+      "prompt_id": "",
+      "still_asset_id": "",
+      "image_url": ""
+    }
+  ],
+
+  "link_warnings": []
+}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Shot Plan / Stills is correct ONLY IF:
+
+- each shot expresses ONE clear idea
+- character identity is consistent across shots
+- environments match location_bible
+- style is coherent across all shots
+- repetition is handled correctly
+- no unsafe DB FK assignments exist
+- images are clean, non-cluttered, and cinematic
+
+--------------------------------------------------
+
+COMMON FAILURES (AVOID)
+
+- multiple subjects competing in one shot
+- over-detailed prompts
+- ignoring reference assets
+- breaking identity consistency
+- alias-based entity linking
+- random variation outside context
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+One shot = one idea, anchored by reference assets and semantic IDs.
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Translate scene decisions into clean, consistent shot definitions and generate stills using safe semantic linking and reference-driven control.

@@ -843,6 +843,36 @@ def _render_shot(project_id: str, shot: dict,
         if character_ref_url is None and environment_ref_url is None:
             character_ref_url, environment_ref_url = char_url_db, env_url_db
 
+        # ── Brain identity data — look up matched char/loc entries by db_id ──
+        # brain_chars_by_dbid / brain_locs_by_dbid are built here per shot
+        # (brain load is fast — single DB row read + JSON parse).
+        brain_char: Optional[dict] = None
+        brain_loc:  Optional[dict] = None
+        try:
+            with _db() as conn:
+                _shot_brain = ProjectBrain.load(project_id, conn)
+            _mp = _shot_brain.read("materializer_packet") or {}
+            _bc_list = list((_mp.get("character_bible") or {}).get("characters") or [])
+            _bl_list = list((_mp.get("location_bible")  or {}).get("locations")  or [])
+            # Build db_id indexes
+            _bc_idx = {
+                b["db_id"]: b for b in _bc_list
+                if isinstance(b, dict) and isinstance(b.get("db_id"), int)
+            }
+            _bl_idx = {
+                b["db_id"]: b for b in _bl_list
+                if isinstance(b, dict) and isinstance(b.get("db_id"), int)
+            }
+            if character and isinstance(character.get("id"), int):
+                brain_char = _bc_idx.get(character["id"])
+            if location and isinstance(location.get("id"), int):
+                brain_loc = _bl_idx.get(location["id"])
+        except Exception:
+            logger.debug(
+                "_render_shot: brain load failed for project=%s shot=%s (non-fatal)",
+                project_id, idx,
+            )
+
         # Did the user hand-edit the prompt? If yes we use it verbatim.
         user_edited = _resolve_user_edited_flag(project_id, idx)
         user_override = None
@@ -852,7 +882,7 @@ def _render_shot(project_id: str, shot: dict,
 
         _update_shot(project_id, idx, "rendering",
                      prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
-                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)  # safety cap — builder already sizes to model limit
+                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)
         try:
             url = generate_shot_still(
                 shot, character_ref_url, project_id,
@@ -860,6 +890,8 @@ def _render_shot(project_id: str, shot: dict,
                 character=character,
                 location=location,
                 user_override=user_override,
+                brain_char=brain_char,
+                brain_loc=brain_loc,
             )
             _update_shot(project_id, idx, "ready", file_path=url)
         except Exception as exc:
@@ -2906,6 +2938,74 @@ def _stage_refs_job(project_id: str,
         except Exception:
             logger.exception("Refs stage: wardrobe/look-plate generation failed "
                              "(non-fatal) for project=%s", project_id)
+
+        # ── Write reference_assets_packet to brain (Stage 8) ────────────────
+        # Index final plate URLs by character_id and location_id so the stills
+        # stage can look them up semantically rather than by positional DB join.
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, entity_type, ref_image_url, ref_status "
+                    "  FROM characters WHERE project_id=%s AND ref_status='ready'",
+                    (project_id,),
+                )
+                _ra_chars = cur.fetchall() or []
+                cur.execute(
+                    "SELECT id, name, entity_type, ref_image_url, ref_status "
+                    "  FROM locations WHERE project_id=%s AND ref_status='ready'",
+                    (project_id,),
+                )
+                _ra_locs = cur.fetchall() or []
+
+            _ra_mat = dict(_mat_brain.read("materializer_packet") or {})
+            _ra_sp  = dict(_mat_brain.read("style_packet") or {})
+
+            _ref_assets_packet = {
+                "character_references": [
+                    {
+                        "character_id": c["id"],
+                        "name": c.get("name") or "",
+                        "entity_type": c.get("entity_type") or "",
+                        "ref_image_url": c.get("ref_image_url") or "",
+                    }
+                    for c in _ra_chars if c.get("ref_image_url")
+                ],
+                "environment_plates": [
+                    {
+                        "location_id": l["id"],
+                        "name": l.get("name") or "",
+                        "entity_type": l.get("entity_type") or "",
+                        "ref_image_url": l.get("ref_image_url") or "",
+                    }
+                    for l in _ra_locs if l.get("ref_image_url")
+                ],
+                "style_frames": {
+                    "cinematic_style":  (_ra_sp.get("cinematic") or {}).get("look") or "",
+                    "color_psychology": _ra_sp.get("color_psychology") or "",
+                    "texture_profile":  _ra_sp.get("texture_profile") or "",
+                    "lighting_logic":   _ra_sp.get("lighting_logic") or "",
+                },
+                "motif_references": list(
+                    (_ra_mat.get("motif_anchors") or [])
+                ),
+            }
+            _mat_brain.write("reference_assets", _ref_assets_packet)
+            with _db() as conn:
+                _mat_brain.save(conn)
+                conn.commit()
+            logger.info(
+                "_stage_refs_job: wrote reference_assets_packet to brain "
+                "(%d char refs, %d env plates) for project=%s",
+                len(_ref_assets_packet["character_references"]),
+                len(_ref_assets_packet["environment_plates"]),
+                project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage_refs_job: failed to write reference_assets_packet to brain "
+                "(non-fatal) for project=%s",
+                project_id,
+            )
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "references",

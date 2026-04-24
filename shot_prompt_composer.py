@@ -151,9 +151,32 @@ def _event_payload(shot: dict) -> Dict[str, Any]:
     return {}
 
 
-def _gendered_subject(character: Optional[dict]) -> str:
-    """Build a concrete, gendered subject phrase. Avoids the dreaded
-    'Adult Unspecified figure' fallback that breaks Flux identity."""
+def _gendered_subject(
+    character: Optional[dict],
+    brain_char: Optional[dict] = None,
+) -> str:
+    """Build a concrete, gendered subject phrase.
+
+    Prefers identity_seed + archetype from the brain materializer entry
+    (authoritative) over raw DB fields. Falls back cleanly when no brain
+    data is available. Avoids the 'Adult Unspecified figure' fallback that
+    breaks Flux identity.
+    """
+    bc = brain_char or {}
+
+    identity_seed = (bc.get("identity_seed") or "").strip()
+    archetype      = (bc.get("archetype")      or "").strip()
+    cultural       = (bc.get("cultural_markers") or "").strip()
+
+    if identity_seed:
+        # Brain-anchored: identity_seed is the authoritative physical descriptor.
+        base = identity_seed
+        if archetype:
+            base = f"{base} ({archetype})"
+        if cultural:
+            base = f"{base}, {cultural}"
+        return base
+
     if not character:
         return "a person"
 
@@ -178,6 +201,9 @@ def _gendered_subject(character: Optional[dict]) -> str:
     role = (character.get("role") or "").strip()
     if role:
         parts.append(f"({role.lower()})")
+
+    if archetype:
+        parts.append(f"[{archetype}]")
 
     return " ".join(parts).strip() or "a person"
 
@@ -220,8 +246,21 @@ def _dedupe_phrases(s: str) -> str:
     return ", ".join(out)
 
 
-def _environment_clause(location: Optional[dict], shot: dict) -> str:
+def _environment_clause(
+    location: Optional[dict],
+    shot: dict,
+    brain_loc: Optional[dict] = None,
+) -> str:
     raw = ""
+    bl = brain_loc or {}
+
+    # Brain-first: use location_bible world DNA as authoritative world descriptor.
+    world_dna_parts: list[str] = []
+    for field in ("world", "environment_type", "key_textures", "palette_anchor", "architecture"):
+        val = (bl.get(field) or "").strip()
+        if val:
+            world_dna_parts.append(val)
+
     if location:
         name = (location.get("name") or "").strip()
         desc = (location.get("description") or "").strip()
@@ -229,12 +268,17 @@ def _environment_clause(location: Optional[dict], shot: dict) -> str:
         bits: list[str] = []
         if name:
             bits.append(name)
-        if desc:
+        if world_dna_parts:
+            # Brain world DNA enriches the DB location description
+            bits.extend(world_dna_parts)
+        elif desc:
             bits.append(desc)
         if mood:
             bits.append(mood + " atmosphere")
         if bits:
             raw = ", ".join(bits)
+    elif world_dna_parts:
+        raw = ", ".join(world_dna_parts)
 
     if not raw:
         env = shot.get("environment_profile") or {}
@@ -442,25 +486,36 @@ def compose_image_prompt(
     has_environment_ref: bool = False,
     user_override: Optional[str] = None,
     cine_prefix: str = "",
+    brain_char: Optional[dict] = None,
+    brain_loc: Optional[dict] = None,
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
-    Existing MM3 signature preserved.
+    brain_char: materializer_packet character_bible entry matched by db_id.
+                Provides identity_seed, archetype, emotional_baseline,
+                cultural_markers, continuity_rules.
+    brain_loc:  materializer_packet location_bible entry matched by db_id.
+                Provides world DNA (world, environment_type, key_textures,
+                palette_anchor, architecture).
+    Both fall back cleanly to DB-only behaviour when None or {}.
     """
-    # ── 1. User override path: keep user's text, but clean hard instructions ──
-    # Verb fallback IS applied here so every final prompt (including user
-    # overrides) contains at least one action verb — Flux performs better
-    # with verb-led descriptions and the override only needs a single
-    # prepended action word when the user's text is fully noun-led.
+    bc = brain_char or {}
+    identity_seed    = (bc.get("identity_seed")    or "").strip()
+    archetype        = (bc.get("archetype")        or "").strip()
+    emotional_base   = (bc.get("emotional_baseline") or "").strip()
+    char_rules_raw   = bc.get("continuity_rules")  or []
+    char_rules: list = char_rules_raw if isinstance(char_rules_raw, list) else [str(char_rules_raw)]
+
+    # ── 1. User override path ────────────────────────────────────────────────
     if user_override and user_override.strip():
         body = _clean_text(user_override)
         body = _inject_verb_fallback(body, shot)
         body = _inject_env_fallback(body, shot)
         prompt = _attach_envelope(
-            body,
-            cine_prefix,
-            has_character_ref,
-            has_environment_ref,
+            body, cine_prefix, has_character_ref, has_environment_ref,
+            identity_seed=identity_seed,
+            archetype=archetype,
+            continuity_rules=char_rules or None,
         )
         return prompt, _build_negative(shot, location)
 
@@ -468,8 +523,8 @@ def compose_image_prompt(
 
     # 1) Lead with the strongest available shot idea.
     event_lead = _shot_event_lead_sentence(shot)
-    meaning = _meaning_sentence(shot)
-    subject = _gendered_subject(character)
+    meaning    = _meaning_sentence(shot)
+    subject    = _gendered_subject(character, brain_char=brain_char)
 
     if event_lead:
         parts.append(event_lead)
@@ -482,17 +537,21 @@ def compose_image_prompt(
     else:
         parts.append(f"{subject.capitalize()}.")
 
-    # 2) Identity / wardrobe
+    # 2) Emotional baseline from brain (only when no event_lead overrides tone)
+    if emotional_base and not event_lead:
+        parts.append(f"Emotional register: {emotional_base}.")
+
+    # 3) Identity / wardrobe
     wardrobe = _wardrobe_clause(character)
     if wardrobe:
         parts.append(wardrobe.capitalize())
 
-    # 3) Environment
-    env = _environment_clause(location, shot)
+    # 4) Environment — brain world DNA + DB location
+    env = _environment_clause(location, shot, brain_loc=brain_loc)
     if env:
         parts.append(f"Setting: {env}".rstrip(".") + ".")
 
-    # 4) MM3.1 action support
+    # 5) MM3.1 action support
     obj_clause = _object_interaction_clause(shot)
     if obj_clause:
         parts.append(obj_clause)
@@ -505,12 +564,11 @@ def compose_image_prompt(
     if contrast:
         parts.append(contrast)
 
-    # 5) Framing + camera
+    # 6) Framing + camera
     framing = _framing_clause(shot)
     if framing:
         parts.append(f"Framing: {framing}".rstrip(".") + ".")
 
-    # If there is no explicit cine_prefix from cinematography_engine, still pass motion/camera hints.
     if not (cine_prefix or "").strip():
         cam_plan = _camera_plan_clause(shot)
         if cam_plan:
@@ -520,7 +578,7 @@ def compose_image_prompt(
             if motion:
                 parts.append(f"Camera: {motion}".rstrip(".") + ".")
 
-    # 6) Lighting / palette last
+    # 7) Lighting / palette last
     palette = _palette_clause(shot)
     if palette:
         parts.append(palette.capitalize())
@@ -530,21 +588,14 @@ def compose_image_prompt(
     body = re.sub(r"\.\.+", ".", body)
     body = re.sub(r"\s+", " ", body).strip()
 
-    # Verb validator: every still prompt must contain a concrete action verb.
-    # If none is found, a mode-appropriate fallback action is prepended so
-    # Flux always receives a verb-led description rather than a mood noun.
     body = _inject_verb_fallback(body, shot)
-
-    # Environment grounding validator: every still prompt must reference a
-    # spatial setting or environment interaction.  If none is present (legacy
-    # path / no shot_event), append a mode-appropriate environment clause.
     body = _inject_env_fallback(body, shot)
 
     prompt = _attach_envelope(
-        body,
-        cine_prefix,
-        has_character_ref,
-        has_environment_ref,
+        body, cine_prefix, has_character_ref, has_environment_ref,
+        identity_seed=identity_seed,
+        archetype=archetype,
+        continuity_rules=char_rules or None,
     )
     return prompt, _build_negative(shot, location)
 
@@ -554,20 +605,53 @@ def _attach_envelope(
     cine_prefix: str,
     has_character_ref: bool,
     has_environment_ref: bool,
+    identity_seed: str = "",
+    archetype: str = "",
+    continuity_rules: Optional[list] = None,
 ) -> str:
-    """Attach cinematography prefix, continuity cues, and quality boosters."""
+    """Attach cinematography prefix, continuity cues, and quality boosters.
+
+    When brain identity data is supplied (identity_seed, archetype,
+    continuity_rules), it is embedded in the continuity cue so the model
+    stays anchored even when no reference image is available (FLUX mode).
+    """
     continuity_cues: list[str] = []
+
     if has_character_ref:
+        anchor = ""
+        if identity_seed:
+            anchor = f" The character is: {identity_seed}"
+            if archetype:
+                anchor += f" ({archetype})"
+            anchor += "."
         continuity_cues.append(
             "Match the exact face, complexion, and skin tone of the character "
-            "reference image — same identity across all shots. "
-            "Clothing and jewelry should match the scene context described in the prompt."
+            "reference image — same identity across all shots."
+            + anchor +
+            " Clothing and jewelry should match the scene context described in the prompt."
         )
+    elif identity_seed:
+        # No ref image (FLUX text-only path): text anchor is all we have.
+        anchor = f"Character identity: {identity_seed}"
+        if archetype:
+            anchor += f" ({archetype})"
+        anchor += ". Maintain this appearance consistently across all shots."
+        continuity_cues.append(anchor)
+
     if has_environment_ref:
         continuity_cues.append(
             "Match the lighting, color palette, materials, and architectural "
             "details of the established environment reference plate."
         )
+
+    # Global character continuity rules from materializer
+    if continuity_rules:
+        rules_str = "; ".join(
+            str(r).strip() for r in continuity_rules if r
+        )
+        if rules_str:
+            continuity_cues.append(f"Continuity rules: {rules_str}.")
+
     cues = " ".join(continuity_cues)
 
     cine = (cine_prefix or "").strip()

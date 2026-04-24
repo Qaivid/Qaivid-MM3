@@ -876,6 +876,8 @@ def generate_shot_still(
     character: Optional[dict] = None,
     location: Optional[dict] = None,
     user_override: Optional[str] = None,
+    brain_char: Optional[dict] = None,
+    brain_loc: Optional[dict] = None,
 ) -> str:
     """Generate a per-shot still and store it in R2.
 
@@ -896,6 +898,12 @@ def generate_shot_still(
             and identity-consistent wardrobe/grooming cues).
         location: Linked location record (drives setting description).
         user_override: User-edited prompt to use verbatim, or None.
+        brain_char: materializer_packet character_bible entry (by db_id).
+            Provides identity_seed, archetype, emotional_baseline,
+            continuity_rules. Enriches the prompt beyond DB fields.
+        brain_loc: materializer_packet location_bible entry (by db_id).
+            Provides world DNA (world, environment_type, key_textures,
+            palette_anchor). Enriches the environment clause.
 
     Returns a public R2 URL string.
     """
@@ -924,6 +932,8 @@ def generate_shot_still(
         has_environment_ref=has_env,
         user_override=user_override,
         cine_prefix=cine_prefix,
+        brain_char=brain_char,
+        brain_loc=brain_loc,
     )
 
     if not prompt.strip():
