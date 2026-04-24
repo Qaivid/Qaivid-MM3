@@ -3373,7 +3373,9 @@ def _build_video_sequence_packet(
         shots_plan.append({
             "shot_id":          idx,
             "duration":         duration,
-            "motion_applied":   motion_applied,
+            "motion_applied":   motion_applied,         # canonical render mode
+            "camera_movement":  cam_movement_raw or None,  # raw director label
+            "motion_intensity": raw_int,                # low/medium/high
             "transition_in":    transition,
             "transition_out":   transition,
             "character_id":     char_semantic_id,   # semantic slug (e.g. "primary_speaker")

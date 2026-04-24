@@ -2039,9 +2039,18 @@ def advance_brief(project_id: str):
         )
 
     # Stash any uploaded refs in the user session so the Materializer review
-    # gate can forward them to the Reference Engine after approval. Session is
+    # gate can forward them to the Reference Engine after approval.
+    #
+    # NOTE on durability: we deliberately do NOT persist these to ProjectBrain.
+    # The brain's VALID_NAMESPACES whitelist (project_brain.py) does not
+    # include a `pending_ref_uploads` namespace, and the brain spec is locked
+    # — adding a namespace is out of scope for this task. Session storage is
     # safe here because both /advance/brief and /advance/materializer run in
-    # the same user's request context.
+    # the same authenticated user's request context, typically seconds apart.
+    # Trade-off: if the user logs out / switches device between brief approval
+    # and materializer approval, the uploads are lost — the user can re-upload
+    # via the Materializer review page or the References stage. See follow-up
+    # task #142 for a future migration to durable storage.
     if char_ref_url or env_ref_url:
         pending = dict(session.get("pending_ref_uploads") or {})
         pending[project_id] = {

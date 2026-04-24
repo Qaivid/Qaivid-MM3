@@ -40,12 +40,21 @@
                 </div>
                 <div class="va-meta">
                     <div class="va-pill-row">
-                        <span class="va-pill va-pill-motion">{{ sh.motion_applied or 'static' }}</span>
+                        <span class="va-pill va-pill-motion" title="Render mode (canonical)">
+                            {{ sh.motion_applied or 'static' }}
+                        </span>
+                        {% if sh.camera_movement %}
+                        <span class="va-pill" title="Camera movement (director's call)">
+                            cam: {{ sh.camera_movement }}
+                        </span>
+                        {% endif %}
+                        {% if sh.motion_intensity %}
+                        <span class="va-pill" title="Motion intensity">
+                            int: {{ sh.motion_intensity }}
+                        </span>
+                        {% endif %}
                         {% if sh.duration is not none %}
                         <span class="va-pill">{{ "%.1f"|format(sh.duration|float) }}s</span>
-                        {% endif %}
-                        {% if sh.intensity is not none %}
-                        <span class="va-pill">int {{ "%.2f"|format(sh.intensity|float) }}</span>
                         {% endif %}
                     </div>
                     <div class="va-pill-row" style="margin-top:6px;">
