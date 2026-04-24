@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% set active_stage = 'materializer_review' %}
-{% block title %}{{ project.name }} — Cast & World Bible · Qaivid{% endblock %}
+{% block title %}{{ project.name }} — Cast & World · Qaivid{% endblock %}
 {% block content %}
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
 
     <div class="stage-card">
         <div class="stage-header">
-            <span class="stage-badge">Stage 7 — Cast &amp; World Bible</span>
+            <span class="stage-badge">Stage 7 — Cast &amp; World</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
                 The Materializer has translated your storyboard + creative brief into
                 <strong>identity rules</strong> for each character and <strong>world anchors</strong> for each
                 location. These define what stays consistent across every shot — the Reference Engine and the
-                Stills/Video stages will all generate against this bible.
+                Stills/Video stages will all generate against this profile.
                 <strong>{{ characters|length }} character(s) · {{ locations|length }} location(s){% if motifs %} · {{ motifs|length }} motif(s){% endif %}</strong>.
             </p>
         </div>
@@ -143,7 +143,7 @@
             <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
                 <button type="submit" class="btn-secondary">Save edits</button>
                 <span class="muted" style="font-size:12px;">
-                    Light edits are merged into the bible — original AI fields you don't change stay intact.
+                    Light edits are merged in — original AI fields you don't change stay intact.
                 </span>
             </div>
         </form>

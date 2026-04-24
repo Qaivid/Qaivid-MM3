@@ -549,7 +549,7 @@ STAGE_LABELS = {
     "narrative_review": "Narrative Engine",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
-    "materializer_review": "Cast & World Bible",
+    "materializer_review": "Cast & World",
     "references_review": "References",
     "stills_control": "Stills",
     "stills_review": "Stills (Legacy)",
@@ -2141,7 +2141,7 @@ def materializer_edit(project_id: str):
     if not project:
         abort(404)
     if project.get("stage") != "materializer_review":
-        flash("The bible can only be edited while parked at the Cast & World Bible step.", "error")
+        flash("This can only be edited while parked at the Cast & World step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
     CHAR_EDITABLE = ("identity_seed", "wardrobe_logic")
@@ -2206,7 +2206,7 @@ def materializer_edit(project_id: str):
             brain.write("location_bible", loc_bible)
             brain.save(conn)
             conn.commit()
-        flash("Cast & world bible updated.", "info")
+        flash("Cast & world updated.", "info")
     except Exception:
         app.logger.exception(
             "materializer_edit: failed to save bible edits for project=%s", project_id,
@@ -2772,7 +2772,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
         flash(f"Storyboard engine is re-running. You'll land on {label} when ready.", "info")
     elif target_stage == "materializer_review":
         kick_stage_materializer(project_id)
-        flash(f"Re-running the Cast & World Bible. You'll land on {label} when ready.", "info")
+        flash(f"Re-running the Cast & World. You'll land on {label} when ready.", "info")
     elif target_stage == "references_review":
         kick_stage_refs(project_id)
         flash(f"Re-generating reference plates. You'll land on {label} when ready.", "info")
