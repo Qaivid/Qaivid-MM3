@@ -591,6 +591,7 @@ def _render_video(project_id: str, shot: dict) -> None:
     character_db_id:    Optional[int]       = None
     location_db_id:     Optional[int]       = None
     link_status:        str                 = "unresolved"
+    char_ref_url:       Optional[str]       = None
 
     try:
         with _db() as conn:
@@ -603,33 +604,81 @@ def _render_video(project_id: str, shot: dict) -> None:
         _rules  = _mp.get("continuity_rules") or []
         continuity_rules = [str(r) for r in _rules] if _rules else None
 
-        # Primary character identity_seed (first speaker entry with db_id)
-        _char_entry = next(
-            (c for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)),
-            None,
-        )
+        # Build exact-FK lookup dicts (no alias guessing)
+        _char_by_dbid: dict = {
+            int(c["db_id"]): c
+            for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)
+        }
+        _loc_by_dbid: dict = {
+            int(l["db_id"]): l
+            for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)
+        }
+
+        # Per-shot entity resolution: read character_id / location_id from shot_assets
+        # (written by _link_shots_to_entities at stills stage — exact FK, no guessing)
+        _shot_char_id: Optional[int] = None
+        _shot_loc_id:  Optional[int] = None
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT character_id, location_id FROM shot_assets "
+                    "WHERE project_id=%s AND shot_index=%s",
+                    (project_id, idx),
+                )
+                _sa = cur.fetchone() or {}
+            _shot_char_id = _sa.get("character_id")
+            _shot_loc_id  = _sa.get("location_id")
+        except Exception:
+            logger.debug(
+                "_render_video: could not read shot entity IDs from shot_assets "
+                "for project=%s shot=%s (non-fatal)", project_id, idx,
+            )
+
+        # Resolve matched bible entries by exact FK; fall back to primary if not set
+        _char_entry: Optional[dict] = None
+        _loc_entry:  Optional[dict] = None
+        if _shot_char_id is not None:
+            _char_entry    = _char_by_dbid.get(_shot_char_id)
+            character_db_id = _shot_char_id if _char_entry else None
+        if character_db_id is None and _char_by_dbid:
+            character_db_id = next(iter(_char_by_dbid))
+            _char_entry     = _char_by_dbid[character_db_id]
+
+        if _shot_loc_id is not None:
+            _loc_entry    = _loc_by_dbid.get(_shot_loc_id)
+            location_db_id = _shot_loc_id if _loc_entry else None
+        if location_db_id is None and _loc_by_dbid:
+            location_db_id = next(iter(_loc_by_dbid))
+            _loc_entry     = _loc_by_dbid[location_db_id]
+
         if _char_entry:
-            identity_seed   = str(_char_entry.get("identity_seed") or "").strip() or None
-            character_db_id = int(_char_entry["db_id"])
+            identity_seed = str(_char_entry.get("identity_seed") or "").strip() or None
 
-        # Primary location db_id (first world_dna or first entry)
-        _loc_entry = next(
-            (l for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)),
-            None,
-        )
-        if _loc_entry:
-            location_db_id = int(_loc_entry["db_id"])
-
-        # Resolve link_status
+        # link_status — resolved only when both FKs matched exactly from shot_assets
         if character_db_id is not None and location_db_id is not None:
-            link_status = "resolved"
+            if _shot_char_id == character_db_id and _shot_loc_id == location_db_id:
+                link_status = "resolved"
+            else:
+                link_status = "semantic_only"
         elif character_db_id is not None or location_db_id is not None:
             link_status = "semantic_only"
         else:
-            link_status = "semantic_only"
+            link_status = "unresolved"
+
+        # reference_assets — read character ref URL for this shot's matched character
+        _ra = _vbrain.read("reference_assets") or {}
+        _char_refs = _ra.get("character_references") or []
+        if character_db_id is not None:
+            _matched_ref = next(
+                (r for r in _char_refs
+                 if isinstance(r, dict) and r.get("character_id") == character_db_id),
+                None,
+            )
+            if _matched_ref:
+                char_ref_url = _matched_ref.get("ref_image_url") or None
 
         # style_packet — cinematic look + lighting
-        _sp            = _vbrain.read("style_packet") or {}
+        _sp             = _vbrain.read("style_packet") or {}
         cinematic_style = ((_sp.get("cinematic") or {}).get("look") or "").strip() or None
         lighting_logic  = (str(_sp.get("lighting_logic") or "")).strip() or None
 
@@ -663,9 +712,11 @@ def _render_video(project_id: str, shot: dict) -> None:
 
         logger.debug(
             "_render_video: project=%s shot=%s link_status=%s motion_philosophy=%s "
-            "char_db_id=%s loc_db_id=%s prompt_len=%d",
+            "char_db_id=%s loc_db_id=%s char_ref=%s prompt_len=%d",
             project_id, idx, link_status, motion_philosophy,
-            character_db_id, location_db_id, len(motion_prompt),
+            character_db_id, location_db_id,
+            "yes" if char_ref_url else "no",
+            len(motion_prompt),
         )
 
         public_url = generate_shot_video(project_id, idx, still_url, prompt, duration,
@@ -3163,15 +3214,35 @@ def _stage3_job(project_id: str,
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
+def _camera_to_transition(camera_movement: str) -> str:
+    """Map a shot camera movement string to a clip transition type.
+
+    Transitions are directional cues — pans suggest wipes, zooms suggest
+    dissolves, and static shots fall back to a clean cut.
+    """
+    mv = (camera_movement or "").lower()
+    if "zoom" in mv:
+        return "cross_dissolve"
+    if "pan" in mv or "tilt" in mv or "drift" in mv:
+        return "wipe"
+    return "cut"
+
+
 def _build_video_sequence_packet(
     styled_timeline: list,
     materializer_packet: dict,
     narrative_packet: dict,
+    shot_entity_map: Optional[dict] = None,
 ) -> dict:
     """Build the video_sequence_packet brain entry from the shot timeline.
 
-    Per shot: shot_id, duration, motion_applied (spec mode), transition_in/out,
-    character_id (semantic), location_id (semantic).  No alias guessing.
+    Per shot: shot_id, duration, motion_applied (camera_plan movement → spec mode),
+    transition_in/out (derived from camera movement), character_id, location_id,
+    link_status.
+
+    Args:
+        shot_entity_map: optional {shot_index: (char_db_id|None, loc_db_id|None)}
+            pre-resolved from shot_assets; falls back to primary bible entries.
     """
     from motion_render_prompt_builder import _intensity_float, _motion_mode_for_intensity
 
@@ -3179,38 +3250,67 @@ def _build_video_sequence_packet(
     _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
     _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
 
-    # Build semantic-id-to-db_id indexes (exact integer FK only)
-    _char_db_ids: List[Optional[int]] = [
-        int(c["db_id"]) if isinstance(c, dict) and isinstance(c.get("db_id"), int) else None
-        for c in _cb
-    ]
-    _loc_db_ids: List[Optional[int]] = [
-        int(l["db_id"]) if isinstance(l, dict) and isinstance(l.get("db_id"), int) else None
-        for l in _lb
-    ]
-    primary_char_db_id = next((d for d in _char_db_ids if d is not None), None)
-    primary_loc_db_id  = next((d for d in _loc_db_ids  if d is not None), None)
+    # Build db_id indexes (exact integer FK only — no alias guessing)
+    _char_by_dbid: dict = {
+        int(c["db_id"]): c
+        for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)
+    }
+    _loc_by_dbid: dict = {
+        int(l["db_id"]): l
+        for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)
+    }
+    primary_char_db_id = next(iter(_char_by_dbid), None)
+    primary_loc_db_id  = next(iter(_loc_by_dbid),  None)
 
     shots_plan = []
     for shot in styled_timeline:
         idx      = shot.get("shot_index") or shot.get("timeline_index")
         duration = shot.get("duration")
-        raw_int  = shot.get("emotional_intensity") or "medium"
-        motion_mode = _motion_mode_for_intensity(_intensity_float(raw_int), motion_philosophy)
+
+        # Resolve this shot's character/location IDs
+        if shot_entity_map and idx in shot_entity_map:
+            char_db_id, loc_db_id = shot_entity_map[idx]
+        else:
+            char_db_id, loc_db_id = primary_char_db_id, primary_loc_db_id
+
+        # link_status
+        if char_db_id is not None and loc_db_id is not None:
+            link_status = "resolved"
+        elif char_db_id is not None or loc_db_id is not None:
+            link_status = "semantic_only"
+        else:
+            link_status = "unresolved"
+
+        # Derive motion from camera_plan.movement first, fall back to intensity scaling
+        camera = shot.get("camera_plan") or {}
+        cam_movement = (camera.get("movement") or "").strip()
+        raw_int = shot.get("emotional_intensity") or "medium"
+        if cam_movement:
+            # Use camera_plan movement as primary source; intensity modifies quality
+            from motion_render_prompt_builder import _MOTION_MODES
+            mapped = _MOTION_MODES.get(cam_movement)
+            if mapped:
+                motion_applied = mapped
+            else:
+                # Camera movement string not a spec mode — use it directly
+                motion_applied = cam_movement
+        else:
+            motion_applied = _motion_mode_for_intensity(
+                _intensity_float(raw_int), motion_philosophy
+            )
+
+        # Transitions derived from camera movement
+        transition = _camera_to_transition(cam_movement)
 
         shots_plan.append({
             "shot_id":        idx,
             "duration":       duration,
-            "motion_applied": motion_mode,
-            "transition_in":  "cut",
-            "transition_out": "cut",
-            "character_id":   primary_char_db_id,
-            "location_id":    primary_loc_db_id,
-            "link_status":    (
-                "resolved"     if (primary_char_db_id is not None and primary_loc_db_id is not None)
-                else "semantic_only" if (primary_char_db_id is not None or primary_loc_db_id is not None)
-                else "unresolved"
-            ),
+            "motion_applied": motion_applied,
+            "transition_in":  transition,
+            "transition_out": transition,
+            "character_id":   char_db_id,
+            "location_id":    loc_db_id,
+            "link_status":    link_status,
         })
 
     return {
@@ -3248,7 +3348,32 @@ def _stage4_job(project_id: str) -> None:
                 _s4brain = ProjectBrain.load(project_id, conn)
             _s4_mat = dict(_s4brain.read("materializer_packet") or {})
             _s4_nar = dict(_s4brain.read("narrative_packet")     or {})
-            _vsp = _build_video_sequence_packet(styled_timeline, _s4_mat, _s4_nar)
+
+            # Pre-load per-shot entity FKs from shot_assets so _build_video_sequence_packet
+            # can resolve character_id / location_id per shot (not just primary global).
+            _s4_shot_entity_map: dict = {}
+            try:
+                with _db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT shot_index, character_id, location_id "
+                        "  FROM shot_assets WHERE project_id=%s",
+                        (project_id,),
+                    )
+                    for _sa_row in (cur.fetchall() or []):
+                        _s4_shot_entity_map[_sa_row.get("shot_index")] = (
+                            _sa_row.get("character_id"),
+                            _sa_row.get("location_id"),
+                        )
+            except Exception:
+                logger.debug(
+                    "_stage4_job: could not pre-load shot entity map (non-fatal) for project=%s",
+                    project_id,
+                )
+
+            _vsp = _build_video_sequence_packet(
+                styled_timeline, _s4_mat, _s4_nar,
+                shot_entity_map=_s4_shot_entity_map or None,
+            )
             _s4brain.write("video_sequence_packet", _vsp)
             with _db() as conn:
                 _s4brain.save(conn)
@@ -3289,6 +3414,17 @@ def _stage4_job(project_id: str) -> None:
                 )
                 _va_rows = cur.fetchall() or []
 
+                # Also grab still image URLs (input_image per clip)
+                cur.execute(
+                    "SELECT shot_index, file_path AS still_url "
+                    "  FROM shot_assets WHERE project_id=%s AND status='ready'",
+                    (project_id,),
+                )
+                _still_by_idx: dict = {
+                    r.get("shot_index"): r.get("still_url") or ""
+                    for r in (cur.fetchall() or [])
+                }
+
             _clips = []
             _render_warnings = []
             for _va in _va_rows:
@@ -3304,8 +3440,10 @@ def _stage4_job(project_id: str) -> None:
                     {},
                 )
                 _clips.append({
+                    "clip_id":        f"clip_{_si}",
                     "shot_id":        _si,
                     "mode":           "image_to_video",
+                    "input_image":    _still_by_idx.get(_si) or "",
                     "duration":       _seq_shot.get("duration"),
                     "motion_applied": _seq_shot.get("motion_applied"),
                     "transition_in":  _seq_shot.get("transition_in", "cut"),

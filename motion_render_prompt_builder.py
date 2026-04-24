@@ -90,15 +90,23 @@ def _motion_mode_for_intensity(
     return _MOTION_MODES["slow_zoom_out"]
 
 
-def _intensity_float(intensity_str: str) -> float:
-    """Convert low/medium/high/peak labels to a 0.0–1.0 float."""
+def _intensity_float(intensity) -> float:
+    """Convert an emotional_intensity value to a 0.0–1.0 float.
+
+    Accepts both numeric values (0.0–1.0, passed through directly) and
+    the legacy label strings (low/medium/high/peak).  Safe against
+    unexpected types — always returns a clamped float.
+    """
+    if isinstance(intensity, (int, float)):
+        return float(max(0.0, min(1.0, intensity)))
     _MAP = {
         "low":    0.2,
         "medium": 0.5,
         "high":   0.75,
         "peak":   0.95,
     }
-    return _MAP.get((intensity_str or "medium").lower().strip(), 0.5)
+    label = str(intensity or "medium").lower().strip()
+    return _MAP.get(label, 0.5)
 
 
 class MotionRenderPromptBuilder:
