@@ -23,7 +23,7 @@ import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import psycopg
 from psycopg.rows import dict_row
@@ -717,15 +717,30 @@ def _render_video(project_id: str, shot: dict) -> None:
         )
         motion_prompt = motion_prompt or ""  # final null-safety guarantee
 
-        logger.debug(
-            "_render_video: project=%s shot=%s link_status=%s motion_philosophy=%s "
-            "char_db_id=%s loc_db_id=%s char_sem=%s loc_sem=%s char_ref=%s prompt_len=%d",
-            project_id, idx, link_status, motion_philosophy,
-            character_db_id, location_db_id,
-            character_semantic_id, location_semantic_id,
-            "yes" if char_ref_url else "no",
-            len(motion_prompt or ""),
-        )
+        # Assemble explicit render_job for traceability — captures every input
+        # used to produce this clip (brain-derived + linkage state).
+        render_job: Dict[str, Any] = {
+            "project_id":            project_id,
+            "shot_id":               idx,
+            "mode":                  "image_to_video",
+            "input_image":           still_url,
+            "duration":              duration,
+            "visual_prompt":         prompt,
+            "motion_prompt":         motion_prompt,
+            "motion_prompt_source":  ("brain" if brain_motion_prompt else
+                                      ("shot_dict" if shot.get("motion_prompt") else "db")),
+            "motion_philosophy":     motion_philosophy,
+            "identity_seed":         identity_seed,
+            "cinematic_style":       cinematic_style,
+            "lighting_logic":        lighting_logic,
+            "character_db_id":       character_db_id,
+            "location_db_id":        location_db_id,
+            "character_id":          character_semantic_id,
+            "location_id":           location_semantic_id,
+            "character_ref_url":     char_ref_url,
+            "link_status":           link_status,
+        }
+        logger.debug("_render_video: render_job=%s", render_job)
 
         public_url = generate_shot_video(project_id, idx, still_url, prompt, duration,
                                          motion_prompt=motion_prompt)
