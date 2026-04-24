@@ -19,76 +19,134 @@
             <span class="stage-badge">Stage 8 — References</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
-                AI prompts have been prepared for each character and location.
-                Review and edit each prompt, then click <strong>Generate</strong> to create the plate — or
-                <strong>Upload</strong> your own photo. Every plate must be ready before continuing to stills.
-                <strong>{{ total_ready }}/{{ total }} ready</strong>{% if pending_count %} · <span style="color:#ff6b6b;">{{ pending_count }} pending</span>{% endif %}.
+                Review the AI-written prompts for each cast member and location.
+                Click any card to edit its prompt, then generate or upload a plate.
+                All plates must be ready before continuing.
             </p>
         </div>
 
+        {# ── Progress strip ────────────────────────────────────────────── #}
+        <div class="ref-progress-bar">
+            <div class="ref-progress-dots">
+                {% for c in characters %}
+                <span class="ref-dot ref-dot--{{ c.ref_status }}" title="{{ c.name }} ({{ c.ref_status }})"></span>
+                {% endfor %}
+                {% for l in locations %}
+                <span class="ref-dot ref-dot--{{ l.ref_status }}" title="{{ l.name }} ({{ l.ref_status }})"></span>
+                {% endfor %}
+            </div>
+            <span class="ref-progress-label">
+                <strong>{{ total_ready }}/{{ total }}</strong> ready
+                {% if pending_count %}<span class="ref-progress-pending"> · {{ pending_count }} pending</span>{% endif %}
+            </span>
+        </div>
+
+        {# ── Failure banner ────────────────────────────────────────────── #}
         {% if total_failed > 0 %}
         <div class="ref-failed-banner">
-            <span>⚠ {{ total_failed }} plate{{ 's' if total_failed != 1 }} failed to generate
+            <span>⚠ {{ total_failed }} plate{{ 's' if total_failed != 1 }} failed
                 {% if failed_chars %}({{ failed_chars }} character{{ 's' if failed_chars != 1 }}){% endif %}
                 {% if failed_locs %}({{ failed_locs }} location{{ 's' if failed_locs != 1 }}){% endif %}
-                {% if failed_looks %}({{ failed_looks }} look{{ 's' if failed_looks != 1 }}){% endif %}.
+                {% if failed_looks %}({{ failed_looks }} look{{ 's' if failed_looks != 1 }}){% endif %}
             </span>
-            <button onclick="retryAllFailedRefs()" class="btn-secondary ref-retry-btn">
-                ↺ Retry All Failed
-            </button>
+            <button onclick="retryAllFailedRefs()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
         </div>
         {% endif %}
 
         {% if not characters and not locations %}
-        <div class="muted" style="padding:20px;border:1px dashed #444;border-radius:8px;">
-            No cast or locations were extracted from this project. Continue to render stills using the
-            project-wide reference fallbacks.
+        <div class="muted" style="padding:20px;border:1px dashed #444;border-radius:8px;margin-top:16px;">
+            No cast or locations were extracted. Continue to render stills using project-wide reference fallbacks.
         </div>
         {% endif %}
 
-        {% if characters %}
-        <h2 style="margin-top:24px;">Cast</h2>
-        {% for c in characters %}
-        <div class="char-section">
-            <div class="char-section-header">
-                <span class="char-section-name">{{ c.name }}</span>
-                <span class="muted" style="font-size:12px;">{{ c.entity_type }}{% if c.gender %} · {{ c.gender }}{% endif %}{% if c.ethnicity %} · {{ c.ethnicity }}{% endif %}</span>
-            </div>
-            <div class="stills-grid">
+        {# ── Tab switcher + gallery ────────────────────────────────────── #}
+        {% if characters or locations %}
+        <div class="ref-tabs">
+            {% if characters %}
+            <button class="ref-tab ref-tab--active" onclick="refSwitchTab('cast', this)">
+                Cast <span class="ref-tab-count">{{ ready_chars }}/{{ characters|length }}</span>
+            </button>
+            {% endif %}
+            {% if locations %}
+            <button class="ref-tab{% if not characters %} ref-tab--active{% endif %}" onclick="refSwitchTab('locations', this)">
+                Locations <span class="ref-tab-count">{{ ready_locs }}/{{ locations|length }}</span>
+            </button>
+            {% endif %}
+        </div>
 
-            {# ── Base identity plate ─────────────────────────────── #}
-            <div class="still-card still-{{ c.ref_status }}">
-                <div class="still-img-wrap" style="position:relative;">
+        {# ══ CAST TAB ══════════════════════════════════════════════════ #}
+        {% if characters %}
+        <div class="ref-tab-panel" id="ref-tab-cast">
+            <div class="ref-gallery" id="gallery-cast">
+            {% for c in characters %}
+            {# Card — stays in normal grid flow when closed #}
+            <div class="ref-card ref-card--{{ c.ref_status }}" id="card-char-{{ c.id }}"
+                 onclick="refToggle('char-{{ c.id }}')">
+                <div class="ref-card-thumb">
                     {% if c.ref_url %}
-                    <a href="{{ c.ref_url }}" target="_blank" rel="noopener">
-                        <img src="{{ c.ref_url }}" alt="{{ c.name }} plate" loading="lazy">
-                    </a>
+                    <img src="{{ c.ref_url }}" alt="{{ c.name }}" loading="lazy">
                     {% else %}
-                    <div class="still-placeholder">
-                        {% if c.ref_status == 'failed' %}⚠ Failed{% elif c.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    <div class="ref-thumb-ph ref-thumb-ph--{{ c.ref_status }}">
+                        {% if c.ref_status == 'failed' %}⚠{% elif c.ref_status == 'rendering' %}…{% else %}–{% endif %}
                     </div>
                     {% endif %}
-                    <span class="look-badge look-badge--base">Base identity</span>
+                    <span class="ref-spill ref-spill--{{ c.ref_status }}">
+                        {% if c.ref_status == 'ready' %}✓ Ready
+                        {% elif c.ref_status == 'failed' %}⚠ Failed
+                        {% elif c.ref_status == 'rendering' %}Rendering
+                        {% else %}Pending{% endif %}
+                    </span>
+                    <span class="ref-edit-hint">Edit ↓</span>
                 </div>
-                <div class="still-meta">
-                    <span class="still-num">{{ c.name }}</span>
-                    <div class="muted" style="margin-top:4px;font-size:12px;">
-                        {% if c.role %}{{ c.role }}{% endif %}
-                        {% if c.age_range %} · {{ c.age_range }}{% endif %}
+                <div class="ref-card-foot">
+                    <span class="ref-card-name">{{ c.name }}</span>
+                    <span class="ref-card-meta">{{ c.entity_type }}{% if c.gender %} · {{ c.gender }}{% endif %}</span>
+                </div>
+                {# Look thumbnails strip — clicks don't bubble to card toggle #}
+                {% if c.looks %}
+                <div class="ref-looks-strip" onclick="event.stopPropagation()">
+                    {% for lk in c.looks %}
+                    <div class="ref-look-th ref-look-th--{{ lk.ref_status }}"
+                         title="{{ lk.cluster_label or lk.cluster_id }}"
+                         onclick="refToggleLook('look-{{ lk.id }}', 'char-{{ c.id }}')">
+                        {% if lk.ref_url %}
+                        <img src="{{ lk.ref_url }}" alt="{{ lk.cluster_label }}" loading="lazy">
+                        {% else %}
+                        <div class="ref-look-th-ph">
+                            {% if lk.ref_status == 'failed' %}⚠{% elif lk.ref_status == 'rendering' %}…{% else %}+{% endif %}
+                        </div>
+                        {% endif %}
+                        <span class="ref-look-th-label">{{ (lk.cluster_label or lk.cluster_id)[:10] }}</span>
                     </div>
-                    {% if c.ref_error %}<span class="still-err">{{ c.ref_error[:140] }}</span>{% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            {# Edit panel — spans full grid width when visible #}
+            <div class="ref-edit-panel" id="panel-char-{{ c.id }}" hidden>
+                <div class="ref-edit-inner">
+                    <div class="ref-edit-meta-row">
+                        <strong>{{ c.name }}</strong>
+                        <span>{{ c.entity_type }}{% if c.gender %} · {{ c.gender }}{% endif %}{% if c.ethnicity %} · {{ c.ethnicity }}{% endif %}{% if c.age_range %} · {{ c.age_range }}{% endif %}</span>
+                        {% if c.role %}<span class="muted">{{ c.role }}</span>{% endif %}
+                    </div>
+                    {% if c.ref_error %}
+                    <div class="ref-edit-error">{{ c.ref_error[:200] }}</div>
+                    {% endif %}
+                    {# Generate form #}
                     <form method="post"
                           action="{{ url_for('references_regenerate', project_id=project.id, kind='character', entity_id=c.id) }}"
-                          style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                          class="ref-prompt-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <label style="font-size:11px;color:#9aa6b2;">Prompt — edit before generating:</label>
-                        <textarea name="prompt" rows="3"
-                                  placeholder="AI prompt will appear here…"
-                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;">{{ c.ref_prompt or '' }}</textarea>
-                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">
-                            {% if c.ref_url %}↺ Regenerate{% else %}▶ Generate{% endif %}
+                        <label class="ref-prompt-label">Prompt — edit before generating</label>
+                        <textarea name="prompt" rows="3" class="ref-prompt-ta"
+                                  placeholder="AI prompt will appear here…">{{ c.ref_prompt or '' }}</textarea>
+                        <button type="submit" class="btn-secondary ref-gen-btn">
+                            {% if c.ref_url %}↺ Regenerate{% else %}▶ Generate plate{% endif %}
                         </button>
                     </form>
+                    {# Upload form — separate, not nested #}
                     <form method="post" enctype="multipart/form-data"
                           action="{{ url_for('references_upload', project_id=project.id, kind='character', entity_id=c.id) }}"
                           class="ref-upload-form">
@@ -96,93 +154,99 @@
                         <input type="file" name="plate" accept="image/*"
                                id="plate-char-{{ c.id }}" class="ref-file-input"
                                onchange="refAutoUpload(this)">
-                        <label for="plate-char-{{ c.id }}" class="btn-secondary ref-upload-label">↑ Upload photo</label>
+                        <label for="plate-char-{{ c.id }}" class="ref-upload-label">↑ Upload your own photo</label>
                         <span class="ref-upload-status" style="display:none;">Uploading…</span>
                     </form>
-                </div>
-            </div>
 
-            {# ── Per-scene look plates ────────────────────────────── #}
-            {% for lk in c.looks %}
-            <div class="still-card still-{{ lk.ref_status }}">
-                <div class="still-img-wrap" style="position:relative;">
-                    {% if lk.ref_url %}
-                    <a href="{{ lk.ref_url }}" target="_blank" rel="noopener">
-                        <img src="{{ lk.ref_url }}" alt="{{ lk.cluster_label }} look" loading="lazy">
-                    </a>
-                    {% else %}
-                    <div class="still-placeholder">
-                        {% if lk.ref_status == 'failed' %}⚠ Failed{% elif lk.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    {# Look sub-panels #}
+                    {% if c.looks %}
+                    <div class="ref-look-panels">
+                        <div class="ref-look-panels-hd">Look variants — click a thumbnail above to expand</div>
+                        {% for lk in c.looks %}
+                        <div class="ref-look-panel" id="look-{{ lk.id }}" hidden>
+                            <div class="ref-look-ph">
+                                <span class="ref-look-ph-name">{{ lk.cluster_label or lk.cluster_id }}</span>
+                                <span class="ref-spill ref-spill--{{ lk.ref_status }} ref-spill--sm">
+                                    {% if lk.ref_status == 'ready' %}✓{% elif lk.ref_status == 'failed' %}⚠{% else %}–{% endif %}
+                                    {{ lk.ref_status|title }}
+                                </span>
+                            </div>
+                            {% if lk.wardrobe_text %}
+                            <div class="ref-look-wardrobe">{{ lk.wardrobe_text[:200] }}</div>
+                            {% endif %}
+                            {% if lk.ref_prompt %}
+                            <details class="ref-look-prompt-wrap">
+                                <summary>Prompt used</summary>
+                                <div class="ref-look-prompt-text">{{ lk.ref_prompt }}</div>
+                            </details>
+                            {% endif %}
+                            {% if lk.ref_error %}
+                            <div class="ref-edit-error">{{ lk.ref_error[:140] }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
                     </div>
                     {% endif %}
-                    <span class="look-badge look-badge--scene">{{ lk.cluster_label or lk.cluster_id }}</span>
-                </div>
-                <div class="still-meta">
-                    <span class="still-num" style="font-size:12px;">{{ lk.cluster_label or lk.cluster_id }}</span>
-                    {% if lk.wardrobe_text %}
-                    <div class="muted" style="margin-top:4px;font-size:11px;line-height:1.4;font-style:italic;">
-                        {{ lk.wardrobe_text[:120] }}{% if lk.wardrobe_text|length > 120 %}…{% endif %}
-                    </div>
-                    {% endif %}
-                    {% if lk.ref_prompt %}
-                    <details style="margin-top:6px;">
-                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
-                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ lk.ref_prompt }}</div>
-                    </details>
-                    {% endif %}
-                    {% if lk.ref_error %}<span class="still-err">{{ lk.ref_error[:140] }}</span>{% endif %}
                 </div>
             </div>
             {% endfor %}
-
-            </div>{# end stills-grid #}
-        </div>{# end char-section #}
-        {% endfor %}
+            </div>{# end ref-gallery #}
+        </div>
         {% endif %}
 
+        {# ══ LOCATIONS TAB ════════════════════════════════════════════ #}
         {% if locations %}
-        <h2 style="margin-top:24px;">Locations</h2>
-        <div class="stills-grid">
+        <div class="ref-tab-panel" id="ref-tab-locations" {% if characters %}hidden{% endif %}>
+            <div class="ref-gallery" id="gallery-locations">
             {% for l in locations %}
-            <div class="still-card still-{{ l.ref_status }}">
-                <div class="still-img-wrap">
+            <div class="ref-card ref-card--{{ l.ref_status }}" id="card-loc-{{ l.id }}"
+                 onclick="refToggle('loc-{{ l.id }}')">
+                <div class="ref-card-thumb">
                     {% if l.ref_url %}
-                    <a href="{{ l.ref_url }}" target="_blank" rel="noopener">
-                        <img src="{{ l.ref_url }}" alt="{{ l.name }} plate" loading="lazy">
-                    </a>
+                    <img src="{{ l.ref_url }}" alt="{{ l.name }}" loading="lazy">
                     {% else %}
-                    <div class="still-placeholder">
-                        {% if l.ref_status == 'failed' %}⚠ Failed{% elif l.ref_status == 'rendering' %}Rendering…{% else %}Pending{% endif %}
+                    <div class="ref-thumb-ph ref-thumb-ph--{{ l.ref_status }}">
+                        {% if l.ref_status == 'failed' %}⚠{% elif l.ref_status == 'rendering' %}…{% else %}–{% endif %}
                     </div>
                     {% endif %}
+                    <span class="ref-spill ref-spill--{{ l.ref_status }}">
+                        {% if l.ref_status == 'ready' %}✓ Ready
+                        {% elif l.ref_status == 'failed' %}⚠ Failed
+                        {% elif l.ref_status == 'rendering' %}Rendering
+                        {% else %}Pending{% endif %}
+                    </span>
+                    <span class="ref-edit-hint">Edit ↓</span>
                 </div>
-                <div class="still-meta">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span class="still-num">{{ l.name }}</span>
-                        <span class="still-time">{{ l.entity_type }}</span>
-                    </div>
-                    <div class="muted" style="margin-top:6px;font-size:12px;line-height:1.4;">
-                        {% if l.geography %}{{ l.geography }} · {% endif %}
-                        {% if l.time_period %}{{ l.time_period }} · {% endif %}
-                        {% if l.architecture_style %}{{ l.architecture_style }}{% endif %}
+                <div class="ref-card-foot">
+                    <span class="ref-card-name">{{ l.name }}</span>
+                    <span class="ref-card-meta">{{ l.entity_type }}</span>
+                </div>
+            </div>
+
+            <div class="ref-edit-panel" id="panel-loc-{{ l.id }}" hidden>
+                <div class="ref-edit-inner">
+                    <div class="ref-edit-meta-row">
+                        <strong>{{ l.name }}</strong>
+                        <span>
+                            {% if l.geography %}{{ l.geography }}{% endif %}
+                            {% if l.time_period %} · {{ l.time_period }}{% endif %}
+                            {% if l.architecture_style %} · {{ l.architecture_style }}{% endif %}
+                        </span>
                     </div>
                     {% if l.ref_error %}
-                    <span class="still-err">{{ l.ref_error[:140] }}</span>
+                    <div class="ref-edit-error">{{ l.ref_error[:200] }}</div>
                     {% endif %}
-
                     <form method="post"
                           action="{{ url_for('references_regenerate', project_id=project.id, kind='location', entity_id=l.id) }}"
-                          style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                          class="ref-prompt-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <label style="font-size:11px;color:#9aa6b2;">Prompt — edit before generating:</label>
-                        <textarea name="prompt" rows="3"
-                                  placeholder="AI prompt will appear here…"
-                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;">{{ l.ref_prompt or '' }}</textarea>
-                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">
-                            {% if l.ref_url %}↺ Regenerate plate{% else %}▶ Generate plate{% endif %}
+                        <label class="ref-prompt-label">Prompt — edit before generating</label>
+                        <textarea name="prompt" rows="3" class="ref-prompt-ta"
+                                  placeholder="AI prompt will appear here…">{{ l.ref_prompt or '' }}</textarea>
+                        <button type="submit" class="btn-secondary ref-gen-btn">
+                            {% if l.ref_url %}↺ Regenerate{% else %}▶ Generate plate{% endif %}
                         </button>
                     </form>
-
                     <form method="post" enctype="multipart/form-data"
                           action="{{ url_for('references_upload', project_id=project.id, kind='location', entity_id=l.id) }}"
                           class="ref-upload-form">
@@ -190,18 +254,19 @@
                         <input type="file" name="plate" accept="image/*"
                                id="plate-loc-{{ l.id }}" class="ref-file-input"
                                onchange="refAutoUpload(this)">
-                        <label for="plate-loc-{{ l.id }}" class="btn-secondary ref-upload-label">
-                            ↑ Upload my own photo
-                        </label>
+                        <label for="plate-loc-{{ l.id }}" class="ref-upload-label">↑ Upload your own photo</label>
                         <span class="ref-upload-status" style="display:none;">Uploading…</span>
                     </form>
                 </div>
             </div>
             {% endfor %}
+            </div>
         </div>
         {% endif %}
+        {% endif %}{# end if characters or locations #}
 
-        <div class="stage-actions" style="margin-top:24px;">
+        {# ── Approve ───────────────────────────────────────────────────── #}
+        <div class="stage-actions" style="margin-top:36px;">
             <form method="post" action="{{ url_for('references_approve', project_id=project.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if pending_count %}
@@ -226,120 +291,333 @@
 
 {% block extra_scripts %}
 <style>
-.ref-failed-banner {
+/* ── Progress bar ────────────────────────────────────────────────────── */
+.ref-progress-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    gap: 14px;
+    margin: 18px 0 22px;
+    padding: 12px 16px;
+    background: #0e0e18;
+    border: 1px solid #22222e;
+    border-radius: 10px;
+}
+.ref-progress-dots { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+.ref-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ref-dot--ready    { background: #4caf7d; }
+.ref-dot--pending  { background: #ffb142; }
+.ref-dot--failed   { background: #e05555; }
+.ref-dot--rendering{ background: #5599ff; animation: ref-pulse 1.2s ease-in-out infinite; }
+.ref-progress-label { font-size: 13px; color: #c0c8d4; white-space: nowrap; }
+.ref-progress-pending { color: #ffb142; }
+@keyframes ref-pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+/* ── Failure banner ──────────────────────────────────────────────────── */
+.ref-failed-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
     background: rgba(168,50,50,.15);
     border: 1px solid rgba(168,50,50,.4);
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 18px;
-    font-size: 13px;
-    color: #ff8080;
+    font-size: 13px; color: #ff8080;
 }
 .ref-retry-btn {
-    white-space: nowrap;
-    font-size: 12px;
-    padding: 6px 14px;
-    border-color: #a83232 !important;
-    color: #ff8080 !important;
-    flex-shrink: 0;
+    white-space: nowrap; font-size: 12px; padding: 6px 14px;
+    border-color: #a83232 !important; color: #ff8080 !important; flex-shrink: 0;
 }
-.char-section {
-    margin-bottom: 28px;
+
+/* ── Tab switcher ────────────────────────────────────────────────────── */
+.ref-tabs {
+    display: flex; gap: 2px;
+    border-bottom: 1px solid #22222e;
+    margin-bottom: 20px;
 }
-.char-section-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #2a2f38;
+.ref-tab {
+    padding: 8px 20px 10px;
+    font-size: 13px; font-weight: 600;
+    border: none; border-bottom: 2px solid transparent;
+    background: transparent; color: #555; cursor: pointer;
+    transition: color .15s, border-color .15s;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: -1px;
 }
-.char-section-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #e0e6ef;
+.ref-tab:hover { color: #999; }
+.ref-tab--active { color: #d4ff3a; border-bottom-color: #d4ff3a; }
+.ref-tab-count {
+    font-size: 10px; font-weight: 700;
+    padding: 1px 7px; border-radius: 10px;
+    background: rgba(255,255,255,.07); color: #888;
 }
-.look-badge {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 10px;
-    letter-spacing: .4px;
-    text-transform: uppercase;
-    pointer-events: none;
+.ref-tab--active .ref-tab-count { background: rgba(212,255,58,.15); color: #d4ff3a; }
+
+/* ── Gallery grid ────────────────────────────────────────────────────── */
+.ref-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+    gap: 14px;
+    align-items: start;
 }
-.look-badge--base {
-    background: rgba(200,241,53,.18);
-    color: #c8f135;
-    border: 1px solid rgba(200,241,53,.35);
+
+/* ── Entity card ─────────────────────────────────────────────────────── */
+.ref-card {
+    background: #13131c;
+    border: 1px solid #22222e;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+    user-select: none;
+    position: relative;
 }
-.look-badge--scene {
-    background: rgba(100,180,255,.16);
-    color: #88c8ff;
-    border: 1px solid rgba(100,180,255,.32);
+.ref-card:hover { border-color: #3a3a50; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.ref-card--ready  { border-color: rgba(76,175,125,.3); }
+.ref-card--failed { border-color: rgba(224,85,85,.3); }
+.ref-card--open   { border-color: #d4ff3a; box-shadow: 0 0 0 1px #d4ff3a22; }
+
+.ref-card-thumb {
+    position: relative; aspect-ratio: 4/3;
+    background: #0d0d14; overflow: hidden;
 }
+.ref-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref-thumb-ph {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #2a2a3a;
+}
+.ref-thumb-ph--failed   { color: #663333; }
+.ref-thumb-ph--rendering{ color: #223366; }
+
+.ref-spill {
+    position: absolute; top: 7px; right: 7px;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px;
+    letter-spacing: .3px; pointer-events: none;
+}
+.ref-spill--ready    { background: rgba(76,175,125,.22); color: #4cdb90; border: 1px solid rgba(76,175,125,.38); }
+.ref-spill--pending  { background: rgba(255,177,66,.14); color: #ffb142; border: 1px solid rgba(255,177,66,.28); }
+.ref-spill--failed   { background: rgba(224,85,85,.18);  color: #ff7070; border: 1px solid rgba(224,85,85,.32); }
+.ref-spill--rendering{ background: rgba(85,153,255,.18); color: #88aaff; border: 1px solid rgba(85,153,255,.32); animation: ref-pulse 1.2s ease-in-out infinite; }
+.ref-spill--sm { font-size: 9px; padding: 1px 6px; position: static; }
+
+.ref-edit-hint {
+    position: absolute; bottom: 7px; right: 7px;
+    font-size: 9px; font-weight: 600; color: #777;
+    background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 5px;
+    letter-spacing: .4px; text-transform: uppercase;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+}
+.ref-card:hover .ref-edit-hint,
+.ref-card--open .ref-edit-hint { opacity: 1; }
+.ref-card--open .ref-edit-hint { color: #d4ff3a; content: '↑ Close'; }
+
+.ref-card-foot {
+    padding: 8px 10px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.ref-card-name { font-size: 13px; font-weight: 700; color: #dde4ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ref-card-meta { font-size: 11px; color: #556; }
+
+/* ── Look thumbnails strip ───────────────────────────────────────────── */
+.ref-looks-strip {
+    display: flex; gap: 6px;
+    padding: 0 8px 10px;
+    overflow-x: auto; scrollbar-width: none;
+}
+.ref-looks-strip::-webkit-scrollbar { display: none; }
+.ref-look-th {
+    flex-shrink: 0; width: 50px; cursor: pointer;
+    border-radius: 6px; overflow: hidden;
+    border: 1px solid #252530; transition: border-color .15s;
+    display: flex; flex-direction: column;
+}
+.ref-look-th:hover    { border-color: #555; }
+.ref-look-th--open    { border-color: #d4ff3a !important; }
+.ref-look-th--ready   { border-color: rgba(76,175,125,.35); }
+.ref-look-th--failed  { border-color: rgba(224,85,85,.35); }
+.ref-look-th img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.ref-look-th-ph {
+    width: 100%; aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    background: #0d0d14; font-size: 13px; color: #333;
+}
+.ref-look-th-label {
+    font-size: 8px; color: #556; text-align: center;
+    padding: 2px 3px; background: #0e0e18;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Edit accordion panel ────────────────────────────────────────────── */
+.ref-edit-panel {
+    grid-column: 1 / -1;
+    background: #0e0e1a;
+    border: 1px solid #d4ff3a44;
+    border-radius: 12px;
+    margin-bottom: 4px;
+}
+.ref-edit-panel::before {
+    content: '';
+    display: block;
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid #d4ff3a44;
+    margin: 0 auto;
+    position: relative; top: -1px;
+}
+.ref-edit-inner {
+    padding: 16px 20px 20px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.ref-edit-meta-row {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+    font-size: 12px; color: #9aa6b2;
+    padding-bottom: 10px; border-bottom: 1px solid #1e1e2a;
+}
+.ref-edit-meta-row strong { font-size: 14px; color: #e0e6ef; }
+.ref-edit-error {
+    background: rgba(168,50,50,.12); border: 1px solid rgba(168,50,50,.3);
+    border-radius: 6px; padding: 8px 12px;
+    font-size: 11px; color: #ff8080;
+}
+.ref-prompt-form { display: flex; flex-direction: column; gap: 7px; }
+.ref-prompt-label { font-size: 11px; color: #9aa6b2; }
+.ref-prompt-ta {
+    width: 100%; font-size: 12px; padding: 8px 10px;
+    background: #1a1f26; border: 1px solid #333;
+    color: #cfd6df; border-radius: 6px;
+    resize: vertical; font-family: inherit; line-height: 1.5;
+    box-sizing: border-box;
+}
+.ref-gen-btn { font-size: 12px; padding: 7px 16px; align-self: flex-start; }
+
 .ref-upload-form {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    display: flex; align-items: center; gap: 8px;
 }
 .ref-file-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    overflow: hidden;
-    pointer-events: none;
+    position: absolute; width: 1px; height: 1px;
+    opacity: 0; overflow: hidden; pointer-events: none;
 }
 .ref-upload-label {
-    display: inline-block;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 6px 10px;
-    text-align: center;
-    border: 1px dashed #555;
-    border-radius: 6px;
-    background: transparent;
-    color: #9aa6b2;
-    transition: border-color .15s, color .15s, background .15s;
+    display: inline-block; cursor: pointer;
+    font-size: 12px; padding: 6px 14px;
+    border: 1px dashed #444; border-radius: 6px;
+    background: transparent; color: #778;
+    transition: border-color .15s, color .15s;
+    white-space: nowrap;
 }
-.ref-upload-label:hover {
-    border-color: #c8f135;
-    color: #c8f135;
-    background: rgba(200,241,53,.05);
+.ref-upload-label:hover { border-color: #d4ff3a; color: #d4ff3a; background: rgba(212,255,58,.04); }
+.ref-upload-label.uploading { border-color: #333; color: #444; cursor: default; }
+.ref-upload-status { font-size: 11px; color: #9aa6b2; animation: ref-pulse 1.2s ease-in-out infinite; }
+
+/* ── Look sub-panels ─────────────────────────────────────────────────── */
+.ref-look-panels {
+    border-top: 1px solid #1a1a28;
+    padding-top: 12px;
+    display: flex; flex-direction: column; gap: 8px;
 }
-.ref-upload-label.uploading {
-    border-color: #555;
-    color: #555;
-    cursor: default;
+.ref-look-panels-hd {
+    font-size: 10px; color: #445; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .6px;
 }
-.ref-upload-status {
-    font-size: 11px;
-    color: #9aa6b2;
-    text-align: center;
-    animation: pulse 1.2s ease-in-out infinite;
+.ref-look-panel {
+    background: #13131c; border: 1px solid #2a2f38;
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; flex-direction: column; gap: 6px;
 }
-@keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+.ref-look-ph {
+    display: flex; align-items: center; gap: 8px;
+}
+.ref-look-ph-name { font-size: 12px; font-weight: 600; color: #c0c8d4; }
+.ref-look-wardrobe { font-size: 11px; color: #667; font-style: italic; line-height: 1.5; }
+.ref-look-prompt-wrap summary { cursor: pointer; font-size: 11px; color: #9aa6b2; }
+.ref-look-prompt-text { font-size: 11px; color: #aab2bd; margin-top: 4px; line-height: 1.5; }
 </style>
 <script>
 const _PID  = {{ project.id | tojson }};
 const _CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
+/* ── Tab switching ──────────────────────────────────────────────────── */
+function refSwitchTab(tabId, btn) {
+    document.querySelectorAll('.ref-tab-panel').forEach(p => { p.hidden = true; });
+    document.querySelectorAll('.ref-tab').forEach(b => b.classList.remove('ref-tab--active'));
+    const panel = document.getElementById('ref-tab-' + tabId);
+    if (panel) panel.hidden = false;
+    btn.classList.add('ref-tab--active');
+    _closeAllPanels();
+}
+
+/* ── Accordion ──────────────────────────────────────────────────────── */
+let _openPanel = null;
+
+function _closeAllPanels() {
+    document.querySelectorAll('.ref-edit-panel').forEach(p => { p.hidden = true; });
+    document.querySelectorAll('.ref-card').forEach(c => c.classList.remove('ref-card--open'));
+    document.querySelectorAll('.ref-look-th').forEach(t => t.classList.remove('ref-look-th--open'));
+    document.querySelectorAll('.ref-look-panel').forEach(p => { p.hidden = true; });
+    _openPanel = null;
+}
+
+function refToggle(entityId) {
+    const panelId = 'panel-' + entityId;
+    const cardId  = 'card-'  + entityId;
+    const panel   = document.getElementById(panelId);
+    const card    = document.getElementById(cardId);
+    if (!panel) return;
+
+    if (_openPanel === panelId) {
+        _closeAllPanels();
+        return;
+    }
+    _closeAllPanels();
+    panel.hidden = false;
+    if (card) card.classList.add('ref-card--open');
+    _openPanel = panelId;
+    setTimeout(() => {
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+}
+
+function refToggleLook(lookId, entityId) {
+    // Make sure the parent entity panel is open
+    const parentPanelId = 'panel-' + entityId;
+    if (_openPanel !== parentPanelId) {
+        refToggle(entityId);
+        // Small delay so the panel is visible before we scroll to the look
+        setTimeout(() => _showLook(lookId), 80);
+        return;
+    }
+    _showLook(lookId);
+}
+
+function _showLook(lookId) {
+    const lookPanel = document.getElementById(lookId);
+    if (!lookPanel) return;
+    const wasHidden = lookPanel.hidden;
+    document.querySelectorAll('.ref-look-panel').forEach(p => { p.hidden = true; });
+    document.querySelectorAll('.ref-look-th').forEach(t => t.classList.remove('ref-look-th--open'));
+    if (wasHidden) {
+        lookPanel.hidden = false;
+        // Find the thumb for this look and mark it open
+        document.querySelectorAll('.ref-look-th').forEach(t => {
+            const oc = t.getAttribute('onclick') || '';
+            if (oc.includes("'" + lookId + "'")) t.classList.add('ref-look-th--open');
+        });
+        lookPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+/* ── Retry all failed ───────────────────────────────────────────────── */
 async function retryAllFailedRefs() {
     const btn = document.querySelector('.ref-retry-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Queuing…'; }
     try {
         const resp = await fetch('/project/' + _PID + '/retry/all_failed_refs', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': _CSRF }
+            method: 'POST', headers: { 'X-CSRFToken': _CSRF }
         });
         const data = await resp.json();
         if (data.ok) {
@@ -356,15 +634,18 @@ async function retryAllFailedRefs() {
     }
 }
 
+/* ── Auto-upload on file select ─────────────────────────────────────── */
 function refAutoUpload(input) {
     if (!input.files || !input.files.length) return;
-    var form  = input.closest('form');
-    var label = form.querySelector('.ref-upload-label');
-    var status = form.querySelector('.ref-upload-status');
-    var fname = input.files[0].name;
-    label.textContent = fname.length > 28 ? fname.slice(0,25) + '\u2026' : fname;
-    label.classList.add('uploading');
-    status.style.display = 'block';
+    const form   = input.closest('form');
+    const label  = form.querySelector('.ref-upload-label');
+    const status = form.querySelector('.ref-upload-status');
+    const fname  = input.files[0].name;
+    if (label) {
+        label.textContent = fname.length > 22 ? fname.slice(0, 19) + '…' : fname;
+        label.classList.add('uploading');
+    }
+    if (status) status.style.display = 'inline';
     form.submit();
 }
 </script>
