@@ -2957,8 +2957,9 @@ def advance_stage_4(project_id: str):
 
     Builds the per-shot motion plan and parks at video_assembly_review so
     the user can confirm camera/transitions before any clips are rendered.
-    Atomic gate: only transitions if currently parked at videos_control or
-    stills_review (legacy auto-pass).
+    Atomic gate: only transitions if currently parked at stills_control,
+    stills_review (legacy), or videos_control (back-compat for projects
+    that landed there before this stage was added).
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
@@ -2969,7 +2970,7 @@ def advance_stage_4(project_id: str):
             "UPDATE projects SET status=%s, stage=%s, error=NULL, "
             "       updated_at=NOW() "
             " WHERE id=%s "
-            "   AND stage IN ('videos_control', 'stills_review') "
+            "   AND stage IN ('stills_control', 'stills_review', 'videos_control') "
             "   AND status='awaiting_review'",
             ("queued", "queued", project_id),
         )
@@ -3250,14 +3251,21 @@ def stills_outpaint_status_json(project_id: str):
 @app.route("/project/<project_id>/stills/approve", methods=["POST"])
 @login_required
 def stills_approve(project_id: str):
-    """User approved all stills — advance to Video Studio (gated, no auto-render)."""
+    """User approved all stills — kick the Video Assembly stage.
+
+    Per the canonical 13-stage flow, stills approval must hand off to the
+    Video Assembly job (which builds the motion plan and parks at
+    video_assembly_review) BEFORE any clips can be rendered. This guarantees
+    the user reviews and approves the motion plan before render credits are
+    spent on clips.
+    """
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET status='awaiting_review', stage='videos_control', "
-            "updated_at=NOW() "
+            "UPDATE projects SET status='queued', stage='queued', "
+            "       error=NULL, updated_at=NOW() "
             " WHERE id=%s AND stage='stills_control' AND status='awaiting_review'",
             (project_id,),
         )
@@ -3266,15 +3274,16 @@ def stills_approve(project_id: str):
     if not advanced:
         flash("Cannot advance — project is not at the stills review step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    # Seed video_asset rows (queued status) so the studio page has entries to display.
-    # Does NOT start rendering — user controls generation from the Video Studio.
+    # Seed video_asset rows (queued status) up front so the post-render
+    # Video Studio has entries to display once clips are produced.
     try:
         timeline = project.get("styled_timeline") or []
         shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in timeline]
         seed_video_rows(project_id, shot_indices)
     except Exception:
         pass  # Non-fatal; studio page works fine without pre-seeded rows
-    return redirect(url_for("video_studio_page", project_id=project_id))
+    kick_stage_video_assembly(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 # ── Video clips status JSON (polling) ─────────────────────────────────────
@@ -3361,12 +3370,34 @@ def save_studio_motion_prompt(project_id: str, shot_index: int):
 
 
 # ── Generate single video clip ──────────────────────────────────────────────
-@app.route("/project/<project_id>/videos/generate/<int:shot_index>", methods=["POST"])
-@login_required
-def generate_single_video(project_id: str, shot_index: int):
+# Stages where direct clip generation is allowed. The Video Assembly review
+# gate must already have been passed (so video_sequence_packet exists in
+# brain) before any per-shot render endpoint can fire.
+_POST_ASSEMBLY_STAGES = (
+    "videos_control", "videos_review", "post_production",
+    "final_review", "complete",
+)
+
+
+def _require_post_assembly(project_id: str):
+    """Return None if the project is past the assembly gate, else a JSON error."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(403)
+    if (project.get("stage") or "") not in _POST_ASSEMBLY_STAGES:
+        return jsonify({
+            "ok": False,
+            "error": "Approve the Video Assembly motion plan before rendering clips.",
+        }), 409
+    return None
+
+
+@app.route("/project/<project_id>/videos/generate/<int:shot_index>", methods=["POST"])
+@login_required
+def generate_single_video(project_id: str, shot_index: int):
+    err = _require_post_assembly(project_id)
+    if err is not None:
+        return err
     try:
         retry_video(project_id, shot_index)
         return jsonify({"ok": True})
@@ -3378,9 +3409,9 @@ def generate_single_video(project_id: str, shot_index: int):
 @app.route("/project/<project_id>/videos/generate-all", methods=["POST"])
 @login_required
 def generate_all_videos_route(project_id: str):
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(403)
+    err = _require_post_assembly(project_id)
+    if err is not None:
+        return err
     force = request.args.get("force") == "1"
     try:
         if force:
@@ -3404,9 +3435,9 @@ def generate_all_videos_route(project_id: str):
 @app.route("/project/<project_id>/videos/regenerate-failed", methods=["POST"])
 @login_required
 def regenerate_failed_videos_route(project_id: str):
-    project = _get_project(project_id, current_user()["id"])
-    if not project:
-        abort(403)
+    err = _require_post_assembly(project_id)
+    if err is not None:
+        return err
     try:
         count = render_failed_videos(project_id)
         return jsonify({"ok": True, "count": count})
