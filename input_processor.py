@@ -74,6 +74,15 @@ _INLINE_DIALOGUE_RE = re.compile(
     r"^([A-Z][A-Z ]{1,30}):\s+(.+)$"
 )
 _STAGE_DIRECTION_RE = re.compile(r"^\s*\((.+)\)\s*$")
+_TRANSITION_RE = re.compile(
+    r"^\s*(FADE\s*(IN|OUT|TO)?|CUT\s*TO|SMASH\s*CUT|DISSOLVE(\s*TO)?|"
+    r"MATCH\s*CUT|JUMP\s*CUT|WIPE(\s*TO)?|IRIS\s*(IN|OUT))\s*[:\.]?\s*$",
+    re.IGNORECASE,
+)
+_NARRATOR_RE = re.compile(
+    r"^(NARRATOR|V\.O\.|V\.O|VO|VOICE\s*OVER|VOICE-OVER|OMNISCIENT|NARRATION)$",
+    re.IGNORECASE,
+)
 
 # Document heading patterns
 _DOC_HEADING_RE = re.compile(
@@ -156,8 +165,11 @@ class InputProcessor:
         # --- Step 8: build repetition map ---------------------------------
         repetition_map = self._build_repetition_map(units, sections)
 
+        # --- Step 8.5: detect lyrical patterns (songs only) ---------------
+        lyrical_patterns = self._detect_lyrical_patterns(sections, units, input_type)
+
         # --- Step 9: detect speaker boundaries ----------------------------
-        speaker_map = self._detect_speakers(units, input_type)
+        speaker_data = self._detect_speakers(units, input_type)
 
         # --- Step 10: flag uncertainties ----------------------------------
         uncertainties = self._flag_uncertainties(
@@ -168,19 +180,21 @@ class InputProcessor:
         timing = self._build_timing_summary(audio_meta, timed_segments, units)
 
         return {
-            "raw_text":       raw_text_preserved,
-            "clean_text":     clean_text,
-            "source_format":  source_format,
-            "input_type":     input_type,
-            "sub_type":       sub_type,
-            "languages":      languages,
-            "sections":       sections,
-            "units":          units,
-            "repetition_map": repetition_map,
-            "speaker_map":    speaker_map,
-            "timing":         timing,
-            "audio_meta":     self._compact_audio_meta(audio_meta),
-            "uncertainties":  uncertainties,
+            "raw_text":        raw_text_preserved,
+            "clean_text":      clean_text,
+            "source_format":   source_format,
+            "input_type":      input_type,
+            "sub_type":        sub_type,
+            "languages":       languages,
+            "sections":        sections,
+            "units":           units,
+            "repetition_map":  repetition_map,
+            "lyrical_patterns": lyrical_patterns,
+            "speaker_map":     speaker_data["speakers"],
+            "speaker_types":   speaker_data["speaker_types"],
+            "timing":          timing,
+            "audio_meta":      self._compact_audio_meta(audio_meta),
+            "uncertainties":   uncertainties,
         }
 
     # -----------------------------------------------------------------------
@@ -685,6 +699,7 @@ class InputProcessor:
         current_scene_label = "Scene 1"
         current_scene_type  = "scene"
         scene_count = 0
+        transition_holder: List[Optional[str]] = [None]  # [current_transition]
 
         def flush_scene():
             nonlocal s_idx
@@ -696,14 +711,16 @@ class InputProcessor:
             for u in current_scene_lines:
                 u["section_id"] = section_id
             sections.append({
-                "id":          section_id,
-                "type":        current_scene_type,
-                "label":       current_scene_label,
-                "is_inferred": False,
-                "unit_ids":    section_unit_ids,
-                "repeat_of":   None,
+                "id":               section_id,
+                "type":             current_scene_type,
+                "label":            current_scene_label,
+                "is_inferred":      False,
+                "unit_ids":         section_unit_ids,
+                "repeat_of":        None,
+                "scene_transition": transition_holder[0],
             })
             current_scene_lines.clear()
+            transition_holder[0] = None
 
         pending_character: Optional[str] = None
         act_count = 0
@@ -711,6 +728,11 @@ class InputProcessor:
         for line in raw_lines:
             text = line["text"].strip()
             if not text:
+                continue
+
+            # Scene transition (FADE TO, CUT TO, DISSOLVE, etc.) — label only
+            if _TRANSITION_RE.match(text):
+                transition_holder[0] = re.sub(r"\s+", " ", text.upper().strip(" :."))
                 continue
 
             # Act marker
@@ -743,6 +765,7 @@ class InputProcessor:
                     "start_time":  line.get("start_time"),
                     "end_time":    line.get("end_time"),
                     "speaker":     None,
+                    "speaker_type": None,
                     "unit_type":   "stage_direction",
                     "is_inferred": False,
                 })
@@ -762,15 +785,16 @@ class InputProcessor:
                 u_idx += 1
                 uid = f"u{u_idx:03d}"
                 units.append({
-                    "id":          uid,
-                    "section_id":  None,
-                    "index":       u_idx,
-                    "text":        dialogue,
-                    "start_time":  line.get("start_time"),
-                    "end_time":    line.get("end_time"),
-                    "speaker":     speaker,
-                    "unit_type":   "dialogue",
-                    "is_inferred": False,
+                    "id":           uid,
+                    "section_id":   None,
+                    "index":        u_idx,
+                    "text":         dialogue,
+                    "start_time":   line.get("start_time"),
+                    "end_time":     line.get("end_time"),
+                    "speaker":      speaker,
+                    "speaker_type": "narrator" if _NARRATOR_RE.match(speaker) else "character",
+                    "unit_type":    "dialogue",
+                    "is_inferred":  False,
                 })
                 current_scene_lines.append(units[-1])
                 pending_character = None
@@ -780,16 +804,20 @@ class InputProcessor:
             u_idx += 1
             uid = f"u{u_idx:03d}"
             unit_type = "dialogue" if pending_character else "action"
+            spk_type: Optional[str] = None
+            if pending_character:
+                spk_type = "narrator" if _NARRATOR_RE.match(pending_character) else "character"
             units.append({
-                "id":          uid,
-                "section_id":  None,
-                "index":       u_idx,
-                "text":        text,
-                "start_time":  line.get("start_time"),
-                "end_time":    line.get("end_time"),
-                "speaker":     pending_character,
-                "unit_type":   unit_type,
-                "is_inferred": False,
+                "id":           uid,
+                "section_id":   None,
+                "index":        u_idx,
+                "text":         text,
+                "start_time":   line.get("start_time"),
+                "end_time":     line.get("end_time"),
+                "speaker":      pending_character,
+                "speaker_type": spk_type,
+                "unit_type":    unit_type,
+                "is_inferred":  False,
             })
             current_scene_lines.append(units[-1])
             if pending_character:
@@ -1072,13 +1100,72 @@ class InputProcessor:
 
     def _detect_speakers(
         self, units: List[Dict[str, Any]], input_type: str
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[str, Any]:
         speaker_map: Dict[str, List[str]] = defaultdict(list)
+        speaker_types: Dict[str, str] = {}
         for u in units:
             sp = u.get("speaker")
             if sp:
                 speaker_map[sp].append(u["id"])
-        return dict(speaker_map)
+                if sp not in speaker_types:
+                    spk_type = u.get("speaker_type")
+                    if spk_type is None:
+                        spk_type = "narrator" if _NARRATOR_RE.match(sp) else "character"
+                    speaker_types[sp] = spk_type
+        return {
+            "speakers":      dict(speaker_map),
+            "speaker_types": speaker_types,
+        }
+
+    # -----------------------------------------------------------------------
+    # Step 8.5 — Lyrical pattern detection (songs only)
+    # -----------------------------------------------------------------------
+
+    def _detect_lyrical_patterns(
+        self,
+        sections: List[Dict[str, Any]],
+        units: List[Dict[str, Any]],
+        input_type: str,
+    ) -> Dict[str, Any]:
+        """Lightweight structural detection only — no poetic analysis."""
+        if input_type != TYPE_SONG:
+            return {}
+
+        unit_by_id = {u["id"]: u for u in units}
+
+        def end_word(text: str) -> str:
+            words = re.sub(r"[^a-z\s]", "", text.lower()).split()
+            return words[-1] if words else ""
+
+        def rhymes(a: str, b: str) -> bool:
+            if not a or not b or a == b:
+                return False
+            # Require min length 4 so short function words (her, the, of)
+            # don't create false matches via shared suffix
+            if len(a) < 4 or len(b) < 4:
+                return False
+            # Share last 2+ chars (vowel nucleus + coda)
+            return a[-2:] == b[-2:]
+
+        rhyme_detected = False
+        for sec in sections:
+            end_words = [
+                end_word(unit_by_id[uid]["text"])
+                for uid in sec.get("unit_ids", [])
+                if uid in unit_by_id
+            ]
+            # Check any pair of adjacent or nearby lines for rhyme
+            for i in range(len(end_words) - 1):
+                if rhymes(end_words[i], end_words[i + 1]):
+                    rhyme_detected = True
+                    break
+                if i + 2 < len(end_words) and rhymes(end_words[i], end_words[i + 2]):
+                    rhyme_detected = True
+                    break
+            if rhyme_detected:
+                break
+
+        return {"rhyme_repetition_detected": rhyme_detected}
 
     # -----------------------------------------------------------------------
     # Step 10 — Uncertainties

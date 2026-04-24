@@ -1,0 +1,80 @@
+did you suggest these to built on input level Missing Where in spec Rhyme detection Song section — "Detect lyrical patterns: rhyme repetition" Scene transitions (FADE TO, CUT TO, DISSOLVE) Script section — "Detect scene transitions" Narrator vs character label Common — "narrator vs character" in speaker detection
+
+Yes — I did suggest them, and they are correct to include at Input Processing level, but with an important clarification so you don’t overbuild or misuse them.
+
+✅ CONFIRMATION
+1. Rhyme detection
+✔️ Yes — suggested under:
+“Detect lyrical patterns: rhyme repetition”
+👉 Purpose:
+* Helps Context Engine understand lyrical structure
+* Helps Narrative later with rhythm/repetition feel
+👉 Keep it LIGHT
+* Detect pattern, don’t analyse poetry deeply
+
+2. Scene transitions (FADE TO, CUT TO, etc.)
+✔️ Yes — suggested under:
+“Detect scene transitions”
+👉 Purpose:
+* Preserve existing structure in scripts
+* Helps Storyboard respect original flow
+👉 Do NOT interpret
+* Just label them
+
+3. Narrator vs character
+✔️ Yes — suggested under:
+“Detect speaker boundaries”
+👉 Purpose:
+* Critical for Context Engine to understand:
+    * who is speaking
+    * perspective
+    * dialogue vs narration
+
+⚠️ BUT HERE IS THE IMPORTANT CORRECTION (THIS IS WHERE YOU MUST BE PRECISE)
+These are:
+👉 Detection features, NOT interpretation features
+
+🔒 HOW THEY SHOULD EXIST IN YOUR SYSTEM
+Rhyme detection:
+
+"lyrical_patterns": {
+  "rhyme_repetition_detected": true
+}
+
+👉 NOT:
+* no poetic analysis
+* no emotional meaning extraction
+
+Scene transitions:
+
+"scene_transition": "CUT TO"
+
+👉 NOT:
+* no cinematic decisions
+* no shot logic
+
+Narrator vs character:
+
+"speaker_type": "narrator"
+
+👉 NOT:
+* no personality inference
+* no emotional judgement
+
+🚨 CRITICAL WARNING (THIS WILL SAVE YOUR PIPELINE)
+If you let Input stage start doing:
+* emotional interpretation
+* poetic meaning
+* storytelling inference
+👉 Your Context Engine becomes redundant 👉 Your pipeline collapses into noise
+
+🎯 FINAL CLARITY
+YES — include all three
+BUT:
+👉 They must be:
+* lightweight detections
+* structural signals
+* passed forward, not interpreted
+
+🔥 ONE LINE RULE
+👉 Input detects patterns — Context understands them
