@@ -5321,3 +5321,14 @@ main:has(> .ws-grid) {
     color: rgba(255,255,255,.45);
     line-height: 1.35;
 }
+.redo-panel--disabled { opacity: .55; }
+.redo-toggle--disabled {
+    cursor: not-allowed;
+    border-color: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.35);
+}
+.redo-toggle--disabled:hover {
+    background: none;
+    border-color: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.35);
+}

@@ -2118,9 +2118,13 @@ def rerun_from_stage(project_id: str, target_stage: str):
         flash("Cannot determine pipeline position — please refresh.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
-    if target_idx >= cur_idx:
+    if target_idx > cur_idx:
         flash("Cannot jump forward in the pipeline.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
+
+    cp = dict(project.get("context_packet") or {})
+    _cb = dict(cp.get("creative_brief") or {})
+    _cb_pending = dict(_cb.get("_pending_overrides") or {})
 
     REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
                           "assumptions_review", "creative_brief_review",
@@ -2129,6 +2133,9 @@ def rerun_from_stage(project_id: str, target_stage: str):
     REDO_CLEARS_VIDEOS = REDO_CLEARS_REFS | {"videos_control"}
 
     r2_urls: list = []
+    deleted_shots_count = 0
+    deleted_videos_count = 0
+
     with db() as conn, conn.cursor() as cur:
         if target_stage in REDO_CLEARS_REFS:
             cur.execute(
@@ -2152,14 +2159,18 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 "SELECT file_path FROM shot_assets WHERE project_id=%s AND file_path IS NOT NULL",
                 (project_id,)
             )
-            r2_urls += [r["file_path"] for r in cur.fetchall()]
+            rows = cur.fetchall()
+            r2_urls += [r["file_path"] for r in rows]
+            deleted_shots_count = len(rows)
 
         if target_stage in REDO_CLEARS_VIDEOS:
             cur.execute(
                 "SELECT file_path FROM video_assets WHERE project_id=%s AND file_path IS NOT NULL",
                 (project_id,)
             )
-            r2_urls += [r["file_path"] for r in cur.fetchall()]
+            rows = cur.fetchall()
+            r2_urls += [r["file_path"] for r in rows]
+            deleted_videos_count = len(rows)
 
     if r2_urls:
         try:
@@ -2168,18 +2179,17 @@ def rerun_from_stage(project_id: str, target_stage: str):
         except Exception:
             log.exception("R2 cleanup during rerun_from_stage failed for project %s", project_id)
 
-    cp = dict(project.get("context_packet") or {})
-    _cb = dict(cp.get("creative_brief") or {})
-    _cb_pending = dict(_cb.get("_pending_overrides") or {})
-
+    uid = current_user()["id"]
     with db() as conn, conn.cursor() as cur:
+
         if target_stage == "audio_review":
             cur.execute(
-                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                "UPDATE projects SET audio_data=NULL, transcript=NULL, lyrics_timed=NULL,"
+                " context_packet=NULL, styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
-                " stage=%s, status='awaiting_review', error=NULL, updated_at=NOW()"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
-                (target_stage, project_id),
+                (project_id,),
             )
             cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
             cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
@@ -2197,7 +2207,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
             cur.execute(
                 "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
-                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " stage='style_review', status='awaiting_review', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
                 (project_id,),
             )
@@ -2300,8 +2310,17 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 " error=NULL, updated_at=NOW() WHERE id=%s",
                 (target_stage, project_id),
             )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
             cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
             cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
 
         elif target_stage == "videos_control":
             cur.execute(
@@ -2320,18 +2339,51 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 (target_stage, project_id),
             )
 
+        if deleted_shots_count or deleted_videos_count:
+            try:
+                cur.execute(
+                    "INSERT INTO credit_ledger (user_id, credits, label) VALUES (%s, 0, %s)",
+                    (uid,
+                     f"Redo from '{target_stage}' on project {project_id}: "
+                     f"deleted {deleted_shots_count} stills, {deleted_videos_count} video clips"),
+                )
+            except Exception:
+                log.warning("credit_ledger audit write failed for project %s redo", project_id)
+
         conn.commit()
 
     label = STAGE_LABELS.get(target_stage, target_stage)
 
     if target_stage == "audio_review":
+        audio_filename = project.get("audio_filename")
+        audio_path_for_kick = None
+        if audio_filename:
+            local_path = PROJECTS_ROOT / project_id / "uploads" / audio_filename
+            if local_path.is_file():
+                audio_path_for_kick = local_path
+            elif r2_storage.r2_available():
+                try:
+                    import tempfile as _tmp
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    audio_bytes = r2_storage.download_bytes(
+                        f"projects/{project_id}/uploads/{audio_filename}"
+                    )
+                    local_path.write_bytes(audio_bytes)
+                    audio_path_for_kick = local_path
+                except Exception:
+                    log.exception("Could not download audio from R2 for rerun project %s", project_id)
+        kick_stage_0(
+            project_id=project_id,
+            audio_path=audio_path_for_kick,
+            text="",
+            genre=project.get("genre") or "",
+        )
+        flash(f"Re-running audio analysis. You'll land on {label} when ready.", "info")
+    elif target_stage == "style_review":
         flash(
-            f"Pipeline reset to {label}. Re-select your vocal gender override and continue.",
+            f"Pipeline reset to {label}. Pick your visual style and continue.",
             "info",
         )
-    elif target_stage == "style_review":
-        kick_stage_style(project_id)
-        flash(f"Re-generating style suggestions. You'll land on {label} when ready.", "info")
     elif target_stage in ("context_review", "assumptions_review"):
         kick_stage_1(project_id)
         flash(f"Context Engine is re-running. You'll land on {label} when ready.", "info")
