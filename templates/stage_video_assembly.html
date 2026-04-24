@@ -65,6 +65,17 @@
                         {% endif %}
                     </div>
                     {% endif %}
+                    {% if sh.identity_seed %}
+                    <dl class="va-bible-dl">
+                        <dt>Identity</dt><dd>{{ sh.identity_seed[:140] }}</dd>
+                    </dl>
+                    {% endif %}
+                    {% if sh.lighting_reference or sh.world_reference %}
+                    <dl class="va-bible-dl">
+                        {% if sh.world_reference %}<dt>World</dt><dd>{{ sh.world_reference[:120] }}</dd>{% endif %}
+                        {% if sh.lighting_reference %}<dt>Lighting</dt><dd>{{ sh.lighting_reference[:120] }}</dd>{% endif %}
+                    </dl>
+                    {% endif %}
                     {% if sh.meaning %}
                     <div class="va-note">{{ sh.meaning[:160] }}</div>
                     {% endif %}

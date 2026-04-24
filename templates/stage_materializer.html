@@ -25,6 +25,14 @@
         </div>
         {% endif %}
 
+        {% if characters or locations %}
+        {% set _can_edit = not project._is_review_only %}
+        {% if _can_edit %}
+        <form method="post" action="{{ url_for('materializer_edit', project_id=project.id) }}" class="bible-edit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% endif %}
+        {% endif %}
+
         {% if characters %}
         <h2 style="margin-top:24px;">Characters</h2>
         <div class="bible-grid">
@@ -35,12 +43,20 @@
                     {% if c.archetype %}<span class="bible-card-tag">{{ c.archetype }}</span>{% endif %}
                     {% if c.age_range %}<span class="bible-card-tag">{{ c.age_range }}</span>{% endif %}
                 </div>
-                {% if c.identity_seed %}
+                {% if _can_edit and c.character_id %}
+                <label class="bible-edit-label">Identity seed</label>
+                <textarea class="bible-edit-input" name="character[{{ c.character_id }}][identity_seed]" rows="2">{{ c.identity_seed or '' }}</textarea>
+                {% elif c.identity_seed %}
                 <p class="bible-card-seed"><strong>Identity:</strong> {{ c.identity_seed }}</p>
                 {% endif %}
                 <dl class="bible-dl">
                     {% if c.physical_range %}<dt>Physical range</dt><dd>{{ c.physical_range }}</dd>{% endif %}
-                    {% if c.wardrobe_logic %}<dt>Wardrobe logic</dt><dd>{{ c.wardrobe_logic }}</dd>{% endif %}
+                    {% if _can_edit and c.character_id %}
+                        <dt>Wardrobe logic</dt>
+                        <dd><textarea class="bible-edit-input" name="character[{{ c.character_id }}][wardrobe_logic]" rows="2">{{ c.wardrobe_logic or '' }}</textarea></dd>
+                    {% elif c.wardrobe_logic %}
+                        <dt>Wardrobe logic</dt><dd>{{ c.wardrobe_logic }}</dd>
+                    {% endif %}
                     {% if c.styling_logic %}<dt>Styling</dt><dd>{{ c.styling_logic }}</dd>{% endif %}
                     {% if c.emotional_baseline %}<dt>Emotional baseline</dt><dd>{{ c.emotional_baseline }}</dd>{% endif %}
                     {% if c.behavior_traits %}<dt>Behavior</dt><dd>{{ c.behavior_traits }}</dd>{% endif %}
@@ -75,12 +91,20 @@
                     <span class="bible-card-id">{{ l.location_id or 'location' }}</span>
                     {% if l.environment_density %}<span class="bible-card-tag">{{ l.environment_density }}</span>{% endif %}
                 </div>
-                {% if l.world %}
+                {% if _can_edit and l.location_id %}
+                <label class="bible-edit-label">World</label>
+                <textarea class="bible-edit-input" name="location[{{ l.location_id }}][world]" rows="2">{{ l.world or '' }}</textarea>
+                {% elif l.world %}
                 <p class="bible-card-seed"><strong>World:</strong> {{ l.world }}</p>
                 {% endif %}
                 <dl class="bible-dl">
                     {% if l.architecture_style %}<dt>Architecture</dt><dd>{{ l.architecture_style }}</dd>{% endif %}
-                    {% if l.lighting_tendency %}<dt>Lighting</dt><dd>{{ l.lighting_tendency }}</dd>{% endif %}
+                    {% if _can_edit and l.location_id %}
+                        <dt>Lighting</dt>
+                        <dd><textarea class="bible-edit-input" name="location[{{ l.location_id }}][lighting_tendency]" rows="2">{{ l.lighting_tendency or '' }}</textarea></dd>
+                    {% elif l.lighting_tendency %}
+                        <dt>Lighting</dt><dd>{{ l.lighting_tendency }}</dd>
+                    {% endif %}
                     {% if l.structural_elements %}<dt>Structural</dt><dd>{{ l.structural_elements|join(', ') }}</dd>{% endif %}
                     {% if l.textures %}<dt>Textures</dt><dd>{{ l.textures|join(', ') }}</dd>{% endif %}
                     {% if l.color_palette %}<dt>Palette</dt><dd>{{ l.color_palette|join(', ') }}</dd>{% endif %}
@@ -113,6 +137,16 @@
             </div>
             {% endfor %}
         </div>
+        {% endif %}
+
+        {% if (characters or locations) and _can_edit %}
+            <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
+                <button type="submit" class="btn-secondary">Save edits</button>
+                <span class="muted" style="font-size:12px;">
+                    Light edits are merged into the bible — original AI fields you don't change stay intact.
+                </span>
+            </div>
+        </form>
         {% endif %}
 
         <div class="stage-actions" style="margin-top:32px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
@@ -181,5 +215,21 @@
 }
 .bible-rule-label.bible-rule-allow { color: #6cd47a; }
 .bible-rule-label.bible-rule-restrict { color: #ff9b7a; }
+.bible-edit-form { display: contents; }
+.bible-edit-label {
+    display: block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; color: #888; margin: 8px 0 4px;
+}
+.bible-edit-input {
+    width: 100%; box-sizing: border-box;
+    background: #0e0e0e; color: #ddd;
+    border: 1px solid #333; border-radius: 6px;
+    padding: 6px 8px; font: inherit; font-size: 12.5px;
+    line-height: 1.45; resize: vertical; min-height: 38px;
+}
+.bible-edit-input:focus { outline: none; border-color: #6c5cff; }
+.va-bible-dl { margin: 6px 0 0 0; font-size: 12px; }
+.va-bible-dl dt { color: #888; font-weight: 600; margin-top: 4px; }
+.va-bible-dl dd { margin: 1px 0 0 0; color: #bbb; line-height: 1.4; }
 </style>
 {% endblock %}

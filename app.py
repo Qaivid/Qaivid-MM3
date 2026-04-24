@@ -1363,16 +1363,37 @@ def project_detail(project_id: str):
             with db() as _vconn:
                 _vbrain = ProjectBrain.load(project_id, _vconn)
             vsp = dict(_vbrain.read("video_sequence_packet") or {})
+            mat_packet_v = dict(_vbrain.read("materializer_packet") or {})
         except Exception:
             vsp = {}
+            mat_packet_v = {}
         plan_shots = list(vsp.get("shots") or [])
         # Pair each plan-shot with its still URL for visual context.
         shot_assets = _get_shot_assets(project_id)
         still_by_idx = {a["shot_index"]: _asset_url(a.get("file_path"))
                         for a in shot_assets}
+        # Build lookup tables so each shot card can show identity_seed
+        # (from character bible) + lighting reference (from location bible).
+        char_by_id = {
+            (c.get("character_id") or ""): c
+            for c in ((mat_packet_v.get("character_bible") or {}).get("characters") or [])
+            if isinstance(c, dict)
+        }
+        loc_by_id = {
+            (l.get("location_id") or ""): l
+            for l in ((mat_packet_v.get("location_bible") or {}).get("locations") or [])
+            if isinstance(l, dict)
+        }
         for ps in plan_shots:
             if isinstance(ps, dict):
                 ps["still_url"] = still_by_idx.get(ps.get("shot_id"))
+                _ch = char_by_id.get(ps.get("character_id") or "")
+                _lo = loc_by_id.get(ps.get("location_id") or "")
+                if _ch:
+                    ps["identity_seed"] = _ch.get("identity_seed")
+                if _lo:
+                    ps["lighting_reference"] = _lo.get("lighting_tendency")
+                    ps["world_reference"] = _lo.get("world")
         return render_template(
             "stage_video_assembly.html",
             project=project,
@@ -1581,15 +1602,16 @@ def advance_stage_1(project_id: str):
 @app.route("/project/<project_id>/advance/style", methods=["POST"])
 @login_required
 def advance_stage_style(project_id: str):
-    """User chose a style profile — save it and kick Creative Brief.
+    """User chose a style profile — save it and kick Storyboard.
 
-    Pipeline order (per master spec): Input → Context → Narrative → Style → Brief.
-    Style is now stage 4: Context + Narrative are already locked in the brain
-    when this route fires, so picking a style hands off straight to Brief.
+    Pipeline order (per master spec): Input → Context → Narrative → Style →
+    Storyboard → Creative Brief. Context + Narrative are already locked in
+    the brain when this route fires, so picking a style hands off to the
+    Storyboard generator (kick_stage_2).
 
     If the project already has a styled_timeline (the user came back from
     storyboard_review or later via "Change Style"), this is a re-pick: we
-    re-kick the Brief which in turn re-runs Storyboard + downstream.
+    re-kick Storyboard which in turn re-runs Brief + downstream.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
@@ -2075,6 +2097,97 @@ def advance_stage_materializer(project_id: str):
         )
 
     kick_stage_refs(project_id, char_ref_url, env_ref_url)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/materializer/edit", methods=["POST"])
+@login_required
+def materializer_edit(project_id: str):
+    """Apply light edits to the Cast & World Bible.
+
+    Accepts form fields named character[<id>][<field>] and
+    location[<id>][<field>]. Editable fields are restricted to a small
+    safe set (identity_seed / wardrobe_logic for characters, world /
+    lighting_tendency for locations) so users can't accidentally rewrite
+    the entire schema. Edits are merged into both the materializer_packet
+    and the mirrored character_bible / location_bible namespaces.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if project.get("stage") != "materializer_review":
+        flash("The bible can only be edited while parked at the Cast & World Bible step.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    CHAR_EDITABLE = ("identity_seed", "wardrobe_logic")
+    LOC_EDITABLE  = ("world", "lighting_tendency")
+    char_edits: dict[str, dict[str, str]] = {}
+    loc_edits: dict[str, dict[str, str]] = {}
+    for raw_key, raw_val in request.form.items():
+        if raw_key.startswith("character[") and "][" in raw_key and raw_key.endswith("]"):
+            try:
+                cid, field = raw_key[len("character["):-1].split("][", 1)
+            except ValueError:
+                continue
+            if field not in CHAR_EDITABLE:
+                continue
+            char_edits.setdefault(cid, {})[field] = (raw_val or "").strip()
+        elif raw_key.startswith("location[") and "][" in raw_key and raw_key.endswith("]"):
+            try:
+                lid, field = raw_key[len("location["):-1].split("][", 1)
+            except ValueError:
+                continue
+            if field not in LOC_EDITABLE:
+                continue
+            loc_edits.setdefault(lid, {})[field] = (raw_val or "").strip()
+
+    if not char_edits and not loc_edits:
+        flash("Nothing to save.", "info")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    try:
+        with db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            mat_packet = dict(brain.read("materializer_packet") or {})
+            char_bible = dict(brain.read("character_bible") or {})
+            loc_bible  = dict(brain.read("location_bible") or {})
+
+            def _merge(rows: list, edits: dict, id_key: str) -> list:
+                out = []
+                for row in rows or []:
+                    if isinstance(row, dict):
+                        rid = row.get(id_key) or ""
+                        if rid in edits:
+                            for f, v in edits[rid].items():
+                                if v:
+                                    row[f] = v
+                    out.append(row)
+                return out
+
+            packet_chars = (mat_packet.get("character_bible") or {}).get("characters") or []
+            packet_locs  = (mat_packet.get("location_bible")  or {}).get("locations")  or []
+            packet_chars = _merge(packet_chars, char_edits, "character_id")
+            packet_locs  = _merge(packet_locs,  loc_edits,  "location_id")
+            mat_packet.setdefault("character_bible", {})["characters"] = packet_chars
+            mat_packet.setdefault("location_bible",  {})["locations"]  = packet_locs
+
+            cb_chars = char_bible.get("characters") or []
+            lb_locs  = loc_bible.get("locations") or []
+            char_bible["characters"] = _merge(cb_chars, char_edits, "character_id")
+            loc_bible["locations"]   = _merge(lb_locs,  loc_edits,  "location_id")
+
+            brain.write("materializer_packet", mat_packet)
+            brain.write("character_bible", char_bible)
+            brain.write("location_bible", loc_bible)
+            brain.save(conn)
+            conn.commit()
+        flash("Cast & world bible updated.", "info")
+    except Exception:
+        app.logger.exception(
+            "materializer_edit: failed to save bible edits for project=%s", project_id,
+        )
+        flash("Failed to save bible edits.", "error")
+
     return redirect(url_for("project_detail", project_id=project_id))
 
 
