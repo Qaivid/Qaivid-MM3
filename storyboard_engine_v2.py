@@ -113,6 +113,10 @@ def _format_input_structure(input_structure: Dict[str, Any]) -> str:
     Matches the actual InputProcessor schema:
       sections: [{id, type, label, is_inferred, unit_ids, repeat_of}, ...]
       units:    [{id, section_id, index, text, start_time, ...}, ...]
+
+    When Stage 1 collapses everything into one inferred section (common for
+    non-English or hard-to-parse audio), we surface more lyric content so the
+    LLM can find natural breakpoints and create multiple scenes.
     """
     sections = input_structure.get("sections") or []
     units    = input_structure.get("units") or []
@@ -126,14 +130,20 @@ def _format_input_structure(input_structure: Dict[str, Any]) -> str:
             return f"  (no sections — preview: {preview[:400]})"
         return "  (no structured sections available)"
 
-    # Build unit lookup (id → text) so we can surface real lyric content per
-    # section without dumping the whole transcript into the prompt.
+    # Build unit lookup (id → text + index) so we can surface real lyric
+    # content per section without dumping the whole transcript into the prompt.
     unit_text: Dict[str, str] = {}
+    unit_index: Dict[str, int] = {}
     for u in units:
         if isinstance(u, dict):
             uid = u.get("id")
             if uid:
-                unit_text[uid] = str(u.get("text") or "").strip()
+                unit_text[uid]  = str(u.get("text") or "").strip()
+                unit_index[uid] = int(u.get("index") or 0)
+
+    # Detect collapsed-section: one section (likely inferred) with many units.
+    all_inferred = all(s.get("is_inferred") for s in sections)
+    collapsed    = len(sections) == 1 and all_inferred and len(units) > 10
 
     lines: List[str] = []
     for sec in sections:
@@ -142,12 +152,42 @@ def _format_input_structure(input_structure: Dict[str, Any]) -> str:
         label     = sec.get("label") or stype
         repeat_of = sec.get("repeat_of")
         unit_ids  = sec.get("unit_ids") or []
-        body_parts = [unit_text.get(uid, "") for uid in unit_ids[:4]]
-        body = " / ".join(p for p in body_parts if p)
-        if len(unit_ids) > 4:
-            body += " / …"
+
+        if collapsed:
+            # Show first, middle, and last handful of lines so GPT can locate
+            # emotional shifts and propose natural scene boundaries.
+            n = len(unit_ids)
+            sample_ids = (
+                unit_ids[:5]
+                + unit_ids[n // 4: n // 4 + 3]
+                + unit_ids[n // 2: n // 2 + 3]
+                + unit_ids[3 * n // 4: 3 * n // 4 + 3]
+                + unit_ids[-4:]
+            )
+            # Deduplicate while preserving order.
+            seen: set = set()
+            sampled: List[str] = []
+            for uid in sample_ids:
+                if uid not in seen:
+                    seen.add(uid)
+                    sampled.append(uid)
+            body_parts = [
+                f"[unit {unit_index.get(uid, '?')}] {unit_text.get(uid, '')}"
+                for uid in sampled if unit_text.get(uid)
+            ]
+            body = " / ".join(body_parts)
+        else:
+            body_parts = [unit_text.get(uid, "") for uid in unit_ids[:4]]
+            body = " / ".join(p for p in body_parts if p)
+            if len(unit_ids) > 4:
+                body += " / …"
+
         tag = f" (repeats {repeat_of})" if repeat_of else ""
-        lines.append(f"  [{sid}] {stype} — {label}{tag}: {body}")
+        inferred_tag = " [auto-detected, may need splitting]" if sec.get("is_inferred") else ""
+        lines.append(
+            f"  [{sid}] {stype} — {label}{tag}{inferred_tag} "
+            f"({len(unit_ids)} units): {body}"
+        )
 
     rep_map = input_structure.get("repetition_map") or {}
     if rep_map:
@@ -207,13 +247,41 @@ def _user_prompt(
         except Exception:
             logger.exception("StoryboardV2: failed to format narrative_packet")
 
-    n_sections = len(input_structure.get("sections") or [])
-    scene_count_hint = (
-        f"\n\nSCENE COUNT GUIDANCE: the song has ~{n_sections} lyric sections. "
-        "Produce one scene per section by default. You MAY merge two adjacent "
-        "sections into one scene, or split a long section into two scenes, "
-        "but only when the emotional arc justifies it."
-    ) if n_sections else ""
+    sections  = input_structure.get("sections") or []
+    n_sections = len(sections)
+    n_units    = len(input_structure.get("units") or [])
+
+    # Detect collapsed-section: Stage 1 auto-detected only 1 section but the
+    # song actually has many lyric units.  In this case the default "1 section
+    # → 1 scene" guidance produces a single, useless brief.  Override with a
+    # unit-based target so the storyboard creates a realistic arc.
+    all_inferred  = all(s.get("is_inferred") for s in sections)
+    collapsed     = n_sections == 1 and all_inferred and n_units > 10
+
+    if collapsed:
+        import math
+        # Aim for roughly one scene per 6-8 units, capped 4-8.
+        target_n = min(8, max(4, math.ceil(n_units / 7)))
+        scene_count_hint = (
+            f"\n\nSCENE COUNT GUIDANCE (IMPORTANT): Stage 1 auto-detected only "
+            f"1 section for this song, but it has {n_units} lyric units — "
+            f"meaning the structural analysis is incomplete. "
+            f"DO NOT create only 1 scene. "
+            f"Use the lyric content above to identify natural emotional breakpoints "
+            f"(opening, early verses, hook/chorus, middle section, emotional peak, "
+            f"resolution/outro) and create exactly {target_n} scenes. "
+            f"Each scene must have a distinct emotional purpose and narrative phase. "
+            f"Distribute the {n_units} units evenly across the {target_n} scenes."
+        )
+    elif n_sections:
+        scene_count_hint = (
+            f"\n\nSCENE COUNT GUIDANCE: the song has ~{n_sections} lyric sections. "
+            "Produce one scene per section by default. You MAY merge two adjacent "
+            "sections into one scene, or split a long section into two scenes, "
+            "but only when the emotional arc justifies it."
+        )
+    else:
+        scene_count_hint = ""
 
     return (
         "INPUT STRUCTURE (Stage 1 — sections + repetition):\n"
@@ -311,9 +379,62 @@ def _coerce_scene(raw: Any, idx: int) -> Optional[Dict[str, Any]]:
 def _fallback(input_structure: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Deterministic fallback: one scene per section with generic options.
 
-    Reads the real InputProcessor section schema (id/type/label/unit_ids).
+    When Stage 1 collapses everything into one inferred section with many
+    units, we generate a proportional multi-scene arc instead of a single
+    useless scene.
     """
+    import math as _math
+
     sections = input_structure.get("sections") or []
+    units    = input_structure.get("units") or []
+
+    # Detect collapsed-section case.
+    all_inferred = all(s.get("is_inferred") for s in sections)
+    collapsed    = len(sections) == 1 and all_inferred and len(units) > 10
+
+    if collapsed:
+        target_n = min(8, max(4, _math.ceil(len(units) / 7)))
+        arc = [
+            ("intro",       "Establish the emotional world and draw the viewer in.",
+             "low",  "full",  "present"),
+            ("build",       "Deepen the emotional stakes as the tension rises.",
+             "medium", "partial", "present"),
+            ("build",       "Intensify the longing — the emotional core surfaces.",
+             "medium", "full", "memory"),
+            ("peak",        "The emotional climax — raw feeling at its most intense.",
+             "high", "full", "present"),
+            ("breakdown",   "Fragmentation — the weight of the emotion starts to break.",
+             "high", "silhouette", "fragmented"),
+            ("breakdown",   "Reflection and introspection after the peak.",
+             "medium", "partial", "memory"),
+            ("resolution",  "A quiet coming-to-terms — acceptance or lingering grief.",
+             "low", "object_focus", "present"),
+            ("resolution",  "Final image — the world as it is now, transformed by emotion.",
+             "low", "absent", "present"),
+        ]
+        scenes: List[Dict[str, Any]] = []
+        for i in range(target_n):
+            phase, purpose, intensity, presence, timeline = arc[i % len(arc)]
+            scenes.append({
+                "scene_id":            f"s{i + 1}",
+                "source_section":      f"segment_{i + 1}",
+                "narrative_phase":     phase,
+                "purpose":             purpose,
+                "emotional_intensity": intensity,
+                "presence_hint":       presence,
+                "motion_density":      "medium",
+                "timeline_position":   timeline,
+                "motif_usage":         [],
+                "continuity_hooks":    {"subject": "same speaker, evolving emotion", "motifs": []},
+                "valid_realizations":  [
+                    "subject in the primary setting expressing the emotion directly",
+                    "environment-focused beat with the subject partially present",
+                    "object or motif beat that echoes the subject's inner state",
+                ],
+            })
+        return scenes
+
+    # Normal path: one scene per section.
     scenes: List[Dict[str, Any]] = []
     n = max(len(sections), 1)
     for i, sec in enumerate(sections or [{"type": "scene", "label": "Scene"}]):
