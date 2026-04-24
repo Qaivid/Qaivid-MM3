@@ -1,0 +1,303 @@
+VIDEO RENDERING — FINAL SPEC (WITH PROJECT BRAIN)
+
+ROLE:
+Generate final video clips (per shot) from stills or text/image prompts,
+apply motion and temporal synthesis, and output render-ready video segments
+that will be assembled into the final sequence.
+
+This is the SECOND EXECUTION STAGE (after Shot Plan / Stills).
+
+--------------------------------------------------
+
+POSITION IN PIPELINE
+
+Input
+→ Context
+→ Narrative
+→ Style
+→ Storyboard
+→ Creative Brief
+→ Materializer
+→ Reference Assets
+→ Shot Plan / Stills
+→ Video Assembly (timeline + motion plan)
+→ VIDEO RENDERING (THIS STAGE)
+→ Post Processing
+→ Final Output
+
+--------------------------------------------------
+
+CORE RULES
+
+- Respect shot_plan and video_sequence exactly
+- Preserve identity (character_id + identity_seed)
+- Preserve environment (location_id)
+- Preserve style (style_packet)
+- Motion must enhance emotion, not override it
+
+NEVER:
+- introduce new subjects or elements
+- change identity or world rules
+- override Creative Brief / Narrative
+
+--------------------------------------------------
+
+WHAT VIDEO RENDERING READS FROM PROJECT BRAIN
+
+1. video_sequence_packet (PRIMARY)
+- ordered timeline
+- shot_ids
+- start_time / end_time / duration
+- motion_applied (per shot)
+- transition_in / transition_out
+
+2. shot_plan_packet
+- subject, action, environment
+- framing, camera_behavior
+- emotional_micro_state
+- motion_level
+- semantic IDs (character_id, location_id, motif_id)
+
+3. still_images
+- still_asset_id per shot (keyframe)
+
+4. reference_assets_packet (guidance)
+- character_references (identity consistency)
+- environment_plates (world consistency)
+- style_frames (look & feel)
+
+5. materializer_packet (rules)
+- identity_seed
+- character variation rules
+- location rules
+- continuity_rules
+
+6. style_packet
+- cinematic_style
+- lighting_logic
+- color_psychology
+- texture_profile
+- realism_level
+
+7. narrative_packet (motion guidance)
+- motion_philosophy
+- emotional progression strategy
+- continuity_rules
+
+8. audio_packet (optional)
+- duration, BPM, tempo
+- sync points
+
+--------------------------------------------------
+
+RENDERING MODES (SELECT ONE PER PROJECT OR PER SHOT)
+
+MODE A — IMAGE-TO-VIDEO (RECOMMENDED)
+- input: still_image + motion instructions
+- output: short video clip per shot
+
+MODE B — TEXT/IMAGE-TO-VIDEO
+- input: still_image (optional) + video_prompt
+- output: generated clip
+
+MODE C — MOTION FROM STILLS (ANIMATION)
+- input: still_image
+- output: animated clip via pan/zoom/drift
+
+--------------------------------------------------
+
+WHAT VIDEO RENDERING MUST DO
+
+1. PREPARE RENDER JOB PER SHOT
+
+{
+  "render_job_id": "",
+  "shot_id": "",
+  "mode": "image_to_video | text_image_to_video | animate_still",
+  "input_image": "still_asset_id",
+  "duration": "",
+  "motion_instruction": "",
+  "transition_in": "",
+  "transition_out": "",
+  "semantic_ids": {
+    "character_id": "",
+    "location_id": "",
+    "motif_id": ""
+  }
+}
+
+--------------------------------------------------
+
+2. BUILD VIDEO PROMPT (IF MODE REQUIRES)
+
+- derive strictly from shot_plan + style_packet
+- include:
+  - subject
+  - action
+  - environment
+  - lighting
+  - emotion
+  - motion instruction
+- attach reference images if supported
+
+DO NOT:
+- reinterpret meaning
+- add new elements
+
+--------------------------------------------------
+
+3. APPLY MOTION INSTRUCTIONS
+
+From video_sequence_packet:
+
+- static
+- slow_zoom_in / slow_zoom_out
+- pan_left / pan_right / pan_up / pan_down
+- drift (subtle multi-axis movement)
+
+Rules:
+- low intensity → minimal motion
+- high intensity → tighter movement / quicker cuts
+- follow motion_philosophy
+
+--------------------------------------------------
+
+4. ENFORCE IDENTITY CONSISTENCY
+
+- use identity_seed for character consistency
+- use reference_images where supported
+- avoid face drift between shots
+
+If model drifts:
+- re-render with stronger reference conditioning
+- reduce variation parameters
+
+--------------------------------------------------
+
+5. ENFORCE ENVIRONMENT CONSISTENCY
+
+- match environment to location_bible
+- maintain:
+  - architecture
+  - textures
+  - palette
+- avoid introducing foreign elements
+
+--------------------------------------------------
+
+6. APPLY STYLE CONSISTENCY
+
+- maintain:
+  - color direction
+  - lighting mood
+  - texture feel
+- avoid style drift across clips
+
+--------------------------------------------------
+
+7. HANDLE TRANSITIONS (CLIP BOUNDARIES)
+
+- prepare transition hints:
+  - cut (default)
+  - dissolve (soft / memory)
+  - fade (intro/outro)
+  - match cut (visual continuity)
+
+Note:
+- transitions may be applied in assembly or post
+
+--------------------------------------------------
+
+8. SYNC WITH AUDIO (IF PRESENT)
+
+- ensure clip duration aligns with:
+  - beats
+  - lyrical phrases
+- adjust duration within tolerance
+
+--------------------------------------------------
+
+SAFE LINKING RULE
+
+- use semantic IDs first (character_id, location_id, motif_id)
+
+- map to DB FK ONLY if exact match exists
+
+- if not:
+  - keep *_db_id = null
+  - link_status = "semantic_only" / "unresolved" / "ambiguous"
+  - log warning
+
+NEVER:
+- assign FK via alias guessing
+- assign FK via similarity
+
+--------------------------------------------------
+
+WHAT VIDEO RENDERING WRITES TO PROJECT BRAIN
+
+video_render_packet:
+
+{
+  "clips": [
+    {
+      "clip_id": "",
+      "shot_id": "",
+      "render_job_id": "",
+      "mode": "",
+      "input_image": "",
+      "duration": "",
+      "motion_applied": "",
+      "transition_in": "",
+      "transition_out": "",
+      "character_id": "",
+      "character_db_id": null,
+      "location_id": "",
+      "location_db_id": null,
+      "link_status": "semantic_only",
+      "video_asset_id": "",
+      "video_url": ""
+    }
+  ],
+
+  "render_warnings": []
+}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Video Rendering is correct ONLY IF:
+
+- each clip matches its shot definition exactly
+- identity is consistent across clips
+- environment is consistent across clips
+- style is uniform
+- motion is subtle and intentional
+- durations align with timeline
+- no new elements are introduced
+- no unsafe FK assignments exist
+
+--------------------------------------------------
+
+COMMON FAILURES (AVOID)
+
+- identity drift (different face per clip)
+- over-aggressive motion
+- random camera movement
+- style inconsistency between clips
+- adding elements not in shot_plan
+- alias-based entity linking
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+Rendering executes decisions.
+It does NOT make decisions.
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Generate per-shot video clips from stills using controlled motion and strict adherence to Project Brain decisions, ensuring identity, world, and style consistency.

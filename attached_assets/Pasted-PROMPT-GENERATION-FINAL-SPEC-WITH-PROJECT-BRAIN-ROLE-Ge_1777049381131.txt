@@ -1,0 +1,251 @@
+PROMPT GENERATION — FINAL SPEC (WITH PROJECT BRAIN)
+
+ROLE:
+Generate model-ready prompts ONLY at execution stages by translating
+already-decided shot and video instructions from the Project Brain.
+
+Prompts are DERIVED ARTIFACTS, not decision-makers.
+
+--------------------------------------------------
+
+WHERE PROMPTS ARE GENERATED
+
+1. STILL IMAGE PROMPTS
+- Generated in: SHOT PLAN / STILLS STAGE
+
+2. VIDEO CLIP PROMPTS
+- Generated in: VIDEO ASSEMBLY / VIDEO RENDER STAGE (if using text/image-to-video models)
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+- Brain (Context → Narrative → Style → Storyboard → Creative Brief → Materializer) makes decisions
+- Prompts ONLY translate those decisions into model language
+
+NEVER:
+- Generate prompts before Shot Plan
+- Let prompts decide visuals
+- Override brain decisions with prompt text
+
+--------------------------------------------------
+
+1) STILL IMAGE PROMPTS
+
+GENERATED IN:
+SHOT PLAN / STILLS STAGE
+
+--------------------------------------------------
+
+WHAT STILL PROMPTS READ FROM PROJECT BRAIN
+
+- shot_plan_packet (PRIMARY SOURCE)
+  - subject_focus
+  - primary_subject
+  - action
+  - environment_type
+  - character_id (→ identity_seed)
+  - location_id
+  - framing
+  - camera_behavior (high-level)
+  - lighting
+  - emotional_micro_state
+  - motion_level (for composition hints)
+
+- reference_assets_packet (CRITICAL)
+  - character_references (images / seeds)
+  - environment_plates
+  - style_frames
+  - motif_references
+
+- materializer_packet
+  - identity_seed
+  - variation rules
+  - world rules
+
+- style_packet
+  - cinematic_style
+  - color_psychology
+  - lighting_logic
+  - texture_profile
+  - realism_level
+
+- creative_brief_packet (light validation)
+  - chosen_direction
+  - key_elements
+  - emotional_state
+
+--------------------------------------------------
+
+WHAT STILL PROMPTS MUST DO
+
+- Translate ONE shot into ONE clear visual instruction
+- Include:
+  - subject
+  - action
+  - environment
+  - lighting
+  - emotion
+  - style
+- Attach reference images (if model supports)
+- Keep prompt clean and non-cluttered
+
+--------------------------------------------------
+
+STILL PROMPT OUTPUT FORMAT
+
+{
+  "prompt_id": "",
+  "image_prompt": "",
+  "negative_prompt": "",
+  "reference_images": [
+    "character_ref_id",
+    "environment_plate_id",
+    "style_frame_id"
+  ],
+  "model_config": {
+    "model": "",
+    "resolution": "",
+    "cfg_scale": "",
+    "seed": ""
+  }
+}
+
+--------------------------------------------------
+
+STILL PROMPT RULES
+
+- One shot = one prompt
+- No multiple subjects competing
+- No contradictory instructions
+- No over-description
+- Must follow shot_plan exactly
+- Must respect identity_seed and references
+
+--------------------------------------------------
+
+2) VIDEO CLIP PROMPTS
+
+GENERATED IN:
+VIDEO ASSEMBLY / VIDEO RENDER STAGE
+
+NOTE:
+If using motion-from-still (e.g. Runway, AnimateDiff):
+→ prompts may be minimal or replaced by motion instructions
+
+If using text/image-to-video (Wan, Pika, etc.):
+→ full video prompts are required
+
+--------------------------------------------------
+
+WHAT VIDEO PROMPTS READ FROM PROJECT BRAIN
+
+- shot_plan_packet
+  - subject
+  - action
+  - environment
+  - emotion
+
+- still_images (as keyframes / input images)
+
+- video_sequence_packet
+  - shot order
+  - duration
+  - transitions
+  - motion decisions
+
+- narrative_packet (motion guidance)
+  - motion_philosophy
+  - emotional progression
+
+- style_packet
+  - visual tone
+  - lighting
+  - color direction
+
+--------------------------------------------------
+
+WHAT VIDEO PROMPTS MUST DO
+
+- Extend still image into motion
+- Add:
+  - motion instruction (zoom, pan, drift)
+  - temporal behaviour
+  - duration
+- Preserve:
+  - subject identity
+  - environment
+  - emotional tone
+
+--------------------------------------------------
+
+VIDEO PROMPT OUTPUT FORMAT
+
+{
+  "clip_prompt_id": "",
+  "video_prompt": "",
+  "input_image": "still_asset_id",
+  "motion_instruction": "",
+  "duration": "",
+  "model_config": {
+    "model": "",
+    "fps": "",
+    "motion_strength": "",
+    "seed": ""
+  }
+}
+
+--------------------------------------------------
+
+VIDEO PROMPT RULES
+
+- Must follow shot_plan and video_sequence exactly
+- Motion must align with emotional intent
+- No new elements introduced
+- No identity changes
+- No style drift
+
+--------------------------------------------------
+
+SAFE LINKING RULE (APPLIES TO BOTH)
+
+- Use semantic IDs:
+  - character_id
+  - location_id
+  - motif_id
+
+- Map to DB FK ONLY if exact match exists
+
+- If not:
+  - leave db_id = null
+  - keep semantic_id
+  - link_status = "semantic_only" / "unresolved"
+
+NEVER:
+- assign DB IDs based on alias guessing
+- use similarity matching for identity
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Prompt generation is correct ONLY IF:
+
+- Prompts strictly reflect shot definitions
+- Identity remains consistent across shots
+- Style is coherent across all prompts
+- No over-cluttered prompts
+- No contradictions
+- No prompt-driven decisions
+
+--------------------------------------------------
+
+CORE PRINCIPLE
+
+Prompts are translation layers, not intelligence layers.
+
+--------------------------------------------------
+
+ONE LINE SUMMARY
+
+Generate prompts only at execution stages by translating shot and video decisions from the Project Brain into model-ready instructions without altering meaning or structure.
