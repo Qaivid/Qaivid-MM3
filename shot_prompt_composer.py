@@ -54,6 +54,29 @@ def _culture_negative(env_text: str) -> str:
             extras.append(neg)
     return ", ".join(extras)
 
+
+def _build_negative(shot: dict, location: Optional[dict]) -> str:
+    """Assemble the full negative prompt: default terms + any culture-specific additions.
+
+    Culture detection reads the location name/dna and the shot's environment_profile
+    so it works whether a location row is linked or the data is embedded in the shot.
+    """
+    env_text_parts: list[str] = []
+    if location:
+        env_text_parts.extend(filter(None, [
+            location.get("name", ""),
+            location.get("location_dna", ""),
+            location.get("description", ""),
+        ]))
+    ep = shot.get("environment_profile") or {}
+    if isinstance(ep, dict):
+        env_text_parts.append(ep.get("location_dna") or "")
+    env_text = " ".join(env_text_parts)
+    culture_neg = _culture_negative(env_text)
+    if culture_neg:
+        return DEFAULT_NEGATIVE + ", " + culture_neg
+    return DEFAULT_NEGATIVE
+
 # ── Phrases to strip — pipeline-internal directives that must not reach the
 #    image model as literal text.
 #
@@ -244,7 +267,7 @@ def _environment_clause(location: Optional[dict], shot: dict) -> str:
         return ""
     raw = _ENV_LABEL_RE.sub("", raw)
     raw = _dedupe_phrases(raw)
-    return _trim(raw, 220)
+    return _trim(raw, 350)
 
 
 def _framing_clause(shot: dict) -> str:
@@ -439,7 +462,7 @@ def compose_image_prompt(
             has_character_ref,
             has_environment_ref,
         )
-        return prompt, DEFAULT_NEGATIVE
+        return prompt, _build_negative(shot, location)
 
     parts: list[str] = []
 
@@ -523,7 +546,7 @@ def compose_image_prompt(
         has_character_ref,
         has_environment_ref,
     )
-    return prompt, DEFAULT_NEGATIVE
+    return prompt, _build_negative(shot, location)
 
 
 def _attach_envelope(
