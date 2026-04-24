@@ -141,6 +141,8 @@ def ensure_schema() -> None:
             );
         """)
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress JSONB;")
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_packet JSONB;")
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS lyrics_timed JSONB;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT FALSE;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;")
         cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;")
@@ -2195,17 +2197,20 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             brain_narrative = brain.read("narrative_packet") or {}
             brain_style     = brain.read("style_packet") or {}
             brain_briefs    = brain.read("creative_briefs") or {}
+            brain_input     = brain.read("input_structure") or {}
+            brain_settings  = brain.read("project_settings") or {}
         except Exception:
             logger.exception(
                 "Stage storyboard: failed to load ProjectBrain for project=%s — "
                 "falling back to legacy columns.", project_id
             )
             brain_context, brain_narrative, brain_style, brain_briefs = {}, {}, {}, {}
+            brain_input, brain_settings = {}, {}
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT text, genre, audio_data, context_packet, narrative_packet,"
-                " style_profile, lyrics_timed FROM projects WHERE id=%s",
+                " style_profile, lyrics_timed, input_packet FROM projects WHERE id=%s",
                 (project_id,),
             )
             row = cur.fetchone()
@@ -2224,6 +2229,10 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         _legacy_narr    = dict(row.get("narrative_packet") or {})
         _legacy_sp      = dict(row.get("style_profile") or {})
         _legacy_briefs  = dict(_legacy_context.get("creative_brief") or {})
+        _legacy_input   = dict(row.get("input_packet") or {})
+        # Resolved packets used by the v2 storyboard intent layer.
+        input_structure  = brain_input    or _legacy_input
+        project_settings = brain_settings or {}
 
         # Brain wins, legacy fills gaps — pre-brain projects keep working.
         context_packet   = brain_context or _legacy_context
@@ -2262,6 +2271,47 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
 
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Building visual storyboard…"}, stage="running_2")
+
+        # ── Storyboard Engine v2 (master spec — pure intent layer) ─────────
+        # Produces scenes with valid_realizations from brain inputs. Output
+        # is written to brain.storyboard_packet.scenes alongside the legacy
+        # locked timeline below — downstream stages (assembly/refs/stills/
+        # videos) still consume the legacy timeline until they're migrated.
+        #
+        # Run v2 in a background thread so its LLM latency overlaps with the
+        # legacy orchestrator's work. v2 failure NEVER blocks legacy: the
+        # holder dict captures success or fallback, and the join below is
+        # bounded so a hung v2 thread cannot stall this stage.
+        import threading
+        _v2_holder: dict = {"scenes": [], "used_fallback": False, "ok": False}
+
+        def _run_v2() -> None:
+            try:
+                from storyboard_engine_v2 import generate_storyboard_v2
+                scenes, used_fallback = _run_async(generate_storyboard_v2(
+                    api_key=api_key,
+                    input_structure=input_structure,
+                    context_packet=context_packet,
+                    narrative_packet=narrative_packet,
+                    style_profile=style_profile,
+                    project_settings=project_settings,
+                ))
+                _v2_holder["scenes"]        = scenes
+                _v2_holder["used_fallback"] = used_fallback
+                _v2_holder["ok"]            = True
+            except Exception:
+                logger.exception(
+                    "[StoryboardV2] thread failed for project=%s — "
+                    "intent layer will be empty in brain.",
+                    project_id,
+                )
+
+        _v2_thread = threading.Thread(
+            target=_run_v2,
+            name=f"storyboard-v2-{project_id}",
+            daemon=True,
+        )
+        _v2_thread.start()
 
         orchestrator = ProductionOrchestrator(api_key)
 
@@ -2467,26 +2517,55 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             )
             conn.commit()
 
+        # ── Join v2 thread (bounded) before writing brain ──────────────────
+        # Bounded join so a hung LLM call cannot stall the stage. If v2 is
+        # still running after the timeout we proceed with empty intent —
+        # downstream is unaffected because it consumes the legacy timeline.
+        _v2_thread.join(timeout=120)
+        if _v2_thread.is_alive():
+            logger.warning(
+                "[StoryboardV2] join timed out for project=%s — proceeding "
+                "without intent layer; thread will finish in background.",
+                project_id,
+            )
+        v2_scenes        = list(_v2_holder.get("scenes") or [])
+        v2_used_fallback = bool(_v2_holder.get("used_fallback"))
+        if _v2_holder.get("ok"):
+            logger.info(
+                "[StoryboardV2] project=%s scenes=%d fallback=%s",
+                project_id, len(v2_scenes), v2_used_fallback,
+            )
+
         # ── Write storyboard_packet to brain (Stage 6 namespace) ───────────
-        # Captures the as-generated storyboard. Per-shot inline edits during
-        # storyboard_review stay in the legacy styled_timeline column; the
-        # final approved snapshot is mirrored back at advance_stage_3.
+        # schema_version 2 layout:
+        #   scenes              — v2 intent layer (purpose, valid_realizations…)
+        #   used_fallback_v2    — true if v2 LLM call fell back to defaults
+        # Legacy-bridge keys (kept until downstream stages migrate to scenes):
+        #   raw_storyboard, styled_timeline, shot_count, total_duration,
+        #   style_preset
+        # Per-shot inline edits during storyboard_review stay in the legacy
+        # styled_timeline column; the final approved snapshot is mirrored back
+        # at advance_stage_3.
         try:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
                 brain.write("storyboard_packet", {
-                    "raw_storyboard":  raw_storyboard,
-                    "styled_timeline": styled_timeline,
-                    "shot_count":      len(styled_timeline),
-                    "total_duration":  round(sum(x.get("duration", 0) for x in raw_timeline), 2),
-                    "style_preset":    style_preset,
+                    "schema_version":   2,
+                    "scenes":           v2_scenes,
+                    "used_fallback_v2": v2_used_fallback,
+                    "raw_storyboard":   raw_storyboard,
+                    "styled_timeline":  styled_timeline,
+                    "shot_count":       len(styled_timeline),
+                    "total_duration":   round(sum(x.get("duration", 0) for x in raw_timeline), 2),
+                    "style_preset":     style_preset,
                 })
                 brain.save(conn)
                 conn.commit()
             logger.info(
-                "ProjectBrain: wrote storyboard_packet for project=%s "
-                "(%d shots, %d raw scenes, preset=%s)",
-                project_id, len(styled_timeline), len(raw_storyboard), style_preset,
+                "ProjectBrain: wrote storyboard_packet v2 for project=%s "
+                "(intent: %d scenes, legacy: %d shots / %d raw, preset=%s)",
+                project_id, len(v2_scenes), len(styled_timeline),
+                len(raw_storyboard), style_preset,
             )
         except Exception:
             logger.exception(
