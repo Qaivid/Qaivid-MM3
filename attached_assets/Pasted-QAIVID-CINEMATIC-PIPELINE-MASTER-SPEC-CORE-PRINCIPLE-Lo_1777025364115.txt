@@ -1,0 +1,248 @@
+QAIVID CINEMATIC PIPELINE — MASTER SPEC
+
+CORE PRINCIPLE:
+Lock meaning. Keep visual expression open. Upstream defines truth, downstream interprets creatively.
+
+--------------------------------------------------
+
+1. INPUT PROCESSING
+
+Role:
+Normalize and classify input without interpreting meaning.
+
+Responsibilities:
+- Detect input type (song, script, story, audio, hybrid)
+- Detect language
+- Extract raw text or transcript
+- Detect structure (intro, verse, chorus, acts)
+- Detect timing (if audio present)
+- Clean and normalize formatting
+
+Rules:
+- No meaning interpretation
+- No visual inference
+- No emotional analysis beyond basic classification
+
+--------------------------------------------------
+
+2. CONTEXT ENGINE (5Ws — GLOBAL MEANING)
+
+Role:
+Define the complete contextual truth of the input.
+
+Responsibilities:
+- Identify content type
+- Extract core theme
+- WHO: speaker identity (broad, not specific)
+- WHAT: core emotional conflict
+- WHEN: timeline nature
+- WHERE: cultural and geographical grounding
+- WHY: emotional driver
+- Define narrative mode (literal, symbolic, etc.)
+- Define emotional world and arc
+- Define cultural constraints
+- Define preservation rules (what must not break)
+- Define creative freedom (what can vary)
+
+Rules:
+- Lock meaning, not visuals
+- No scenes, no camera, no physical specifics
+
+--------------------------------------------------
+
+3. NARRATIVE INTELLIGENCE
+
+Role:
+Define how the context unfolds over time.
+
+Responsibilities:
+- Storytelling mode (observational, expressive, symbolic)
+- Presence logic (character visible or not)
+- Timeline behavior (linear, fragmented, memory-based)
+- Emotional progression strategy
+- Repetition strategy (for songs)
+- Motion philosophy (still vs dynamic)
+- Expression channels (character, environment, objects, time)
+- Continuity style (strict, associative, symbolic)
+
+Rules:
+- No scenes
+- No locations
+- No visual descriptions
+- No camera instructions
+
+--------------------------------------------------
+
+4. STYLE DIRECTION
+
+Role:
+Define visual language and aesthetic direction.
+
+Responsibilities:
+- Cinematic style
+- Camera feel
+- Lighting logic
+- Color psychology
+- Texture
+- Realism level
+- Allow controlled flexibility
+
+Rules:
+- Guide, not restrict
+- No scene or character specifics
+
+--------------------------------------------------
+
+5. STORYBOARD ENGINE
+
+Role:
+Convert narrative into scene-level intent with multiple possibilities.
+
+Responsibilities:
+- Segment scenes based on structure and emotion
+- Define scene purpose
+- Assign narrative phase
+- Generate multiple valid visual realizations per scene
+- Define continuity hooks (character, motifs)
+- Define motion density
+- Control pacing
+
+Rules:
+- Never lock to a single idea
+- Always provide multiple interpretations
+- No camera-level detail
+
+--------------------------------------------------
+
+6. CREATIVE BRIEF
+
+Role:
+Select one realization per scene and define it clearly.
+
+Responsibilities:
+- Choose scene direction
+- Define environment
+- Define character presence
+- Define key props (limited)
+- Define emotional state
+- Define lighting condition
+- Define movement type
+- Use non-deterministic selection within constraints
+
+Rules:
+- Narrow but not over-specify
+- Avoid micro-detail
+
+--------------------------------------------------
+
+7. CHARACTER & LOCATION MATERIALIZER
+
+Role:
+Create consistent but flexible identity anchors.
+
+Responsibilities:
+
+Character:
+- Define archetype
+- Define age range
+- Define wardrobe logic
+- Define emotional baseline
+
+Location:
+- Define architecture style
+- Define textures
+- Define environment density
+- Define color palette
+
+Rules:
+- Ensure consistency
+- Allow variation
+- Avoid over-detail
+
+--------------------------------------------------
+
+8. REFERENCE FRAMES
+
+Role:
+Create visual anchors for consistency.
+
+Responsibilities:
+- Generate character reference
+- Generate environment reference
+- Generate style reference
+
+Rules:
+- One concept per image
+- No clutter
+- Used for consistency, not creativity
+
+--------------------------------------------------
+
+9. STILLS (SHOT GENERATION)
+
+Role:
+Convert scenes into precise visual shots.
+
+Responsibilities:
+- Define primary subject
+- Define action
+- Define environment
+- Define framing
+- Define camera behavior
+- Define lighting
+- Define emotional micro-state
+
+Rules:
+- One subject focus
+- One action
+- Max three supporting elements
+- No contradictions
+
+--------------------------------------------------
+
+10. VIDEO ASSEMBLY
+
+Role:
+Apply motion, rhythm, and continuity.
+
+Responsibilities:
+- Sequence shots
+- Apply pacing (BPM if music)
+- Adjust shot durations
+- Apply camera motion
+- Apply transitions
+- Maintain emotional continuity
+
+Rules:
+- No random transitions
+- Respect narrative flow
+
+--------------------------------------------------
+
+11. FINAL OUTPUT
+
+Role:
+Deliver final cinematic video.
+
+Responsibilities:
+- Validate consistency
+- Validate emotional arc
+- Validate pacing
+- Validate style integrity
+- Remove weak shots
+- Export final video
+
+--------------------------------------------------
+
+GLOBAL RULE:
+
+Lock:
+- Meaning
+- Emotion
+- Cultural truth
+
+Keep Open:
+- Casting
+- Visual interpretation
+- Shot variation
+- Creative execution
