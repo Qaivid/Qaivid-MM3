@@ -19,9 +19,10 @@
             <span class="stage-badge">Stage 4 — References</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
-                One locked face plate per character, one locked environment plate per location.
-                Approve them here so every shot stays visually consistent.
-                <strong>{{ total_ready }}/{{ total }} ready</strong>{% if pending_count %} · <span style="color:#ff6b6b;">{{ pending_count }} not ready</span>{% endif %}.
+                AI prompts have been prepared for each character and location.
+                Review and edit each prompt, then click <strong>Generate</strong> to create the plate — or
+                <strong>Upload</strong> your own photo. Every plate must be ready before continuing to stills.
+                <strong>{{ total_ready }}/{{ total }} ready</strong>{% if pending_count %} · <span style="color:#ff6b6b;">{{ pending_count }} pending</span>{% endif %}.
             </p>
         </div>
 
@@ -75,20 +76,18 @@
                         {% if c.role %}{{ c.role }}{% endif %}
                         {% if c.age_range %} · {{ c.age_range }}{% endif %}
                     </div>
-                    {% if c.ref_prompt %}
-                    <details style="margin-top:6px;">
-                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
-                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ c.ref_prompt }}</div>
-                    </details>
-                    {% endif %}
                     {% if c.ref_error %}<span class="still-err">{{ c.ref_error[:140] }}</span>{% endif %}
                     <form method="post"
                           action="{{ url_for('references_regenerate', project_id=project.id, kind='character', entity_id=c.id) }}"
                           style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <textarea name="prompt" rows="2" placeholder="Optional: override prompt before regenerating"
-                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;"></textarea>
-                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">Regenerate</button>
+                        <label style="font-size:11px;color:#9aa6b2;">Prompt — edit before generating:</label>
+                        <textarea name="prompt" rows="3"
+                                  placeholder="AI prompt will appear here…"
+                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;">{{ c.ref_prompt or '' }}</textarea>
+                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">
+                            {% if c.ref_url %}↺ Regenerate{% else %}▶ Generate{% endif %}
+                        </button>
                     </form>
                     <form method="post" enctype="multipart/form-data"
                           action="{{ url_for('references_upload', project_id=project.id, kind='character', entity_id=c.id) }}"
@@ -167,12 +166,6 @@
                         {% if l.time_period %}{{ l.time_period }} · {% endif %}
                         {% if l.architecture_style %}{{ l.architecture_style }}{% endif %}
                     </div>
-                    {% if l.ref_prompt %}
-                    <details style="margin-top:6px;">
-                        <summary style="cursor:pointer;font-size:12px;color:#9aa6b2;">prompt used</summary>
-                        <div style="font-size:11px;color:#aab2bd;margin-top:4px;line-height:1.5;">{{ l.ref_prompt }}</div>
-                    </details>
-                    {% endif %}
                     {% if l.ref_error %}
                     <span class="still-err">{{ l.ref_error[:140] }}</span>
                     {% endif %}
@@ -181,9 +174,13 @@
                           action="{{ url_for('references_regenerate', project_id=project.id, kind='location', entity_id=l.id) }}"
                           style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <textarea name="prompt" rows="2" placeholder="Optional: override the prompt before regenerating"
-                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;"></textarea>
-                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">Regenerate plate</button>
+                        <label style="font-size:11px;color:#9aa6b2;">Prompt — edit before generating:</label>
+                        <textarea name="prompt" rows="3"
+                                  placeholder="AI prompt will appear here…"
+                                  style="width:100%;font-size:11px;padding:6px;background:#1a1f26;border:1px solid #333;color:#cfd6df;border-radius:4px;">{{ l.ref_prompt or '' }}</textarea>
+                        <button type="submit" class="btn-secondary" style="font-size:12px;padding:6px 10px;">
+                            {% if l.ref_url %}↺ Regenerate plate{% else %}▶ Generate plate{% endif %}
+                        </button>
                     </form>
 
                     <form method="post" enctype="multipart/form-data"
@@ -209,15 +206,15 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if pending_count %}
                 <button type="submit" class="btn-stage-primary" disabled
-                        title="Approve every plate before continuing">
-                    Approve & render {{ project.styled_timeline|length }} stills →
+                        title="Generate or upload every plate before continuing">
+                    Approve References & Continue to Stills →
                 </button>
                 <p class="muted" style="margin-top:8px;font-size:12px;">
-                    {{ pending_count }} plate(s) still need attention. Regenerate or upload before continuing.
+                    {{ pending_count }} plate(s) still need a generated or uploaded image before continuing.
                 </p>
                 {% else %}
                 <button type="submit" class="btn-stage-primary">
-                    Approve & render {{ project.styled_timeline|length }} stills →
+                    Approve References & Continue to Stills →
                 </button>
                 {% endif %}
             </form>

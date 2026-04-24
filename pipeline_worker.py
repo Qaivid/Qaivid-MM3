@@ -2861,7 +2861,7 @@ def _stage_refs_job(project_id: str,
         total = len(chars) + len(locs)
         _set_status(project_id, "running",
                     {"stage": "refs",
-                     "label": f"Generating {len(chars)} character + {len(locs)} location plates…",
+                     "label": f"Building prompts for {len(chars)} character(s) + {len(locs)} location(s)…",
                      "total": total},
                     stage="running_refs")
 
@@ -2897,46 +2897,38 @@ def _stage_refs_job(project_id: str,
         char_prompts = ai_prompts.get("characters", {})
         loc_prompts  = ai_prompts.get("locations",  {})
 
-        # Fire plate jobs in parallel; skip ones already 'ready' (uploads, retries).
-        futures = []
+        # Save AI-generated prompts to DB so they are visible and editable on
+        # the references_review page. Plates are NOT auto-generated here — the
+        # user reviews the prompts, edits them if needed, then generates or
+        # uploads each plate manually on the review page.
         for c in chars:
-            if c.get("ref_status") == "ready" and c.get("ref_image_url"):
-                continue
+            if c.get("ref_status") == "ready":
+                continue  # already uploaded/ready — preserve as-is
             ai_prompt = char_prompts.get(str(c["id"]))
-            futures.append(_SHOT_EXECUTOR.submit(
-                _render_character_plate, project_id, c["id"], location_dna,
-                ai_prompt,        # prompt_override — None falls back to template
-                style_image_suffix,
-            ))
+            if ai_prompt:
+                _set_entity_ref(project_id, "character", c["id"],
+                                status="pending", prompt=ai_prompt)
         for l in locs:
-            if l.get("ref_status") == "ready" and l.get("ref_image_url"):
+            if l.get("ref_status") == "ready":
                 continue
             ai_prompt = loc_prompts.get(str(l["id"]))
-            futures.append(_SHOT_EXECUTOR.submit(
-                _render_location_plate, project_id, l["id"],
-                ai_prompt,        # prompt_override — None falls back to template
-                style_image_suffix,
-            ))
-        for f in futures:
-            try:
-                f.result()
-            except Exception:
-                logger.exception("Plate render raised")
+            if ai_prompt:
+                _set_entity_ref(project_id, "location", l["id"],
+                                status="pending", prompt=ai_prompt)
 
         # ── Wardrobe diversification + styled look plates ─────────────────
         # Run the wardrobe engine here (before references_review) so the
         # director can see all looks — base plates AND per-scene styled
-        # look plates — and approve/regenerate them before stills begin.
+        # look clusters to shots so the stills stage knows which wardrobe look
+        # to reference per shot. Look plate images are NOT generated here —
+        # they will be rendered on-demand when the user generates/uploads plates.
         try:
-            from wardrobe_engine import diversify_wardrobe, generate_look_plates
+            from wardrobe_engine import diversify_wardrobe
             n_wardrobe = diversify_wardrobe(project_id)
             logger.info("Refs stage: wardrobe engine updated %d shots for project=%s",
                         n_wardrobe, project_id)
-            n_looks = generate_look_plates(project_id, location_dna, style_image_suffix)
-            logger.info("Refs stage: generated %d look plates for project=%s",
-                        n_looks, project_id)
         except Exception:
-            logger.exception("Refs stage: wardrobe/look-plate generation failed "
+            logger.exception("Refs stage: wardrobe diversification failed "
                              "(non-fatal) for project=%s", project_id)
 
         # ── Write reference_assets_packet to brain (Stage 8) ────────────────
@@ -3009,7 +3001,7 @@ def _stage_refs_job(project_id: str,
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "references",
-                     "label": "Reference plates ready. Review, regenerate or upload, then continue."},
+                     "label": "Prompts ready. Review and edit, then generate or upload each reference image before continuing."},
                     stage="references_review")
 
     except Exception as exc:
