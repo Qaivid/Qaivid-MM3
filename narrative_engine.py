@@ -42,20 +42,30 @@ _MODEL = "gpt-4o-mini"
 async def generate_narrative_intelligence(
     api_key: str,
     context_packet: Dict[str, Any],
-    style_profile: Optional[Dict[str, Any]] = None,
+    **_ignored_downstream: Any,
 ) -> Dict[str, Any]:
     """
-    Given a context_packet from the Context Engine, produce a narrative
-    intelligence block that defines the storytelling strategy.
+    Stage 3 — Narrative Intelligence.
 
-    This is purely strategic — no scenes, no locations, no camera.
-    If the LLM call fails the pipeline continues with safe defaults.
+    Consumes ONLY the immediate predecessor's output (context_packet from
+    Stage 2). MUST NOT read style_profile, storyboard, brief, or anything
+    from a stage further downstream. Any unexpected kwargs are silently
+    ignored so legacy callers don't crash while they get cleaned up.
+
+    Output is purely strategic — no scenes, no locations, no camera.
+    On LLM failure the pipeline continues with safe defaults.
     """
+    if _ignored_downstream:
+        logger.warning(
+            "Narrative Engine (Stage 3) received downstream kwargs %s — "
+            "chain violation; caller must stop passing these.",
+            sorted(_ignored_downstream.keys()),
+        )
     if not context_packet:
         return _fallback()
 
     client = AsyncOpenAI(api_key=api_key)
-    system_msg, user_msg = _build_prompts(context_packet, style_profile)
+    system_msg, user_msg = _build_prompts(context_packet)
 
     try:
         response = await client.chat.completions.create(
@@ -80,10 +90,7 @@ async def generate_narrative_intelligence(
 # Prompt builders
 # ---------------------------------------------------------------------------
 
-def _build_prompts(
-    cp: Dict[str, Any],
-    style_profile: Optional[Dict[str, Any]],
-) -> tuple[str, str]:
+def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
     wa  = cp.get("world_assumptions") or {}
     spk = cp.get("speaker") or {}
     arc = cp.get("emotional_arc") or {}
@@ -125,14 +132,10 @@ def _build_prompts(
         "abstraction_level": meta.get("abstraction_level"),
     }
 
+    # PIPELINE CHAIN RULE: No style_profile here. Style is Stage 4 — it
+    # comes AFTER Narrative, so Narrative cannot see it. style_line is kept
+    # as an empty string so existing string interpolation below still works.
     style_line = ""
-    if style_profile:
-        cin  = style_profile.get("cinematic") or {}
-        prod = style_profile.get("production") or {}
-        parts = [prod.get("name") or "", cin.get("name") or ""]
-        label = " / ".join(p for p in parts if p)
-        if label:
-            style_line = f"\nSelected visual style: {label}"
 
     system_msg = """\
 You are a senior narrative director — the layer between story analysis and

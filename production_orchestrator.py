@@ -42,11 +42,12 @@ class ProductionOrchestrator:
         if user_image_url:
             self.storyboard_engine.inject_user_reference(user_image_url)
 
+        # PIPELINE CHAIN RULE: Stage 2 (Context Engine) does not see
+        # style_profile — Style is Stage 4, which is downstream of Context.
         context_packet = await self.context_engine.generate(
             text=text,
             genre=genre,
             pre_analysis=pre_analysis,
-            style_profile=style_profile,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
 
@@ -95,11 +96,12 @@ class ProductionOrchestrator:
         pre_analysis = self._validate_optional_dict(pre_analysis)
         style_profile = self._validate_optional_dict(style_profile)
 
+        # PIPELINE CHAIN RULE: Stage 2 (Context Engine) does not see
+        # style_profile — Style is Stage 4, which is downstream of Context.
         context_packet = await self.context_engine.generate(
             text=text,
             genre=genre,
             pre_analysis=pre_analysis,
-            style_profile=style_profile,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
         return context_packet
@@ -153,11 +155,12 @@ class ProductionOrchestrator:
         if user_image_url:
             self.storyboard_engine.inject_user_reference(user_image_url)
 
+        # PIPELINE CHAIN RULE: Stage 2 (Context Engine) does not see
+        # style_profile — Style is Stage 4, which is downstream of Context.
         context_packet = await self.context_engine.generate(
             text=text,
             genre=genre,
             pre_analysis=pre_analysis,
-            style_profile=style_profile,
         )
         self._assert_non_empty(context_packet, "Context engine returned empty output.")
 

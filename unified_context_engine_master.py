@@ -645,181 +645,11 @@ class MetaMindContextEngineFinal:
         "tagalog": "Filipino cultural world",
     }
 
-    LANGUAGE_APPEARANCE_DEFAULTS = {
-        # South Asian
-        "punjabi": {
-            "ethnicity": "South Asian (Punjabi)",
-            "complexion": "warm wheatish to tan",
-            "wardrobe": "phulkari dupatta, salwar-kameez or kurta-pajama; turban for adult men where appropriate",
-            "grooming": "kohl-lined eyes, simple traditional jewelry, plaited or covered hair for women",
-        },
-        "urdu": {
-            "ethnicity": "South Asian (Urdu cultural sphere)",
-            "complexion": "warm tones",
-            "wardrobe": "kurta-shalwar, sherwani, dupatta",
-            "grooming": "restrained classical elegance",
-        },
-        "urdu/punjabi": {
-            "ethnicity": "South Asian",
-            "complexion": "warm tones",
-            "wardrobe": "kurta-shalwar, dupatta, regional cloth",
-            "grooming": "traditional South Asian",
-        },
-        "hindi": {
-            "ethnicity": "South Asian (North/Central Indian)",
-            "complexion": "warm tones",
-            "wardrobe": "salwar-kameez, sari, kurta-pajama; regionally faithful",
-            "grooming": "traditional South Asian",
-        },
-        "bengali": {
-            "ethnicity": "South Asian (Bengali)",
-            "complexion": "warm tones",
-            "wardrobe": "sari, dhoti-kurta; regional Bengali cloth",
-            "grooming": "traditional South Asian",
-        },
-        "tamil": {
-            "ethnicity": "South Asian (Tamil)",
-            "complexion": "warm to deep brown tones",
-            "wardrobe": "saree, veshti-jubba; traditional Tamil cloth",
-            "grooming": "traditional South Indian, jasmine flowers in hair for women",
-        },
-        "telugu": {
-            "ethnicity": "South Asian (Telugu)",
-            "complexion": "warm to deep brown tones",
-            "wardrobe": "saree, dhoti; regional Telugu attire",
-            "grooming": "traditional South Indian",
-        },
-        # European
-        "english": {
-            "ethnicity": "inferred from lyric content (default: Western European)",
-            "complexion": "fair to medium tones — defer to lyric evidence",
-            "wardrobe": "contemporary casual or period-appropriate Western attire; region-specific if clear from lyrics",
-            "grooming": "contemporary Western; defer to lyric evidence",
-        },
-        "english/romanized": {
-            "ethnicity": "inferred from lyric content — do not default to any single ethnicity",
-            "complexion": "defer to lyric or cultural evidence",
-            "wardrobe": "contemporary or period attire matched to lyric world",
-            "grooming": "matched to lyric world",
-        },
-        "french": {
-            "ethnicity": "French / Western European (defer to lyric evidence)",
-            "complexion": "fair to medium tones",
-            "wardrobe": "contemporary French casual or period-appropriate French attire",
-            "grooming": "contemporary French; understated elegance",
-        },
-        "spanish": {
-            "ethnicity": "Spanish / Latin American (defer to lyric evidence for specific region)",
-            "complexion": "olive to medium-brown tones",
-            "wardrobe": "contemporary casual or traditional regional attire (flamenco cues only if explicit)",
-            "grooming": "contemporary; warm and expressive",
-        },
-        "portuguese": {
-            "ethnicity": "Portuguese / Brazilian (defer to lyric evidence)",
-            "complexion": "fair to olive to medium-brown tones",
-            "wardrobe": "contemporary casual or period attire; region-specific if clear",
-            "grooming": "contemporary; warm and natural",
-        },
-        "german": {
-            "ethnicity": "German / Central European (defer to lyric evidence)",
-            "complexion": "fair to medium tones",
-            "wardrobe": "contemporary casual or period-appropriate attire",
-            "grooming": "contemporary Central European; clean and understated",
-        },
-        "italian": {
-            "ethnicity": "Italian / Southern European (defer to lyric evidence)",
-            "complexion": "olive to medium tones",
-            "wardrobe": "contemporary Italian casual or period attire",
-            "grooming": "contemporary; warm Mediterranean style",
-        },
-        "dutch": {
-            "ethnicity": "Dutch / Northern European (defer to lyric evidence)",
-            "complexion": "fair tones",
-            "wardrobe": "contemporary casual Western attire",
-            "grooming": "contemporary Northern European; practical and understated",
-        },
-        # East Asian
-        "korean": {
-            "ethnicity": "Korean / East Asian",
-            "complexion": "fair to light golden tones",
-            "wardrobe": "contemporary Korean casual or hanbok for formal/traditional scenes",
-            "grooming": "contemporary Korean; clean and polished",
-        },
-        "japanese": {
-            "ethnicity": "Japanese / East Asian",
-            "complexion": "fair to light golden tones",
-            "wardrobe": "contemporary Japanese casual or kimono/yukata for traditional scenes",
-            "grooming": "contemporary Japanese; clean and restrained",
-        },
-        "mandarin": {
-            "ethnicity": "Chinese / East Asian",
-            "complexion": "fair to light golden tones",
-            "wardrobe": "contemporary Chinese casual or qipao/hanfu for traditional scenes",
-            "grooming": "contemporary Chinese; clean and polished",
-        },
-        "chinese": {
-            "ethnicity": "Chinese / East Asian",
-            "complexion": "fair to light golden tones",
-            "wardrobe": "contemporary Chinese casual or traditional attire as appropriate",
-            "grooming": "contemporary Chinese; clean and polished",
-        },
-        "cantonese": {
-            "ethnicity": "Cantonese / Southern Chinese / East Asian",
-            "complexion": "fair to light golden tones",
-            "wardrobe": "contemporary Cantonese casual or traditional attire",
-            "grooming": "contemporary; clean and polished",
-        },
-        # Middle Eastern / African
-        "arabic": {
-            "ethnicity": "Arab / Middle Eastern / North African (defer to lyric evidence for sub-region)",
-            "complexion": "olive to warm brown tones",
-            "wardrobe": "contemporary casual or traditional thobe/abaya/jalabiya as appropriate to lyric world",
-            "grooming": "contemporary; warm and expressive",
-        },
-        "persian": {
-            "ethnicity": "Persian / Iranian",
-            "complexion": "olive to warm tones",
-            "wardrobe": "contemporary Iranian casual or traditional attire; headscarves where culturally appropriate",
-            "grooming": "contemporary; warm and elegant",
-        },
-        "turkish": {
-            "ethnicity": "Turkish / Anatolian",
-            "complexion": "olive to warm tones",
-            "wardrobe": "contemporary Turkish casual or traditional attire",
-            "grooming": "contemporary; warm and expressive",
-        },
-        "swahili": {
-            "ethnicity": "East African (defer to lyric evidence for specific nation)",
-            "complexion": "warm to deep brown tones",
-            "wardrobe": "contemporary East African casual or kanga/kitenge; regionally faithful",
-            "grooming": "contemporary; warm and natural",
-        },
-        "amharic": {
-            "ethnicity": "Ethiopian / East African",
-            "complexion": "warm to deep brown tones",
-            "wardrobe": "contemporary Ethiopian casual or traditional habesha kemis/netela",
-            "grooming": "contemporary; warm and natural",
-        },
-        # South-East Asian
-        "thai": {
-            "ethnicity": "Thai / South-East Asian",
-            "complexion": "warm golden to tan tones",
-            "wardrobe": "contemporary Thai casual or traditional chut thai for formal scenes",
-            "grooming": "contemporary Thai; warm and polished",
-        },
-        "indonesian": {
-            "ethnicity": "Indonesian / South-East Asian (defer to island/region from lyrics)",
-            "complexion": "warm golden to brown tones",
-            "wardrobe": "contemporary Indonesian casual or batik/kebaya; regionally faithful",
-            "grooming": "contemporary; warm and natural",
-        },
-        "tagalog": {
-            "ethnicity": "Filipino / South-East Asian",
-            "complexion": "warm golden to tan tones",
-            "wardrobe": "contemporary Filipino casual or barong tagalog/filipiniana for formal scenes",
-            "grooming": "contemporary Filipino; warm and polished",
-        },
-    }
+    # NOTE: LANGUAGE_APPEARANCE_DEFAULTS (complexion / wardrobe / grooming
+    # per language) was removed. Visual appearance is NOT a meaning concern
+    # and must not be decided here. The Character Materializer (Stage 7) is
+    # the only stage allowed to derive appearance, and it must derive it
+    # from its immediate predecessor's output, not from this engine.
 
     def __init__(self, api_key: str):
         if not api_key:
@@ -835,8 +665,19 @@ class MetaMindContextEngineFinal:
         pre_analysis: Optional[Dict[str, Any]] = None,
         explicit_culture_pack: Optional[str] = None,
         locked_assumptions: Optional[Dict[str, Any]] = None,
-        style_profile: Optional[Dict[str, Any]] = None,
+        **_ignored_downstream: Any,
     ) -> Dict[str, Any]:
+        # PIPELINE CHAIN RULE: this is Stage 2. It must not consume any
+        # parameters from downstream stages (Style is Stage 4, Storyboard is
+        # Stage 5, Brief is Stage 6, etc.). Any unexpected kwargs are
+        # absorbed (so legacy callers don't crash) but logged loudly so the
+        # chain violation is visible and gets cleaned up at the call site.
+        if _ignored_downstream:
+            logger.warning(
+                "Context Engine (Stage 2) received downstream kwargs %s — "
+                "chain violation; caller must stop passing these.",
+                sorted(_ignored_downstream.keys()),
+            )
         pre_analysis = pre_analysis or {}
         locked_assumptions = locked_assumptions or {}
 
@@ -863,13 +704,11 @@ class MetaMindContextEngineFinal:
             "routing": routed,
             "language": language_info,
             "genre_directive": genre_cfg["directive"],
-            "genre_default_visual_constraints": genre_cfg["default_visual_constraints"],
             "pre_analysis": pre_analysis,
             "culture_pack_id": culture_pack_id,
             "culture_pack": culture_pack,
             "active_metaphors": active_metaphors,
             "locked_assumptions": locked_assumptions,
-            "style_profile": style_profile or {},
         }
 
         system_prompt = self._build_system_prompt(hard_logic)
@@ -948,30 +787,14 @@ class MetaMindContextEngineFinal:
         culture_pack_id = hard_logic["culture_pack_id"] or "none"
         active_metaphors = hard_logic["active_metaphors"]
         locked_assumptions = hard_logic["locked_assumptions"]
-        style_profile = hard_logic.get("style_profile") or {}
 
         metaphor_text = "\n".join(
             f"- '{k}' means: {v}" for k, v in active_metaphors.items()
         ) if active_metaphors else "None"
 
-        # Build VISUAL STYLE DIRECTIVE block if a style_profile was chosen
-        style_directive_block = ""
-        if style_profile:
-            prod = style_profile.get("production") or {}
-            cin = style_profile.get("cinematic") or {}
-            prod_directive = prod.get("context_directive", "")
-            cin_directive = cin.get("context_directive", "")
-            if prod_directive or cin_directive:
-                style_directive_block = f"""
-VISUAL STYLE DIRECTIVE (user-selected — must govern all visual interpretation):
-- Production Style: {prod.get("label", "")} — {prod_directive}
-- Cinematic Style: {cin.get("label", "")} — {cin_directive}
-All visual_constraints, shot_type, and mood recommendations must conform to the above style directives.
-"""
-
-        # Build VOCAL GENDER DIRECTIVE — hard fact derived from audio analysis
-        # (or explicit user override). When present, the LLM MUST set
-        # speaker.gender accordingly instead of guessing from the lyrics.
+        # VOCAL GENDER DIRECTIVE — hard fact derived from audio analysis
+        # (or explicit user override). This is a meaning-level fact (who
+        # the speaker is), not a visual one, so it belongs here.
         vocal_gender_block = ""
         audio_hints = (hard_logic.get("pre_analysis") or {}).get("audio_hints") or {}
         vg_final = str(audio_hints.get("vocal_gender_final") or audio_hints.get("vocal_gender") or "").lower().strip()
@@ -986,9 +809,11 @@ VOCAL GENDER DIRECTIVE (from audio analysis{f' — median F0 ≈ {f0:.0f} Hz' if
 """
 
         return f"""
-You are Qaivid MetaMind — a world-class literary analyst, dramaturg, and cultural interpreter.
-Your job is to deeply read expressive input (song lyrics, poem, ghazal, qawwali, script, story,
-voiceover, ad copy, documentary text) and produce one structured JSON object for downstream cinematic workflow.
+You are Qaivid MetaMind — Stage 2 of the cinematic pipeline. Your only job is to extract
+the MEANING of the input. Downstream stages (Narrative Intelligence, Style, Storyboard,
+Creative Brief, Materializer, Stills) handle every visual decision.
+
+CORE PRINCIPLE: Lock meaning. Keep visual expression open.
 
 INPUT ROUTING:
 - recognized_type: {routed["recognized_type"]}
@@ -1013,39 +838,46 @@ LOCKED ASSUMPTIONS:
 
 GENRE DIRECTIVE:
 {genre_directive}
-{style_directive_block}
 {vocal_gender_block}
-CORE INTERPRETIVE PRINCIPLES:
-1. Treat metaphors as metaphors. Do NOT literalize symbolic language.
-2. For each line, separate literal, implied, emotional, and cultural meaning.
-3. Classify each line's visualization_mode:
-   - direct
-   - indirect
-   - symbolic
-   - absorbed
-   - performance_only
-4. Be culturally precise. Do not flatten South Asian content into generic Western imagery.
-5. Surface assumptions honestly.
-6. Respect locked assumptions where provided.
-7. line_meanings must cover every line in order.
-8. world_assumptions should be inferred from textual evidence, not invented.
-9. Return ONLY valid JSON.
+WHAT YOU MUST DO:
+1. Identify content type and language.
+2. Extract core_theme, dramatic_premise, narrative_spine — meaning only.
+3. Fill all 5 Ws (WHO / WHAT / WHEN / WHERE / WHY).
+4. Classify narrative_mode (literal / symbolic / hybrid / etc.).
+5. Define the emotional arc and the motivation block.
+6. Per line: literal, implied, emotional, and cultural meaning + intensity + repeat status + function.
+7. Identify literary devices and named entities.
+8. Define cultural_constraints (what culturally MUST not break).
+9. Define preservation_rules (what MUST be locked downstream).
+10. Define creative_freedom (what downstream stages MAY vary).
+11. Surface assumptions honestly and flag ambiguity.
+12. Respect locked assumptions where provided.
 
-5W FRAMEWORK — YOU MUST FILL ALL FIVE Ws:
-- WHO  → speaker / addressee
+WHAT YOU MUST NEVER DO (THESE ARE DOWNSTREAM CONCERNS):
+- ❌ No complexion, wardrobe, grooming, hair, jewelry — Character Materializer (Stage 7).
+- ❌ No architecture style, building type, room type — Location Materializer (Stage 7).
+- ❌ No props, objects, plants, garments per line — Storyboard / Stills (Stage 5/9).
+- ❌ No shot framing, camera, lens, lighting, color, motion — Style / Storyboard / Stills.
+- ❌ No scenes, locations, time-of-day per shot — Creative Brief (Stage 6).
+- ❌ No visualization_mode / expression_mode per line — Narrative Intelligence (Stage 3).
+- ❌ No motifs as visual symbols — Narrative Intelligence decides expression channels.
+- ❌ No "visual_constraints" or "restrictions" — Style decides those.
+
+5W FRAMEWORK:
+- WHO  → speaker / addressee (identity, role, relationship — broad, not visual)
 - WHAT → core_theme / dramatic_premise / narrative_spine
-- WHEN → world_assumptions.era / season / characteristic_time / emotional_arc
-- WHERE → world_assumptions.geography / location_dna
+- WHEN → world_assumptions.era / season / timeline_nature / emotional_arc
+- WHERE → world_assumptions.geography / location_dna (cultural anchor only)
 - WHY  → motivation (REQUIRED — do not leave blank)
-The "motivation" object captures the emotional engine of the song. You MUST fill:
+The "motivation" object captures the emotional engine. Fill:
   - inciting_cause: the concrete event/loss/longing/decision that triggered this expression
   - underlying_desire: what the speaker ultimately wants
   - stakes: what is at risk if the desire is not met
   - obstacle: what stands between the speaker and the desire
   - confidence: 0..1 — how confident you are in the motivation reading
-If the lyrics are abstract or symbolic, infer motivation from the emotional arc + cultural context — never leave fields blank.
+If the lyrics are abstract, infer motivation from emotional arc + cultural context — never leave blank.
 
-REQUIRED JSON SHAPE:
+REQUIRED JSON SHAPE (meaning-only):
 {{
   "input_profile": {{
     "recognized_type": "string",
@@ -1053,47 +885,38 @@ REQUIRED JSON SHAPE:
     "is_mixed_input": false,
     "structure_quality": "string",
     "source_format": "string",
-    "language": {{
-      "primary": "string",
-      "script": "string",
-      "dialect": "string"
-    }},
+    "language": {{ "primary": "string", "script": "string", "dialect": "string" }},
     "analysis_confidence": 0.0
   }},
   "input_type": "string",
   "language": "string",
-  "narrative_mode": "string",
-  "location_dna": "string",
+  "narrative_mode": "string  (literal | symbolic | hybrid | performative — meaning mode, not visual mode)",
+  "location_dna": "string  (broad cultural sphere — e.g. 'Punjab cultural region (South Asian)', 'French-speaking world', 'Korean cultural world'. NOT architecture, NOT setting type)",
   "genre_directive": "string",
   "core_theme": "string",
   "dramatic_premise": "string",
   "narrative_spine": "string",
   "speaker": {{
-    "identity": "string",
-    "gender": "string",
-    "age_range": "string",
+    "identity": "string  (broad — e.g. 'a young woman addressing an absent lover', 'an elder recounting a memory'. NO appearance.)",
+    "gender": "string  (Male | Female | Mixed | Unclear)",
+    "age_range": "string  (e.g. 'young adult', 'middle-aged', 'elder')",
     "social_role": "string",
     "emotional_state": "string",
     "relationship_to_addressee": "string",
-    "ethnicity": "string  (be culturally faithful to the actual language and cultural world of the lyrics — e.g. 'French (Caucasian)', 'Korean', 'South Asian (Punjabi)', 'West African', etc. Do NOT default to any single ethnicity; infer from the lyric language, geography, and cultural cues)",
-    "complexion": "string  (culturally faithful to the detected ethnicity — e.g. fair, warm wheatish, warm tan, deep brown, olive, etc.)",
-    "wardrobe": "string  (concrete clothing description anchored in the cultural framework)",
-    "grooming": "string  (hair, jewelry, facial hair, kohl, etc. — culturally faithful)"
+    "cultural_background": "string  (broad cultural identity — e.g. 'South Asian (Punjabi)', 'French', 'Korean', 'West African'. NO complexion, NO wardrobe, NO grooming.)"
   }},
   "addressee": {{
     "identity": "string",
     "relationship": "string",
-    "presence": "string"
+    "presence": "string  (literal_present | absent | symbolic | divine | self)"
   }},
   "world_assumptions": {{
-    "geography": "string  (broad geographic anchor for the whole song, e.g. 'Punjab region, South Asia', 'rural France', 'urban Seoul')",
-    "era": "string",
+    "geography": "string  (broad geographic anchor — e.g. 'Punjab region, South Asia', 'rural France', 'urban Seoul')",
+    "era": "string  (e.g. 'contemporary', 'mid-20th century', 'timeless')",
     "season": "string",
-    "characteristic_time": "string  (general emotional time-feel of the song, e.g. 'dawn', 'dusk', 'late night' — this is a cultural default, NOT the time of day for any specific shot; individual scene times are set by the creative brief)",
+    "timeline_nature": "string  (real_time | memory | cyclical | ambiguous — how time behaves in the meaning of the piece)",
     "social_context": "string",
-    "economic_context": "string",
-    "architecture_style": "string  (OPTIONAL — only if a dominant architectural type is clearly identifiable from the content. One short phrase at most, e.g. 'Punjabi village', 'Parisian Haussmann', 'contemporary Seoul'. Do NOT describe materials, colors, or construction details — that is for the storyboard and image engines to determine.)",
-    "characteristic_setting": "string  (OPTIONAL — one short phrase capturing the general spatial type, e.g. 'open agricultural village', 'urban street', 'coastal town'. No lists, no visual prescriptions.)"
+    "economic_context": "string"
   }},
   "emotional_arc": {{
     "opening": "string",
@@ -1102,10 +925,10 @@ REQUIRED JSON SHAPE:
     "resolution": "string"
   }},
   "motivation": {{
-    "inciting_cause": "string  (the WHY: what event/loss/longing/decision triggered the speaker to express this)",
-    "underlying_desire": "string  (what the speaker ultimately wants — reunion, freedom, forgiveness, recognition, etc.)",
-    "stakes": "string  (what is at risk if the desire is not met — loneliness, dishonor, lost love, lost identity, etc.)",
-    "obstacle": "string  (what stands between the speaker and the desire — distance, time, social rules, the addressee's silence, etc.)",
+    "inciting_cause": "string",
+    "underlying_desire": "string",
+    "stakes": "string",
+    "obstacle": "string",
     "confidence": 0.0
   }},
   "line_meanings": [
@@ -1116,31 +939,21 @@ REQUIRED JSON SHAPE:
       "implied_meaning": "string",
       "emotional_meaning": "string",
       "cultural_meaning": "string",
-      "meaning": "string",
-      "function": "string",
+      "meaning": "string  (one-line summary)",
+      "function": "string  (e.g. 'verse', 'chorus', 'bridge', 'invocation', 'declaration', 'lament')",
       "repeat_status": "original|repeat",
-      "intensity": 0.5,
-      "expression_mode": "face|body|environment|symbolic|macro",
-      "visualization_mode": "direct|indirect|symbolic|absorbed|performance_only",
-      "visual_suitability": "high|medium|low",
-      "visual_props": ["string — specific visual elements literally named in this line (e.g. 'marwa flower', 'ankle bells', 'weeping willow', 'brass pitcher', 'red dupatta'). Extract only from this line's text. Leave empty if the line contains no concrete objects or imagery."]
+      "intensity": 0.5
     }}
   ],
-  "motifs": ["string"],
-  "motif_map": {{}},
   "entities": [
-    {{ "name": "string", "type": "person|object|place|symbol", "role": "string" }}
+    {{ "name": "string", "type": "person|place|symbol|concept", "role": "string  (meaning role, not visual prop)" }}
   ],
   "literary_devices": ["string"],
-  "visual_constraints": ["string"],
-  "restrictions": ["string"],
+  "cultural_constraints": ["string  (meaning-level cultural rules that MUST hold — e.g. 'the beloved in a ghazal is symbolic and may be human, divine, or abstract; do not literalize as a single named woman')"],
+  "preservation_rules": ["string  (what downstream MUST NOT change — e.g. 'speaker gender', 'cultural identity', 'emotional truth of the climax')"],
+  "creative_freedom": ["string  (what downstream MAY vary — e.g. 'casting specifics', 'architecture and locations', 'props and objects', 'era visualization', 'color and motion')"],
   "surfaced_assumptions": [
-    {{
-      "field": "string",
-      "value": "string",
-      "confidence": 0.0,
-      "reason": "string"
-    }}
+    {{ "field": "string", "value": "string", "confidence": 0.0, "reason": "string" }}
   ],
   "locked_assumptions": {{}},
   "ambiguity_flags": [
@@ -1156,6 +969,8 @@ REQUIRED JSON SHAPE:
     "motivation": 0.0
   }}
 }}
+
+Return ONLY valid JSON.
 """.strip()
 
     def _build_user_prompt(
@@ -1179,114 +994,94 @@ REQUIRED JSON SHAPE:
 
         lang = (hard_logic["language"].get("primary") or "").lower()
         cultural_hint = ""
+        # Cultural framework hints — MEANING-LEVEL ONLY (literary tradition,
+        # thematic motifs, cultural truth). No visual prescriptions.
         if "punjabi" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Punjabi folk / Sufi / qissa tradition. "
-                "Common motifs: separation, beloved, agrarian land, rivers, courtyards, "
-                "domestic space, migration, oral-song memory. "
-                "Ground all visual assumptions in the Punjabi cultural world of Punjab, South Asia. "
-                "Each location in the song is distinct — a mustard field, a courtyard, a rooftop, a river bank "
-                "are different spaces with different visual identities. "
-                "Do not impose the same architectural template on all locations. "
-                "Let the location name and story context determine each space's appearance. "
-                "Do not default to Rajasthani or generic North Indian village aesthetics."
+                "Common thematic motifs: separation (judaai), beloved (mahi/sajjan), agrarian land, "
+                "migration, oral-song memory, divine longing. Be true to the Punjabi cultural world."
             )
         elif "urdu" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Urdu ghazal / nazm / qawwali tradition. "
-                "Common motifs: hijr, wasl, mehboob, divine beloved, silence, existential longing."
+                "Common thematic motifs: hijr, wasl, mehboob, divine beloved, silence, existential longing. "
+                "The beloved is often symbolic — may be human, divine, or abstract. Do not literalize."
             )
         elif "hindi" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Hindi film song / bhajan / folk tradition. "
-                "Common motifs: love, separation, devotion, nature, seasons, inner longing. "
-                "Ground visuals in North/Central Indian cultural world unless lyrics suggest otherwise."
+                "Common thematic motifs: love, separation, devotion, nature, seasons, inner longing."
             )
         elif "bengali" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Bengali song tradition (Rabindra Sangeet / Baul / folk). "
-                "Common motifs: river, rain, seasons, philosophical longing, nature, rural Bengal. "
-                "Ground visuals in Bengali cultural world."
+                "Common thematic motifs: river, rain, seasons, philosophical longing, nature."
             )
         elif "tamil" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Tamil song / Carnatic / folk tradition. "
-                "Common motifs: nature, devotion, love, separation, classical dance. "
-                "Ground visuals in South Indian (Tamil) cultural world."
+                "Common thematic motifs: nature, devotion, love, separation, classical dance."
             )
         elif "french" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: French chanson / pop / classical song tradition. "
-                "Ground visuals in French or French-speaking cultural world — countryside, city, domestic interiors. "
-                "Do not impose South Asian or East Asian aesthetics."
+                "Be true to the French cultural world."
             )
         elif "spanish" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Spanish / Latin American song tradition (bolero, cumbia, flamenco, pop). "
-                "Ground visuals in the relevant Spanish-speaking cultural world — identify region from lyric content. "
-                "Do not impose South Asian or other aesthetics."
+                "Identify region from lyric content; be true to that cultural world."
             )
         elif "portuguese" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Portuguese / Brazilian song tradition (fado, bossa nova, sertanejo, pop). "
-                "Ground visuals in the relevant Portuguese-speaking cultural world. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the relevant Portuguese-speaking cultural world."
             )
         elif "korean" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Korean song tradition (K-pop, ballad, trot, folk). "
-                "Ground visuals in Korean cultural world — contemporary urban, countryside, seasonal nature. "
-                "Do not impose South Asian or Western aesthetics."
+                "Be true to the Korean cultural world."
             )
         elif "japanese" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Japanese song tradition (J-pop, enka, folk, shoegaze). "
-                "Ground visuals in Japanese cultural world — seasonal nature, urban Japan, traditional spaces. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the Japanese cultural world."
             )
         elif "mandarin" in lang or "chinese" in lang or "cantonese" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Chinese song tradition (Mandopop, Cantopop, folk, classical). "
-                "Ground visuals in Chinese cultural world — identify mainland / Hong Kong / Taiwan from lyric content. "
-                "Do not impose South Asian or other aesthetics."
+                "Identify mainland / Hong Kong / Taiwan from lyric content; be true to that cultural world."
             )
         elif "arabic" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Arabic song tradition (tarab, khaleeji, pop, mawwal). "
-                "Ground visuals in Arabic-speaking cultural world — identify region (Gulf, Levant, Egypt, Maghreb) from lyric content. "
-                "Do not impose South Asian or other aesthetics."
+                "Identify region (Gulf, Levant, Egypt, Maghreb) from lyric content."
             )
         elif "persian" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Persian / Farsi song tradition (classical, pop, ghazal). "
-                "Ground visuals in Iranian / Persian cultural world. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the Iranian / Persian cultural world."
             )
         elif "turkish" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Turkish song tradition (Türkü folk, arabesk, pop). "
-                "Ground visuals in Turkish / Anatolian cultural world. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the Turkish / Anatolian cultural world."
             )
         elif "english" in lang or "romanized" in lang:
             cultural_hint = (
-                "CULTURAL FRAMEWORK: Latin-script content — first identify the ACTUAL language from the lyric text itself "
-                "(French, Spanish, Italian, German, English, Korean romanized, etc.). "
-                "Then ground ALL visual assumptions (ethnicity, geography, wardrobe, props, locations) "
-                "faithfully in that language's cultural world. "
-                "Do not default to South Asian, East Asian, or American aesthetics unless the lyrics demand it."
+                "CULTURAL FRAMEWORK: Latin-script content — first identify the ACTUAL language and "
+                "cultural origin from the lyric text. Be true to that cultural world's literary tradition."
             )
         elif "german" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: German-language song tradition. "
-                "Ground visuals in German / Austrian / Swiss cultural world as appropriate. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the German / Austrian / Swiss cultural world as appropriate."
             )
         elif "italian" in lang:
             cultural_hint = (
                 "CULTURAL FRAMEWORK: Italian song tradition (canzone, opera pop, folk). "
-                "Ground visuals in Italian cultural world. "
-                "Do not impose South Asian or other aesthetics."
+                "Be true to the Italian cultural world."
             )
 
         return f"""
@@ -1313,13 +1108,12 @@ OPTIONAL PRE-ANALYSIS:
 REQUIREMENTS:
 - line_meanings must contain exactly one entry per indexed line, in order.
 - Fill literal_meaning, implied_meaning, emotional_meaning, and cultural_meaning for every line.
-- For visual_props: extract the concrete physical objects, plants, animals, garments, or natural phenomena named in that specific line. Translate them — a line in Punjabi mentioning "ਮਾਰਵਾ" should produce ["marwa flower"]. These become the direct visual elements in the image prompts, so be specific and literal. An empty array [] is correct when the line is purely abstract.
-- Choose visualization_mode honestly.
 - Mark repeated lines with repeat_status="repeat".
-- Keep narrative_spine compact and storyboard-friendly.
-- world_assumptions should be inferred, not invented.
-- visual_constraints should help downstream engines stay faithful.
+- Keep narrative_spine compact — meaning, not visuals.
+- world_assumptions should be inferred from textual evidence, not invented.
+- cultural_constraints, preservation_rules, creative_freedom must each contain at least one entry.
 - confidence_scores must be honest.
+- Do NOT output any visual fields — no props, no clothing, no architecture, no shot framing.
 """.strip()
 
     async def _call_model(self, system_prompt: str, user_prompt: str) -> str:
@@ -1409,10 +1203,15 @@ REQUIREMENTS:
         self._repair_emotional_arc(data)
         self._repair_motivation(data)
         data["line_meanings"] = self._repair_line_meanings(data.get("line_meanings"), lines)
-        self._repair_motifs(data)
         self._repair_entities(data)
         self._repair_literary_devices(data)
-        self._repair_visual_constraints_and_restrictions(data, genre_cfg, culture_pack, routed["has_repetition"])
+        # Stage 2 emits MEANING-LEVEL constraints only — no visual_constraints,
+        # no restrictions, no motifs/motif_map. Narrative Intelligence (Stage 3)
+        # owns motif strategy; Style (Stage 4) owns visual constraints.
+        self._repair_meaning_level_constraints(data, culture_pack)
+        # Strip any legacy visual fields the LLM might have emitted by habit.
+        for _legacy in ("visual_constraints", "restrictions", "motifs", "motif_map"):
+            data.pop(_legacy, None)
 
         data["surfaced_assumptions"] = self._build_surfaced_assumptions(data)
         data["locked_assumptions"] = self._apply_locked_assumptions(data, locked_assumptions)
@@ -1432,6 +1231,8 @@ REQUIREMENTS:
         return data
 
     def _ensure_top_level_defaults(self, data: Dict[str, Any]) -> None:
+        # Stage 2 emits MEANING ONLY. No visual_constraints, no restrictions,
+        # no motifs/motif_map (Narrative Intelligence owns motif strategy).
         defaults = {
             "input_profile": {},
             "speaker": {},
@@ -1440,11 +1241,11 @@ REQUIREMENTS:
             "emotional_arc": {},
             "motivation": {},
             "line_meanings": [],
-            "motif_map": {},
             "entities": [],
             "literary_devices": [],
-            "visual_constraints": [],
-            "restrictions": [],
+            "cultural_constraints": [],
+            "preservation_rules": [],
+            "creative_freedom": [],
             "surfaced_assumptions": [],
             "locked_assumptions": {},
             "ambiguity_flags": [],
@@ -1454,8 +1255,10 @@ REQUIREMENTS:
             data.setdefault(key, default)
 
     def _repair_speaker(self, data: Dict[str, Any], culture_pack: Dict[str, Any], language: Dict[str, str], vocal_gender: Optional[str] = None) -> None:
+        # MEANING-ONLY speaker block. No complexion, no wardrobe, no grooming.
+        # Those are Materializer (Stage 7) concerns and must be derived
+        # downstream from this engine's cultural_background, not pulled here.
         speaker_in = data["speaker"] if isinstance(data.get("speaker"), dict) else {}
-        appearance_defaults = culture_pack.get("appearance_defaults", {}) or self._language_to_appearance(language.get("primary", "")) or {}
 
         # If we have a high-confidence vocal gender from audio analysis (or user
         # override), it always wins over an LLM-emitted "Unclear"/"Unspecified".
@@ -1465,6 +1268,15 @@ REQUIREMENTS:
         elif not llm_gender:
             llm_gender = vocal_gender or "Unclear"
 
+        # cultural_background is the meaning-level cultural identity. The
+        # legacy field name was "ethnicity" — we accept it as a fallback so
+        # older context_packets stored in the DB still load, but the new
+        # canonical key is "cultural_background".
+        cultural_background = self._ensure_string(
+            speaker_in.get("cultural_background") or speaker_in.get("ethnicity"),
+            culture_pack.get("cultural_dna") or "Inferred from lyric content",
+        )
+
         data["speaker"] = {
             "identity": self._ensure_string(speaker_in.get("identity"), "Unclear speaker"),
             "gender": llm_gender,
@@ -1472,10 +1284,7 @@ REQUIREMENTS:
             "emotional_state": self._ensure_string(speaker_in.get("emotional_state"), "Emotionally charged"),
             "social_role": self._ensure_string(speaker_in.get("social_role"), "Unclear"),
             "relationship_to_addressee": self._ensure_string(speaker_in.get("relationship_to_addressee"), "Unclear"),
-            "ethnicity": self._ensure_string(speaker_in.get("ethnicity"), appearance_defaults.get("ethnicity", "Unspecified")),
-            "complexion": self._ensure_string(speaker_in.get("complexion"), appearance_defaults.get("complexion", "Unspecified")),
-            "wardrobe": self._ensure_string(speaker_in.get("wardrobe"), appearance_defaults.get("wardrobe", "Unspecified")),
-            "grooming": self._ensure_string(speaker_in.get("grooming"), appearance_defaults.get("grooming", "Unspecified")),
+            "cultural_background": cultural_background,
         }
 
     def _repair_addressee(self, data: Dict[str, Any]) -> None:
@@ -1487,30 +1296,25 @@ REQUIREMENTS:
         }
 
     def _repair_world_assumptions(self, data: Dict[str, Any], culture_pack: Dict[str, Any]) -> None:
+        # MEANING-ONLY world block. No architecture_style, no
+        # characteristic_setting, no characteristic_time — those are visual /
+        # creative-brief decisions and must NOT originate here.
+        # `timeline_nature` is added: real_time | memory | cyclical | ambiguous.
+        # That is a meaning-of-time question, not a clock-time question.
         wa = data["world_assumptions"] if isinstance(data.get("world_assumptions"), dict) else {}
         defaults = culture_pack.get("world_defaults", {})
-        # Read new field names first; fall back to old names for backward compat
-        # with existing projects that have the pre-rename field names stored in DB.
-        char_time = (
-            wa.get("characteristic_time")
-            or wa.get("time_of_day")
-        )
-        char_setting = (
-            wa.get("characteristic_setting")
-            or wa.get("domestic_setting")
-        )
-        # architecture_style and characteristic_setting are now light context hints,
-        # not prescriptive blueprints. Use the LLM output as-is; culture pack
-        # geography/cultural_dna are still good fallbacks for orientation fields.
+
+        timeline_nature_raw = self._ensure_string(wa.get("timeline_nature"), "").strip().lower()
+        allowed_timeline = {"real_time", "memory", "cyclical", "ambiguous"}
+        timeline_nature = timeline_nature_raw if timeline_nature_raw in allowed_timeline else "ambiguous"
+
         data["world_assumptions"] = {
             "geography": self._ensure_string(wa.get("geography"), defaults.get("geography", "Unspecified")),
             "era": self._ensure_string(wa.get("era"), "Unspecified"),
             "season": self._ensure_string(wa.get("season"), "Unspecified"),
-            "characteristic_time": self._ensure_string(char_time, "Unspecified"),
+            "timeline_nature": timeline_nature,
             "social_context": self._ensure_string(wa.get("social_context"), "Unspecified"),
             "economic_context": self._ensure_string(wa.get("economic_context"), "Unspecified"),
-            "architecture_style": self._ensure_string(wa.get("architecture_style"), ""),
-            "characteristic_setting": self._ensure_string(char_setting, ""),
         }
 
     def _repair_core_narrative_fields(self, data: Dict[str, Any]) -> None:
@@ -1562,6 +1366,10 @@ REQUIREMENTS:
         }
 
     def _repair_line_meanings(self, line_meanings: Any, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # MEANING-ONLY per-line block. No expression_mode, no visualization_mode,
+        # no visual_suitability, no visual_props. Narrative Intelligence
+        # (Stage 3) decides expression channels; Storyboard / Stills (Stage 5/9)
+        # decide visual props.
         existing_by_index: Dict[int, Dict[str, Any]] = {}
 
         if isinstance(line_meanings, list):
@@ -1585,13 +1393,6 @@ REQUIREMENTS:
             cultural = self._ensure_string(current.get("cultural_meaning"), "")
             combined = " | ".join(p for p in (implied, emotional, literal) if p) or "Literal or emotional meaning not clearly extracted."
 
-            # visual_props: list of concrete prop strings; repair to clean list
-            raw_vp = current.get("visual_props")
-            if isinstance(raw_vp, list):
-                visual_props = [str(x).strip() for x in raw_vp if str(x).strip()]
-            else:
-                visual_props = []
-
             repaired.append({
                 "line_index": idx,
                 "text": line["text"],
@@ -1603,33 +1404,13 @@ REQUIREMENTS:
                 "function": self._ensure_string(current.get("function"), "emotional_expression"),
                 "repeat_status": "repeat" if is_repeat else "original",
                 "intensity": self._repair_intensity(current.get("intensity")),
-                "expression_mode": self._repair_expression_mode(current.get("expression_mode")),
-                "visualization_mode": self._repair_visualization_mode(current.get("visualization_mode")),
-                "visual_suitability": self._repair_visual_suitability(current.get("visual_suitability")),
-                "visual_props": visual_props,
             })
 
         return repaired
 
-    def _repair_motifs(self, data: Dict[str, Any]) -> None:
-        if not isinstance(data.get("motifs"), list):
-            data["motifs"] = []
-        data["motifs"] = [str(x).strip() for x in data["motifs"] if str(x).strip()][:12]
-
-        mm_in = data.get("motif_map") if isinstance(data.get("motif_map"), dict) else {}
-        cleaned_motif_map: Dict[str, List[int]] = {}
-        for k, v in mm_in.items():
-            if not isinstance(v, list):
-                continue
-            indices = []
-            for x in v:
-                try:
-                    indices.append(int(x))
-                except Exception:
-                    pass
-            if indices:
-                cleaned_motif_map[str(k).strip()] = indices
-        data["motif_map"] = cleaned_motif_map
+    # NOTE: _repair_motifs was removed. Motifs / motif_map are not a Stage 2
+    # concern — Narrative Intelligence (Stage 3) decides motif strategy from
+    # the meaning surface this engine produces.
 
     def _repair_entities(self, data: Dict[str, Any]) -> None:
         if not isinstance(data.get("entities"), list):
@@ -1653,25 +1434,56 @@ REQUIREMENTS:
             str(x).strip() for x in data["literary_devices"] if str(x).strip()
         ][:20]
 
-    def _repair_visual_constraints_and_restrictions(
+    def _repair_meaning_level_constraints(
         self,
         data: Dict[str, Any],
-        genre_cfg: Dict[str, Any],
         culture_pack: Dict[str, Any],
-        has_repetition: bool,
     ) -> None:
-        if not isinstance(data.get("visual_constraints"), list):
-            data["visual_constraints"] = []
-        constraints = [str(x).strip() for x in data["visual_constraints"] if str(x).strip()]
-        constraints.extend(genre_cfg.get("default_visual_constraints", []))
-        constraints.extend(culture_pack.get("visual_restrictions", []))
-        data["visual_constraints"] = self._dedupe(constraints) or self._default_visual_constraints(has_repetition, genre_cfg)
+        # Stage 2 produces three meaning-level constraint lists. None of these
+        # describe visuals — they describe what meaning MUST be preserved and
+        # what downstream stages MAY freely vary.
+        #
+        # cultural_constraints: cultural truths that MUST not be broken
+        #   (e.g. "the beloved in a ghazal may be human, divine, or abstract").
+        # preservation_rules: meaning-level facts downstream MUST keep
+        #   (e.g. "speaker gender", "emotional truth of the climax").
+        # creative_freedom: what downstream stages MAY decide on their own
+        #   (e.g. "casting", "architecture", "props", "color", "motion").
+        if not isinstance(data.get("cultural_constraints"), list):
+            data["cultural_constraints"] = []
+        cc = [str(x).strip() for x in data["cultural_constraints"] if str(x).strip()]
+        # Pull culture-pack misinterpretation guards in — they are meaning-level
+        # cultural rules, not visual ones.
+        cc.extend(str(x).strip() for x in (culture_pack.get("common_misinterpretations") or []) if str(x).strip())
+        if not cc:
+            cc = ["Stay culturally faithful to the literary tradition of the source language."]
+        data["cultural_constraints"] = self._dedupe(cc)
 
-        if not isinstance(data.get("restrictions"), list):
-            data["restrictions"] = []
-        restrictions = [str(x).strip() for x in data["restrictions"] if str(x).strip()]
-        restrictions.extend(culture_pack.get("common_misinterpretations", []))
-        data["restrictions"] = self._dedupe(restrictions)
+        if not isinstance(data.get("preservation_rules"), list):
+            data["preservation_rules"] = []
+        pr = [str(x).strip() for x in data["preservation_rules"] if str(x).strip()]
+        if not pr:
+            pr = [
+                "Speaker gender as identified.",
+                "Cultural identity of the speaker.",
+                "Emotional truth of the climax.",
+                "The 5W meaning frame (who/what/when/where/why).",
+            ]
+        data["preservation_rules"] = self._dedupe(pr)
+
+        if not isinstance(data.get("creative_freedom"), list):
+            data["creative_freedom"] = []
+        cf = [str(x).strip() for x in data["creative_freedom"] if str(x).strip()]
+        if not cf:
+            cf = [
+                "Casting specifics (face, complexion, exact age within range).",
+                "Wardrobe and grooming specifics.",
+                "Architecture, locations, interiors.",
+                "Props and objects.",
+                "Era visualization (within meaning-faithful bounds).",
+                "Color, lighting, motion, and shot framing.",
+            ]
+        data["creative_freedom"] = self._dedupe(cf)
 
     def _apply_locked_assumptions(self, data: Dict[str, Any], locked_assumptions: Dict[str, Any]) -> Dict[str, Any]:
         if not locked_assumptions:
@@ -1679,19 +1491,14 @@ REQUIREMENTS:
 
         applied: Dict[str, str] = {}
         world = data.get("world_assumptions", {})
-        # Accept both old names (time_of_day, domestic_setting) and new names
-        # (characteristic_time, characteristic_setting) from locked_assumptions
-        # so existing locked projects don't lose their overrides.
-        _world_key_aliases = {
-            "time_of_day": "characteristic_time",
-            "domestic_setting": "characteristic_setting",
-        }
-        for key in ["geography", "era", "season", "time_of_day", "characteristic_time",
-                    "architecture_style", "domestic_setting", "characteristic_setting"]:
+        # MEANING-LEVEL world locks only. Visual locks (architecture_style,
+        # characteristic_setting, characteristic_time, time_of_day,
+        # domestic_setting) are no longer applied here — those decisions
+        # belong to the Creative Brief (Stage 6) and are locked there.
+        for key in ["geography", "era", "season", "timeline_nature"]:
             if key in locked_assumptions:
-                canonical = _world_key_aliases.get(key, key)
-                world[canonical] = str(locked_assumptions[key]).strip()
-                applied[canonical] = world[canonical]
+                world[key] = str(locked_assumptions[key]).strip()
+                applied[key] = world[key]
 
         if "location_dna" in locked_assumptions:
             data["location_dna"] = str(locked_assumptions["location_dna"]).strip()
@@ -1735,10 +1542,13 @@ REQUIREMENTS:
         speaker = data.get("speaker", {}) if isinstance(data.get("speaker"), dict) else {}
         world = data.get("world_assumptions", {}) if isinstance(data.get("world_assumptions"), dict) else {}
 
+        # MEANING-LEVEL surfaced assumptions only. No architecture_style /
+        # characteristic_setting — those are downstream concerns now.
         add("speaker_identity", speaker.get("identity", ""), conf.get("speaker", 0.7), "Inferred from voice and address pattern.")
         add("speaker_gender", speaker.get("gender", ""), conf.get("speaker", 0.7), "Inferred from textual cues.")
+        add("speaker_cultural_background", speaker.get("cultural_background", ""), conf.get("cultural", 0.7), "Inferred from language and cultural cues.")
         add("geography", world.get("geography", ""), conf.get("cultural", 0.7), "Inferred from cultural and environmental cues.")
-        add("architecture_style", world.get("architecture_style", ""), conf.get("cultural", 0.7), "Inferred from world assumptions.")
+        add("timeline_nature", world.get("timeline_nature", ""), conf.get("narrative_mode", 0.7), "Inferred from how time behaves in the meaning of the piece.")
         add("location_dna", data.get("location_dna", ""), conf.get("cultural", 0.7), "Inferred from cultural markers.")
         add("narrative_mode", data.get("narrative_mode", ""), conf.get("narrative_mode", 0.7), "Inferred from semantic mode and structure.")
 
@@ -1813,25 +1623,18 @@ REQUIREMENTS:
         }
 
     def _normalize_by_genre(self, ctx: Dict[str, Any]) -> None:
+        # Stage 2 owns MEANING normalization only. Visual / expression-channel
+        # normalization (face vs body vs environment vs symbolic vs macro) is
+        # the Narrative Intelligence engine's responsibility (Stage 3) — it
+        # maps meaning to expression channels using its own strategy.
+        # Here we only nudge per-line intensity for genres where the LLM tends
+        # to under-rate it (ads).
         genre = (ctx.get("input_type") or "").lower()
         lms = ctx.get("line_meanings", [])
 
         if genre == "ad":
             for lm in lms:
                 lm["intensity"] = max(lm.get("intensity", 0.5), 0.9)
-                lm["expression_mode"] = "macro"
-        elif genre == "script":
-            for lm in lms:
-                if lm.get("expression_mode") in {"symbolic", "environment"}:
-                    lm["expression_mode"] = "face"
-        elif genre in {"song", "poem", "ghazal", "qawwali"}:
-            for lm in lms:
-                if lm.get("expression_mode") == "macro":
-                    lm["expression_mode"] = "symbolic"
-        elif genre == "documentary":
-            for lm in lms:
-                if lm.get("expression_mode") == "symbolic":
-                    lm["expression_mode"] = "environment"
 
     # -------------------------------------------------------------------------
     # HELPERS
@@ -1928,27 +1731,11 @@ REQUIREMENTS:
         key = (primary_language or "").strip().lower()
         return self.LANGUAGE_LOCATION_DEFAULTS.get(key, "")
 
-    def _language_to_appearance(self, primary_language: str) -> Dict[str, str]:
-        key = (primary_language or "").strip().lower()
-        return self.LANGUAGE_APPEARANCE_DEFAULTS.get(key, {})
-
     def _normalize_for_match(self, text: str) -> str:
         text = text.lower().strip()
         text = re.sub(r"[^\w\s\u0600-\u06FF\u0A00-\u0A7F]", "", text)
         text = re.sub(r"\s+", " ", text)
         return text
-
-    def _repair_visualization_mode(self, value: Any) -> str:
-        allowed = {"direct", "indirect", "symbolic", "absorbed", "performance_only"}
-        if isinstance(value, str) and value.strip().lower() in allowed:
-            return value.strip().lower()
-        return "indirect"
-
-    def _repair_visual_suitability(self, value: Any) -> str:
-        allowed = {"high", "medium", "low"}
-        if isinstance(value, str) and value.strip().lower() in allowed:
-            return value.strip().lower()
-        return "medium"
 
     def _repair_confidence(self, value: Any) -> float:
         try:
@@ -1963,12 +1750,6 @@ REQUIREMENTS:
             return max(0.0, min(1.0, num))
         except Exception:
             return 0.5
-
-    def _repair_expression_mode(self, value: Any) -> str:
-        allowed = {"face", "body", "environment", "symbolic", "macro"}
-        if isinstance(value, str) and value.strip().lower() in allowed:
-            return value.strip().lower()
-        return "environment"
 
     def _ensure_string(self, value: Any, fallback: str) -> str:
         if value is None:
@@ -1986,16 +1767,6 @@ REQUIREMENTS:
                 output.append(s)
         return output
 
-    def _default_visual_constraints(self, has_repetition: bool, genre_cfg: Dict[str, Any]) -> List[str]:
-        constraints = [
-            "Do not invent major plot events not supported by the text.",
-            "Keep emotional interpretation stronger than literal over-expansion.",
-            "Preserve regional and cultural grounding where specified.",
-        ]
-        if has_repetition:
-            constraints.append("Repeated lines should generally be treated as emotional emphasis, not as new plot events.")
-        constraints.extend(genre_cfg.get("default_visual_constraints", []))
-        return self._dedupe(constraints)
 
 
 # =============================================================================
@@ -2019,9 +1790,18 @@ class UnifiedContextEngine(MetaMindContextEngineFinal):
         hinted_type: Optional[str] = None,
         explicit_culture_pack: Optional[str] = None,
         locked_assumptions: Optional[Dict[str, Any]] = None,
-        style_profile: Optional[Dict[str, Any]] = None,
-        **_ignored: Any,
+        **_ignored_downstream: Any,
     ) -> Dict[str, Any]:
+        # PIPELINE CHAIN RULE: Stage 2 must not consume any downstream
+        # parameters (e.g. style_profile from Stage 4). Unexpected kwargs are
+        # absorbed so legacy call sites do not crash, and logged loudly so
+        # the chain violation gets cleaned up at the call site.
+        if _ignored_downstream:
+            logger.warning(
+                "Context Engine shim received downstream kwargs %s — "
+                "chain violation; caller must stop passing these.",
+                sorted(_ignored_downstream.keys()),
+            )
         if raw_input is None:
             raw_input = text
         if hinted_type is None:
@@ -2033,5 +1813,4 @@ class UnifiedContextEngine(MetaMindContextEngineFinal):
             pre_analysis=pre_analysis,
             explicit_culture_pack=explicit_culture_pack,
             locked_assumptions=locked_assumptions,
-            style_profile=style_profile,
         )
