@@ -1002,17 +1002,28 @@ def _render_shot(project_id: str, shot: dict,
         logger.info("Shot %s for project %s already rendering; skipping duplicate", idx, project_id)
         return
     try:
-        # Always resolve the full character + location records so the
-        # prompt composer can describe the same subject consistently
-        # across every shot. The per-shot ref URL args are only used
-        # when callers supply them explicitly (legacy paths).
-        char_url_db, env_url_db, character, location = _resolve_shot_refs_full(project_id, idx)
-        if character_ref_url is None and environment_ref_url is None:
-            character_ref_url, environment_ref_url = char_url_db, env_url_db
+        # ── Mark DB as rendering IMMEDIATELY so polling never sees a
+        # stale "pending" status during the pre-flight resolution phase.
+        # This must be the very first DB write inside the lock so that
+        # the 3-second poll cycle always finds "rendering" before timing out.
+        _update_shot(project_id, idx, "rendering",
+                     prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
+                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)
+
+        # ── Resolve character + location records ────────────────────────
+        # Per-shot ref URL args are only used when callers supply them explicitly.
+        try:
+            char_url_db, env_url_db, character, location = _resolve_shot_refs_full(project_id, idx)
+            if character_ref_url is None and environment_ref_url is None:
+                character_ref_url, environment_ref_url = char_url_db, env_url_db
+        except Exception:
+            logger.warning(
+                "_render_shot: could not resolve shot refs for project=%s shot=%s (non-fatal)",
+                project_id, idx,
+            )
+            character, location = None, None
 
         # ── Brain identity data — look up matched char/loc entries by db_id ──
-        # brain_chars_by_dbid / brain_locs_by_dbid are built here per shot
-        # (brain load is fast — single DB row read + JSON parse).
         brain_char: Optional[dict] = None
         brain_loc:  Optional[dict] = None
         try:
@@ -1021,7 +1032,6 @@ def _render_shot(project_id: str, shot: dict,
             _mp = _shot_brain.read("materializer_packet") or {}
             _bc_list = list((_mp.get("character_profile") or {}).get("characters") or [])
             _bl_list = list((_mp.get("location_profile")  or {}).get("locations")  or [])
-            # Build db_id indexes
             _bc_idx = {
                 b["db_id"]: b for b in _bc_list
                 if isinstance(b, dict) and isinstance(b.get("db_id"), int)
@@ -1040,16 +1050,19 @@ def _render_shot(project_id: str, shot: dict,
                 project_id, idx,
             )
 
-        # Did the user hand-edit the prompt? If yes we use it verbatim.
-        user_edited = _resolve_user_edited_flag(project_id, idx)
+        # ── User-edited prompt override ──────────────────────────────────
         user_override = None
-        if user_edited:
-            user_override = (shot.get("styled_visual_prompt")
-                             or shot.get("visual_prompt") or "").strip() or None
+        try:
+            if _resolve_user_edited_flag(project_id, idx):
+                user_override = (shot.get("styled_visual_prompt")
+                                 or shot.get("visual_prompt") or "").strip() or None
+        except Exception:
+            logger.debug(
+                "_render_shot: user-edited flag check failed for project=%s shot=%s (non-fatal)",
+                project_id, idx,
+            )
 
-        _update_shot(project_id, idx, "rendering",
-                     prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
-                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)
+        # ── Generate the still ──────────────────────────────────────────
         try:
             url = generate_shot_still(
                 shot, character_ref_url, project_id,

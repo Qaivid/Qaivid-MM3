@@ -34,31 +34,43 @@
       <h1>{{ project.name }}</h1>
       <p class="stage-sub">
         Review prompts, upload your own images, or generate each shot.
-        Nothing generates until you ask.
+        Click any card to edit its prompt or trigger generation.
       </p>
     </div>
 
-    <!-- ── Counter bar ──────────────────────────────────────── -->
-    <div class="sc-counter-bar" id="sc-counter">
-      <div class="sc-counter-pill sc-pending">
-        <span class="sc-count" id="cnt-pending">{{ ns.pending }}</span>
-        <span class="sc-label">To Generate</span>
+    <!-- ── Progress bar ─────────────────────────────────────────── -->
+    <div class="ref-progress-bar">
+      <div class="ref-progress-dots" id="sc-dots">
+        {% for s in shots %}
+        <span class="ref-dot ref-dot--{{ s.status }}"
+              id="sc-dot-{{ s.shot_index }}"
+              title="Shot {{ s.shot_index }} ({{ s.status }})"></span>
+        {% endfor %}
       </div>
-      <div class="sc-counter-pill sc-ready">
-        <span class="sc-count" id="cnt-ready">{{ ns.ready }}</span>
-        <span class="sc-label">Generated</span>
-      </div>
-      <div class="sc-counter-pill sc-failed">
-        <span class="sc-count" id="cnt-failed">{{ ns.failed }}</span>
-        <span class="sc-label">Failed</span>
-      </div>
-      <div class="sc-counter-pill sc-generating">
-        <span class="sc-count" id="cnt-generating">{{ ns.generating }}</span>
-        <span class="sc-label">Generating</span>
-      </div>
+      <span class="ref-progress-label" id="sc-progress-label">
+        <strong id="cnt-ready">{{ ns.ready }}</strong>/<strong>{{ total_shots }}</strong> ready
+        {% if ns.pending %}<span class="ref-progress-pending" id="sc-pending-label"> · {{ ns.pending }} pending</span>{% else %}<span class="ref-progress-pending" id="sc-pending-label" style="display:none;"></span>{% endif %}
+      </span>
     </div>
+    <!-- hidden counters for JS (kept for internal bookkeeping) -->
+    <span id="cnt-pending"    style="display:none;">{{ ns.pending }}</span>
+    <span id="cnt-failed"     style="display:none;">{{ ns.failed }}</span>
+    <span id="cnt-generating" style="display:none;">{{ ns.generating }}</span>
 
-    <!-- ── Timing summary ───────────────────────────────────── -->
+    <!-- ── Failure banner ───────────────────────────────────────── -->
+    {% if ns.failed > 0 %}
+    <div class="ref-failed-banner" id="sc-failed-banner">
+      <span>⚠ <span id="sc-failed-count">{{ ns.failed }}</span> shot{{ 's' if ns.failed != 1 }} failed</span>
+      <button onclick="scRetryAllFailed()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
+    </div>
+    {% else %}
+    <div class="ref-failed-banner" id="sc-failed-banner" style="display:none;">
+      <span>⚠ <span id="sc-failed-count">0</span> shots failed</span>
+      <button onclick="scRetryAllFailed()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
+    </div>
+    {% endif %}
+
+    <!-- ── Timing summary ───────────────────────────────────────── -->
     {% if audio_dur and audio_dur > 0 %}
     {% set _timing_ok = dur_scale and dur_scale >= 0.98 and dur_scale <= 1.02 %}
     <div class="sc-timing-bar {% if _timing_ok %}sc-timing-ok{% else %}sc-timing-warn{% endif %}">
@@ -74,7 +86,7 @@
     </div>
     {% endif %}
 
-    <!-- ── Bulk actions ─────────────────────────────────────── -->
+    <!-- ── Bulk actions ─────────────────────────────────────────── -->
     <div class="sc-bulk-actions">
       <button class="btn-secondary sc-btn-gen-all" id="btn-gen-all"
               onclick="scGenerateAll(false)">
@@ -85,7 +97,7 @@
         &#8635; Regenerate All
       </button>
       {% if ns.failed > 0 %}
-      <button class="btn-secondary sc-btn-retry-failed" id="btn-retry-failed"
+      <button class="btn-secondary sc-btn-retry-failed" id="btn-retry-failed-bulk"
               onclick="scRetryAllFailed()"
               style="border-color:#a83232;color:#ff8080;">
         &#9888; Retry All Failed ({{ ns.failed }})
@@ -112,7 +124,6 @@
           </div>
         </div>
         <div class="op-panel-right">
-          <!-- Outpaint status pills -->
           <div class="op-status-row" id="op-status-row">
             <span class="op-pill op-pill-ready" id="op-cnt-ready">
               {{ op_ns.op_ready }} ready
@@ -146,184 +157,301 @@
         </div>
       </div>
     </div>
-    <!-- ══════════════════════════════════════════════════════════════════ -->
 
-    <!-- ── Shot grid ────────────────────────────────────────── -->
-    <div class="sc-grid" id="sc-grid">
+    <!-- ══ SHOT GALLERY ═══════════════════════════════════════════════════ -->
+    <div class="ref-gallery" id="sc-grid">
       {% for shot in shots %}
       {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
-      <div class="sc-card" id="sc-card-{{ shot.shot_index }}"
+
+      {# ── Shot card ── #}
+      <div class="ref-card ref-card--{{ shot.status }} sc-card"
+           id="sc-card-{{ shot.shot_index }}"
            data-idx="{{ shot.shot_index }}"
            data-status="{{ shot.status }}"
-           data-op-status="{{ op.status or 'pending' }}">
+           data-op-status="{{ op.status or 'pending' }}"
+           onclick="scToggle({{ shot.shot_index }})">
 
-        <!-- Thumbnail -->
-        <div class="sc-thumb-wrap">
+        <div class="ref-card-thumb sc-thumb-wrap"
+             style="aspect-ratio:16/9;">
           {% if op.url and op.status == 'ready' %}
-          <a href="{{ op.url }}" target="_blank" rel="noopener" class="sc-thumb-link">
-            <img src="{{ op.url }}" alt="Shot {{ shot.shot_index }} (outpainted)"
-                 class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
-          </a>
+          <img src="{{ op.url }}" alt="Shot {{ shot.shot_index }} (outpainted)"
+               class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
           {% elif shot.url %}
-          <a href="{{ shot.url }}" target="_blank" rel="noopener" class="sc-thumb-link">
-            <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}"
-                 class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
-          </a>
+          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}"
+               class="sc-thumb" loading="lazy" id="sc-img-{{ shot.shot_index }}">
           {% else %}
-          <div class="sc-thumb-placeholder" id="sc-placeholder-{{ shot.shot_index }}">
+          <div class="ref-thumb-ph ref-thumb-ph--{{ shot.status }}"
+               id="sc-placeholder-{{ shot.shot_index }}">
             {% if shot.status == 'rendering' %}
             <span class="sc-spinner">&#9698;</span>
             {% elif shot.status == 'failed' %}
-            <span style="color:#ff6b6b;">&#9888;</span>
+            <span style="font-size:20px;color:#663333;">&#9888;</span>
             {% else %}
-            <span class="muted">&#8226;&#8226;&#8226;</span>
+            <span style="font-size:14px;color:#2a2a3a;">&#8226;&#8226;&#8226;</span>
             {% endif %}
           </div>
           {% endif %}
 
-          <!-- Outpaint overlay badge on the thumbnail -->
+          {# Status pill badge #}
+          <span class="ref-spill ref-spill--{{ shot.status }}" id="sc-spill-{{ shot.shot_index }}">
+            {% if shot.status == 'ready' %}✓ Ready
+            {% elif shot.status == 'failed' %}⚠ Failed
+            {% elif shot.status == 'rendering' %}Rendering
+            {% else %}Pending{% endif %}
+          </span>
+
+          {# Outpaint overlay badge #}
           {% if op.status == 'ready' %}
           <span class="sc-op-badge sc-op-badge--ready" id="op-badge-{{ shot.shot_index }}">{{ aspect_ratio }}</span>
           {% elif op.status == 'rendering' %}
           <span class="sc-op-badge sc-op-badge--rendering" id="op-badge-{{ shot.shot_index }}">expanding…</span>
           {% elif op.status == 'failed' %}
           <span class="sc-op-badge sc-op-badge--failed" id="op-badge-{{ shot.shot_index }}">op failed</span>
-          {% endif %}
-        </div>
-
-        <!-- Shot meta header -->
-        <div class="sc-meta-header">
-          <span class="sc-shot-num">Shot {{ shot.shot_index }}</span>
-          <span class="sc-timing muted">{{ "%.1f"|format(shot.start_time or 0) }}s &middot; {{ "%.1f"|format(shot.duration or 0) }}s</span>
-          {% if shot.source == 'uploaded' %}
-          <span class="sc-badge-upload">uploaded</span>
-          {% endif %}
-        </div>
-
-        <!-- Meaning snippet -->
-        {% if shot.meaning %}
-        <div class="sc-meaning muted">{{ shot.meaning[:100] }}{% if shot.meaning|length > 100 %}…{% endif %}</div>
-        {% endif %}
-
-        <!-- Prompt (expandable + editable) -->
-        <details class="sc-prompt-details" id="sc-details-{{ shot.shot_index }}">
-          <summary class="sc-prompt-summary">Prompt &#9660;</summary>
-          <textarea class="sc-prompt-ta" id="sc-prompt-{{ shot.shot_index }}"
-                    rows="4" maxlength="4000"
-                    onblur="scSavePrompt({{ shot.shot_index }}, this.value)"
-                    >{{ shot.prompt or '' }}</textarea>
-          <button class="btn-mini sc-save-prompt-btn"
-                  onclick="scSavePrompt({{ shot.shot_index }}, document.getElementById('sc-prompt-{{ shot.shot_index }}').value)">
-            Save prompt
-          </button>
-          <span class="sc-save-indicator" id="sc-saved-{{ shot.shot_index }}" style="display:none;font-size:10px;color:#7ec8a4;">Saved</span>
-        </details>
-
-        <!-- Error line -->
-        {% if shot.error %}
-        <div class="sc-err" id="sc-err-{{ shot.shot_index }}">{{ shot.error[:100] }}</div>
-        {% endif %}
-
-        <!-- Action row -->
-        <div class="sc-actions">
-          <!-- Upload own image -->
-          <form class="sc-upload-form" id="sc-upload-form-{{ shot.shot_index }}"
-                onsubmit="scUpload(event, {{ shot.shot_index }})">
-            <input type="file" accept="image/*"
-                   id="sc-file-{{ shot.shot_index }}" class="ref-file-input"
-                   onchange="scFileChosen(this, {{ shot.shot_index }})">
-            <label for="sc-file-{{ shot.shot_index }}" class="btn-mini sc-upload-label"
-                   id="sc-upload-label-{{ shot.shot_index }}">
-              &#8679; Upload
-            </label>
-          </form>
-
-          <!-- Generate / Regenerate -->
-          {% if shot.status == 'ready' %}
-          <button class="btn-mini sc-regen-btn" id="sc-gen-btn-{{ shot.shot_index }}"
-                  data-idx="{{ shot.shot_index }}"
-                  onclick="scGenOne({{ shot.shot_index }}, true)">
-            &#8635; Regen
-          </button>
-          {% elif shot.status == 'rendering' %}
-          <button class="btn-mini sc-gen-btn sc-gen-btn--spinning" disabled
-                  id="sc-gen-btn-{{ shot.shot_index }}">
-            Generating…
-          </button>
           {% else %}
-          <button class="btn-mini sc-gen-btn" id="sc-gen-btn-{{ shot.shot_index }}"
-                  data-idx="{{ shot.shot_index }}"
-                  onclick="scGenOne({{ shot.shot_index }}, false)">
-            &#9654; Generate
-          </button>
+          <span class="sc-op-badge" id="op-badge-{{ shot.shot_index }}" style="display:none;"></span>
           {% endif %}
 
-          <!-- Outpaint button (only shown when still is ready) -->
-          {% if shot.status == 'ready' %}
-          <button class="btn-mini sc-op-btn" id="sc-op-btn-{{ shot.shot_index }}"
-                  data-idx="{{ shot.shot_index }}"
-                  data-op-status="{{ op.status or 'pending' }}"
-                  onclick="opOutpaintOne({{ shot.shot_index }})"
-                  title="Outpaint this still to {{ aspect_ratio }}">
-            {% if op.status == 'ready' %}↺{% elif op.status == 'rendering' %}⏳{% else %}⬡{% endif %}
-          </button>
-          {% endif %}
+          <span class="ref-edit-hint">Edit ↓</span>
+        </div>
+
+        <div class="ref-card-foot">
+          <span class="ref-card-name">Shot {{ shot.shot_index }}</span>
+          <span class="ref-card-meta">
+            {{ "%.1f"|format(shot.start_time or 0) }}s
+            &middot; {{ "%.1f"|format(shot.duration or 0) }}s
+            {% if shot.source == 'uploaded' %}&middot; <span style="color:#c8f135;">uploaded</span>{% endif %}
+          </span>
         </div>
       </div>
+
+      {# ── Expand edit panel (spans full grid width) ── #}
+      <div class="sc-edit-panel" id="sc-panel-{{ shot.shot_index }}" hidden>
+        <div class="ref-edit-inner" onclick="event.stopPropagation()">
+
+          {% if shot.meaning %}
+          <div style="font-size:12px;color:#7a8594;line-height:1.45;padding-bottom:10px;border-bottom:1px solid #1e1e2a;">
+            {{ shot.meaning }}
+          </div>
+          {% endif %}
+
+          {% if shot.error %}
+          <div class="sc-err" id="sc-err-{{ shot.shot_index }}">{{ shot.error[:150] }}</div>
+          {% else %}
+          <div class="sc-err" id="sc-err-{{ shot.shot_index }}" style="display:none;"></div>
+          {% endif %}
+
+          <div>
+            <label class="ref-prompt-label">Prompt — edit before generating</label>
+            <textarea class="ref-prompt-ta" id="sc-prompt-{{ shot.shot_index }}"
+                      rows="4" maxlength="4000"
+                      onblur="scSavePrompt({{ shot.shot_index }}, this.value)"
+                      >{{ shot.prompt or '' }}</textarea>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+              <button class="btn-mini sc-save-prompt-btn"
+                      onclick="scSavePrompt({{ shot.shot_index }}, document.getElementById('sc-prompt-{{ shot.shot_index }}').value)">
+                Save prompt
+              </button>
+              <span class="sc-save-indicator" id="sc-saved-{{ shot.shot_index }}"
+                    style="display:none;font-size:10px;color:#7ec8a4;">Saved</span>
+            </div>
+          </div>
+
+          <div class="sc-actions" id="sc-actions-{{ shot.shot_index }}">
+            <form class="sc-upload-form" id="sc-upload-form-{{ shot.shot_index }}"
+                  onsubmit="scUpload(event, {{ shot.shot_index }})">
+              <input type="file" accept="image/*"
+                     id="sc-file-{{ shot.shot_index }}" class="ref-file-input"
+                     onchange="scFileChosen(this, {{ shot.shot_index }})">
+              <label for="sc-file-{{ shot.shot_index }}" class="btn-mini sc-upload-label"
+                     id="sc-upload-label-{{ shot.shot_index }}">
+                &#8679; Upload
+              </label>
+            </form>
+
+            {% if shot.status == 'ready' %}
+            <button class="btn-mini sc-regen-btn" id="sc-gen-btn-{{ shot.shot_index }}"
+                    data-idx="{{ shot.shot_index }}"
+                    onclick="scGenOne({{ shot.shot_index }}, true)">
+              &#8635; Regen
+            </button>
+            {% elif shot.status == 'rendering' %}
+            <button class="btn-mini sc-gen-btn sc-gen-btn--spinning" disabled
+                    id="sc-gen-btn-{{ shot.shot_index }}">
+              Generating…
+            </button>
+            {% else %}
+            <button class="btn-mini sc-gen-btn" id="sc-gen-btn-{{ shot.shot_index }}"
+                    data-idx="{{ shot.shot_index }}"
+                    onclick="scGenOne({{ shot.shot_index }}, false)">
+              &#9654; Generate
+            </button>
+            {% endif %}
+
+            {% if shot.status == 'ready' %}
+            <button class="btn-mini sc-op-btn" id="sc-op-btn-{{ shot.shot_index }}"
+                    data-idx="{{ shot.shot_index }}"
+                    data-op-status="{{ op.status or 'pending' }}"
+                    onclick="opOutpaintOne({{ shot.shot_index }})"
+                    title="Outpaint this still to {{ aspect_ratio }}">
+              {% if op.status == 'ready' %}↺{% elif op.status == 'rendering' %}⏳{% else %}⬡{% endif %}
+            </button>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+
       {% endfor %}
     </div>
 
-    <!-- ── Proceed bar ──────────────────────────────────────── -->
+    <!-- ── Proceed bar ──────────────────────────────────────────── -->
     <div class="stage-actions" style="margin-top:28px;">
       <form method="post" action="{{ url_for('stills_approve', project_id=project.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if all_ready %}
         <button type="submit" class="btn-stage-primary">
-          Proceed to Video Studio &#8594;
+          Approve All Stills &amp; Continue →
         </button>
+        {% else %}
+        <button type="submit" class="btn-secondary" disabled
+                title="Generate or upload all {{ total_shots }} stills to continue.">
+          Approve All Stills &amp; Continue →
+          <span class="muted" style="font-size:11px;margin-left:6px;">
+            ({{ ns.ready }}/{{ total_shots }} ready)
+          </span>
+        </button>
+        {% endif %}
       </form>
-      <p class="muted" style="font-size:12px;margin-top:6px;">
-        You can review and edit visual prompts, change start frames, and control generation in the Video Studio.
-      </p>
       {% include '_redo_panel.html' %}
+    </div>
+
+  </div><!-- /stage-card -->
+</div><!-- /stage-wrap -->
+
+<!-- Regenerate warning modal -->
+<div class="sc-modal-overlay" id="sc-regen-modal">
+  <div class="sc-modal">
+    <h3>&#9888; This will use generation credits</h3>
+    <p id="sc-modal-body">Regenerating this image will cost additional generation credits,
+    the same as generating it for the first time. Are you sure?</p>
+    <div class="sc-modal-actions">
+      <button class="btn-secondary" onclick="scModalCancel()">Cancel</button>
+      <button class="btn-stage-primary" id="sc-modal-confirm"
+              style="font-size:13px;padding:8px 20px;">Regenerate anyway</button>
     </div>
   </div>
 </div>
-
 {% endblock %}
 
 {% block extra_scripts %}
 <style>
-/* ── Counter bar ── */
-.sc-counter-bar {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 18px 0 14px;
+/* ══ Shared reference card design system ══════════════════════════════ */
+.ref-progress-bar {
+    display: flex; align-items: center; gap: 14px;
+    margin: 18px 0 22px; padding: 12px 16px;
+    background: #0e0e18; border: 1px solid #22222e; border-radius: 10px;
 }
-.sc-counter-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 80px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: #1a1f26;
-  border: 1px solid #2a3040;
+.ref-progress-dots { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+.ref-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
 }
-.sc-count { font-size: 22px; font-weight: 700; line-height: 1; }
-.sc-label { font-size: 10px; color: #9aa6b2; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
-.sc-pending .sc-count { color: #9aa6b2; }
-.sc-ready   .sc-count { color: #7ec8a4; }
-.sc-failed  .sc-count { color: #ff6b6b; }
-.sc-generating .sc-count { color: #c8f135; }
+.ref-dot--ready     { background: #4caf7d; }
+.ref-dot--pending   { background: #ffb142; }
+.ref-dot--failed    { background: #e05555; }
+.ref-dot--rendering { background: #5599ff; animation: ref-pulse 1.2s ease-in-out infinite; }
+.ref-progress-label { font-size: 13px; color: #c0c8d4; white-space: nowrap; }
+.ref-progress-pending { color: #ffb142; }
+@keyframes ref-pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+.ref-failed-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: rgba(168,50,50,.15); border: 1px solid rgba(168,50,50,.4);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;
+    font-size: 13px; color: #ff8080;
+}
+.ref-retry-btn {
+    white-space: nowrap; font-size: 12px; padding: 6px 14px;
+    border-color: #a83232 !important; color: #ff8080 !important; flex-shrink: 0;
+}
+
+.ref-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: 14px; align-items: start;
+}
+
+.ref-card {
+    background: #13131c; border: 1px solid #22222e; border-radius: 12px;
+    overflow: hidden; cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+    user-select: none; position: relative;
+}
+.ref-card:hover { border-color: #3a3a50; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.ref-card--ready     { border-color: rgba(76,175,125,.3); }
+.ref-card--failed    { border-color: rgba(224,85,85,.3); }
+.ref-card--rendering { border-color: rgba(85,153,255,.25); }
+.ref-card--open      { border-color: #d4ff3a; box-shadow: 0 0 0 1px #d4ff3a22; }
+
+.ref-card-thumb {
+    position: relative; background: #0d0d14; overflow: hidden;
+}
+.ref-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref-thumb-ph {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: #2a2a3a;
+}
+.ref-thumb-ph--failed    { color: #663333; }
+.ref-thumb-ph--rendering { color: #223366; }
+
+.ref-spill {
+    position: absolute; top: 7px; right: 7px;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px;
+    letter-spacing: .3px; pointer-events: none;
+}
+.ref-spill--ready    { background: rgba(76,175,125,.22);  color: #4cdb90; border: 1px solid rgba(76,175,125,.38); }
+.ref-spill--pending  { background: rgba(255,177,66,.14);  color: #ffb142; border: 1px solid rgba(255,177,66,.28); }
+.ref-spill--failed   { background: rgba(224,85,85,.18);   color: #ff7070; border: 1px solid rgba(224,85,85,.32); }
+.ref-spill--rendering{ background: rgba(85,153,255,.18);  color: #88aaff; border: 1px solid rgba(85,153,255,.32); animation: ref-pulse 1.2s ease-in-out infinite; }
+
+.ref-edit-hint {
+    position: absolute; bottom: 7px; right: 7px;
+    font-size: 9px; font-weight: 600; color: #777;
+    background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 5px;
+    letter-spacing: .4px; text-transform: uppercase;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+}
+.ref-card:hover .ref-edit-hint,
+.ref-card--open .ref-edit-hint { opacity: 1; }
+.ref-card--open .ref-edit-hint { color: #d4ff3a; }
+
+.ref-card-foot {
+    padding: 8px 10px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.ref-card-name { font-size: 13px; font-weight: 700; color: #dde4ef; }
+.ref-card-meta { font-size: 11px; color: #556; }
+
+.ref-edit-inner {
+    padding: 16px 20px 20px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+
+/* ── Timing bar ── */
+.sc-timing-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 14px; margin: 6px 0 14px; border-radius: 8px;
+  font-size: 12px; border: 1px solid;
+}
+.sc-timing-bar strong { font-weight: 700; }
+.sc-timing-ok  { background: rgba(34,197,94,.07); border-color: rgba(34,197,94,.25); color: #86efac; }
+.sc-timing-warn{ background: rgba(245,166,35,.07); border-color: rgba(245,166,35,.3);  color: #fbbf24; }
 
 /* ── Bulk actions ── */
 .sc-bulk-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
+  display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap; margin-bottom: 18px;
 }
 .sc-btn-gen-all, .sc-btn-regen-all { font-size: 12px; padding: 6px 12px; }
 .sc-bulk-hint { font-size: 11px; margin-left: 4px; }
@@ -337,179 +465,97 @@
   padding: 16px 20px;
 }
 .op-panel-inner {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
 }
 .op-panel-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  min-width: 200px;
+  display: flex; align-items: center; gap: 14px; flex: 1; min-width: 200px;
 }
-.op-icon {
-  font-size: 28px;
-  color: #d4ff3a;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.op-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #d4ff3a;
-  margin-bottom: 3px;
-}
-.op-sub {
-  font-size: 11px;
-  color: #8a9ab2;
-  line-height: 1.45;
-}
+.op-icon { font-size: 28px; color: #d4ff3a; flex-shrink: 0; line-height: 1; }
+.op-title { font-size: 14px; font-weight: 700; color: #d4ff3a; margin-bottom: 3px; }
+.op-sub   { font-size: 11px; color: #8a9ab2; line-height: 1.45; }
 .op-sub strong { color: #c8f135; }
 .op-panel-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
 }
 .op-status-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
 }
 .op-pill {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  letter-spacing: .02em;
+  font-size: 10px; padding: 2px 8px; border-radius: 20px;
+  font-weight: 600; letter-spacing: .02em;
 }
 .op-pill-ready    { background: rgba(126,200,164,.2); color: #7ec8a4; border: 1px solid rgba(126,200,164,.3); }
 .op-pill-rendering{ background: rgba(200,241,53,.2);  color: #c8f135; border: 1px solid rgba(200,241,53,.3); }
 .op-pill-failed   { background: rgba(255,107,107,.15);color: #ff6b6b; border: 1px solid rgba(255,107,107,.3); }
 .op-pill-pending  { background: rgba(154,166,178,.1); color: #9aa6b2; border: 1px solid rgba(154,166,178,.2); }
-
 .btn-outpaint {
-  background: #d4ff3a;
-  color: #0a0a0f;
-  border: none;
-  border-radius: 7px;
-  padding: 9px 18px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background .15s, transform .1s;
-  white-space: nowrap;
+  background: #d4ff3a; color: #0a0a0f; border: none; border-radius: 7px;
+  padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: background .15s, transform .1s; white-space: nowrap;
 }
-.btn-outpaint:hover { background: #ffe200; transform: translateY(-1px); }
-.btn-outpaint:active { transform: translateY(0); }
+.btn-outpaint:hover   { background: #ffe200; transform: translateY(-1px); }
+.btn-outpaint:active  { transform: translateY(0); }
 
-/* ── Shot grid ── */
-.sc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
-  gap: 10px;
-}
-.sc-card {
-  background: #141820;
-  border: 1px solid #2a3040;
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  font-size: 11px;
-}
-.sc-card[data-status="ready"]     { border-color: #2d4a38; }
-.sc-card[data-status="failed"]    { border-color: #4a2d2d; }
-.sc-card[data-status="rendering"] { border-color: #3a4020; }
-.sc-card[data-op-status="ready"]  { border-color: #3a4a20; box-shadow: 0 0 0 1px rgba(212,255,58,.15); }
-
-/* Thumbnail */
-.sc-thumb-wrap { aspect-ratio: 16/9; background: #0d1018; overflow: hidden; position: relative; }
-.sc-thumb-link { display: block; width: 100%; height: 100%; }
-.sc-thumb      { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sc-thumb-placeholder {
-  width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; color: #444;
-}
-.sc-spinner { display: inline-block; animation: spin 1.2s linear infinite; }
+/* ── Gallery overrides for stills (16:9 thumbs) ── */
+.ref-gallery { align-items: start; }
+.sc-card .ref-card-thumb { aspect-ratio: 16/9; }
+.sc-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sc-spinner { display: inline-block; animation: spin 1.2s linear infinite; font-size: 22px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Outpaint badge overlay on thumbnail */
 .sc-op-badge {
-  position: absolute;
-  bottom: 5px; right: 5px;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: .04em;
-  pointer-events: none;
+  position: absolute; bottom: 5px; right: 5px;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px;
+  letter-spacing: .04em; pointer-events: none;
 }
 .sc-op-badge--ready    { background: #d4ff3a; color: #0a0a0f; }
 .sc-op-badge--rendering{ background: rgba(200,241,53,.3); color: #c8f135; border: 1px solid #c8f13560; }
 .sc-op-badge--failed   { background: rgba(255,107,107,.25); color: #ff6b6b; border: 1px solid #ff6b6b40; }
 
-/* Meta */
-.sc-meta-header {
-  display: flex; align-items: center; gap: 4px;
-  padding: 6px 8px 2px;
-  flex-wrap: wrap;
+/* ── Edit expand panel (full-width accordion like references) ── */
+.sc-edit-panel {
+  grid-column: 1 / -1;
+  background: #0e0e1a;
+  border: 1px solid #d4ff3a44;
+  border-radius: 12px;
+  margin-bottom: 4px;
 }
-.sc-shot-num { font-weight: 600; font-size: 12px; color: #cfd6df; }
-.sc-timing   { font-size: 10px; margin-left: auto; }
-.sc-timing-bar {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 8px 14px; margin: 6px 0 10px; border-radius: 8px;
-  font-size: 12px; border: 1px solid;
+.sc-edit-panel::before {
+  content: '';
+  display: block; width: 0; height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #d4ff3a44;
+  margin: 0 auto;
+  position: relative; top: -1px;
 }
-.sc-timing-bar strong { font-weight: 700; }
-.sc-timing-ok  { background: rgba(34,197,94,.07); border-color: rgba(34,197,94,.25); color: #86efac; }
-.sc-timing-warn{ background: rgba(245,166,35,.07); border-color: rgba(245,166,35,.3);  color: #fbbf24; }
-.sc-badge-upload {
-  font-size: 9px; padding: 1px 5px;
-  background: rgba(200,241,53,.15); color: #c8f135;
-  border: 1px solid #c8f13560; border-radius: 3px;
-  margin-left: 4px;
+.ref-prompt-label {
+  font-size: 11px; font-weight: 600; color: #667; text-transform: uppercase;
+  letter-spacing: .05em; display: block; margin-bottom: 5px;
 }
-.sc-meaning { padding: 0 8px 4px; font-size: 10px; line-height: 1.3; color: #6a7585; }
-
-/* Prompt */
-.sc-prompt-details { padding: 0 8px; margin-bottom: 4px; }
-.sc-prompt-summary {
-  font-size: 10px; cursor: pointer; color: #6a7585;
-  list-style: none; padding: 4px 0;
-}
-.sc-prompt-summary::-webkit-details-marker { display: none; }
-.sc-prompt-ta {
-  width: 100%; box-sizing: border-box; font-size: 10px;
+.ref-prompt-ta {
+  width: 100%; box-sizing: border-box; font-size: 11px;
   background: #0d1018; border: 1px solid #2a3040;
-  color: #cfd6df; border-radius: 4px; padding: 5px; resize: vertical;
-  font-family: 'JetBrains Mono', monospace; line-height: 1.4;
-  margin-top: 4px;
+  color: #cfd6df; border-radius: 6px; padding: 8px 10px;
+  resize: vertical; font-family: 'JetBrains Mono', monospace; line-height: 1.4;
 }
-.sc-save-prompt-btn { margin-top: 4px; font-size: 10px; }
-.sc-err { padding: 0 8px 4px; font-size: 10px; color: #ff6b6b; word-break: break-all; }
 
-/* Action row */
+/* ── Action row inside panel ── */
 .sc-actions {
-  display: flex; gap: 5px; align-items: center;
-  padding: 6px 8px 8px;
-  margin-top: auto;
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
 }
 .sc-upload-form { display: flex; align-items: center; }
 .sc-upload-label {
   cursor: pointer; border: 1px dashed #444;
   background: transparent; color: #7a8594; border-radius: 4px;
-  padding: 4px 7px; font-size: 10px;
+  padding: 5px 9px; font-size: 11px;
   transition: border-color .15s, color .15s;
 }
 .sc-upload-label:hover { border-color: #c8f135; color: #c8f135; }
 .sc-gen-btn {
-  flex: 1; font-size: 10px; padding: 4px 0;
+  padding: 5px 14px; font-size: 11px;
   background: rgba(200,241,53,.1); color: #c8f135;
   border: 1px solid #c8f13540; border-radius: 4px;
   cursor: pointer; transition: background .15s;
@@ -517,26 +563,29 @@
 .sc-gen-btn:hover:not(:disabled) { background: rgba(200,241,53,.2); }
 .sc-gen-btn--spinning { color: #555; background: transparent; border-color: #333; }
 .sc-regen-btn {
-  flex: 1; font-size: 10px; padding: 4px 0;
+  padding: 5px 14px; font-size: 11px;
   background: rgba(90,90,160,.15); color: #8888cc;
   border: 1px solid #8888cc40; border-radius: 4px;
   cursor: pointer; transition: background .15s;
 }
 .sc-regen-btn:hover { background: rgba(90,90,160,.3); }
-
-/* Outpaint per-shot button */
 .sc-op-btn {
-  font-size: 13px; padding: 3px 7px;
+  font-size: 13px; padding: 4px 8px;
   background: rgba(212,255,58,.1); color: #d4ff3a;
   border: 1px solid rgba(212,255,58,.3); border-radius: 4px;
-  cursor: pointer; transition: background .15s;
-  flex-shrink: 0;
+  cursor: pointer; transition: background .15s; flex-shrink: 0;
 }
 .sc-op-btn:hover { background: rgba(212,255,58,.22); }
 .sc-op-btn[data-op-status="rendering"] { color: #c8f135; cursor: default; }
 .sc-op-btn[data-op-status="ready"]     { color: #7ec8a4; border-color: rgba(126,200,164,.35); background: rgba(126,200,164,.08); }
+.sc-err {
+  font-size: 11px; color: #ff6b6b; background: rgba(255,107,107,.08);
+  border: 1px solid rgba(255,107,107,.2); border-radius: 6px;
+  padding: 6px 10px; word-break: break-all;
+}
+.sc-save-prompt-btn { font-size: 10px; }
 
-/* Regenerate warning modal */
+/* ── Regenerate modal ── */
 .sc-modal-overlay {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,.7); z-index: 999;
@@ -552,20 +601,6 @@
 .sc-modal-actions { display: flex; gap: 10px; justify-content: center; }
 </style>
 
-<!-- Regenerate warning modal -->
-<div class="sc-modal-overlay" id="sc-regen-modal">
-  <div class="sc-modal">
-    <h3>&#9888; This will use generation credits</h3>
-    <p id="sc-modal-body">Regenerating this image will cost additional generation credits,
-    the same as generating it for the first time. Are you sure?</p>
-    <div class="sc-modal-actions">
-      <button class="btn-secondary" onclick="scModalCancel()">Cancel</button>
-      <button class="btn-stage-primary" id="sc-modal-confirm"
-              style="font-size:13px;padding:8px 20px;">Regenerate anyway</button>
-    </div>
-  </div>
-</div>
-
 <script>
 (function () {
   const PID    = {{ project.id | tojson }};
@@ -573,7 +608,7 @@
   const ASPECT = {{ aspect_ratio | tojson }};
   const TOTAL  = {{ total_shots }};
 
-  /* ── Still state ── */
+  /* ── Shot state ── */
   const shotState = {};
   {% for shot in shots %}
   shotState[{{ shot.shot_index }}] = { status: {{ shot.status | tojson }}, url: {{ (shot.url or '') | tojson }} };
@@ -589,7 +624,7 @@
   };
   {% endfor %}
 
-  /* ── Counter update ── */
+  /* ── Progress bar + counter update ── */
   function updateCounters() {
     let pending = 0, ready = 0, failed = 0, generating = 0;
     for (const s of Object.values(shotState)) {
@@ -598,15 +633,33 @@
       else if (s.status === 'rendering') generating++;
       else                               pending++;
     }
-    document.getElementById('cnt-pending').textContent    = pending;
-    document.getElementById('cnt-ready').textContent      = ready;
-    document.getElementById('cnt-failed').textContent     = failed;
-    document.getElementById('cnt-generating').textContent = generating;
-    const genAllBtn = document.getElementById('btn-gen-all');
+    const el = id => document.getElementById(id);
+    if (el('cnt-ready'))      el('cnt-ready').textContent      = ready;
+    if (el('cnt-pending'))    el('cnt-pending').textContent    = pending;
+    if (el('cnt-failed'))     el('cnt-failed').textContent     = failed;
+    if (el('cnt-generating')) el('cnt-generating').textContent = generating;
+
+    const pendingLabel = el('sc-pending-label');
+    if (pendingLabel) {
+      if (pending > 0) {
+        pendingLabel.textContent = ' · ' + pending + ' pending';
+        pendingLabel.style.display = '';
+      } else {
+        pendingLabel.style.display = 'none';
+      }
+    }
+
+    const failedBanner = el('sc-failed-banner');
+    if (failedBanner) {
+      failedBanner.style.display = failed > 0 ? '' : 'none';
+      const failedCountEl = el('sc-failed-count');
+      if (failedCountEl) failedCountEl.textContent = failed;
+    }
+
+    const genAllBtn = el('btn-gen-all');
     if (genAllBtn) genAllBtn.textContent = '\u25B6 Generate All Pending (' + pending + ')';
 
-    // Show outpaint panel when all stills are ready
-    const opPanel = document.getElementById('op-panel');
+    const opPanel = el('op-panel');
     if (opPanel) opPanel.style.display = (ready === TOTAL && TOTAL > 0) ? '' : 'none';
   }
 
@@ -619,7 +672,6 @@
       else if (s.status === 'failed')    opFailed++;
       else                               opPending++;
     }
-
     const setCount = (id, n, show) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -635,20 +687,16 @@
     if (btn) {
       if (opRendering > 0) {
         btn.textContent = '\u23F3 Running\u2026';
-        btn.style.opacity = '.7';
-        btn.style.cursor  = 'default';
+        btn.style.opacity = '.7'; btn.style.cursor = 'default';
       } else if (opReady === TOTAL && TOTAL > 0) {
         btn.textContent = '\u2713 All Outpainted';
-        btn.style.opacity = '.5';
-        btn.style.cursor  = 'default';
+        btn.style.opacity = '.5'; btn.style.cursor = 'default';
       } else if (opReady > 0) {
         btn.textContent = '\u21BA Re-outpaint All';
-        btn.style.opacity = '';
-        btn.style.cursor  = '';
+        btn.style.opacity = ''; btn.style.cursor = '';
       } else {
         btn.textContent = '\u2B21 Outpaint All to ' + ASPECT;
-        btn.style.opacity = '';
-        btn.style.cursor  = '';
+        btn.style.opacity = ''; btn.style.cursor = '';
       }
     }
   }
@@ -660,26 +708,57 @@
     if (!card) return;
     card.dataset.status = status;
 
-    const thumbWrap = card.querySelector('.sc-thumb-wrap');
+    // Update card border class
+    card.classList.remove('ref-card--ready', 'ref-card--failed',
+                          'ref-card--rendering', 'ref-card--pending');
+    card.classList.add('ref-card--' + status);
+
+    // Update status spill badge
+    const spill = document.getElementById('sc-spill-' + idx);
+    if (spill) {
+      spill.className = 'ref-spill ref-spill--' + status;
+      spill.textContent =
+        status === 'ready'     ? '\u2713 Ready' :
+        status === 'failed'    ? '\u26A0 Failed' :
+        status === 'rendering' ? 'Rendering' : 'Pending';
+    }
+
+    // Update progress dot
+    const dot = document.getElementById('sc-dot-' + idx);
+    if (dot) {
+      dot.className = 'ref-dot ref-dot--' + status;
+      dot.title = 'Shot ' + idx + ' (' + status + ')';
+    }
+
+    // Update thumbnail
+    const thumbWrap = card.querySelector('.ref-card-thumb');
     if (url && status === 'ready') {
       const currentOp = opState[idx] || {};
       const displayUrl = (currentOp.status === 'ready' && currentOp.url) ? currentOp.url : url;
       let img = card.querySelector('.sc-thumb');
       if (!img) {
-        thumbWrap.innerHTML = '<a href="' + displayUrl + '" target="_blank" rel="noopener" class="sc-thumb-link">' +
-          '<img src="' + displayUrl + '" class="sc-thumb" loading="lazy" id="sc-img-' + idx + '"></a>';
+        const ph = document.getElementById('sc-placeholder-' + idx);
+        if (ph) {
+          const newImg = document.createElement('img');
+          newImg.src = displayUrl;
+          newImg.className = 'sc-thumb';
+          newImg.id = 'sc-img-' + idx;
+          newImg.loading = 'lazy';
+          newImg.alt = 'Shot ' + idx;
+          ph.replaceWith(newImg);
+        }
       } else {
         img.src = displayUrl;
-        img.parentElement.href = displayUrl;
       }
     } else if (status === 'rendering') {
-      const ph = card.querySelector('.sc-thumb-placeholder');
+      const ph = document.getElementById('sc-placeholder-' + idx);
       if (ph) ph.innerHTML = '<span class="sc-spinner">&#9698;</span>';
     } else if (status === 'failed') {
-      const ph = card.querySelector('.sc-thumb-placeholder');
-      if (ph) ph.innerHTML = '<span style="color:#ff6b6b;">&#9888;</span>';
+      const ph = document.getElementById('sc-placeholder-' + idx);
+      if (ph) ph.innerHTML = '<span style="font-size:20px;color:#663333;">&#9888;</span>';
     }
 
+    // Update generate button
     const btn = document.getElementById('sc-gen-btn-' + idx);
     if (btn) {
       if (status === 'ready') {
@@ -700,34 +779,29 @@
     }
 
     // Show/hide per-shot outpaint button
+    const actionsEl = document.getElementById('sc-actions-' + idx);
     let opBtn = document.getElementById('sc-op-btn-' + idx);
-    if (status === 'ready' && !opBtn) {
-      const actions = card.querySelector('.sc-actions');
-      if (actions) {
-        opBtn = document.createElement('button');
-        opBtn.className = 'btn-mini sc-op-btn';
-        opBtn.id = 'sc-op-btn-' + idx;
-        opBtn.dataset.idx = idx;
-        opBtn.dataset.opStatus = 'pending';
-        opBtn.title = 'Outpaint to ' + ASPECT;
-        opBtn.textContent = '\u2B21';
-        opBtn.onclick = () => opOutpaintOne(idx);
-        actions.appendChild(opBtn);
-      }
+    if (status === 'ready' && !opBtn && actionsEl) {
+      opBtn = document.createElement('button');
+      opBtn.className = 'btn-mini sc-op-btn';
+      opBtn.id = 'sc-op-btn-' + idx;
+      opBtn.dataset.idx = idx;
+      opBtn.dataset.opStatus = 'pending';
+      opBtn.title = 'Outpaint to ' + ASPECT;
+      opBtn.textContent = '\u2B21';
+      opBtn.onclick = () => opOutpaintOne(idx);
+      actionsEl.appendChild(opBtn);
     }
 
-    if (error) {
-      let errEl = document.getElementById('sc-err-' + idx);
-      if (!errEl) {
-        errEl = document.createElement('div');
-        errEl.className = 'sc-err';
-        errEl.id = 'sc-err-' + idx;
-        card.querySelector('.sc-actions').before(errEl);
+    // Update error display
+    const errEl = document.getElementById('sc-err-' + idx);
+    if (errEl) {
+      if (error) {
+        errEl.textContent = error.slice(0, 150);
+        errEl.style.display = '';
+      } else {
+        errEl.style.display = 'none';
       }
-      errEl.textContent = error.slice(0, 100);
-    } else {
-      const errEl = document.getElementById('sc-err-' + idx);
-      if (errEl) errEl.remove();
     }
 
     updateCounters();
@@ -740,22 +814,26 @@
     if (!card) return;
     card.dataset.opStatus = status;
 
-    // Update thumbnail: show outpainted version when ready
     if (status === 'ready' && url) {
       let img = card.querySelector('.sc-thumb');
       if (!img) {
-        const thumbWrap = card.querySelector('.sc-thumb-wrap');
-        thumbWrap.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener" class="sc-thumb-link">' +
-          '<img src="' + url + '" class="sc-thumb" loading="lazy" id="sc-img-' + idx + '"></a>';
+        const thumbWrap = card.querySelector('.ref-card-thumb');
+        if (thumbWrap) {
+          const newImg = document.createElement('img');
+          newImg.src = url;
+          newImg.className = 'sc-thumb';
+          newImg.id = 'sc-img-' + idx;
+          newImg.loading = 'lazy';
+          const ph = document.getElementById('sc-placeholder-' + idx);
+          if (ph) ph.replaceWith(newImg);
+        }
       } else {
         img.src = url;
-        img.parentElement.href = url;
       }
     }
 
-    // Update badge
     let badge = document.getElementById('op-badge-' + idx);
-    const thumbWrap = card.querySelector('.sc-thumb-wrap');
+    const thumbWrap = card.querySelector('.ref-card-thumb');
     if (!badge && thumbWrap) {
       badge = document.createElement('span');
       badge.id = 'op-badge-' + idx;
@@ -765,30 +843,53 @@
       if (status === 'ready') {
         badge.className = 'sc-op-badge sc-op-badge--ready';
         badge.textContent = ASPECT;
+        badge.style.display = '';
       } else if (status === 'rendering') {
         badge.className = 'sc-op-badge sc-op-badge--rendering';
         badge.textContent = 'expanding\u2026';
+        badge.style.display = '';
       } else if (status === 'failed') {
         badge.className = 'sc-op-badge sc-op-badge--failed';
         badge.textContent = 'op failed';
+        badge.style.display = '';
       } else {
-        badge.className = '';
-        badge.textContent = '';
+        badge.style.display = 'none';
       }
     }
 
-    // Update per-shot outpaint button
     const opBtn = document.getElementById('sc-op-btn-' + idx);
     if (opBtn) {
       opBtn.dataset.opStatus = status;
-      if (status === 'ready')     { opBtn.textContent = '\u21BA'; }
+      if      (status === 'ready')     { opBtn.textContent = '\u21BA'; opBtn.disabled = false; }
       else if (status === 'rendering') { opBtn.textContent = '\u23F3'; opBtn.disabled = true; }
       else if (status === 'failed')    { opBtn.textContent = '\u26A0'; opBtn.disabled = false; }
       else                             { opBtn.textContent = '\u2B21'; opBtn.disabled = false; }
     }
-
     updateOpCounters();
   }
+
+  /* ── Expand/collapse edit panel ── */
+  window.scToggle = function(idx) {
+    const panel  = document.getElementById('sc-panel-' + idx);
+    const card   = document.getElementById('sc-card-' + idx);
+    if (!panel) return;
+    const isOpen = !panel.hidden;
+    // Close all other panels
+    document.querySelectorAll('.sc-edit-panel').forEach(p => {
+      if (p !== panel) { p.hidden = true; }
+    });
+    document.querySelectorAll('.sc-card').forEach(c => {
+      if (c !== card) c.classList.remove('ref-card--open');
+    });
+    if (isOpen) {
+      panel.hidden = true;
+      card.classList.remove('ref-card--open');
+    } else {
+      panel.hidden = false;
+      card.classList.add('ref-card--open');
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
 
   /* ── Poll for still status changes ── */
   let pollTimer = null;
@@ -840,10 +941,20 @@
     applyStatus(idx, 'rendering', null, null);
     startPolling();
     try {
-      await fetch('/project/' + PID + '/stills/generate/' + idx, {
+      const resp = await fetch('/project/' + PID + '/stills/generate/' + idx, {
         method: 'POST', headers: { 'X-CSRFToken': CSRF }
       });
-    } catch(e) { applyStatus(idx, 'failed', null, 'Network error'); }
+      if (!resp.ok) {
+        let errMsg = 'Server error ' + resp.status;
+        try {
+          const body = await resp.json();
+          if (body.error) errMsg = body.error;
+        } catch(e) {}
+        applyStatus(idx, 'failed', null, errMsg);
+      }
+    } catch(e) {
+      applyStatus(idx, 'failed', null, 'Network error — check connection');
+    }
   }
 
   /* ── Generate all pending ── */
@@ -888,7 +999,6 @@
       });
       const data = await resp.json();
       if (!data.ok) { alert('Outpaint error: ' + (data.error || 'unknown')); return; }
-      // Mark all ready shots as rendering
       for (const [idx, s] of Object.entries(shotState)) {
         if (s.status === 'ready') applyOpStatus(parseInt(idx), 'rendering', null);
       }
@@ -981,13 +1091,9 @@
     } catch(e) {}
   };
 
-  /* ── Auto-start outpaint polling if any are rendering ── */
-  if (Object.values(opState).some(s => s.status === 'rendering')) {
-    startOpPolling();
-  }
-  if (Object.values(shotState).some(s => s.status === 'rendering')) {
-    startPolling();
-  }
+  /* ── Auto-start polling if any are already rendering on load ── */
+  if (Object.values(opState).some(s => s.status === 'rendering')) startOpPolling();
+  if (Object.values(shotState).some(s => s.status === 'rendering')) startPolling();
 
   updateCounters();
   updateOpCounters();
