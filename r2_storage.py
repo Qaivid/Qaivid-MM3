@@ -125,6 +125,40 @@ def upload_fileobj(fileobj: BinaryIO, r2_key: str, content_type: str = "applicat
     return url
 
 
+def delete_objects_by_url(urls: list) -> int:
+    """Delete R2 objects by their public URLs. Returns count deleted.
+
+    Strips the R2_PUBLIC_URL prefix from each URL to derive the object key.
+    Silently skips URLs that don't match the bucket's public URL.
+    """
+    if not urls or not r2_available():
+        return 0
+    try:
+        public_base = _public_url().rstrip("/")
+    except Exception:
+        return 0
+    keys = []
+    for url in urls:
+        if url and isinstance(url, str) and url.startswith(public_base + "/"):
+            key = url[len(public_base) + 1:]
+            if key:
+                keys.append(key)
+    if not keys:
+        return 0
+    client = _get_client()
+    bucket = _bucket()
+    deleted = 0
+    for i in range(0, len(keys), 1000):
+        batch = keys[i : i + 1000]
+        client.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": k} for k in batch]},
+        )
+        deleted += len(batch)
+    logger.info("Deleted %d R2 objects by URL", deleted)
+    return deleted
+
+
 def delete_prefix(prefix: str) -> int:
     """Delete all R2 objects under *prefix*. Returns count deleted."""
     client = _get_client()

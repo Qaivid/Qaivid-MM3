@@ -2081,6 +2081,291 @@ def regenerate_brief(project_id: str):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
+@app.route("/project/<project_id>/rerun_from/<target_stage>", methods=["POST"])
+@login_required
+def rerun_from_stage(project_id: str, target_stage: str):
+    """Reset the pipeline to a previous stage, clear downstream data and re-kick.
+
+    Only stages that come before the current one are valid targets.
+    Blocked if the pipeline is currently running to prevent race conditions.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    RERUNNABLE = [
+        "audio_review", "style_review", "context_review", "assumptions_review",
+        "creative_brief_review", "storyboard_review", "references_review",
+        "stills_control", "videos_control", "post_production",
+    ]
+    if target_stage not in RERUNNABLE:
+        flash("Invalid stage selected for rerun.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    if project.get("status") == "running":
+        flash("Pipeline is currently running — wait for it to finish before redoing.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    if project.get("deleted_at"):
+        flash("Cannot rerun a deleted project.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    cur_stage = project.get("stage", "")
+    try:
+        cur_idx    = STAGE_ORDER.index(cur_stage)
+        target_idx = STAGE_ORDER.index(target_stage)
+    except ValueError:
+        flash("Cannot determine pipeline position — please refresh.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    if target_idx >= cur_idx:
+        flash("Cannot jump forward in the pipeline.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    REDO_CLEARS_REFS   = {"audio_review", "style_review", "context_review",
+                          "assumptions_review", "creative_brief_review",
+                          "storyboard_review", "references_review", "stills_control"}
+    REDO_CLEARS_SHOTS  = REDO_CLEARS_REFS
+    REDO_CLEARS_VIDEOS = REDO_CLEARS_REFS | {"videos_control"}
+
+    r2_urls: list = []
+    with db() as conn, conn.cursor() as cur:
+        if target_stage in REDO_CLEARS_REFS:
+            cur.execute(
+                "SELECT file_path FROM refs WHERE project_id=%s AND file_path IS NOT NULL",
+                (project_id,)
+            )
+            r2_urls += [r["file_path"] for r in cur.fetchall()]
+            cur.execute(
+                "SELECT ref_image_url FROM characters WHERE project_id=%s AND ref_image_url IS NOT NULL",
+                (project_id,)
+            )
+            r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
+            cur.execute(
+                "SELECT ref_image_url FROM locations WHERE project_id=%s AND ref_image_url IS NOT NULL",
+                (project_id,)
+            )
+            r2_urls += [r["ref_image_url"] for r in cur.fetchall()]
+
+        if target_stage in REDO_CLEARS_SHOTS:
+            cur.execute(
+                "SELECT file_path FROM shot_assets WHERE project_id=%s AND file_path IS NOT NULL",
+                (project_id,)
+            )
+            r2_urls += [r["file_path"] for r in cur.fetchall()]
+
+        if target_stage in REDO_CLEARS_VIDEOS:
+            cur.execute(
+                "SELECT file_path FROM video_assets WHERE project_id=%s AND file_path IS NOT NULL",
+                (project_id,)
+            )
+            r2_urls += [r["file_path"] for r in cur.fetchall()]
+
+    if r2_urls:
+        try:
+            if r2_storage.r2_available():
+                r2_storage.delete_objects_by_url(list(filter(None, r2_urls)))
+        except Exception:
+            log.exception("R2 cleanup during rerun_from_stage failed for project %s", project_id)
+
+    cp = dict(project.get("context_packet") or {})
+    _cb = dict(cp.get("creative_brief") or {})
+    _cb_pending = dict(_cb.get("_pending_overrides") or {})
+
+    with db() as conn, conn.cursor() as cur:
+        if target_stage == "audio_review":
+            cur.execute(
+                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage=%s, status='awaiting_review', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (target_stage, project_id),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "style_review":
+            cur.execute(
+                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage in ("context_review", "assumptions_review"):
+            cur.execute(
+                "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "creative_brief_review":
+            cp.pop("creative_brief", None)
+            cur.execute(
+                "UPDATE projects SET context_packet=%s, styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (Json(cp), project_id),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "storyboard_review":
+            cur.execute(
+                "UPDATE projects SET styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='queued', status='queued', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "references_review":
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage='queued', status='queued',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "stills_control":
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage=%s, status='awaiting_review',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (target_stage, project_id),
+            )
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+
+        elif target_stage == "videos_control":
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage=%s, status='awaiting_review',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (target_stage, project_id),
+            )
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+
+        elif target_stage == "post_production":
+            cur.execute(
+                "UPDATE projects SET quick_video_url=NULL, final_video_url=NULL,"
+                " postprod_config=NULL, stage=%s, status='awaiting_review',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
+                (target_stage, project_id),
+            )
+
+        conn.commit()
+
+    label = STAGE_LABELS.get(target_stage, target_stage)
+
+    if target_stage == "audio_review":
+        flash(
+            f"Pipeline reset to {label}. Re-select your vocal gender override and continue.",
+            "info",
+        )
+    elif target_stage == "style_review":
+        kick_stage_style(project_id)
+        flash(f"Re-generating style suggestions. You'll land on {label} when ready.", "info")
+    elif target_stage in ("context_review", "assumptions_review"):
+        kick_stage_1(project_id)
+        flash(f"Context Engine is re-running. You'll land on {label} when ready.", "info")
+    elif target_stage == "creative_brief_review":
+        overrides = {
+            "speaker_name": _cb_pending.get("speaker_name"),
+            "location":     _cb_pending.get("location"),
+            "era":          _cb_pending.get("era"),
+            "style_preset": _cb_pending.get("style_preset") or "cinematic_natural",
+        }
+        kick_stage_brief(project_id, overrides)
+        flash(f"Re-generating Creative Brief variants. You'll land on {label} when ready.", "info")
+    elif target_stage == "storyboard_review":
+        overrides = {
+            "speaker_name": _cb_pending.get("speaker_name"),
+            "location":     _cb_pending.get("location"),
+            "era":          _cb_pending.get("era"),
+            "style_preset": _cb_pending.get("style_preset") or "cinematic_natural",
+        }
+        kick_stage_2(project_id, project.get("name") or "Qaivid_Project", overrides)
+        flash(f"Storyboard engine is re-running. You'll land on {label} when ready.", "info")
+    elif target_stage == "references_review":
+        kick_stage_refs(project_id)
+        flash(f"Re-generating reference plates. You'll land on {label} when ready.", "info")
+    elif target_stage == "stills_control":
+        flash(f"Pipeline reset to {label}. Trigger still generation for each shot when ready.", "info")
+    elif target_stage == "videos_control":
+        flash(f"Pipeline reset to {label}. Re-run video generation when ready.", "info")
+    elif target_stage == "post_production":
+        flash(f"Pipeline reset to {label}.", "info")
+
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
 @app.route("/project/<project_id>/advance/3", methods=["POST"])
 @login_required
 def advance_stage_3(project_id: str):

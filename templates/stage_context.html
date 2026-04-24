@@ -281,6 +281,7 @@
                 <button type="submit" class="btn-stage-primary">Continue to METAMAN Dialogue →</button>
                 <a href="{{ url_for('project_detail', project_id=project.id) }}"
                    class="btn-stage">Refresh</a>
+                {% include '_redo_panel.html' %}
             </div>
         </form>
     </div>

@@ -1,0 +1,60 @@
+{#
+  Rerun pipeline panel.
+  Include inside any stage template's .stage-actions or .stage-card.
+  Needs: project (with .stage, .status, .id, .deleted_at).
+  Visible only when status != 'running' and project is not deleted.
+#}
+{% if not project._is_review_only and not project.deleted_at and project.status != 'running' %}
+{% set _redo_stages = [
+    ('audio_review',          'Acoustic Audit',    'Clears all context, style profile, storyboard, stills, videos and post-production.'),
+    ('style_review',          'Style Profile',     'Clears context, storyboard, stills, videos and post-production.'),
+    ('context_review',        'Context Engine',    'Clears context, storyboard, stills, videos and post-production.'),
+    ('assumptions_review',    'METAMAN Dialogue',  'Clears storyboard, stills, videos and post-production.'),
+    ('creative_brief_review', 'Creative Brief',    'Clears storyboard, references, stills and videos.'),
+    ('storyboard_review',     'Storyboard',        'Clears references, all stills and videos.'),
+    ('references_review',     'References',        'Clears all reference plates, stills and videos.'),
+    ('stills_control',        'Stills',            'Clears all stills and video clips.'),
+    ('videos_control',        'Video Studio',      'Clears all video clips and post-production.'),
+    ('post_production',       'Post Production',   'Clears rendered output and final cut.'),
+] %}
+{# Full pipeline order for index comparison — includes display-only stages not in _redo_stages #}
+{% set _redo_order = ['audio_review','style_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_control','stills_review','videos_control','post_production','videos_review','final_review'] %}
+{% set _ns = namespace(cur_idx=-1) %}
+{% for s in _redo_order %}{% if s == project.stage %}{% set _ns.cur_idx = loop.index0 %}{% endif %}{% endfor %}
+{% if _ns.cur_idx > 0 %}
+<div class="redo-panel">
+    <button class="redo-toggle" type="button"
+            onclick="(function(btn){var d=document.getElementById('redo-dropdown-{{ project.id }}');var open=d.hidden;d.hidden=!open;btn.setAttribute('aria-expanded',open?'true':'false');})(this)"
+            aria-expanded="false" aria-controls="redo-dropdown-{{ project.id }}">
+        ↺ Redo from an earlier stage
+    </button>
+    <div class="redo-dropdown" id="redo-dropdown-{{ project.id }}" hidden>
+        <p class="redo-warn">
+            ⚠ <strong>Destructive action.</strong>
+            The selected stage and everything built after it will be deleted and re-generated.
+            This cannot be undone.
+        </p>
+        <ul class="redo-list">
+            {% for stage_key, label, warn_text in _redo_stages %}
+            {% set _ns2 = namespace(target_idx=-1) %}
+            {% for s in _redo_order %}{% if s == stage_key %}{% set _ns2.target_idx = loop.index0 %}{% endif %}{% endfor %}
+            {% if _ns2.target_idx >= 0 and _ns2.target_idx < _ns.cur_idx %}
+            <li>
+                <form method="post"
+                      action="{{ url_for('rerun_from_stage', project_id=project.id, target_stage=stage_key) }}"
+                      class="redo-form"
+                      onsubmit="return confirm('Redo from « {{ label }} »?\n\n{{ warn_text }}\n\nThis cannot be undone.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="redo-btn">
+                        <span class="redo-btn-name">{{ label }}</span>
+                        <span class="redo-btn-sub">{{ warn_text }}</span>
+                    </button>
+                </form>
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+{% endif %}

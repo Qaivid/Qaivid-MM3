@@ -5244,3 +5244,80 @@ main:has(> .ws-grid) {
     color: var(--text-muted);
 }
 .lp-showcase-cta-hint strong { color: #d4ff3a; }
+
+/* ── Redo Pipeline Panel ───────────────────────────────────────── */
+.redo-panel {
+    margin-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,.08);
+    padding-top: 1.25rem;
+}
+.redo-toggle {
+    background: none;
+    border: 1px solid rgba(212,255,58,.25);
+    color: rgba(212,255,58,.7);
+    border-radius: 6px;
+    padding: .45rem .9rem;
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .02em;
+    transition: border-color .18s, color .18s, background .18s;
+}
+.redo-toggle:hover {
+    border-color: rgba(212,255,58,.55);
+    color: #d4ff3a;
+    background: rgba(212,255,58,.06);
+}
+.redo-dropdown {
+    margin-top: .85rem;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    max-width: 560px;
+}
+.redo-warn {
+    font-size: .82rem;
+    color: #ffb142;
+    line-height: 1.45;
+    margin: 0 0 .9rem;
+}
+.redo-warn strong { color: #ff9940; }
+.redo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+.redo-form { margin: 0; }
+.redo-btn {
+    width: 100%;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px;
+    padding: .55rem .85rem;
+    color: var(--text, #e5e5e5);
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+    font-family: inherit;
+    transition: border-color .15s, background .15s;
+}
+.redo-btn:hover {
+    border-color: rgba(212,255,58,.4);
+    background: rgba(212,255,58,.05);
+}
+.redo-btn-name {
+    font-size: .88rem;
+    font-weight: 600;
+    color: #d4ff3a;
+}
+.redo-btn-sub {
+    font-size: .76rem;
+    color: rgba(255,255,255,.45);
+    line-height: 1.35;
+}

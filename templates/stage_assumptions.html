@@ -135,6 +135,7 @@
                 <button type="submit" class="btn-stage-primary">Lock In &amp; Build Storyboard →</button>
                 <a href="{{ url_for('project_detail', project_id=project.id, at='context_review') }}"
                    class="btn-stage">← Back to Context</a>
+                {% include '_redo_panel.html' %}
             </div>
         </form>
     </div>
