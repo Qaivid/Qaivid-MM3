@@ -262,6 +262,8 @@ def _user_prompt(
         import math
         # Aim for roughly one scene per 6-8 units, capped 4-8.
         target_n = min(8, max(4, math.ceil(n_units / 7)))
+        min_n = max(2, target_n - 1)
+        max_n = min(10, target_n + 2)
         scene_count_hint = (
             f"\n\nSCENE COUNT GUIDANCE (IMPORTANT): Stage 1 auto-detected only "
             f"1 section for this song, but it has {n_units} lyric units — "
@@ -269,9 +271,9 @@ def _user_prompt(
             f"DO NOT create only 1 scene. "
             f"Use the lyric content above to identify natural emotional breakpoints "
             f"(opening, early verses, hook/chorus, middle section, emotional peak, "
-            f"resolution/outro) and create exactly {target_n} scenes. "
+            f"resolution/outro) and create between {min_n} and {max_n} scenes. "
             f"Each scene must have a distinct emotional purpose and narrative phase. "
-            f"Distribute the {n_units} units evenly across the {target_n} scenes."
+            f"Distribute the {n_units} units evenly across your chosen number of scenes."
         )
     elif n_sections:
         scene_count_hint = (

@@ -25,6 +25,7 @@ Output: input_packet consumed by Stage 2 (Context Engine).
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
@@ -1294,3 +1295,231 @@ class InputProcessor:
         text = re.sub(r"[^\w\s\u0600-\u06FF\u0A00-\u0A7F\u0900-\u097F]", "", text)
         text = re.sub(r"\s+", " ", text)
         return text
+
+
+# ===========================================================================
+# Module-level helper: LLM-powered lyric resegmentation
+# ===========================================================================
+
+_CANONICAL_SECTION_TYPES = frozenset({
+    "intro", "verse", "chorus", "pre_chorus", "post_chorus",
+    "bridge", "hook", "refrain", "interlude", "outro",
+})
+
+
+def llm_resegment_lyrics(
+    input_packet: Dict[str, Any],
+    api_key: str,
+) -> Dict[str, Any]:
+    """Re-segment a collapsed single-section song into proper named sections.
+
+    Called from ``_stage0_job`` in pipeline_worker.py when
+    ``InputProcessor._song_inferred()`` collapses everything into one giant
+    inferred section — which happens when lyrics are pasted without blank
+    lines between stanzas (the norm for Punjabi/Urdu/Hindi songs copied from
+    lyric websites).
+
+    Sends the numbered lyric lines to GPT-4o-mini and asks it to return
+    canonical section boundaries.  The response is validated strictly:
+
+    - Every unit (1 … N) must be covered exactly once (no gaps, no overlaps)
+    - At least 2 sections must be returned to justify the resegmentation
+    - Any section type not in ``_CANONICAL_SECTION_TYPES`` is mapped to
+      "verse" so downstream stages always receive known types
+
+    On any failure (network, parse error, validation failure) the function
+    logs a warning and returns the original ``input_packet`` unchanged.  The
+    pipeline never hard-stops here.
+
+    Returns:
+        The (possibly updated) ``input_packet`` dict.  If resegmentation
+        succeeded, ``input_packet["resegmented_by_llm"]`` is ``True`` and
+        ``input_packet["sections"]`` / ``input_packet["repetition_map"]``
+        reflect the new structure.
+    """
+    sections = input_packet.get("sections") or []
+    units    = input_packet.get("units") or []
+
+    # Only act when blank-line inference collapsed everything into one section.
+    if (len(sections) != 1
+            or not sections[0].get("is_inferred")
+            or len(units) < 10):
+        return input_packet
+
+    logger.info(
+        "llm_resegment_lyrics: collapsed single-section detected "
+        "(%d units) — calling GPT-4o-mini for structural analysis",
+        len(units),
+    )
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        numbered_lines = "\n".join(
+            f"{u['index']}. {u['text']}" for u in units
+        )
+
+        system_prompt = (
+            "You are a music structure analyst. "
+            "Your only task is to identify section boundaries in song lyrics.\n\n"
+            "MAP any regional or language-specific section names to these canonical types:\n"
+            "  intro       — opening lines before the first verse or chorus\n"
+            "  verse       — antara, stanza, kuplet, mukhda (if not repeating)\n"
+            "  chorus      — mukhda / hook / refrain — the main repeating hook\n"
+            "  pre_chorus  — build-up before the chorus\n"
+            "  bridge      — a contrasting section that usually appears once\n"
+            "  interlude   — instrumental or transitional break\n"
+            "  outro       — closing / fade-out lines\n\n"
+            "RULES:\n"
+            "1. Every lyric line MUST belong to exactly one section "
+            "(no gaps, no overlaps).\n"
+            "2. Identify repeated sections by comparing lyric content — "
+            "repeated mukhda/chorus lines should be the same type.\n"
+            "3. Use start_unit and end_unit as 1-based line numbers (inclusive).\n"
+            "4. Return between 3 and 10 sections.\n"
+            "5. Return STRICT JSON only — no prose outside the JSON object."
+        )
+
+        user_prompt = (
+            f"Identify the section structure of these {len(units)} lyric lines.\n\n"
+            f"LYRIC LINES:\n{numbered_lines}\n\n"
+            f"Return this exact JSON format:\n"
+            f'{{\n'
+            f'  "sections": [\n'
+            f'    {{"type": "intro",  "label": "Intro",   "start_unit": 1, "end_unit": 4}},\n'
+            f'    {{"type": "verse",  "label": "Verse 1", "start_unit": 5, "end_unit": 12}},\n'
+            f'    {{"type": "chorus", "label": "Chorus",  "start_unit": 13, "end_unit": 18}}\n'
+            f'  ]\n'
+            f'}}\n\n'
+            f"IMPORTANT: The last section's end_unit MUST be {len(units)}. "
+            f"Every line from 1 to {len(units)} must be covered."
+        )
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+        )
+
+        raw  = resp.choices[0].message.content or "{}"
+        data = json.loads(raw)
+        gpt_sections = data.get("sections") or []
+
+        if not gpt_sections:
+            logger.warning("llm_resegment_lyrics: GPT returned no sections — keeping original")
+            return input_packet
+
+        # ── Validate coverage ────────────────────────────────────────────────
+        n = len(units)
+        covered = [False] * (n + 1)  # 1-indexed
+
+        for spec in gpt_sections:
+            try:
+                start = int(spec.get("start_unit") or 0)
+                end   = int(spec.get("end_unit")   or 0)
+            except (TypeError, ValueError):
+                logger.warning("llm_resegment_lyrics: non-integer boundary — aborting")
+                return input_packet
+
+            if start < 1 or end > n or start > end:
+                logger.warning(
+                    "llm_resegment_lyrics: boundary out-of-range "
+                    "start=%d end=%d n=%d — aborting",
+                    start, end, n,
+                )
+                return input_packet
+
+            for i in range(start, end + 1):
+                if covered[i]:
+                    logger.warning(
+                        "llm_resegment_lyrics: overlap at unit %d — aborting", i
+                    )
+                    return input_packet
+                covered[i] = True
+
+        missing = [i for i in range(1, n + 1) if not covered[i]]
+        if missing:
+            logger.warning(
+                "llm_resegment_lyrics: %d uncovered unit(s) (e.g. %s) — aborting",
+                len(missing), missing[:5],
+            )
+            return input_packet
+
+        if len(gpt_sections) < 2:
+            logger.warning(
+                "llm_resegment_lyrics: only 1 section returned — no improvement, keeping original"
+            )
+            return input_packet
+
+        # ── Rebuild sections + update unit.section_id ────────────────────────
+        units_by_index: Dict[int, Dict[str, Any]] = {u["index"]: u for u in units}
+        type_counters: Counter = Counter()
+        new_sections: List[Dict[str, Any]] = []
+
+        for i, spec in enumerate(gpt_sections, 1):
+            raw_type = (
+                str(spec.get("type") or "verse")
+                .lower().strip()
+                .replace(" ", "_").replace("-", "_")
+            )
+            stype = raw_type if raw_type in _CANONICAL_SECTION_TYPES else "verse"
+            type_counters[stype] += 1
+            cnt   = type_counters[stype]
+
+            gpt_label = str(spec.get("label") or "").strip()
+            if not gpt_label:
+                gpt_label = (
+                    stype.replace("_", "-").title()
+                    if cnt == 1
+                    else f"{stype.replace('_', '-').title()} {cnt}"
+                )
+            label = gpt_label[:60]
+
+            section_id      = f"s{i:03d}"
+            start           = int(spec["start_unit"])
+            end             = int(spec["end_unit"])
+            section_unit_ids: List[str] = []
+
+            for idx in range(start, end + 1):
+                u = units_by_index.get(idx)
+                if u:
+                    u["section_id"] = section_id
+                    section_unit_ids.append(u["id"])
+
+            new_sections.append({
+                "id":          section_id,
+                "type":        stype,
+                "label":       label,
+                "is_inferred": True,
+                "unit_ids":    section_unit_ids,
+                "repeat_of":   None,
+            })
+
+        # ── Rebuild repetition map ────────────────────────────────────────────
+        ip          = InputProcessor()
+        new_rep_map = ip._build_repetition_map(units, new_sections)
+
+        updated = dict(input_packet)
+        updated["sections"]           = new_sections
+        updated["units"]              = units
+        updated["repetition_map"]     = new_rep_map
+        updated["resegmented_by_llm"] = True
+
+        logger.info(
+            "llm_resegment_lyrics: resegmented %d units into %d sections: %s",
+            n,
+            len(new_sections),
+            [f"{s['type']}({len(s['unit_ids'])}u)" for s in new_sections],
+        )
+        return updated
+
+    except Exception:
+        logger.exception(
+            "llm_resegment_lyrics: unexpected error — returning original input_packet"
+        )
+        return input_packet

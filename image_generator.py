@@ -352,7 +352,7 @@ Return ONLY valid JSON, no markdown, no explanation:
                 {"role": "system", "content": system_msg},
                 {"role": "user",   "content": user_msg},
             ],
-            temperature=0.4,
+            temperature=0.6,
             max_tokens=4000,
             response_format={"type": "json_object"},
         )

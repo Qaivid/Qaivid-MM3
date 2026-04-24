@@ -47,18 +47,18 @@ _MATERIALIZER_SCHEMA = {
     "character_bible": {
         "characters": [
             {
-                "character_id": "<string — stable id slug, e.g. 'primary_speaker'>",
-                "identity_seed": "<one sentence — the non-negotiable core of who this person is>",
-                "archetype": "<e.g. 'young rural woman in mourning'>",
-                "age_range": "<e.g. '22-30'>",
-                "physical_range": "<broad physical description range — no exact features>",
-                "wardrobe_logic": "<wardrobe RULES, not specific outfit — e.g. 'traditional attire, earthy tones'>",
-                "styling_logic": "<grooming and styling rules — e.g. 'minimal, natural'>",
-                "emotional_baseline": "<resting emotional expression — e.g. 'restrained grief'>",
-                "behavior_traits": "<e.g. 'slow, contained, deliberate movement'>",
+                "character_id": "<string — stable id slug derived from the character's role, e.g. 'primary_speaker', 'narrator', 'beloved'>",
+                "identity_seed": "<one sentence — the non-negotiable core of who this person is, derived from the song's cultural world and emotional context>",
+                "archetype": "<role-and-world-specific archetype derived from the song context — NOT a generic placeholder>",
+                "age_range": "<derive from lyric/narrative context — e.g. '18-28', '30-45', 'elder'>",
+                "physical_range": "<broad physical parameters anchored in the song's cultural world — no exact features, no locked face>",
+                "wardrobe_logic": "<wardrobe RULES derived from the cultural world and emotional register — NOT a specific outfit>",
+                "styling_logic": "<grooming and styling rules true to this cultural world and character role>",
+                "emotional_baseline": "<resting emotional expression that defines this character across scenes>",
+                "behavior_traits": "<movement and presence style, derived from the character's emotional state and cultural context>",
                 "variation_rules": {
-                    "allowed": ["<list of things that may change between scenes>"],
-                    "restricted": ["<list of things that must never change>"]
+                    "allowed": ["<list of elements that may change between scenes — e.g. expression, posture, wardrobe layer>"],
+                    "restricted": ["<list of identity anchors that must never change — e.g. gender, cultural identity, emotional register>"]
                 }
             }
         ]
@@ -66,15 +66,15 @@ _MATERIALIZER_SCHEMA = {
     "location_bible": {
         "locations": [
             {
-                "location_id": "<string — stable id slug, e.g. 'rural_punjab_world'>",
-                "world": "<e.g. 'Rural Punjab, Pakistan, 1980s'>",
-                "architecture_style": "<e.g. 'mud-brick, low courtyard walls'>",
-                "structural_elements": ["<e.g. 'narrow lanes'>", "<doorways>", "<courtyards>"],
-                "textures": ["<e.g. 'raw earth'>", "<weathered plaster>"],
+                "location_id": "<string — stable id slug derived from the world, e.g. 'primary_world', 'memory_space', 'urban_setting'>",
+                "world": "<describe the world concretely using the song's actual cultural and geographic context — NOT a generic placeholder>",
+                "architecture_style": "<architecture style true to this song's world and cultural geography>",
+                "structural_elements": ["<architectural and spatial elements that define this world>", "<derived from cultural context>"],
+                "textures": ["<material textures true to this world>", "<derived from geography and era>"],
                 "environment_density": "<empty | sparse | moderate | busy>",
-                "color_palette": ["<e.g. 'warm ochre'>", "<dusty beige>", "<faded terracotta>"],
-                "lighting_tendency": "<e.g. 'soft diffused morning light, harsh midday shadow'>",
-                "environment_rules": ["<what belongs>", "<what is forbidden>"]
+                "color_palette": ["<colors anchored in the actual world's light, materials, and emotional register>"],
+                "lighting_tendency": "<lighting quality true to this world's geography, time of day, and emotional tone>",
+                "environment_rules": ["<what belongs in this world>", "<what is visually forbidden or anachronistic>"]
             }
         ]
     },
@@ -230,7 +230,7 @@ async def _call_llm(user_prompt: str) -> dict:
     client = AsyncOpenAI(api_key=api_key)
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
-        temperature=0.35,
+        temperature=0.65,
         max_tokens=2500,
         response_format={"type": "json_object"},
         messages=[

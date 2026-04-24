@@ -1947,6 +1947,34 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
             input_packet.get("languages"),
         )
 
+        # ── Stage 1b: LLM lyric resegmentation (collapsed-section rescue) ──
+        # When blank-line inference collapses all lyrics into 1 inferred
+        # section (common for Punjabi/Urdu/Hindi songs pasted without blank
+        # lines), call GPT-4o-mini to identify proper section boundaries from
+        # the lyric content.  Falls back silently to the 1-section result on
+        # any failure — the pipeline never hard-stops here.
+        _ip_sections_before = len(input_packet.get("sections") or [])
+        if input_packet.get("input_type") == "song" and api_key:
+            try:
+                from input_processor import llm_resegment_lyrics
+                _set_status(project_id, "running",
+                            {"stage": "audio",
+                             "label": "Analysing song structure (AI)…"},
+                            stage="running_0")
+                input_packet = llm_resegment_lyrics(input_packet, api_key)
+            except Exception:
+                logger.exception(
+                    "Stage 0: llm_resegment_lyrics import/call failed "
+                    "for project=%s", project_id
+                )
+
+        _resegmented = input_packet.get("resegmented_by_llm", False)
+        _ip_sections_after = len(input_packet.get("sections") or [])
+        logger.info(
+            "Stage 1 final: sections=%d (was %d, resegmented=%s) for project=%s",
+            _ip_sections_after, _ip_sections_before, _resegmented, project_id,
+        )
+
         # Persist audio data + transcript + input_packet (+ timed lyrics if available)
         # Also write Stage 0 and Stage 1-Input namespaces into the Project Brain.
         with _db() as conn, conn.cursor() as cur:
