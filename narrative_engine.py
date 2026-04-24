@@ -91,43 +91,107 @@ async def generate_narrative_intelligence(
 # ---------------------------------------------------------------------------
 
 def _build_prompts(cp: Dict[str, Any]) -> tuple[str, str]:
-    wa  = cp.get("world_assumptions") or {}
-    spk = cp.get("speaker") or {}
-    arc = cp.get("emotional_arc") or {}
-    mot = cp.get("motivation") or {}
+    wa   = cp.get("world_assumptions") or {}
+    spk  = cp.get("speaker") or {}
+    addr = cp.get("addressee") or {}
+    arc  = cp.get("emotional_arc") or {}
+    mot  = cp.get("motivation") or {}
     meta = cp.get("meta") or {}
+    lines = cp.get("line_meanings") or []
 
-    # Detect whether the piece has repetition (songs with chorus/hook)
+    # --- Structure summary (item 3 of the input contract) -----------------
+    # Pass through the actual verse / chorus / bridge / etc. breakdown,
+    # not just a "has_repetition" boolean. Counts are enough for narrative
+    # strategy — the engine doesn't need the full text.
+    structure_counts: Dict[str, int] = {}
+    for lm in lines:
+        fn = str(lm.get("function") or "").strip().lower()
+        if fn:
+            structure_counts[fn] = structure_counts.get(fn, 0) + 1
     has_repetition = any(
-        str(lm.get("repeat_status", "")).lower() == "repeat"
-        for lm in (cp.get("line_meanings") or [])
+        str(lm.get("repeat_status", "")).lower() == "repeat" for lm in lines
     )
 
-    context_summary = {
+    # --- Audio rhythm (item 7 of the input contract, optional) ------------
+    # BPM rides through Context as cp["audio_meta"]["bpm"] when available.
+    # Per-line timestamps are attached by the orchestrator as
+    # line_meanings[].lyric_start_seconds / lyric_end_seconds. Total
+    # duration is derived from the last timed line. Everything is optional;
+    # a piece with no audio simply omits these fields.
+    audio_meta = cp.get("audio_meta") or {}
+    bpm = audio_meta.get("bpm")
+    timed_lines = [
+        lm for lm in lines
+        if isinstance(lm.get("lyric_start_seconds"), (int, float))
+        and isinstance(lm.get("lyric_end_seconds"), (int, float))
+    ]
+    total_duration_s: Optional[float] = None
+    if timed_lines:
+        try:
+            total_duration_s = round(
+                max(float(lm["lyric_end_seconds"]) for lm in timed_lines), 2
+            )
+        except (TypeError, ValueError):
+            total_duration_s = None
+
+    context_summary: Dict[str, Any] = {
         "input_type":        cp.get("input_type") or cp.get("recognized_type"),
         "narrative_mode":    cp.get("narrative_mode"),
         "location_dna":      cp.get("location_dna"),
+        # 1. Meaning of the input
         "core_theme":        cp.get("core_theme"),
         "dramatic_premise":  cp.get("dramatic_premise"),
         "narrative_spine":   cp.get("narrative_spine"),
-        "speaker_identity":  spk.get("identity"),
-        "speaker_gender":    spk.get("gender"),
-        "geography":         wa.get("geography"),
-        "season":            wa.get("season"),
-        "era":               wa.get("era"),
-        "emotional_arc":     {
-            "opening":    arc.get("opening"),
-            "development": arc.get("development"),
-            "climax":     arc.get("climax"),
-            "resolution": arc.get("resolution"),
+        # 2. Voice / perspective
+        "speaker": {
+            "identity":                  spk.get("identity"),
+            "gender":                    spk.get("gender"),
+            "age_range":                 spk.get("age_range"),
+            "emotional_state":           spk.get("emotional_state"),
+            "social_role":               spk.get("social_role"),
+            "cultural_background":       spk.get("cultural_background"),
+            "relationship_to_addressee": spk.get("relationship_to_addressee"),
         },
+        "addressee": {
+            "identity":     addr.get("identity"),
+            "relationship": addr.get("relationship"),
+            "presence":     addr.get("presence"),
+        },
+        # 4. Timeline nature + 5. Cultural / world grounding
+        "world": {
+            "geography":      wa.get("geography"),
+            "era":            wa.get("era"),
+            "season":         wa.get("season"),
+            "timeline_nature": wa.get("timeline_nature"),
+            "social_context": wa.get("social_context"),
+        },
+        # 6. Emotional progression
+        "emotional_arc": {
+            "opening":     arc.get("opening"),
+            "development": arc.get("development"),
+            "climax":      arc.get("climax"),
+            "resolution":  arc.get("resolution"),
+        },
+        # 1c. Conflict
         "motivation": {
             "inciting_cause":    mot.get("inciting_cause"),
             "underlying_desire": mot.get("underlying_desire"),
             "stakes":            mot.get("stakes"),
             "obstacle":          mot.get("obstacle"),
         },
-        "has_repetition":    has_repetition,
+        # 3. Structure
+        "structure": {
+            "function_counts": structure_counts or None,
+            "has_repetition":  has_repetition,
+            "line_count":      len(lines),
+        },
+        # 7. Duration / rhythm (optional)
+        "rhythm": {
+            "bpm":                bpm,
+            "total_duration_s":   total_duration_s,
+            "timed_line_count":   len(timed_lines) or None,
+        },
+        # Meta — abstraction guidance for storytelling tone
         "symbolic_density":  meta.get("symbolic_density"),
         "abstraction_level": meta.get("abstraction_level"),
     }
@@ -193,7 +257,37 @@ Field guidance:
     reinforce         — same visual used as anchor motif
     none              — no special handling (not a song or no repetition)
 
-  expression_channels: what carries meaning — order them by importance for THIS piece"""
+  expression_channels: what carries meaning — order them by importance for THIS piece
+
+INPUTS YOU RECEIVE (and how to use them):
+  speaker + addressee
+    — Use the relationship_to_addressee, addressee.presence and
+      addressee.relationship to decide presence_logic. If the addressee is
+      "absent" or "memory_only", lean toward fragmented or memory_only
+      presence. If the addressee is on-screen and reciprocal, prefer
+      always_visible.
+  world.timeline_nature
+    — real_time   → linear timeline_behavior is most natural
+    — memory      → memory_based or fragmented
+    — cyclical    → cyclical
+    — ambiguous   → fragmented or symbolic, your call
+  world.social_context + world.geography
+    — Inform whether the storytelling_mode should feel intimate
+      (observational), heightened (expressive), allegorical (symbolic), or
+      direct (performative). They never become locations or visuals.
+  structure.function_counts
+    — Counts of verse / chorus / bridge / etc. lines. A high chorus count
+      means the repetition_strategy field matters; a flat structure (no
+      chorus) makes "none" appropriate. Bridges usually warrant an
+      emotional_progression shift around their position.
+  rhythm.bpm + rhythm.total_duration_s
+    — High BPM + short duration → motion_philosophy=dynamic_dominant.
+    — Low BPM + long duration → still_dominant.
+    — Mixed energy → mixed.
+    — These are optional; if missing, decide from the emotional arc alone.
+  symbolic_density + abstraction_level
+    — Higher symbolic density / abstraction → favor symbolic storytelling
+      and associative or symbolic continuity_style."""
 
     user_msg = f"""\
 Content to analyze:
