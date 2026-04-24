@@ -49,20 +49,99 @@
 </style>
 {% set sm = project.summary or {} %}
 {% set tl = project.styled_timeline or [] %}
+{% set sb_scenes = sb_scenes or [] %}
+<style>
+.sb-poss-section { margin: 0 0 28px; }
+.sb-poss-header { display:flex; align-items:baseline; gap:.6rem; margin:0 0 .5rem; }
+.sb-poss-header h2 { margin:0; font-size:1.05rem; }
+.sb-poss-header .muted { font-size:.85rem; }
+.sb-scene-poss { background:#13131f; border:1px solid rgba(255,255,255,.08); border-radius:10px;
+                  padding:14px 16px; margin:0 0 12px; }
+.sb-scene-poss-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:.5rem; margin:0 0 .5rem; }
+.sb-scene-poss-num { background:#ffb142; color:#1a1a2e; font-weight:700;
+                     padding:2px 8px; border-radius:6px; font-size:.78rem; }
+.sb-scene-poss-name { font-weight:600; }
+.sb-scene-poss-purpose { font-style:italic; color:#aaa; font-size:.85rem; flex-basis:100%; margin-top:.15rem; }
+.sb-real-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+                 gap:8px; margin-top:.5rem; }
+.sb-real-card { background:#1d1d2e; border:1px solid rgba(255,255,255,.06); border-radius:8px;
+                 padding:8px 10px; font-size:.82rem; }
+.sb-real-card-title { color:#ffb142; font-weight:600; margin:0 0 .25rem; font-size:.85rem; }
+.sb-real-card-desc { color:#ccc; line-height:1.35; margin:0; }
+.sb-real-card-meta { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;
+                      font-size:.72rem; color:#888; }
+.sb-real-card-meta span { background:#0e0e18; padding:1px 6px; border-radius:4px; }
+.sb-poss-empty { color:#888; font-size:.85rem; font-style:italic; }
+</style>
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
     {% include '_style_profile_badge.html' %}
 
     <div class="stage-card">
         <div class="stage-header">
-            <span class="stage-badge">Stage 2 — Storyboard</span>
+            <span class="stage-badge">Stage 5 — Storyboard (Possibilities)</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
-                The VisualStoryboardEngine, RhythmicAssemblyEngine, and StyleGradingEngine have built your shot list.
-                <strong>{{ tl|length }} shots</strong>,
-                total duration <strong>{{ "%.1f"|format(sm.total_duration or 0) }}s</strong>,
-                style preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>.
+                Storyboard is where every scene fans out into <strong>possible realizations</strong>.
+                The next stage — the Creative Brief — locks ONE realization per scene.
+                Below: <strong>{{ sb_scenes|length }} scene{{ '' if sb_scenes|length == 1 else 's' }}</strong>
+                of possibilities, then the underlying
+                <strong>{{ tl|length }} shot{{ '' if tl|length == 1 else 's' }}</strong>
+                ({{ "%.1f"|format(sm.total_duration or 0) }}s,
+                preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>).
             </p>
+        </div>
+
+        {# ── Scene possibilities (storyboard_packet.scenes[*].valid_realizations) ── #}
+        <section class="sb-poss-section">
+            <div class="sb-poss-header">
+                <h2>Scene Possibilities</h2>
+                <span class="muted">— approve this fan-out so the Creative Brief can pick from it.</span>
+            </div>
+            {% if sb_scenes %}
+                {% for scene in sb_scenes %}
+                <div class="sb-scene-poss">
+                    <div class="sb-scene-poss-head">
+                        <span class="sb-scene-poss-num">Scene {{ loop.index }}</span>
+                        <span class="sb-scene-poss-name">{{ scene.name or scene.scene_id or 'Scene ' ~ loop.index }}</span>
+                        {% if scene.beat_range %}<span class="muted">· {{ scene.beat_range }}</span>{% endif %}
+                        {% if scene.purpose %}<div class="sb-scene-poss-purpose">{{ scene.purpose }}</div>{% endif %}
+                    </div>
+                    {% set _reals = scene.valid_realizations or [] %}
+                    {% if _reals %}
+                    <div class="sb-real-grid">
+                        {% for real in _reals %}
+                        <div class="sb-real-card">
+                            <p class="sb-real-card-title">
+                                {{ real.name or real.realization_id or ('Option ' ~ loop.index) }}
+                            </p>
+                            {% if real.description or real.summary %}
+                            <p class="sb-real-card-desc">{{ (real.description or real.summary)[:200] }}</p>
+                            {% endif %}
+                            <div class="sb-real-card-meta">
+                                {% if real.tone %}<span>tone: {{ real.tone }}</span>{% endif %}
+                                {% if real.energy %}<span>energy: {{ real.energy }}</span>{% endif %}
+                                {% if real.framing %}<span>framing: {{ real.framing }}</span>{% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="sb-poss-empty">No alternate realizations recorded for this scene.</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="sb-poss-empty">
+                No scene possibilities packet was produced (legacy project or
+                fallback path). The shot list below still represents the locked storyboard.
+            </p>
+            {% endif %}
+        </section>
+
+        <div class="sb-poss-header">
+            <h2>Underlying Shot List</h2>
+            <span class="muted">— supporting detail; per-shot edits remain available.</span>
         </div>
 
         {# Task #69 — group shots by Creative Brief scene (if locked) so the

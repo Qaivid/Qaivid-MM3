@@ -1227,8 +1227,23 @@ def project_detail(project_id: str):
 
     if stage == "storyboard_review":
         shot_assets = _get_shot_assets(project_id)
-        return render_template("stage_storyboard.html", project=project,
-                               shot_assets=shot_assets)
+        # Read storyboard_packet so the review surface can show the scene
+        # POSSIBILITIES (valid_realizations) the user is approving — the
+        # Creative Brief stage will then lock ONE realization per scene.
+        try:
+            with db() as _sbconn:
+                _sbbrain = ProjectBrain.load(project_id, _sbconn)
+            storyboard_packet = dict(_sbbrain.read("storyboard_packet") or {})
+        except Exception:
+            storyboard_packet = {}
+        sb_scenes = list(storyboard_packet.get("scenes") or [])
+        return render_template(
+            "stage_storyboard.html",
+            project=project,
+            shot_assets=shot_assets,
+            storyboard_packet=storyboard_packet,
+            sb_scenes=sb_scenes,
+        )
 
     if stage == "materializer_review":
         # Read the locked Cast & World Bible from the brain so the user can
