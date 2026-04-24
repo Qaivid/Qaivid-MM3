@@ -2583,9 +2583,13 @@ def rerun_from_stage(project_id: str, target_stage: str):
             )
 
         elif target_stage == "creative_brief_review":
+            # Storyboard now runs BEFORE brief in the new canonical order.
+            # styled_timeline and storyboard_packet are upstream inputs to the
+            # brief — do NOT clear them so the brief re-run has its scene data.
+            # Only clear brief-derived outputs (materializer, refs, stills, clips).
             cp.pop("creative_brief", None)
             cur.execute(
-                "UPDATE projects SET context_packet=%s, styled_timeline=NULL, summary=NULL,"
+                "UPDATE projects SET context_packet=%s,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
