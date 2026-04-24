@@ -295,6 +295,15 @@ class AudioProcessor:
         folded = [self._fold_to_musical_range(c) for c in candidates]
         bpm = float(np.median(folded))
 
+        # --- Octave-halving check -------------------------------------------
+        # Both X and X/2 can sit inside [60, 180], so folding alone cannot
+        # resolve "double-tempo" errors (e.g. 73 BPM detected as 143.6 BPM).
+        # We consult the tempogram autocorrelation: if the half-tempo bin
+        # carries at least 55 % of the full-tempo bin's energy, the true beat
+        # is almost certainly at the lower octave.
+        if bpm > 100:
+            bpm = self._resolve_octave_via_tempogram(onset_env, sr, bpm)
+
         # Final sanity clamp.
         if bpm < 40:
             bpm = 40.0
@@ -311,6 +320,52 @@ class AudioProcessor:
             bpm *= 2.0
         while bpm >= hi:
             bpm /= 2.0
+        return bpm
+
+    def _resolve_octave_via_tempogram(
+        self, onset_env: np.ndarray, sr: int, bpm: float
+    ) -> float:
+        """Halve *bpm* when the tempogram shows the half-tempo is well-supported.
+
+        librosa sometimes detects BPM at 2× the true rate when there are strong
+        transients on every half-beat (kick+snare, dense percussion, etc.).
+        Both the true and the doubled value sit inside the [60, 180] window, so
+        simple octave-folding cannot distinguish them.
+
+        We look at the mean tempogram autocorrelation energy at *bpm* and
+        *bpm/2*.  If the half-tempo bin carries at least 55 % of the full-tempo
+        bin's energy it is genuinely supported and we prefer the lower octave.
+        """
+        half = bpm / 2.0
+        if half < 50:
+            return bpm  # Don't go below 50 BPM
+        try:
+            tg = librosa.feature.tempogram(onset_envelope=onset_env, sr=sr)
+            tempo_freqs = librosa.tempo_frequencies(tg.shape[0], sr=sr)
+            tg_mean = np.mean(tg, axis=1)
+
+            idx_full = int(np.argmin(np.abs(tempo_freqs - bpm)))
+            idx_half = int(np.argmin(np.abs(tempo_freqs - half)))
+
+            energy_full = float(tg_mean[idx_full])
+            energy_half = float(tg_mean[idx_half])
+
+            if energy_full <= 0:
+                return bpm
+
+            ratio = energy_half / energy_full
+            logger.debug(
+                "Octave check: %.1f BPM (e=%.4f) vs %.1f BPM (e=%.4f) ratio=%.3f",
+                bpm, energy_full, half, energy_half, ratio,
+            )
+            if ratio >= 0.55:
+                logger.info(
+                    "Double-tempo detected: %.1f -> %.1f BPM (tempogram ratio %.2f)",
+                    bpm, half, ratio,
+                )
+                return round(half, 2)
+        except Exception as exc:
+            logger.warning("Octave tempogram check failed: %s", exc)
         return bpm
 
     def _repair_bpm(self, tempo: Any) -> float:
