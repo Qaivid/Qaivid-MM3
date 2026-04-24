@@ -894,9 +894,12 @@ def _render_character_plate(project_id: str, character_id: int,
         _set_entity_ref(project_id, "character", character_id,
                         status="rendering", source="generated", error=None)
         try:
-            if style_suffix and not prompt_override:
-                base = build_character_plate_prompt(character, location_dna)
-                prompt_override = f"{base} {style_suffix}".strip()
+            if style_suffix:
+                if prompt_override:
+                    prompt_override = f"{prompt_override} {style_suffix}".strip()
+                else:
+                    base = build_character_plate_prompt(character, location_dna)
+                    prompt_override = f"{base} {style_suffix}".strip()
             url, used_prompt = generate_character_plate(
                 character, project_id, location_dna=location_dna,
                 prompt_override=prompt_override,
@@ -929,9 +932,12 @@ def _render_location_plate(project_id: str, location_id: int,
         _set_entity_ref(project_id, "location", location_id,
                         status="rendering", source="generated", error=None)
         try:
-            if style_suffix and not prompt_override:
-                base = build_location_plate_prompt(location)
-                prompt_override = f"{base} {style_suffix}".strip()
+            if style_suffix:
+                if prompt_override:
+                    prompt_override = f"{prompt_override} {style_suffix}".strip()
+                else:
+                    base = build_location_plate_prompt(location)
+                    prompt_override = f"{base} {style_suffix}".strip()
             url, used_prompt = generate_location_plate(
                 location, project_id, prompt_override=prompt_override,
             )

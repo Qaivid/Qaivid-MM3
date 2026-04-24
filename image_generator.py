@@ -106,69 +106,126 @@ def ai_build_ref_prompts(
     if not characters and not locations:
         return {}
 
-    # ── Summarise story context for the LLM ─────────────────────────────────
-    cp = context_packet or {}
-    sp = style_profile or {}
+    # ── Summarise story context — only include fields that actually have values
+    cp  = context_packet or {}
+    sp  = style_profile  or {}
     cin = sp.get("cinematic") or {}
+    wa  = cp.get("world_assumptions") or {}
+    if not isinstance(wa, dict):
+        wa = {}
 
-    story_summary = "\n".join(filter(None, [
-        f"World: {cp.get('location_dna', '')}",
-        f"Era / setting: {cp.get('world_assumptions', {}).get('era', '') if isinstance(cp.get('world_assumptions'), dict) else ''}",
-        f"Emotional themes: {cp.get('emotional_core', '')}",
-        f"Visual style: {cin.get('look', '')} — {cin.get('palette', '')}",
-        f"Genre: {sp.get('genre', '')}",
-    ]))
+    def _v(*keys):
+        """Return first non-empty string value from context_packet or style_profile."""
+        for key in keys:
+            v = cp.get(key) or sp.get(key) or cin.get(key) or ""
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return ""
 
-    # ── Serialise entities ───────────────────────────────────────────────────
+    story_lines = []
+    if _v("location_dna"):
+        story_lines.append(f"World / setting: {_v('location_dna')}")
+    if wa.get("geography"):
+        story_lines.append(f"Geography: {wa['geography']}")
+    if wa.get("era"):
+        story_lines.append(f"Era: {wa['era']}")
+    if wa.get("architecture_style"):
+        story_lines.append(f"Architecture: {wa['architecture_style']}")
+    if wa.get("characteristic_setting"):
+        story_lines.append(f"Characteristic scene: {wa['characteristic_setting']}")
+    if _v("core_theme", "emotional_core"):
+        story_lines.append(f"Theme / mood: {_v('core_theme', 'emotional_core')}")
+    if cin.get("look") or cin.get("palette"):
+        story_lines.append(f"Visual style: {cin.get('look','')} {cin.get('palette','')}".strip())
+    if _v("genre"):
+        story_lines.append(f"Genre: {_v('genre')}")
+    story_summary = "\n".join(story_lines) or "No style context provided."
+
+    # ── Serialise characters ─────────────────────────────────────────────────
+    # Only send fields that have actual values; flag characters with no physical
+    # data so GPT knows to write a culturally-generic portrait, not poetry.
     def _char_summary(c: dict) -> str:
-        parts = [
-            f"ID:{c['id']} Name:{c.get('name','')}",
-            f"Role:{c.get('role','')} Age:{c.get('age_range','')} Gender:{c.get('gender','')}",
-            f"Ethnicity:{c.get('ethnicity','')} Complexion:{c.get('complexion','')}",
-            f"Wardrobe:{c.get('wardrobe','')} Grooming:{c.get('grooming','')}",
-            f"Cultural:{c.get('cultural_notes','')}",
-        ]
-        return " | ".join(p for p in parts if p.split(":",1)[-1].strip())
+        physical_fields = {
+            k: (c.get(k) or "").strip()
+            for k in ["age_range", "gender", "ethnicity", "complexion", "wardrobe", "grooming"]
+        }
+        has_physical = any(v for v in physical_fields.values())
+        parts = [f"ID:{c['id']} Name:{(c.get('name') or 'unnamed').strip()}"]
+        if (c.get("role") or "").strip():
+            parts.append(f"Role:{c['role'].strip()}")
+        for k, v in physical_fields.items():
+            if v:
+                parts.append(f"{k.replace('_',' ').title()}:{v}")
+        if (c.get("cultural_notes") or "").strip():
+            parts.append(f"Cultural context:{c['cultural_notes'].strip()}")
+        if not has_physical:
+            parts.append("NOTE: No physical appearance data — write an anonymous culturally-authentic portrait")
+        return " | ".join(parts)
 
+    # ── Serialise locations ──────────────────────────────────────────────────
+    # CRITICAL: The 'description' field is a NARRATIVE SCENE DESCRIPTION that
+    # mentions characters and story actions.  We deliberately exclude it and
+    # pass only physical/environment fields so GPT cannot put people in scenes.
     def _loc_summary(l: dict) -> str:
-        parts = [
-            f"ID:{l['id']} Name:{l.get('name','')}",
-            f"Desc:{l.get('description','')}",
-            f"Geography:{l.get('geography','')} Time:{l.get('time_of_day','')}",
-            f"Weather:{l.get('weather_or_atmosphere','')} Mood:{l.get('mood','')}",
-            f"Props:{l.get('visual_details','')} Cultural:{l.get('cultural_notes','')}",
-        ]
-        return " | ".join(p for p in parts if p.split(":",1)[-1].strip())
+        parts = [f"ID:{l['id']} Name:{(l.get('name') or 'location').strip()}"]
+        for k, label in [
+            ("geography",             "Geography"),
+            ("time_of_day",           "Time of day"),
+            ("weather_or_atmosphere", "Weather / atmosphere"),
+            ("architecture_style",    "Architecture"),
+            ("cultural_dna",          "Cultural DNA"),
+            ("cultural_notes",        "Cultural notes"),
+            ("social_layer",          "Social layer"),
+        ]:
+            v = (l.get(k) or "").strip()
+            if v:
+                parts.append(f"{label}:{v}")
+        # visual_details often starts with the location name as a prefix — strip it
+        raw_vd   = (l.get("visual_details") or "").strip()
+        loc_name = (l.get("name") or "").strip()
+        if raw_vd and raw_vd.lower() != loc_name.lower():
+            props = raw_vd[len(loc_name):].lstrip(";., ").strip() if (loc_name and raw_vd.lower().startswith(loc_name.lower())) else raw_vd
+            if props:
+                parts.append(f"Props / details:{props}")
+        return " | ".join(parts)
 
     chars_block = "\n".join(_char_summary(c) for c in characters)
     locs_block  = "\n".join(_loc_summary(l)  for l in locations)
 
     system_msg = (
-        "You are a world-class cinematic image prompt writer for AI image generation models. "
-        "Your prompts read like a director's vision — flowing, evocative, and precise. "
-        "You never use field labels like 'Wardrobe:' or 'Architecture:'. "
-        "You always weave visual details into natural prose that gives the image model "
-        "creative room while anchoring it firmly to the cultural and emotional world of the story."
+        "You are a cinematographer and image prompt specialist writing prompts for an AI image generation model. "
+        "Your job is to produce clean, visual, descriptive prompts — NOT poetry, NOT metaphor, NOT story narration. "
+        "Every word you write must describe something the camera can see. "
+        "You never use emotional abstractions ('longing', 'yearning', 'ethereal presence') as substitutes for physical description. "
+        "You never put characters or people into LOCATION prompts — locations are always empty spaces. "
+        "You always ground prompts in cultural and geographic authenticity."
     )
 
-    user_msg = f"""You are creating reference image prompts for a music video project.
+    user_msg = f"""Write image generation prompts for characters and locations in a music video project.
 
-STORY CONTEXT:
+PROJECT WORLD:
 {story_summary}
 
-CHARACTERS (write a PORTRAIT prompt for each):
+───────────────────────────────
+CHARACTERS — write a PORTRAIT prompt for each
+Each prompt must describe PHYSICAL APPEARANCE only: face, skin, age, clothing, hair.
+If a character has no physical data, write a culturally-authentic anonymous portrait
+for someone from that cultural world (e.g. "A young South Asian woman in traditional Punjabi attire...").
+End every character prompt with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
+
 {chars_block}
 
-LOCATIONS (write a SCENE prompt for each):
+───────────────────────────────
+LOCATIONS — write an EMPTY SCENE prompt for each
+RULE: The scene must contain ZERO people, ZERO characters, ZERO human figures.
+Do NOT borrow characters or actions from any description — the description is narrative context only.
+Focus entirely on: architecture, landscape, lighting, props, atmosphere, time of day.
+End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic."
+
 {locs_block}
 
-INSTRUCTIONS:
-- CHARACTER prompts: 2-3 sentences. Describe who the person is, their physical presence, emotional bearing, cultural world. Weave wardrobe and grooming in naturally. End with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic appearance, regionally accurate clothing and features."
-- LOCATION prompts: 3-4 sentences. Open with time-of-day + cultural setting. Describe the place cinematically. Mention key props naturally. State the scene is empty (no people). End with: "Establishing wide-angle shot, photorealistic, cinematic, geographically and architecturally authentic, atmospheric lighting, no people."
-- Do NOT copy field labels into prompts. Write freely.
-- Each prompt should feel unique to that specific character or location — not generic.
-
-Return ONLY valid JSON (no markdown, no explanation):
+───────────────────────────────
+Return ONLY valid JSON, no markdown, no explanation:
 {{
   "characters": {{"<id as string>": "<portrait prompt>"}},
   "locations":  {{"<id as string>": "<scene prompt>"}}
@@ -182,8 +239,8 @@ Return ONLY valid JSON (no markdown, no explanation):
                 {"role": "system", "content": system_msg},
                 {"role": "user",   "content": user_msg},
             ],
-            temperature=0.7,
-            max_tokens=3000,
+            temperature=0.4,
+            max_tokens=4000,
             response_format={"type": "json_object"},
         )
         import json as _json
