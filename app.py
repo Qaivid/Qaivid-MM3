@@ -1255,8 +1255,8 @@ def project_detail(project_id: str):
             mat_packet = dict(_mbrain.read("materializer_packet") or {})
         except Exception:
             mat_packet = {}
-        characters = list((mat_packet.get("character_bible") or {}).get("characters") or [])
-        locations  = list((mat_packet.get("location_bible")  or {}).get("locations")  or [])
+        characters = list((mat_packet.get("character_profile") or {}).get("characters") or [])
+        locations  = list((mat_packet.get("location_profile")  or {}).get("locations")  or [])
         motifs     = list(mat_packet.get("motif_anchors") or [])
         return render_template(
             "stage_materializer.html",
@@ -1391,12 +1391,12 @@ def project_detail(project_id: str):
         # (from character bible) + lighting reference (from location bible).
         char_by_id = {
             (c.get("character_id") or ""): c
-            for c in ((mat_packet_v.get("character_bible") or {}).get("characters") or [])
+            for c in ((mat_packet_v.get("character_profile") or {}).get("characters") or [])
             if isinstance(c, dict)
         }
         loc_by_id = {
             (l.get("location_id") or ""): l
-            for l in ((mat_packet_v.get("location_bible") or {}).get("locations") or [])
+            for l in ((mat_packet_v.get("location_profile") or {}).get("locations") or [])
             if isinstance(l, dict)
         }
         for ps in plan_shots:
@@ -2135,7 +2135,7 @@ def materializer_edit(project_id: str):
     safe set (identity_seed / wardrobe_logic for characters, world /
     lighting_tendency for locations) so users can't accidentally rewrite
     the entire schema. Edits are merged into both the materializer_packet
-    and the mirrored character_bible / location_bible namespaces.
+    and the mirrored character_profile / location_profile namespaces.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
@@ -2174,8 +2174,8 @@ def materializer_edit(project_id: str):
         with db() as conn:
             brain = ProjectBrain.load(project_id, conn)
             mat_packet = dict(brain.read("materializer_packet") or {})
-            char_bible = dict(brain.read("character_bible") or {})
-            loc_bible  = dict(brain.read("location_bible") or {})
+            char_bible = dict(brain.read("character_profile") or {})
+            loc_bible  = dict(brain.read("location_profile") or {})
 
             def _merge(rows: list, edits: dict, id_key: str) -> list:
                 out = []
@@ -2189,12 +2189,12 @@ def materializer_edit(project_id: str):
                     out.append(row)
                 return out
 
-            packet_chars = (mat_packet.get("character_bible") or {}).get("characters") or []
-            packet_locs  = (mat_packet.get("location_bible")  or {}).get("locations")  or []
+            packet_chars = (mat_packet.get("character_profile") or {}).get("characters") or []
+            packet_locs  = (mat_packet.get("location_profile")  or {}).get("locations")  or []
             packet_chars = _merge(packet_chars, char_edits, "character_id")
             packet_locs  = _merge(packet_locs,  loc_edits,  "location_id")
-            mat_packet.setdefault("character_bible", {})["characters"] = packet_chars
-            mat_packet.setdefault("location_bible",  {})["locations"]  = packet_locs
+            mat_packet.setdefault("character_profile", {})["characters"] = packet_chars
+            mat_packet.setdefault("location_profile",  {})["locations"]  = packet_locs
 
             cb_chars = char_bible.get("characters") or []
             lb_locs  = loc_bible.get("locations") or []
@@ -2202,8 +2202,8 @@ def materializer_edit(project_id: str):
             loc_bible["locations"]   = _merge(lb_locs,  loc_edits,  "location_id")
 
             brain.write("materializer_packet", mat_packet)
-            brain.write("character_bible", char_bible)
-            brain.write("location_bible", loc_bible)
+            brain.write("character_profile", char_bible)
+            brain.write("location_profile", loc_bible)
             brain.save(conn)
             conn.commit()
         flash("Cast & world updated.", "info")
@@ -2360,7 +2360,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
     #
     # BRIEF NAMESPACES (creative_briefs):
     #   Invalidated by anything at or before creative_brief_review.
-    # MATERIALIZER NAMESPACES (materializer_packet, character_bible, location_bible):
+    # MATERIALIZER NAMESPACES (materializer_packet, character_profile, location_profile):
     #   Invalidated by anything at or before references_review (materializer
     #   re-runs at the start of each refs job, so stale data must be cleared).
     REDO_CLEARS_BRIEF        = {"audio_review", "context_review", "narrative_review",
@@ -2373,8 +2373,8 @@ def rerun_from_stage(project_id: str, target_stage: str):
         _brain_writes["creative_briefs"] = {}
     if target_stage in REDO_CLEARS_MATERIALIZER:
         _brain_writes["materializer_packet"] = {}
-        _brain_writes["character_bible"] = {}
-        _brain_writes["location_bible"] = {}
+        _brain_writes["character_profile"] = {}
+        _brain_writes["location_profile"] = {}
 
     if _brain_writes:
         try:

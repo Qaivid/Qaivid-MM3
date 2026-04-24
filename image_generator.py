@@ -96,7 +96,7 @@ def ai_build_ref_prompts(
 ) -> dict:
     """Ask GPT to write purpose-built image prompts for every character and location.
 
-    Reads identity rules from `materializer_packet` (character_bible, location_bible,
+    Reads identity rules from `materializer_packet` (character_profile, location_profile,
     motif_anchors, continuity_rules) and creative direction from `creative_briefs`
     so prompts reflect the full REFERENCE ASSETS spec — not just raw DB fields.
 
@@ -123,12 +123,12 @@ def ai_build_ref_prompts(
 
     # ── Index brain identity entries by db_id for O(1) lookup ────────────────
     brain_chars_by_dbid: dict[int, dict] = {}
-    for bch in (mp.get("character_bible") or {}).get("characters") or []:
+    for bch in (mp.get("character_profile") or {}).get("characters") or []:
         if isinstance(bch, dict) and isinstance(bch.get("db_id"), int):
             brain_chars_by_dbid[bch["db_id"]] = bch
 
     brain_locs_by_dbid: dict[int, dict] = {}
-    for bloc in (mp.get("location_bible") or {}).get("locations") or []:
+    for bloc in (mp.get("location_profile") or {}).get("locations") or []:
         if isinstance(bloc, dict) and isinstance(bloc.get("db_id"), int):
             brain_locs_by_dbid[bloc["db_id"]] = bloc
 
@@ -246,7 +246,7 @@ def ai_build_ref_prompts(
             if props and "clay roof" not in props.lower() and "plaster" not in props.lower():
                 parts.append(f"Props:{props}")
 
-        # Brain world DNA — location_bible identity rules
+        # Brain world DNA — location_profile identity rules
         if brain.get("world"):
             parts.append(f"World DNA: {brain['world']}")
         if brain.get("environment_type"):
@@ -898,10 +898,10 @@ def generate_shot_still(
             and identity-consistent wardrobe/grooming cues).
         location: Linked location record (drives setting description).
         user_override: User-edited prompt to use verbatim, or None.
-        brain_char: materializer_packet character_bible entry (by db_id).
+        brain_char: materializer_packet character_profile entry (by db_id).
             Provides identity_seed, archetype, emotional_baseline,
             continuity_rules. Enriches the prompt beyond DB fields.
-        brain_loc: materializer_packet location_bible entry (by db_id).
+        brain_loc: materializer_packet location_profile entry (by db_id).
             Provides world DNA (world, environment_type, key_textures,
             palette_anchor). Enriches the environment clause.
 

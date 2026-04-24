@@ -254,7 +254,7 @@ def _environment_clause(
     raw = ""
     bl = brain_loc or {}
 
-    # Brain-first: use location_bible world DNA as authoritative world descriptor.
+    # Brain-first: use location_profile world DNA as authoritative world descriptor.
     world_dna_parts: list[str] = []
     for field in ("world", "environment_type", "key_textures", "palette_anchor", "architecture"):
         val = (bl.get(field) or "").strip()
@@ -491,10 +491,10 @@ def compose_image_prompt(
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
-    brain_char: materializer_packet character_bible entry matched by db_id.
+    brain_char: materializer_packet character_profile entry matched by db_id.
                 Provides identity_seed, archetype, emotional_baseline,
                 cultural_markers, continuity_rules.
-    brain_loc:  materializer_packet location_bible entry matched by db_id.
+    brain_loc:  materializer_packet location_profile entry matched by db_id.
                 Provides world DNA (world, environment_type, key_textures,
                 palette_anchor, architecture).
     Both fall back cleanly to DB-only behaviour when None or {}.

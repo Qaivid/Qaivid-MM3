@@ -18,8 +18,8 @@ Namespaces (in pipeline order):
     style_packet       Stage 4  — Style Engine output (visual language, palette…)
     storyboard_packet  Stage 5  — Storyboard intent (scenes + valid_realizations) — POSSIBILITIES
     creative_briefs    Stage 6  — Creative Brief — ONE locked direction per scene (SELECTION)
-    character_bible    Stage 7  — Materializer character anchors
-    location_bible     Stage 7  — Materializer location anchors
+    character_profile  Stage 7  — Materializer character anchors
+    location_profile   Stage 7  — Materializer location anchors
     reference_assets   Stage 8  — Reference image metadata
     shot_plan              Stage 9  — Final shot asset plan
     video_sequence_packet  Stage 10 — Per-shot video render plan (before rendering)
@@ -45,8 +45,8 @@ NAMESPACES: List[str] = [
     "storyboard_packet",
     "creative_briefs",
     "materializer_packet",
-    "character_bible",
-    "location_bible",
+    "character_profile",
+    "location_profile",
     "reference_assets",
     "shot_plan",
     "video_sequence_packet",
@@ -65,12 +65,9 @@ NAMESPACE_OWNERS: Dict[str, str] = {
     "style_packet":           "stage_4_style",
     "storyboard_packet":      "stage_5_storyboard",
     "creative_briefs":        "stage_6_brief",
-    # Stage 7 — Materializer: materializer_packet is the authoritative output.
-    # character_bible and location_bible are mirrors kept for backward compat
-    # (older stages that read brain.character_bible still work unchanged).
     "materializer_packet":    "stage_7_materializer",
-    "character_bible":        "stage_7_materializer",
-    "location_bible":         "stage_7_materializer",
+    "character_profile":      "stage_7_materializer",
+    "location_profile":       "stage_7_materializer",
     "reference_assets":       "stage_8_refs",
     "shot_plan":              "stage_9_stills",
     "video_sequence_packet":  "stage_10_video",

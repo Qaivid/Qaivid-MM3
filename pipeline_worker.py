@@ -603,8 +603,8 @@ def _render_video(project_id: str, shot: dict) -> None:
 
         # materializer_packet — identity + continuity
         _mp     = _vbrain.read("materializer_packet") or {}
-        _cb     = (_mp.get("character_bible") or {}).get("characters") or []
-        _lb     = (_mp.get("location_bible")  or {}).get("locations")  or []
+        _cb     = (_mp.get("character_profile") or {}).get("characters") or []
+        _lb     = (_mp.get("location_profile")  or {}).get("locations")  or []
         _rules  = _mp.get("continuity_rules") or []
         continuity_rules = [str(r) for r in _rules] if _rules else None
 
@@ -1019,8 +1019,8 @@ def _render_shot(project_id: str, shot: dict,
             with _db() as conn:
                 _shot_brain = ProjectBrain.load(project_id, conn)
             _mp = _shot_brain.read("materializer_packet") or {}
-            _bc_list = list((_mp.get("character_bible") or {}).get("characters") or [])
-            _bl_list = list((_mp.get("location_bible")  or {}).get("locations")  or [])
+            _bc_list = list((_mp.get("character_profile") or {}).get("characters") or [])
+            _bl_list = list((_mp.get("location_profile")  or {}).get("locations")  or [])
             # Build db_id indexes
             _bc_idx = {
                 b["db_id"]: b for b in _bc_list
@@ -1195,8 +1195,8 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
         with _db() as conn:
             _lb = ProjectBrain.load(project_id, conn)
         _mat = _lb.read("materializer_packet") or {}
-        brain_chars = list((_mat.get("character_bible") or {}).get("characters") or [])
-        brain_locs  = list((_mat.get("location_bible")  or {}).get("locations")  or [])
+        brain_chars = list((_mat.get("character_profile") or {}).get("characters") or [])
+        brain_locs  = list((_mat.get("location_profile")  or {}).get("locations")  or [])
     except Exception:
         logger.debug("_link_shots_to_entities: brain load failed (non-fatal)")
 
@@ -2874,7 +2874,7 @@ def _stage_materializer_job(project_id: str) -> None:
 
     Runs after Creative Brief approval, BEFORE Reference Assets generation.
     Reads creative_briefs, context, narrative, style, settings from brain
-    → produces materializer_packet (character_bible + location_bible +
+    → produces materializer_packet (character_profile + location_profile +
     motif_anchors) → populates DB chars/locs/motifs rows → links each
     storyboard shot to its character/location FK → parks at
     `materializer_review` so the director can inspect the cast & world
@@ -2924,8 +2924,8 @@ def _stage_materializer_job(project_id: str) -> None:
 
         # ── Enrich brain with DB integer IDs ─────────────────────────────
         # After DB rows are created, read their integer PKs and store them
-        # directly in the materializer_packet entries (brain.character_bible
-        # characters[i].db_id / location_bible.locations[i].db_id).
+        # directly in the materializer_packet entries (brain.character_profile
+        # characters[i].db_id / location_profile.locations[i].db_id).
         # This gives _link_shots_to_entities exact IDs without any guessing.
         try:
             with _db() as conn, conn.cursor() as cur:
@@ -2941,8 +2941,8 @@ def _stage_materializer_job(project_id: str) -> None:
                 _enriched_locs = cur.fetchall() or []
 
             _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
-            _ep_cb = (_ep.get("character_bible") or {}).get("characters") or []
-            _ep_lb = (_ep.get("location_bible")  or {}).get("locations")  or []
+            _ep_cb = (_ep.get("character_profile") or {}).get("characters") or []
+            _ep_lb = (_ep.get("location_profile")  or {}).get("locations")  or []
             _db_spk = [c for c in _enriched_chars if c["entity_type"] == "speaker"]
             _db_wdn = [l for l in _enriched_locs  if l["entity_type"] == "world_dna"]
 
@@ -2954,8 +2954,8 @@ def _stage_materializer_job(project_id: str) -> None:
                     _bloc["db_id"] = _db_wdn[_i]["id"]
 
             _mat_brain.write("materializer_packet", _ep)
-            _mat_brain.write("character_bible", _ep.get("character_bible") or {})
-            _mat_brain.write("location_bible",  _ep.get("location_bible")  or {})
+            _mat_brain.write("character_profile", _ep.get("character_profile") or {})
+            _mat_brain.write("location_profile",  _ep.get("location_profile")  or {})
             with _db() as conn:
                 _mat_brain.save(conn)
                 conn.commit()
@@ -2983,8 +2983,8 @@ def _stage_materializer_job(project_id: str) -> None:
                     project_id,
                 )
 
-        _chars_n = len((mat_packet.get("character_bible") or {}).get("characters") or [])
-        _locs_n  = len((mat_packet.get("location_bible")  or {}).get("locations")  or [])
+        _chars_n = len((mat_packet.get("character_profile") or {}).get("characters") or [])
+        _locs_n  = len((mat_packet.get("location_profile")  or {}).get("locations")  or [])
         logger.info(
             "Materializer v2 completed for project=%s: %d chars, %d locs",
             project_id, _chars_n, _locs_n,
@@ -3012,7 +3012,7 @@ def _stage_refs_job(project_id: str,
     environment plate per location. Parks at `references_review` so the user
     can fix any plate (regenerate / upload) before stills are rendered.
 
-    Reads the locked character_bible + location_bible written by the
+    Reads the locked character_profile + location_profile written by the
     Materializer stage (Stage 7) — does NOT re-run the materializer here.
     Legacy projects with no character/location rows skip straight to stills.
     """
@@ -3334,8 +3334,8 @@ def _build_video_sequence_packet(
     from motion_render_prompt_builder import _intensity_float, _motion_mode_for_intensity
 
     motion_philosophy = str(narrative_packet.get("motion_philosophy") or "mixed").strip()
-    _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
-    _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
+    _cb = (materializer_packet.get("character_profile") or {}).get("characters") or []
+    _lb = (materializer_packet.get("location_profile")  or {}).get("locations")  or []
 
     # Index bible by db_id (int FK) — only entries with valid FK are usable for linking
     _char_by_dbid = {int(c["db_id"]): c for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)}

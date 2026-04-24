@@ -13,10 +13,10 @@ Reads from Project Brain:
   5. project_settings    — variation preference, output constraints (optional)
 
 Writes to Project Brain:
-  materializer_packet → {character_bible, location_bible, motif_anchors,
+  materializer_packet → {character_profile, location_profile, motif_anchors,
                          continuity_rules}
   Also mirrors:
-  character_bible, location_bible as top-level namespaces (backward compat)
+  character_profile, location_profile as top-level namespaces
 
 Always calls the three legacy materializers (character/location/motif) after
 writing to brain so the DB tables stay populated for the UI.
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MATERIALIZER_SCHEMA = {
-    "character_bible": {
+    "character_profile": {
         "characters": [
             {
                 "character_id": "<string — stable id slug derived from the character's role, e.g. 'primary_speaker', 'narrator', 'beloved'>",
@@ -63,7 +63,7 @@ _MATERIALIZER_SCHEMA = {
             }
         ]
     },
-    "location_bible": {
+    "location_profile": {
         "locations": [
             {
                 "location_id": "<string — stable id slug derived from the world, e.g. 'primary_world', 'memory_space', 'urban_setting'>",
@@ -246,14 +246,14 @@ def _validate_and_fix(data: Any) -> dict:
     """Ensure the LLM output has the four required top-level keys."""
     if not isinstance(data, dict):
         data = {}
-    if not isinstance(data.get("character_bible"), dict):
-        data["character_bible"] = {"characters": []}
-    if not isinstance(data["character_bible"].get("characters"), list):
-        data["character_bible"]["characters"] = []
-    if not isinstance(data.get("location_bible"), dict):
-        data["location_bible"] = {"locations": []}
-    if not isinstance(data["location_bible"].get("locations"), list):
-        data["location_bible"]["locations"] = []
+    if not isinstance(data.get("character_profile"), dict):
+        data["character_profile"] = {"characters": []}
+    if not isinstance(data["character_profile"].get("characters"), list):
+        data["character_profile"]["characters"] = []
+    if not isinstance(data.get("location_profile"), dict):
+        data["location_profile"] = {"locations": []}
+    if not isinstance(data["location_profile"].get("locations"), list):
+        data["location_profile"]["locations"] = []
     if not isinstance(data.get("motif_anchors"), list):
         data["motif_anchors"] = []
     if not isinstance(data.get("continuity_rules"), dict):
@@ -264,7 +264,7 @@ def _validate_and_fix(data: Any) -> dict:
             "tone_consistency": True,
         }
     # Ensure each character has variation_rules
-    for ch in data["character_bible"]["characters"]:
+    for ch in data["character_profile"]["characters"]:
         if not isinstance(ch, dict):
             continue
         if "character_id" not in ch or not ch["character_id"]:
@@ -272,7 +272,7 @@ def _validate_and_fix(data: Any) -> dict:
         if not isinstance(ch.get("variation_rules"), dict):
             ch["variation_rules"] = {"allowed": [], "restricted": []}
     # Ensure each location has required lists
-    for loc in data["location_bible"]["locations"]:
+    for loc in data["location_profile"]["locations"]:
         if not isinstance(loc, dict):
             continue
         if "location_id" not in loc or not loc["location_id"]:
@@ -366,8 +366,8 @@ def _build_fallback_from_db(project_id: str, context_packet: dict) -> dict:
         })
 
     return {
-        "character_bible": {"characters": characters},
-        "location_bible": {"locations": locations},
+        "character_profile": {"characters": characters},
+        "location_profile": {"locations": locations},
         "motif_anchors": motif_anchors,
         "continuity_rules": {
             "character_consistency": True,
@@ -390,8 +390,8 @@ async def run_materializer(
     narrative_packet, style_packet, project_settings), calls gpt-4o-mini in
     JSON mode, validates the result, and writes three brain namespaces:
     - brain.materializer_packet  (v2 spec schema)
-    - brain.character_bible      (backward-compat mirror)
-    - brain.location_bible       (backward-compat mirror)
+    - brain.character_profile
+    - brain.location_profile
 
     Legacy DB materializer calls (materialize_characters / locations / motifs)
     are the caller's responsibility on the SUCCESS path (_stage_refs_job runs
@@ -423,8 +423,8 @@ async def run_materializer(
         mat_packet = _validate_and_fix(llm_result)
         logger.info(
             "Materializer v2: LLM produced %d character(s), %d location(s), %d motif(s) for project=%s",
-            len(mat_packet["character_bible"]["characters"]),
-            len(mat_packet["location_bible"]["locations"]),
+            len(mat_packet["character_profile"]["characters"]),
+            len(mat_packet["location_profile"]["locations"]),
             len(mat_packet.get("motif_anchors") or []),
             project_id,
         )
@@ -453,8 +453,8 @@ async def run_materializer(
 
     # ── Write to brain ────────────────────────────────────────────────────
     brain.write("materializer_packet", mat_packet)
-    brain.write("character_bible", mat_packet.get("character_bible") or {})
-    brain.write("location_bible", mat_packet.get("location_bible") or {})
+    brain.write("character_profile", mat_packet.get("character_profile") or {})
+    brain.write("location_profile", mat_packet.get("location_profile") or {})
     return mat_packet
 
 
