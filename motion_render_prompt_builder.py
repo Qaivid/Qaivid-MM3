@@ -82,12 +82,13 @@ def _motion_mode_for_intensity(
             return _MOTION_MODES["slow_zoom_in"]
         return _MOTION_MODES["drift"]
 
-    # High intensity (> 0.65)
+    # High intensity (> 0.65) — active pan/tilt for all philosophies
+    # Direction is tuned by motion_philosophy.
     if phi == "still_dominant":
-        return _MOTION_MODES["slow_zoom_in"]
+        return _MOTION_MODES["pan_left"]    # controlled active pan
     if phi == "dynamic_dominant":
-        return _MOTION_MODES["pan_right"]
-    return _MOTION_MODES["slow_zoom_out"]
+        return _MOTION_MODES["pan_right"]   # vigorous lateral motion
+    return _MOTION_MODES["pan_right"]       # mixed: default active pan
 
 
 def _intensity_float(intensity) -> float:
@@ -230,7 +231,7 @@ def build_video_clip_prompt(
     if motion_clause:
         _add(motion_clause)
 
-    # 8. First continuity rule (brief excerpt)
+    # 8. First continuity rule (brief excerpt — strictly from brain)
     rules = continuity_rules or []
     if rules:
         rule = str(rules[0]).strip()
@@ -238,9 +239,6 @@ def build_video_clip_prompt(
             rule = rule[:80].rsplit(" ", 1)[0]
         if rule:
             _add(rule)
-
-    # 9. Quality suffix — lowest priority
-    _add(_QUALITY_SUFFIX)
 
     prompt = ", ".join(chosen)
     return prompt.strip()

@@ -634,32 +634,25 @@ def _render_video(project_id: str, shot: dict) -> None:
                 "for project=%s shot=%s (non-fatal)", project_id, idx,
             )
 
-        # Resolve matched bible entries by exact FK; fall back to primary if not set
+        # Resolve matched bible entries by exact FK — no alias/primary fallback.
+        # IDs stay null if shot_assets has no FK for this shot.
         _char_entry: Optional[dict] = None
         _loc_entry:  Optional[dict] = None
         if _shot_char_id is not None:
-            _char_entry    = _char_by_dbid.get(_shot_char_id)
-            character_db_id = _shot_char_id if _char_entry else None
-        if character_db_id is None and _char_by_dbid:
-            character_db_id = next(iter(_char_by_dbid))
-            _char_entry     = _char_by_dbid[character_db_id]
-
+            _char_entry = _char_by_dbid.get(_shot_char_id)
+            if _char_entry is not None:
+                character_db_id = _shot_char_id
         if _shot_loc_id is not None:
-            _loc_entry    = _loc_by_dbid.get(_shot_loc_id)
-            location_db_id = _shot_loc_id if _loc_entry else None
-        if location_db_id is None and _loc_by_dbid:
-            location_db_id = next(iter(_loc_by_dbid))
-            _loc_entry     = _loc_by_dbid[location_db_id]
+            _loc_entry = _loc_by_dbid.get(_shot_loc_id)
+            if _loc_entry is not None:
+                location_db_id = _shot_loc_id
 
         if _char_entry:
             identity_seed = str(_char_entry.get("identity_seed") or "").strip() or None
 
-        # link_status — resolved only when both FKs matched exactly from shot_assets
+        # link_status — resolved only when BOTH FKs are exact matches from shot_assets
         if character_db_id is not None and location_db_id is not None:
-            if _shot_char_id == character_db_id and _shot_loc_id == location_db_id:
-                link_status = "resolved"
-            else:
-                link_status = "semantic_only"
+            link_status = "resolved"
         elif character_db_id is not None or location_db_id is not None:
             link_status = "semantic_only"
         else:
@@ -3250,28 +3243,17 @@ def _build_video_sequence_packet(
     _cb = (materializer_packet.get("character_bible") or {}).get("characters") or []
     _lb = (materializer_packet.get("location_bible")  or {}).get("locations")  or []
 
-    # Build db_id indexes (exact integer FK only — no alias guessing)
-    _char_by_dbid: dict = {
-        int(c["db_id"]): c
-        for c in _cb if isinstance(c, dict) and isinstance(c.get("db_id"), int)
-    }
-    _loc_by_dbid: dict = {
-        int(l["db_id"]): l
-        for l in _lb if isinstance(l, dict) and isinstance(l.get("db_id"), int)
-    }
-    primary_char_db_id = next(iter(_char_by_dbid), None)
-    primary_loc_db_id  = next(iter(_loc_by_dbid),  None)
-
     shots_plan = []
     for shot in styled_timeline:
         idx      = shot.get("shot_index") or shot.get("timeline_index")
         duration = shot.get("duration")
 
-        # Resolve this shot's character/location IDs
+        # Resolve character/location IDs from shot_entity_map only — no primary fallback.
+        # IDs stay null if shot_assets had no FK for this shot.
+        char_db_id: Optional[int] = None
+        loc_db_id:  Optional[int] = None
         if shot_entity_map and idx in shot_entity_map:
             char_db_id, loc_db_id = shot_entity_map[idx]
-        else:
-            char_db_id, loc_db_id = primary_char_db_id, primary_loc_db_id
 
         # link_status
         if char_db_id is not None and loc_db_id is not None:
