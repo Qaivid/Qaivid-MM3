@@ -384,17 +384,20 @@ async def run_materializer(
     brain: Any,
     vocal_gender: Optional[str] = None,
 ) -> dict:
-    """Primary async entry point — LLM identity bible only.
+    """Primary async entry point — LLM identity bible generation.
 
     Reads five brain namespaces (creative_briefs, context_packet,
-    narrative_packet, style_packet, project_settings), calls the LLM,
-    validates the result, and writes three brain namespaces:
+    narrative_packet, style_packet, project_settings), calls gpt-4o-mini in
+    JSON mode, validates the result, and writes three brain namespaces:
     - brain.materializer_packet  (v2 spec schema)
-    - brain.character_bible      (backward-compat mirror of character_bible sub-key)
-    - brain.location_bible       (backward-compat mirror of location_bible sub-key)
+    - brain.character_bible      (backward-compat mirror)
+    - brain.location_bible       (backward-compat mirror)
 
-    Does NOT call legacy DB materializers — the caller (_stage_refs_job) is
-    responsible for invoking those AFTER brain is saved, in the correct order.
+    Legacy DB materializer calls (materialize_characters / locations / motifs)
+    are the caller's responsibility on the SUCCESS path (_stage_refs_job runs
+    them after this function returns and brain is saved).  On the FAILURE path
+    (LLM exception), this function calls the legacy materializers itself before
+    synthesising a fallback packet from DB rows, so the brain is never empty.
 
     Returns the materializer_packet dict.
     """

@@ -1020,43 +1020,40 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
     primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"),   None)
     primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
 
-    # ── Build lookup lists: brain descriptors first, DB names after ───────
-    # Brain names are paired with DB FK IDs by positional alignment within
-    # the same entity_type bucket (speaker[0]↔speaker[0], etc.).  This is
-    # safe because both the v2 materializer and the legacy materializers
-    # derive their entity lists from the same context_packet in the same
-    # order.  If the brain has more entries than the DB bucket, extras fall
-    # back to the primary entity of that type.
+    # ── Build lookup lists: brain db_id first, DB names as fallback ──────
+    # The brain materializer_packet entries now carry a `db_id` field (written
+    # by _stage_refs_job after legacy materializers populate the DB tables).
+    # When present, db_id is the exact integer FK — zero guessing required.
+    # Brain descriptors (identity_seed, archetype, world) paired with db_id
+    # are placed first so they take precedence in shot-text matching.
+    # DB character/location names are appended after as fallback for projects
+    # that predate this enrichment or where brain load fails.
     char_lookup: list[tuple[str, int]] = []
     loc_lookup:  list[tuple[str, int]] = []
 
-    if brain_chars:
-        db_speakers = [c for c in chars if c["entity_type"] == "speaker"]
-        for i, bch in enumerate(brain_chars):
-            if not isinstance(bch, dict):
-                continue
-            fk = db_speakers[i]["id"] if i < len(db_speakers) else primary_char_id
-            if fk is None:
-                continue
-            for field in ("identity_seed", "archetype"):
-                val = str(bch.get(field) or "").strip().lower()
-                if val and len(val) > 2 and (val, fk) not in char_lookup:
-                    char_lookup.append((val, fk))
+    for bch in brain_chars:
+        if not isinstance(bch, dict):
+            continue
+        fk = bch.get("db_id")
+        if not isinstance(fk, int):
+            continue
+        for field in ("identity_seed", "archetype"):
+            val = str(bch.get(field) or "").strip().lower()
+            if val and len(val) > 2 and (val, fk) not in char_lookup:
+                char_lookup.append((val, fk))
 
-    if brain_locs:
-        db_world_dna = [l for l in locs if l["entity_type"] == "world_dna"]
-        for i, bloc in enumerate(brain_locs):
-            if not isinstance(bloc, dict):
-                continue
-            fk = db_world_dna[i]["id"] if i < len(db_world_dna) else primary_loc_id
-            if fk is None:
-                continue
-            for field in ("world", "location_id"):
-                val = str(bloc.get(field) or "").strip().lower()
-                if val and len(val) > 2 and (val, fk) not in loc_lookup:
-                    loc_lookup.append((val, fk))
+    for bloc in brain_locs:
+        if not isinstance(bloc, dict):
+            continue
+        fk = bloc.get("db_id")
+        if not isinstance(fk, int):
+            continue
+        for field in ("world", "location_id"):
+            val = str(bloc.get(field) or "").strip().lower()
+            if val and len(val) > 2 and (val, fk) not in loc_lookup:
+                loc_lookup.append((val, fk))
 
-    # DB names appended as fallback (always present regardless of brain state).
+    # DB names appended as fallback (covers legacy projects + brain-load failures).
     for c in chars:
         name = (c.get("name") or "").lower()
         if name and (name, c["id"]) not in char_lookup:
@@ -2697,6 +2694,54 @@ def _stage_refs_job(project_id: str,
                     "_stage_refs_job: legacy materializers failed (non-fatal) for project=%s",
                     project_id,
                 )
+
+            # ── Enrich brain with DB integer IDs ─────────────────────────
+            # After DB rows are created, read their integer PKs and store them
+            # directly in the materializer_packet entries (brain.character_bible
+            # characters[i].db_id / location_bible.locations[i].db_id).
+            # This gives _link_shots_to_entities exact IDs without any guessing.
+            try:
+                with _db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id, entity_type FROM characters WHERE project_id=%s ORDER BY id",
+                        (project_id,),
+                    )
+                    _enriched_chars = cur.fetchall() or []
+                    cur.execute(
+                        "SELECT id, entity_type FROM locations WHERE project_id=%s ORDER BY id",
+                        (project_id,),
+                    )
+                    _enriched_locs = cur.fetchall() or []
+
+                _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
+                _ep_cb = (_ep.get("character_bible") or {}).get("characters") or []
+                _ep_lb = (_ep.get("location_bible")  or {}).get("locations")  or []
+                _db_spk = [c for c in _enriched_chars if c["entity_type"] == "speaker"]
+                _db_wdn = [l for l in _enriched_locs  if l["entity_type"] == "world_dna"]
+
+                for _i, _bch in enumerate(_ep_cb):
+                    if isinstance(_bch, dict) and _i < len(_db_spk):
+                        _bch["db_id"] = _db_spk[_i]["id"]
+                for _i, _bloc in enumerate(_ep_lb):
+                    if isinstance(_bloc, dict) and _i < len(_db_wdn):
+                        _bloc["db_id"] = _db_wdn[_i]["id"]
+
+                _mat_brain.write("materializer_packet", _ep)
+                _mat_brain.write("character_bible", _ep.get("character_bible") or {})
+                _mat_brain.write("location_bible",  _ep.get("location_bible")  or {})
+                with _db() as conn:
+                    _mat_brain.save(conn)
+                    conn.commit()
+                logger.info(
+                    "_stage_refs_job: enriched materializer_packet with DB IDs for project=%s",
+                    project_id,
+                )
+            except Exception:
+                logger.exception(
+                    "_stage_refs_job: failed to enrich materializer_packet with DB IDs (non-fatal) for project=%s",
+                    project_id,
+                )
+
             # Link shots to the freshly created entity rows.
             _raw_timeline = list(_mat_prj.get("styled_timeline") or [])
             if _raw_timeline:
