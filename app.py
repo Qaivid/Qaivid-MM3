@@ -2006,8 +2006,9 @@ def advance_brief(project_id: str):
     if not project:
         abort(404)
 
-    # Optional reference uploads — stash to brain.pending_ref_uploads so the
-    # Reference Engine can pick them up after the Materializer review gate.
+    # Optional reference uploads — stash in the user session (NOT brain — see
+    # the long note further down) so the Reference Engine can pick them up
+    # after the Materializer review gate is approved.
     char_ref_url: str | None = None
     env_ref_url: str | None = None
     try:
