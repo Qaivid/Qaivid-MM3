@@ -7,10 +7,10 @@
 {% if not project._is_review_only and not project.deleted_at %}
 {% set _is_running = project.status == 'running' %}
 {% set _redo_stages = [
-    ('audio_review',          'Acoustic Audit',    'Clears audio analysis, all context, style profile, storyboard, stills, videos and post-production.'),
-    ('style_review',          'Style Profile',     'Clears context, storyboard, stills, videos and post-production.'),
-    ('context_review',        'Context Engine',    'Clears context, storyboard, stills, videos and post-production.'),
-    ('assumptions_review',    'METAMAN Dialogue',  'Clears storyboard, stills, videos and post-production.'),
+    ('audio_review',          'Acoustic Audit',    'Clears audio analysis, style profile, context, storyboard, references, stills, videos and post-production.'),
+    ('style_review',          'Style Profile',     'Clears context, storyboard, references, stills, videos and post-production.'),
+    ('context_review',        'Context Engine',    'Clears context, storyboard, references, stills, videos and post-production.'),
+    ('assumptions_review',    'METAMAN Dialogue',  'Clears storyboard, references, stills and video clips.'),
     ('creative_brief_review', 'Creative Brief',    'Clears storyboard, references, stills and videos.'),
     ('storyboard_review',     'Storyboard',        'Clears references, all stills and videos.'),
     ('references_review',     'References',        'Clears all reference plates, stills and videos.'),

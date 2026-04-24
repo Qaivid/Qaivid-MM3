@@ -2185,6 +2185,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
         if target_stage == "audio_review":
             cur.execute(
                 "UPDATE projects SET audio_data=NULL, transcript=NULL, lyrics_timed=NULL,"
+                " style_suggestions=NULL, style_profile=NULL,"
                 " context_packet=NULL, styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
@@ -2223,12 +2224,32 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 (project_id,)
             )
 
-        elif target_stage in ("context_review", "assumptions_review"):
+        elif target_stage == "context_review":
             cur.execute(
                 "UPDATE projects SET context_packet=NULL, styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
                 " stage='queued', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
+                (project_id,),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
+        elif target_stage == "assumptions_review":
+            cur.execute(
+                "UPDATE projects SET styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='assumptions_review', status='awaiting_review',"
+                " error=NULL, updated_at=NOW() WHERE id=%s",
                 (project_id,),
             )
             cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
@@ -2363,7 +2384,6 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 audio_path_for_kick = local_path
             elif r2_storage.r2_available():
                 try:
-                    import tempfile as _tmp
                     local_path.parent.mkdir(parents=True, exist_ok=True)
                     audio_bytes = r2_storage.download_bytes(
                         f"projects/{project_id}/uploads/{audio_filename}"
@@ -2384,9 +2404,14 @@ def rerun_from_stage(project_id: str, target_stage: str):
             f"Pipeline reset to {label}. Pick your visual style and continue.",
             "info",
         )
-    elif target_stage in ("context_review", "assumptions_review"):
+    elif target_stage == "context_review":
         kick_stage_1(project_id)
         flash(f"Context Engine is re-running. You'll land on {label} when ready.", "info")
+    elif target_stage == "assumptions_review":
+        flash(
+            f"Pipeline reset to {label}. Review METAMAN's questions and continue.",
+            "info",
+        )
     elif target_stage == "creative_brief_review":
         overrides = {
             "speaker_name": _cb_pending.get("speaker_name"),
