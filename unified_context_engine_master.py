@@ -48,16 +48,12 @@ class CulturePackRegistry:
             },
             "visual_restrictions": [
                 "Avoid generic Western suburban visuals.",
-                "Do not remove rural material authenticity — no concrete, tile, or modern finishes.",
-                "Walls must be bare plastered mud (kuchha), not brick or painted plaster.",
-                "Courtyard floor must be packed earth, not tile or concrete.",
                 "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
-                "Do not use Rajasthani haveli ornamentation — Punjab village aesthetic is plain, massive, and earthen.",
             ],
             "common_misinterpretations": [
                 "Do not treat agrarian or seasonal references as generic decoration.",
                 "Do not flatten feminine domestic imagery into random rustic props.",
-                "Do not substitute a generic 'rural Indian village' — Punjab village architecture has specific ochre mud-wall identity.",
+                "Do not substitute a generic rural Indian village aesthetic — Punjab has its own distinct cultural world; let the story and location name guide the specific visual.",
             ],
         },
         "punjabi_diaspora_memory": {
@@ -1188,13 +1184,12 @@ REQUIRED JSON SHAPE:
                 "CULTURAL FRAMEWORK: Punjabi folk / Sufi / qissa tradition. "
                 "Common motifs: separation, beloved, agrarian land, rivers, courtyards, "
                 "domestic space, migration, oral-song memory. "
-                "VISUAL GROUNDING (mandatory): locations must be authentic Punjabi village — "
-                "kuchha mud-plastered houses with thick ochre/sand walls, clean swept earthen courtyards (vehra), "
-                "flat clay rooftops with exterior staircases, blue or turquoise painted wooden doors and shutters, "
-                "terracotta pots, charpai beds in open courtyards, mustard or wheat fields beyond compound walls. "
-                "Style reference: T-Series / Punjabi folk music video aesthetic — no studio backdrops, "
-                "no concrete or tile, no Rajasthani ornamentation. "
-                "Set world_assumptions.architecture_style and world_assumptions.characteristic_setting accordingly."
+                "Ground all visual assumptions in the Punjabi cultural world of Punjab, South Asia. "
+                "Each location in the song is distinct — a mustard field, a courtyard, a rooftop, a river bank "
+                "are different spaces with different visual identities. "
+                "Do not impose the same architectural template on all locations. "
+                "Let the location name and story context determine each space's appearance. "
+                "Do not default to Rajasthani or generic North Indian village aesthetics."
             )
         elif "urdu" in lang:
             cultural_hint = (

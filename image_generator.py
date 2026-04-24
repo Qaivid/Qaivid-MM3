@@ -130,9 +130,9 @@ def ai_build_ref_prompts(
     if wa.get("era"):
         story_lines.append(f"Era: {wa['era']}")
     if wa.get("architecture_style"):
-        story_lines.append(f"Architecture: {wa['architecture_style']}")
+        story_lines.append(f"Setting type: {wa['architecture_style']}")
     if wa.get("characteristic_setting"):
-        story_lines.append(f"Characteristic scene: {wa['characteristic_setting']}")
+        story_lines.append(f"Spatial character: {wa['characteristic_setting']}")
     if _v("core_theme", "emotional_core"):
         story_lines.append(f"Theme / mood: {_v('core_theme', 'emotional_core')}")
     if cin.get("look") or cin.get("palette"):

@@ -301,11 +301,13 @@ def _system_prompt(cultural_grounding: str = "") -> str:
         "a rooftop — that is the location. Do not invent generic defaults. Two "
         "different songs should produce two different sets of locations because "
         "their lyrics describe different things.\n"
-        "4. HONOUR THE ARCHITECTURE. The context packet supplies "
-        "architecture_style and characteristic_setting drawn from expert cultural "
-        "knowledge. Every location must be consistent with those descriptions — "
-        "use the specific materials, finishes, and spatial vocabulary given. "
-        "Never override them with generic substitutes.\n"
+        "4. HONOUR THE CULTURAL WORLD. Each location must be grounded in the "
+        "geographic and cultural context of this song's world. But each location "
+        "type has its own distinct visual identity — a mustard field looks "
+        "different from a courtyard, which looks different from a rooftop. "
+        "Use the location name, the lyrics, and the cultural context to determine "
+        "what each space looks like. Do not apply the same visual template to "
+        "every location.\n"
         "5. SHOW SECONDARY CHARACTERS. The beloved, a friend, or family member "
         "must appear visually in at least two scenes — even as a memory, "
         "silhouette, or presence — not just referenced in text.\n"
@@ -336,41 +338,28 @@ def _system_prompt(cultural_grounding: str = "") -> str:
 # Keys are lowercase fragments that may appear in location_dna or geography.
 _MARKER_GROUNDING: Dict[str, str] = {
     "punjab": (
-        "Required architecture: kuchha (mud-plastered) village architecture — "
-        "thick bare ochre/sand-toned mud walls, flat clay rooftops with exterior "
-        "stone or mud staircases, small deep-set windows with blue or turquoise "
-        "painted wooden shutters, heavy carved wooden doors painted blue, smooth "
-        "plastered parapet walls, no glass or modern cladding.\n\n"
-        "Required setting vocabulary: clean swept earthen vehra (open courtyard) "
-        "— packed bare mud floor, borders of thick kuchha walls, charpai "
-        "(rope-strung wooden bed) in open air, terracotta matkas near the "
-        "entrance, mustard or wheat fields visible beyond the compound wall, "
-        "open sky overhead, golden or warm afternoon light; no concrete or tile, "
-        "no synthetic materials.\n\n"
-        "Visual restrictions (every location must comply):\n"
-        "  - Do not use Rajasthani haveli ornamentation.\n"
-        "  - Walls must be bare plastered mud (kuchha), not brick or painted plaster.\n"
-        "  - Courtyard floor must be packed earth, not tile or concrete.\n"
-        "  - No Mughal arches, ornate columns, or Indo-Saracenic domes.\n"
+        "Cultural world: Punjab region, South Asia — Punjabi folk tradition.\n\n"
+        "Character appearance: South Asian (Punjabi) — warm wheatish to tan complexion; "
+        "phulkari dupatta, salwar-kameez or kurta-pajama; turban for adult men where appropriate; "
+        "kohl-lined eyes and simple traditional jewelry for women.\n\n"
+        "Visual guidance:\n"
+        "  - Ground every location in the Punjabi cultural world, but let each location's "
+        "name and the lyrics determine its specific appearance — a mustard field, a rooftop, "
+        "a river bank, and a courtyard are all distinct spaces with different visual identities.\n"
+        "  - Do not apply the same architectural template to every scene.\n"
         "  - Do not render speakers with East Asian, European, or African features "
-        "unless the text explicitly demands it.\n\n"
-        "Common misinterpretations to avoid:\n"
-        "  - Do not substitute a generic 'rural Indian village'.\n"
-        "  - Punjab village architecture is plain, massive, and earthen — not "
-        "Rajasthani or Mughal ornate.\n"
-        "  - Do not flatten domestic imagery into random rustic props."
+        "unless the text explicitly demands it.\n"
+        "  - Do not default to Rajasthani haveli ornamentation or Mughal architectural style.\n"
+        "  - Do not substitute a generic 'rural Indian village' — the Punjabi cultural world "
+        "is specific; let the story and location name guide the visual."
     ),
     "urdu ghazal": (
-        "Required aesthetic: classical Mughal-Deccani courtly interior or walled "
-        "garden — cool marble or polished stone surfaces, arched niches with oil "
-        "lamps, latticed jaali screens filtering moonlight, geometric tile work.\n\n"
-        "Visual restrictions:\n"
-        "  - Avoid generic contemporary interiors.\n"
-        "  - Avoid bright saturated colours — favour ivory, deep indigo, "
-        "terracotta, and candlelight gold.\n\n"
-        "Common misinterpretations to avoid:\n"
-        "  - Do not substitute a Bollywood disco aesthetic.\n"
-        "  - Do not render the space as a modern apartment or café."
+        "Cultural world: Urdu ghazal / classical South Asian poetry tradition.\n\n"
+        "Visual guidance:\n"
+        "  - Ground visuals in the classical Urdu cultural sphere — subdued, restrained elegance.\n"
+        "  - Avoid bright saturated colours — favour muted, deep, candlelit tones.\n"
+        "  - Do not substitute a Bollywood pop aesthetic.\n"
+        "  - Do not literalize symbolic or metaphorical language into crude plot imagery."
     ),
 }
 
@@ -399,17 +388,15 @@ def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
         restrictions: List[str] = list(pack.get("visual_restrictions") or [])
         misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
 
-        arch = str(world_defaults.get("architecture_style") or "").strip()
-        setting = str(world_defaults.get("characteristic_setting") or
-                      world_defaults.get("domestic_setting") or "").strip()
+        geography = str(world_defaults.get("geography") or "").strip()
+        cultural_dna = str(world_defaults.get("cultural_dna") or "").strip()
 
         parts: List[str] = []
-        if arch:
-            parts.append(f"Required architecture: {arch}")
-        if setting:
-            parts.append(f"Required setting vocabulary: {setting}")
+        if geography or cultural_dna:
+            ctx = " — ".join(filter(None, [geography, cultural_dna]))
+            parts.append(f"Cultural world: {ctx}")
         if restrictions:
-            parts.append("Visual restrictions (every location must comply):\n"
+            parts.append("Visual guidance:\n"
                          + "\n".join(f"  - {r}" for r in restrictions))
         if misinterps:
             parts.append("Common misinterpretations to avoid:\n"
@@ -500,11 +487,6 @@ def _user_prompt(
                 "\n\n"
                 + "\n\n---\n\n".join(parts)
                 + scene_count_instruction
-                + "\n\nIMPORTANT: The architecture_style and characteristic_setting "
-                "in world_assumptions define the exact built-environment vocabulary "
-                "for this song's world. Every location description must use those "
-                "specific materials and spatial terms — never override them with "
-                "generic substitutes."
             )
 
     return (
