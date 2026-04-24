@@ -20,8 +20,9 @@
 ] %}
 {# Full pipeline order for index comparison — includes display-only stages not in _redo_stages #}
 {% set _redo_order = ['audio_review','style_review','context_review','assumptions_review','creative_brief_review','storyboard_review','references_review','stills_control','stills_review','videos_control','post_production','videos_review','final_review'] %}
+{% set _cur_stage = project._viewing_stage or project.stage %}
 {% set _ns = namespace(cur_idx=-1) %}
-{% for s in _redo_order %}{% if s == project.stage %}{% set _ns.cur_idx = loop.index0 %}{% endif %}{% endfor %}
+{% for s in _redo_order %}{% if s == _cur_stage %}{% set _ns.cur_idx = loop.index0 %}{% endif %}{% endfor %}
 {% if _ns.cur_idx >= 0 %}
 <div class="redo-panel{% if _is_running %} redo-panel--disabled{% endif %}">
     {% if _is_running %}
