@@ -165,7 +165,12 @@ class AudioProcessor:
 
             median_f0 = float(np.median(voiced_f0))
 
-            if median_f0 < 165.0:
+            # 175 Hz is the overlap boundary — female altos and
+            # mezzo-sopranos in lower registers typically sit 175-220 Hz,
+            # while male tenors rarely dip below 130 Hz in sustained phrases.
+            # Using 175 (was 165) reduces mis-classification of lower-register
+            # female voices as male.
+            if median_f0 < 175.0:
                 gender = "male"
             else:
                 gender = "female"

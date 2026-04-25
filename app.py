@@ -2985,6 +2985,40 @@ def references_upload(project_id: str, kind: str, entity_id: int):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
+@app.route("/project/<project_id>/references/update-gender/character/<int:entity_id>",
+           methods=["POST"])
+@login_required
+def references_update_gender(project_id: str, entity_id: int):
+    """Correct the auto-detected gender for a speaker character and reset the
+    ref plate so the user can regenerate with the right gender."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if (project.get("stage") != "references_review"
+            or project.get("status") != "awaiting_review"):
+        flash("Gender can only be corrected at the references review step.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    new_gender = (request.form.get("gender") or "").strip().lower()
+    if new_gender not in ("male", "female", "non-binary", "unknown"):
+        flash("Invalid gender value.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    with db() as conn, conn.cursor() as cur:
+        # Update gender and rebuild appearance descriptor prefix;
+        # clear ref_prompt so next generate rebuilds from scratch.
+        cur.execute(
+            "UPDATE characters SET gender=%s, ref_prompt=NULL, ref_status='pending', "
+            "ref_image_url=NULL, ref_error=NULL "
+            "WHERE id=%s AND project_id=%s",
+            (new_gender, entity_id, project_id),
+        )
+        conn.commit()
+
+    flash(f"Gender updated to '{new_gender}'. Generate a new plate to apply the change.", "info")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
 @app.route("/project/<project_id>/references/approve", methods=["POST"])
 @login_required
 def references_approve(project_id: str):

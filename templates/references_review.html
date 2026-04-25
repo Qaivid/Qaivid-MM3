@@ -134,6 +134,24 @@
                     {% if c.ref_error %}
                     <div class="ref-edit-error">{{ c.ref_error[:200] }}</div>
                     {% endif %}
+                    {# Gender correction — shown for speaker/addressee characters #}
+                    {% if c.entity_type in ('speaker', 'addressee') %}
+                    <form method="post"
+                          action="{{ url_for('references_update_gender', project_id=project.id, entity_id=c.id) }}"
+                          class="ref-gender-form" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <label class="ref-prompt-label" style="margin:0;white-space:nowrap;">Gender detected as:</label>
+                        <select name="gender" class="ref-prompt-ta" style="width:auto;padding:4px 8px;font-size:12px;">
+                            <option value="female" {% if c.gender == 'female' %}selected{% endif %}>Female</option>
+                            <option value="male"   {% if c.gender == 'male'   %}selected{% endif %}>Male</option>
+                            <option value="non-binary" {% if c.gender == 'non-binary' %}selected{% endif %}>Non-binary</option>
+                            <option value="unknown" {% if not c.gender or c.gender == 'unknown' %}selected{% endif %}>Unknown</option>
+                        </select>
+                        <button type="submit" class="btn-secondary ref-gen-btn" style="padding:4px 12px;font-size:12px;">
+                            ✓ Correct gender &amp; reset plate
+                        </button>
+                    </form>
+                    {% endif %}
                     {# Generate form #}
                     <form method="post"
                           action="{{ url_for('references_regenerate', project_id=project.id, kind='character', entity_id=c.id) }}"
