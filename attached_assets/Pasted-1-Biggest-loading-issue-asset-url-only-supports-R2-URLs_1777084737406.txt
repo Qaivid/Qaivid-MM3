@@ -1,0 +1,93 @@
+1. Biggest loading issue: _asset_url() only supports R2 URLs
+
+In app.py, this function returns None for local image paths:
+
+def _asset_url(file_path):
+    if not file_path:
+        return None
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        return url_for("r2proxy", url=file_path, _external=False)
+    return None
+
+So if generate_shot_still() saves something like:
+
+projects/project_id/stills/shot_1.jpg
+
+the image is marked ready in DB, but the page gets url=None, so nothing loads.
+
+Fix
+
+Add a local static route and support local paths:
+
+from flask import send_from_directory
+
+@app.route("/project-assets/<path:asset_path>")
+@login_required
+def project_asset(asset_path):
+    parts = asset_path.split("/")
+    if len(parts) < 2 or parts[0] != "projects":
+        abort(403)
+
+    project_id = parts[1]
+    project = _get_project(project_id, current_user()["id"])
+    if not project and not current_user().get("is_admin"):
+        abort(403)
+
+    return send_from_directory(ROOT, asset_path)
+
+Then replace _asset_url() with:
+
+def _asset_url(file_path: str | None) -> str | None:
+    if not file_path:
+        return None
+
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        return url_for("r2proxy", url=file_path, _external=False)
+
+    if file_path.startswith("projects/"):
+        return url_for("project_asset", asset_path=file_path, _external=False)
+
+    return None
+2. Polling breaks after stills_control
+
+Your generate route allows later stages:
+
+_STILLS_EDITABLE_STAGES = (
+    "stills_control", "stills_review", "videos_control",
+    "post_production", "videos_review", "complete",
+)
+
+But status polling only allows:
+
+if project.get("stage") not in ("stills_control", "stills_review"):
+    abort(403)
+
+So if you regenerate a still later, the image may generate, but the browser polling gets 403, so it does not update.
+
+Fix
+
+In stills_status_json() change:
+
+if project.get("stage") not in ("stills_control", "stills_review"):
+    abort(403)
+
+to:
+
+if project.get("stage") not in _STILLS_EDITABLE_STAGES:
+    abort(403)
+3. Generation file is missing from the zip
+
+The actual image generation function is imported from:
+
+from image_generator import generate_shot_still
+
+But image_generator.py is not in the uploaded zip. That is the most important file to check if images are not generating at all.
+
+Upload these too:
+
+image_generator.py
+r2_storage.py
+.env.example
+latest server error log
+
+Based on this zip alone, the clearest bug is: images may be generated but not shown because _asset_url() rejects local file paths.

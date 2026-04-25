@@ -1,9 +1,15 @@
+import logging
 import os
 import uuid
 from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 from flask import (
     Flask,
     Response,
@@ -460,15 +466,15 @@ def _get_video_assets(project_id: str) -> list[dict]:
 def _asset_url(file_path: str | None) -> str | None:
     """Return a usable URL for an asset.
 
-    For private R2 buckets, routes the URL through /r2proxy which generates a
-    short-lived presigned redirect so the browser can display the image.
-    Legacy local paths (projects/...) fall back to None.
+    R2 URLs  → routed through /r2proxy (presigned redirect).
+    Local paths (projects/...) → served through /project-assets/<path>.
     """
     if not file_path:
         return None
     if file_path.startswith("http://") or file_path.startswith("https://"):
-        from urllib.parse import quote
         return url_for("r2proxy", url=file_path, _external=False)
+    if file_path.startswith("projects/"):
+        return url_for("project_asset", asset_path=file_path, _external=False)
     return None
 
 
@@ -4494,6 +4500,25 @@ def r2_site_asset(key: str):
     except Exception as _e:
         _log.getLogger("r2_site").error("Failed to serve %s: %s", key, _e)
         abort(404)
+
+
+@app.route("/project-assets/<path:asset_path>")
+@login_required
+def project_asset(asset_path: str):
+    """Serve locally stored project asset files (fallback when R2 is not used).
+
+    Security: path must start with 'projects/', and the project_id segment must
+    belong to the logged-in user (or be an admin request).
+    """
+    from flask import send_from_directory
+    parts = asset_path.split("/")
+    if len(parts) < 2 or parts[0] != "projects":
+        abort(403)
+    project_id = parts[1]
+    project = _get_project(project_id, current_user()["id"])
+    if not project and not current_user().get("is_admin"):
+        abort(403)
+    return send_from_directory(str(ROOT), asset_path)
 
 
 @app.route("/r2proxy")
