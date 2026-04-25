@@ -81,73 +81,148 @@
     <span id="pp-error-text"></span>
   </div>
 
-  <!-- ══ NLE BODY: player | tools ════════════════════════════════════════ -->
-  <div class="nle-body">
+  <!-- ══ NLE WORKSPACE: 3-column editor layout ══════════════════════════ -->
+  <div class="nle-workspace">
 
-    <!-- Hidden audio (beat-synced preview) -->
+    <!-- Hidden audio -->
     {% if audio_url %}
     <audio id="pp-audio" preload="auto" style="display:none">
       <source src="{{ audio_url }}" type="audio/mpeg">
     </audio>
     {% endif %}
 
-    <!-- ── Player column (left / center) ──────────────────────────────── -->
-    <div class="nle-player-col">
-
-      <!-- Edge-to-edge video player -->
-      <div class="pp-preview-frame" id="pp-preview-frame">
-
-        <!-- Ken Burns (Quick mode) -->
-        <div class="pp-kb-wrap" id="pp-kb-wrap">
-          <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
-          <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
-          <div class="pp-sub-preview" id="pp-sub-preview"></div>
-          <div class="pp-logo-tl" id="pp-logo-tl"></div>
-          <div class="pp-logo-tr" id="pp-logo-tr"></div>
-          <div class="pp-logo-bl" id="pp-logo-bl"></div>
-          <div class="pp-logo-br" id="pp-logo-br"></div>
-        </div>
-
-        <!-- AI video (AI mode) -->
-        {% if ai_video_url %}
-        <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
-          <video id="pp-ai-video" class="pp-ai-video"
-                 src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
-          <div class="pp-ai-overlay" id="pp-ai-overlay">
-            <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
-            <div class="pp-sub-preview"    id="pp-ai-sub-preview"></div>
-            <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
-            <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
-            <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
-            <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+    <!-- ── LEFT: Shot list sidebar ────────────────────────────────────────── -->
+    <aside class="nle-scenes-bar">
+      <div class="nle-sb-header">
+        <span class="nle-sb-title">SHOTS</span>
+        <span class="nle-sb-count">{{ shots|length }}</span>
+      </div>
+      <div class="pp-thumb-strip nle-scenes-list" id="pp-thumb-strip">
+        {% for shot in shots %}
+        <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
+             id="pp-thumb-{{ shot.shot_index }}"
+             data-idx="{{ shot.shot_index }}"
+             data-dur="{{ shot.duration or 4.0 }}"
+             onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
+             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s">
+          {% if shot.url %}
+          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+          {% else %}
+          <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
+          {% endif %}
+          <div class="pp-thumb-meta">
+            <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
+            <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
+                    onclick="ppEditDuration(event, {{ shot.shot_index }})"
+                    title="Click to override duration">
+              {{ '%.1f'|format(shot.duration or 4.0) }}s
+            </button>
+            <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+          </div>
+          <!-- KB override popover -->
+          <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
+            <div class="pp-kb-pop-label">Shot {{ shot.shot_index }} motion</div>
+            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
+              <option value="">— Use global —</option>
+              <option value="zoom-in">Zoom In</option>
+              <option value="zoom-out">Zoom Out</option>
+              <option value="pan-left">Pan Left</option>
+              <option value="pan-right">Pan Right</option>
+              <option value="pan-up">Pan Up</option>
+              <option value="pan-down">Pan Down</option>
+              <option value="static">Static</option>
+              <option value="random">Random</option>
+            </select>
+            <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
           </div>
         </div>
-        {% else %}
-        <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
-          <div class="pp-ai-no-video-icon">🎬</div>
-          <p>AI video not rendered yet.</p>
-          <p class="pp-ai-no-video-hint">Generate your AI video clips first, then come back here to apply effects and export.</p>
-          <button class="nle-btn nle-btn-ai"
-                  onclick="document.getElementById('form-advance').submit()">
-            Full AI Render →
-          </button>
-        </div>
-        {% endif %}
+        {% endfor %}
+      </div>
+    </aside><!-- /nle-scenes-bar -->
 
-        <!-- Playback controls — float at bottom of player (Quick mode) -->
-        <div class="nle-playback pp-quick-ctrl" id="pp-quick-controls">
-          <button class="nle-pb-btn" onclick="ppPrev()" title="Previous">◀</button>
-          <button class="nle-pb-btn nle-pb-play" id="pp-play-btn" onclick="ppTogglePlay()" title="Play / Pause">▶</button>
-          <button class="nle-pb-btn" onclick="ppNext()" title="Next">▶▶</button>
-          <div class="nle-pb-track">
-            <div class="nle-pb-fill" id="pp-scrub-fill"></div>
+    <!-- ── CENTER: 16:9 Player + Timeline ────────────────────────────────── -->
+    <div class="nle-center-col">
+
+      <!-- 16:9 video player -->
+      <div class="nle-player-area">
+        <div class="pp-preview-frame" id="pp-preview-frame">
+
+          <!-- Ken Burns (Quick mode) -->
+          <div class="pp-kb-wrap" id="pp-kb-wrap">
+            <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
+            <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
+            <div class="pp-sub-preview" id="pp-sub-preview"></div>
+            <div class="pp-logo-tl" id="pp-logo-tl"></div>
+            <div class="pp-logo-tr" id="pp-logo-tr"></div>
+            <div class="pp-logo-bl" id="pp-logo-bl"></div>
+            <div class="pp-logo-br" id="pp-logo-br"></div>
           </div>
-          <span class="nle-pb-time" id="pp-time-display">0.0s / 0.0s</span>
+
+          <!-- AI video (AI mode) -->
+          {% if ai_video_url %}
+          <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
+            <video id="pp-ai-video" class="pp-ai-video"
+                   src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
+            <div class="pp-ai-overlay" id="pp-ai-overlay">
+              <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
+              <div class="pp-sub-preview"    id="pp-ai-sub-preview"></div>
+              <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
+              <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
+              <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
+              <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+            </div>
+          </div>
+          {% else %}
+          <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
+            <div class="pp-ai-no-video-icon">🎬</div>
+            <p>AI video not rendered yet.</p>
+            <p class="pp-ai-no-video-hint">Generate AI video clips first, then apply effects and export.</p>
+            <button class="nle-btn nle-btn-ai"
+                    onclick="document.getElementById('form-advance').submit()">
+              Full AI Render →
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- Playback controls — overlaid at bottom of player -->
+          <div class="nle-playback pp-quick-ctrl" id="pp-quick-controls">
+            <button class="nle-pb-btn" onclick="ppPrev()" title="Previous">◀</button>
+            <button class="nle-pb-btn nle-pb-play" id="pp-play-btn" onclick="ppTogglePlay()" title="Play / Pause">▶</button>
+            <button class="nle-pb-btn" onclick="ppNext()" title="Next">▶▶</button>
+            <div class="nle-pb-track">
+              <div class="nle-pb-fill" id="pp-scrub-fill"></div>
+            </div>
+            <span class="nle-pb-time" id="pp-time-display">0.0s / 0.0s</span>
+          </div>
+
+        </div><!-- /pp-preview-frame -->
+      </div><!-- /nle-player-area -->
+
+      <!-- Timeline strip below player -->
+      <div class="nle-timeline">
+        <div class="nle-tl-header">
+          <span class="nle-tl-label">TIMELINE</span>
+          <span class="nle-tl-total">{{ total_duration }}s total</span>
         </div>
+        <div class="nle-tl-track-row" id="nle-tl-shots">
+          {% for shot in shots %}
+          <div class="nle-tl-shot {% if loop.first %}nle-tl-active{% endif %}"
+               style="flex: {{ (shot.duration or 4.0)|int }} 0 0; min-width: {{ [((shot.duration or 4.0) * 8)|int, 28]|max }}px;"
+               onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
+               title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.duration or 4.0) }}s">
+            {% if shot.url %}
+            <img src="{{ shot.url }}" alt="" loading="lazy">
+            {% endif %}
+            <div class="nle-tl-shot-info">
+              <span class="nle-tl-shot-n">{{ loop.index }}</span>
+              <span class="nle-tl-shot-d">{{ '%.0f'|format(shot.duration or 4.0) }}s</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div><!-- /nle-timeline -->
 
-      </div><!-- /pp-preview-frame -->
-
-    </div><!-- /nle-player-col -->
+    </div><!-- /nle-center-col -->
 
     <!-- ── Right tools panel ──────────────────────────────────────────── -->
     <aside class="pp-control-panel">
@@ -546,50 +621,17 @@
       </div>
     </aside><!-- /pp-control-panel -->
 
-  </div><!-- /nle-body -->
+  </div><!-- /nle-workspace -->
 
-  <!-- ══ FILMSTRIP TIMELINE (full width, bottom) ══════════════════════════ -->
-  <div class="pp-thumb-strip nle-filmstrip" id="pp-thumb-strip">
-    {% for shot in shots %}
-    <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
-         id="pp-thumb-{{ shot.shot_index }}"
-         data-idx="{{ shot.shot_index }}"
-         data-dur="{{ shot.duration or 4.0 }}"
-         onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
-         title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s — click to configure">
-      {% if shot.url %}
-      <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
-      {% else %}
-      <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
-      {% endif %}
-      <div class="pp-thumb-meta">
-        <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
-        <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
-                onclick="ppEditDuration(event, {{ shot.shot_index }})"
-                title="Click to override duration">
-          {{ '%.1f'|format(shot.duration or 4.0) }}s
-        </button>
-        <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
-      </div>
-      <!-- KB override popover -->
-      <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
-        <div class="pp-kb-pop-label">Shot {{ shot.shot_index }} motion</div>
-        <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
-          <option value="">— Use global —</option>
-          <option value="zoom-in">Zoom In</option>
-          <option value="zoom-out">Zoom Out</option>
-          <option value="pan-left">Pan Left</option>
-          <option value="pan-right">Pan Right</option>
-          <option value="pan-up">Pan Up</option>
-          <option value="pan-down">Pan Down</option>
-          <option value="static">Static</option>
-          <option value="random">Random</option>
-        </select>
-        <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
-      </div>
-    </div>
-    {% endfor %}
-  </div><!-- /nle-filmstrip -->
+  <!-- ══ BOTTOM TOOLBAR ══════════════════════════════════════════════════════ -->
+  <div class="nle-bottom-bar">
+    <button class="nle-bb-btn" id="btn-undo" title="Undo" disabled>↩ Undo</button>
+    <button class="nle-bb-btn" id="btn-redo" title="Redo" disabled>↪ Redo</button>
+    <div class="nle-bb-sep"></div>
+    <button class="nle-bb-btn" id="btn-save-bottom" onclick="ppSave()" title="Save">💾 Save</button>
+    <div class="nle-bb-sep"></div>
+    <span class="nle-bb-info" id="pp-bottom-status">{{ shots|length }} shots · {{ total_duration }}s</span>
+  </div><!-- /nle-bottom-bar -->
 
   <div style="display:none;">{% include '_redo_panel.html' %}</div>
 
@@ -637,8 +679,8 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   justify-content: space-between;
   padding: 0 12px;
   gap: 8px;
-  background: #0b0b1a;
-  border-bottom: 1px solid #18182e;
+  background: #0a0a0f;
+  border-bottom: 1px solid rgba(255,255,255,.08);
   z-index: 10;
   overflow: hidden;
 }
@@ -692,9 +734,9 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 }
 .nle-mode-tabs {
   display: flex;
-  background: #0d0d1c;
-  border: 1px solid #1e1e30;
-  border-radius: 9px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
   padding: 3px;
   gap: 2px;
 }
@@ -703,25 +745,25 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   align-items: center;
   gap: 5px;
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   border: none;
   background: transparent;
-  color: #4a5260;
+  color: #4a4a68;
   transition: all .18s;
   white-space: nowrap;
   position: relative;
 }
-.nle-mtab:hover { color: #cfd6df; background: rgba(255,255,255,.06); }
+.nle-mtab:hover { color: #f5f5fa; background: rgba(255,255,255,.07); }
 .nle-mtab.active {
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #8b5cf6, #ff3ea5);
   color: #fff;
-  box-shadow: 0 2px 10px rgba(124,58,237,.35);
+  box-shadow: 0 2px 12px rgba(139,92,246,.4);
 }
-.nle-mtab-locked { opacity: .45; cursor: not-allowed !important; }
-.nle-mtab-locked:hover { background: transparent !important; color: #4a5260 !important; }
+.nle-mtab-locked { opacity: .35; cursor: not-allowed !important; }
+.nle-mtab-locked:hover { background: transparent !important; color: #4a4a68 !important; }
 .nle-mt-icon { font-size: 13px; }
 .nle-mt-dot {
   position: absolute;
@@ -729,8 +771,8 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   width: 5px; height: 5px;
   border-radius: 50%;
 }
-.nle-mt-dot-q  { background: #4ade80; box-shadow: 0 0 4px #4ade80; }
-.nle-mt-dot-ai { background: #f59e0b; box-shadow: 0 0 4px #f59e0b; }
+.nle-mt-dot-q  { background: #d4ff3a; box-shadow: 0 0 5px #d4ff3a; }
+.nle-mt-dot-ai { background: #38e1ff; box-shadow: 0 0 5px #38e1ff; }
 .nle-tb-right {
   display: flex;
   align-items: center;
@@ -757,25 +799,26 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 }
 .nle-btn:hover { border-color: #3a3a58; color: #cfd6df; background: #12122a; }
 .nle-btn-gen {
-  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+  background: linear-gradient(135deg, #8b5cf6, #ff3ea5);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 2px 8px rgba(109,40,217,.3);
+  box-shadow: 0 2px 10px rgba(139,92,246,.35);
 }
-.nle-btn-gen:hover { filter: brightness(1.12); }
-.nle-btn-dl  { background: #0f1a0f; color: #4ade80; border-color: rgba(74,222,128,.25); }
-.nle-btn-dl:hover { background: rgba(74,222,128,.12); }
+.nle-btn-gen:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(255,62,165,.35); }
+.nle-btn-dl  { background: rgba(212,255,58,.08); color: #d4ff3a; border-color: rgba(212,255,58,.2); }
+.nle-btn-dl:hover { background: rgba(212,255,58,.15); }
 .nle-btn-ai  {
-  background: linear-gradient(135deg, #b45309, #92400e);
+  background: linear-gradient(135deg, #38e1ff, #8b5cf6);
   border-color: transparent;
-  color: #fef3c7;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(56,225,255,.2);
 }
-.nle-btn-ai:hover { filter: brightness(1.12); }
-.nle-btn-save { background: #0f0f1c; color: #8899aa; }
-.nle-btn-save:hover { color: #fff; }
-.nle-btn-save.dirty { color: #d4ff3a; border-color: rgba(212,255,58,.35); }
-.nle-btn-share { background: #0e1825; color: #60a5fa; border-color: rgba(96,165,250,.25); }
-.nle-btn-share:hover { background: rgba(96,165,250,.12); }
+.nle-btn-ai:hover { filter: brightness(1.1); }
+.nle-btn-save { background: transparent; color: #5a5a7a; border-color: rgba(255,255,255,.1); }
+.nle-btn-save:hover { color: #d4ff3a; border-color: rgba(212,255,58,.3); }
+.nle-btn-save.dirty { color: #d4ff3a; border-color: rgba(212,255,58,.45); background: rgba(212,255,58,.06); }
+.nle-btn-share { background: rgba(56,225,255,.07); color: #38e1ff; border-color: rgba(56,225,255,.2); }
+.nle-btn-share:hover { background: rgba(56,225,255,.14); }
 .nle-btn-shared { background: rgba(212,255,58,.08); color: #d4ff3a; border-color: rgba(212,255,58,.3); }
 .nle-btn-hidden { display: none !important; }
 
@@ -810,37 +853,96 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   color: #fca5a5;
 }
 
-/* ══ NLE BODY (player + tools grid) ════════════════════════════════════ */
-.nle-body {
+/* ══ NLE WORKSPACE — 3-column professional editor ═══════════════════════ */
+.nle-workspace {
   flex: 1 1 0;
   min-height: 0;
+  display: flex;
+  flex-direction: row;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr 320px;
 }
 
-/* ── Player column ───────────────────────────────────────────────────── */
-.nle-player-col {
+/* ── LEFT: Shots / Scenes sidebar ───────────────────────────────────── */
+.nle-scenes-bar {
+  width: 144px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  background: #080810;
+  border-right: 1px solid rgba(212,255,58,.1);
   overflow: hidden;
-  background: #000;
+}
+.nle-sb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  flex-shrink: 0;
+}
+.nle-sb-title {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: #d4ff3a;
+  text-transform: uppercase;
+}
+.nle-sb-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: #3a3a5a;
+  background: rgba(212,255,58,.08);
+  border-radius: 10px;
+  padding: 1px 6px;
 }
 
-/* ── Edge-to-edge player frame ───────────────────────────────────────── */
-.pp-preview-frame {
+/* Vertical shot list */
+.nle-scenes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e36 #080810;
+}
+.nle-scenes-list::-webkit-scrollbar { width: 3px; }
+.nle-scenes-list::-webkit-scrollbar-track { background: #080810; }
+.nle-scenes-list::-webkit-scrollbar-thumb { background: #1e1e36; border-radius: 2px; }
+
+/* ── CENTER: Player + Timeline ──────────────────────────────────────── */
+.nle-center-col {
   flex: 1 1 0;
-  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Player area — 16:9 ratio, fills width */
+.nle-player-area {
+  flex-shrink: 0;
+  position: relative;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 16:9 player frame ──────────────────────────────────────────────── */
+.pp-preview-frame {
+  width: 100%;
+  aspect-ratio: 16/9;
   position: relative;
   background: #000;
   overflow: hidden;
-  /* No border, no border-radius, no max-height — true edge-to-edge */
 }
 /* Aspect ratio variants (applied via JS: ppSelectAR) */
-.pp-preview-frame.ar-9-16  { aspect-ratio: 9/16; max-width: 56.25vh; margin: 0 auto; }
-.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-width: 100vh;   margin: 0 auto; }
-.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-width: 133.33vh; margin: 0 auto; }
+.pp-preview-frame.ar-9-16  { aspect-ratio: 9/16; width: auto; height: 100%; }
+.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  width: auto; height: 100%; }
+.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  width: auto; height: 100%; }
 
 /* ── Ken Burns image ──────────────────────────────────────────────────── */
 .pp-kb-wrap {
@@ -983,13 +1085,15 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 
 /* ══ TOOLS PANEL (right side) ═══════════════════════════════════════════ */
 .pp-control-panel {
-  border-left: 1px solid #14142a;
-  background: #0a0a18;
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(255,255,255,.07);
+  background: #0a0a0f;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-  position: relative; /* reset any old top/right/bottom positioning */
+  position: relative;
   top: unset; right: unset; bottom: unset;
   border-radius: 0;
   box-shadow: none;
@@ -998,9 +1102,9 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 /* ── Panel tabs ──────────────────────────────────────────────────────── */
 .pp-tabs {
   display: flex;
-  border-bottom: 1px solid #14142a;
+  border-bottom: 1px solid rgba(255,255,255,.07);
   flex-shrink: 0;
-  background: #0a0a18;
+  background: #0a0a0f;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -1010,7 +1114,7 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   padding: 11px 6px;
   border: none;
   background: transparent;
-  color: #5a6475;
+  color: #4a4a68;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -1020,90 +1124,179 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   letter-spacing: .02em;
   min-width: 54px;
 }
-.pp-tab:hover { color: #9aaabb; background: rgba(255,255,255,.03); }
-.pp-tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: rgba(37,99,235,.08); }
+.pp-tab:hover { color: #8a8aa0; background: rgba(255,255,255,.03); }
+.pp-tab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; background: rgba(212,255,58,.05); }
 
 /* ── Panel content area ──────────────────────────────────────────────── */
 .pp-panel { display: none; flex-direction: column; gap: 0; padding: 14px 14px 20px; overflow-y: auto; flex: 1; }
 .pp-panel.active { display: flex; }
 
-/* ══ FILMSTRIP TIMELINE (full-width bottom bar) ══════════════════════════ */
-.nle-filmstrip {
-  flex-shrink: 0;
-  height: 92px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background: #0b0b18;
-  border-top: 2px solid #14142a;
-  padding: 6px 12px;
-  scrollbar-width: thin;
-  scrollbar-color: #2a2a40 #0b0b18;
-}
-.nle-filmstrip::-webkit-scrollbar { height: 4px; }
-.nle-filmstrip::-webkit-scrollbar-track { background: #0b0b18; }
-.nle-filmstrip::-webkit-scrollbar-thumb { background: #2a2a40; border-radius: 2px; }
-
-/* ── Film thumbnail items ────────────────────────────────────────────── */
+/* ══ SHOT THUMBNAILS — vertical sidebar ════════════════════════════════ */
 .pp-thumb-item {
   flex-shrink: 0;
-  width: 90px;
-  height: 72px;
+  width: 100%;
   position: relative;
-  border-radius: 5px;
-  overflow: visible;
   cursor: pointer;
-  border: 2px solid transparent;
-  transition: border-color .15s, transform .12s;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  transition: border-color .15s, background .12s;
+  overflow: visible;
+  background: transparent;
 }
-.pp-thumb-item:hover { border-color: #2563eb; transform: translateY(-2px); }
-.pp-thumb-item.active { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb, 0 4px 14px rgba(37,99,235,.4); }
+.pp-thumb-item:hover { background: rgba(212,255,58,.04); border-left-color: rgba(212,255,58,.3); }
+.pp-thumb-item.active {
+  border-left-color: #d4ff3a;
+  background: rgba(212,255,58,.07);
+}
 .pp-thumb-item img {
-  width: 90px;
-  height: 56px;
+  width: 100%;
+  height: 72px;
   object-fit: cover;
   display: block;
-  border-radius: 3px;
 }
 .pp-thumb-placeholder {
-  width: 90px;
-  height: 56px;
-  background: #18182e;
+  width: 100%;
+  height: 72px;
+  background: #111120;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3a3a58;
-  font-size: 12px;
+  color: #2a2a44;
+  font-size: 14px;
   font-weight: 700;
-  border-radius: 3px;
 }
 .pp-thumb-meta {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 2px 0;
+  gap: 4px;
+  padding: 4px 8px 5px;
   font-size: 9px;
-  color: #444460;
+  color: #4a4a6a;
 }
-.pp-thumb-idx { font-weight: 700; color: #6060a0; }
+.pp-thumb-item.active .pp-thumb-meta { color: #8a8aa0; }
+.pp-thumb-idx { font-weight: 800; color: #5a5a7a; min-width: 14px; }
+.pp-thumb-item.active .pp-thumb-idx { color: #d4ff3a; }
 .pp-thumb-dur-badge {
-  background: rgba(37,99,235,.15);
-  color: #60a5fa;
+  background: rgba(56,225,255,.1);
+  color: #38e1ff;
   border: none;
   border-radius: 3px;
-  padding: 1px 4px;
+  padding: 1px 5px;
   font-size: 9px;
   cursor: pointer;
   font-family: inherit;
+  font-weight: 600;
   transition: background .12s;
+  margin-left: auto;
 }
-.pp-thumb-dur-badge:hover { background: rgba(37,99,235,.3); }
-.pp-kb-badge {
-  color: #d4ff3a;
+.pp-thumb-dur-badge:hover { background: rgba(56,225,255,.2); }
+.pp-kb-badge { color: #d4ff3a; font-size: 9px; }
+
+/* ══ TIMELINE STRIP (below player) ═════════════════════════════════════ */
+.nle-timeline {
+  flex: 1 1 0;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  background: #060610;
+  border-top: 1px solid rgba(212,255,58,.08);
+  overflow: hidden;
+}
+.nle-tl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  flex-shrink: 0;
+}
+.nle-tl-label {
   font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: #38e1ff;
+  text-transform: uppercase;
 }
+.nle-tl-total {
+  font-size: 10px;
+  color: #3a3a5a;
+  font-weight: 600;
+}
+.nle-tl-track-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e36 #060610;
+}
+.nle-tl-track-row::-webkit-scrollbar { height: 3px; }
+.nle-tl-track-row::-webkit-scrollbar-track { background: #060610; }
+.nle-tl-track-row::-webkit-scrollbar-thumb { background: #1e1e36; border-radius: 2px; }
+.nle-tl-shot {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,.08);
+  min-height: 48px;
+  transition: border-color .15s;
+  flex-shrink: 0;
+}
+.nle-tl-shot:hover { border-color: rgba(212,255,58,.4); }
+.nle-tl-shot.nle-tl-active { border-color: #d4ff3a; box-shadow: 0 0 8px rgba(212,255,58,.2); }
+.nle-tl-shot img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: .85;
+}
+.nle-tl-shot-info {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  background: linear-gradient(to top, rgba(0,0,0,.8), transparent);
+  gap: 2px;
+}
+.nle-tl-shot-n { font-size: 9px; font-weight: 800; color: rgba(255,255,255,.7); }
+.nle-tl-shot-d { font-size: 8px; color: rgba(212,255,58,.7); font-weight: 600; }
+
+/* ══ BOTTOM TOOLBAR ═════════════════════════════════════════════════════ */
+.nle-bottom-bar {
+  flex-shrink: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  background: #04040c;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.nle-bb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.08);
+  background: transparent;
+  color: #5a5a7a;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+}
+.nle-bb-btn:hover:not([disabled]) { color: #d4ff3a; border-color: rgba(212,255,58,.25); background: rgba(212,255,58,.06); }
+.nle-bb-btn[disabled] { opacity: .35; cursor: default; }
+.nle-bb-sep { width: 1px; height: 20px; background: rgba(255,255,255,.07); margin: 0 4px; }
+.nle-bb-info { font-size: 11px; color: #3a3a5a; font-weight: 500; margin-left: auto; }
 
 /* ── KB popover ──────────────────────────────────────────────────────── */
 .pp-kb-popover {
@@ -1111,43 +1304,46 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   bottom: calc(100% + 6px);
   left: 0;
   z-index: 30;
-  background: #12122a;
-  border: 1px solid #2a2a48;
-  border-radius: 9px;
+  background: #11111a;
+  border: 1px solid rgba(139,92,246,.3);
+  border-radius: 10px;
   padding: 12px;
-  min-width: 180px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  min-width: 176px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(139,92,246,.1);
 }
 .pp-kb-pop-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #8899aa;
+  font-size: 10px;
+  font-weight: 800;
+  color: #8b5cf6;
   margin-bottom: 8px;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: .08em;
 }
 .pp-kb-pop-select {
   width: 100%;
-  background: #0d0d1c;
-  color: #cfd6df;
-  border: 1px solid #2a2a48;
-  border-radius: 6px;
+  background: rgba(255,255,255,.05);
+  color: #f5f5fa;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px;
   padding: 6px 8px;
   font-size: 12px;
   margin-bottom: 8px;
+  font-family: inherit;
 }
+.pp-kb-pop-select:focus { outline: none; border-color: rgba(212,255,58,.4); }
 .pp-kb-pop-clear {
   background: transparent;
-  border: 1px solid #2a2a48;
-  color: #5a6270;
-  border-radius: 5px;
+  border: 1px solid rgba(255,62,165,.25);
+  color: #ff3ea5;
+  border-radius: 6px;
   padding: 4px 8px;
   font-size: 11px;
   cursor: pointer;
   width: 100%;
-  transition: color .15s;
+  font-family: inherit;
+  transition: all .15s;
 }
-.pp-kb-pop-clear:hover { color: #ef4444; border-color: rgba(239,68,68,.4); }
+.pp-kb-pop-clear:hover { background: rgba(255,62,165,.12); border-color: rgba(255,62,165,.5); }
 
 /* ── Info bar (legacy — kept for redo panel) ─────────────────────────── */
 .pp-info-bar {
