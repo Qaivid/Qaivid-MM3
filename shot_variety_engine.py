@@ -53,8 +53,8 @@ _BASE_CYCLE = [
 # nostalgic:     face 35%, body 34%, env 17%, macro 5%, symbolic 9%
 # hopeful:       face 33%, body 33%, env 22%, macro 5%, symbolic 7%
 # angry_intense: face 35%, body 46%, env 10%, macro 5%, symbolic 4%
-# spiritual:     face 28%, body 28%, env 22%, macro 7%, symbolic 15%
-# energetic:     face 35%, body 51%, env 10%, macro 4%, symbolic 0%
+# spiritual_reflective:  face 28%, body 28%, env 22%, macro 7%, symbolic 15%
+# energetic_celebration: face 35%, body 51%, env 10%, macro 4%, symbolic 0%
 _MODE_CYCLES: Dict[str, List[str]] = {
     "romantic": [
         "close_up",        "medium_shot",     "head_shoulders",   "wide_shot",
@@ -91,14 +91,14 @@ _MODE_CYCLES: Dict[str, List[str]] = {
         "head_shoulders",  "full_body",        "medium_shot",      "drone",
         "close_up",        "insert",           "memory_fragment",  "close_up",
     ],
-    "spiritual": [
+    "spiritual_reflective": [
         "memory_fragment", "medium_shot",      "wide_shot",        "close_up",
         "drone",           "memory_fragment",  "head_shoulders",   "wide_shot",
         "insert",          "medium_shot",      "memory_fragment",  "close_up",
         "full_body",       "drone",            "head_shoulders",   "insert",
         "close_up",        "extreme_close_up", "movement",         "wide_shot",
     ],
-    "energetic": [
+    "energetic_celebration": [
         "movement",        "close_up",         "medium_shot",      "movement",
         "head_shoulders",  "full_body",        "movement",         "medium_shot",
         "close_up",        "movement",         "head_shoulders",   "full_body",

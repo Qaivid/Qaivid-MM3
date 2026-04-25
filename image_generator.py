@@ -923,6 +923,7 @@ def generate_shot_still(
     user_override: Optional[str] = None,
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
+    emotional_mode_modifier: str = "",
 ) -> str:
     """Generate a per-shot still and store it in R2.
 
@@ -979,6 +980,7 @@ def generate_shot_still(
         cine_prefix=cine_prefix,
         brain_char=brain_char,
         brain_loc=brain_loc,
+        emotional_mode_modifier=emotional_mode_modifier,
     )
 
     if not prompt.strip():

@@ -1033,6 +1033,7 @@ def _render_shot(project_id: str, shot: dict,
         # ── Brain identity data — look up matched char/loc entries by db_id ──
         brain_char: Optional[dict] = None
         brain_loc:  Optional[dict] = None
+        shot_emotional_modifier: str = ""
         try:
             with _db() as conn:
                 _shot_brain = ProjectBrain.load(project_id, conn)
@@ -1051,6 +1052,9 @@ def _render_shot(project_id: str, shot: dict,
                 brain_char = _bc_idx.get(character["id"])
             if location and isinstance(location.get("id"), int):
                 brain_loc = _bl_idx.get(location["id"])
+            # Emotional mode modifier for prompt composition
+            _emp = _shot_brain.read("emotional_mode_packet") or {}
+            shot_emotional_modifier = (_emp.get("cinematic_modifier") or "").strip()
         except Exception:
             logger.debug(
                 "_render_shot: brain load failed for project=%s shot=%s (non-fatal)",
@@ -1079,6 +1083,7 @@ def _render_shot(project_id: str, shot: dict,
                 user_override=user_override,
                 brain_char=brain_char,
                 brain_loc=brain_loc,
+                emotional_mode_modifier=shot_emotional_modifier,
             )
             _update_shot(project_id, idx, "ready", file_path=url)
         except Exception as exc:

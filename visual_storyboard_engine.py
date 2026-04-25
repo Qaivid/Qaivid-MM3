@@ -63,11 +63,11 @@ _EMOTIONAL_FRAMING: Dict[str, Dict[str, Dict[str, float]]] = {
         "targets": {"face": 0.35, "body": 0.46, "environment": 0.10, "macro": 0.05, "symbolic": 0.04},
         "caps":    {"face": 0.45, "body": 0.55, "environment": 0.15, "macro": 0.10, "symbolic": 0.08},
     },
-    "spiritual": {
+    "spiritual_reflective": {
         "targets": {"face": 0.28, "body": 0.28, "environment": 0.22, "macro": 0.07, "symbolic": 0.15},
         "caps":    {"face": 0.38, "body": 0.35, "environment": 0.28, "macro": 0.12, "symbolic": 0.22},
     },
-    "energetic": {
+    "energetic_celebration": {
         "targets": {"face": 0.35, "body": 0.51, "environment": 0.10, "macro": 0.04, "symbolic": 0.00},
         "caps":    {"face": 0.45, "body": 0.58, "environment": 0.12, "macro": 0.08, "symbolic": 0.05},
     },

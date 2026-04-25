@@ -86,6 +86,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["conceptual_abstract", "documentary_candid"],
         },
         "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
+        "compatible_cinematic_styles":   ["soft_poetic", "golden_hour", "arthouse_minimalist"],
     },
 
     "sad_loss": {
@@ -132,6 +133,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["performance"],
         },
         "incompatible_cinematic_styles": ["vibrant_bold", "energetic_celebration"],
+        "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "monochrome"],
     },
 
     "nostalgic": {
@@ -178,6 +180,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     [],
         },
         "incompatible_cinematic_styles": ["vibrant_bold", "noir_dramatic"],
+        "compatible_cinematic_styles":   ["vintage_grain", "soft_poetic", "arthouse_minimalist"],
     },
 
     "hopeful": {
@@ -224,6 +227,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["conceptual_abstract"],
         },
         "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
+        "compatible_cinematic_styles":   ["golden_hour", "soft_poetic", "split_tone"],
     },
 
     "angry_intense": {
@@ -270,6 +274,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["single_location", "documentary_candid"],
         },
         "incompatible_cinematic_styles": ["soft_poetic", "arthouse_minimalist", "vintage_grain"],
+        "compatible_cinematic_styles":   ["noir_dramatic", "high_contrast", "raw_documentary"],
     },
 
     "spiritual_reflective": {
@@ -316,6 +321,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["performance"],
         },
         "incompatible_cinematic_styles": ["vibrant_bold", "angry_intense"],
+        "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "surrealist_dream"],
     },
 
     "energetic_celebration": {
@@ -362,6 +368,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["single_location", "narrative"],
         },
         "incompatible_cinematic_styles": ["arthouse_minimalist", "monochrome", "noir_dramatic"],
+        "compatible_cinematic_styles":   ["vibrant_bold", "pop_cinematic", "saturated_vivid"],
     },
 }
 
@@ -605,6 +612,7 @@ def build_emotional_mode_packet(
         "style_modifier_injection":   pm["style_modifier_injection"],
         "production_affinity":        pm["production_affinity"],
         "incompatible_cinematic_styles": pm["incompatible_cinematic_styles"],
+        "compatible_cinematic_styles":   pm.get("compatible_cinematic_styles") or [],
         "classifier_method":          classifier_method,
         "raw_scores":                 {m: round(s, 4) for m, s in raw_scores.items()},
         "reasoning":                  reasoning,

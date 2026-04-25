@@ -220,13 +220,13 @@ EMOTIONAL_PACING_PROFILES: Dict[str, Dict[str, Dict[str, float]]] = {
             "medium_shot_ratio": 0.43,
             "short_shot_ratio":  0.45,
         },
-        "spiritual": {
+        "spiritual_reflective": {
             "preferred_avg_duration": 9.0,
             "long_shot_ratio":  0.45,
             "medium_shot_ratio": 0.45,
             "short_shot_ratio":  0.10,
         },
-        "energetic": {
+        "energetic_celebration": {
             "preferred_avg_duration": 4.0,
             "long_shot_ratio":  0.10,
             "medium_shot_ratio": 0.40,

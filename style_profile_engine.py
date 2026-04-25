@@ -89,11 +89,12 @@ class StyleProfileEngine:
         if not emp:
             return {}
         return {
-            "mode_label":              emp.get("mode_label", ""),
-            "cinematic_modifier":      emp.get("cinematic_modifier", ""),
-            "preferred_production":    (emp.get("production_affinity") or {}).get("preferred") or [],
-            "avoid_production":        (emp.get("production_affinity") or {}).get("avoid") or [],
-            "incompatible_cinematic":  emp.get("incompatible_cinematic_styles") or [],
+            "mode_label":             emp.get("mode_label", ""),
+            "cinematic_modifier":     emp.get("cinematic_modifier", ""),
+            "preferred_production":   (emp.get("production_affinity") or {}).get("preferred") or [],
+            "avoid_production":       (emp.get("production_affinity") or {}).get("avoid") or [],
+            "incompatible_cinematic": emp.get("incompatible_cinematic_styles") or [],
+            "compatible_cinematic":   emp.get("compatible_cinematic_styles") or [],
         }
 
     def _build_system_prompt(self, mode_constraints: Optional[Dict[str, Any]] = None) -> str:
@@ -101,16 +102,18 @@ class StyleProfileEngine:
 
         mode_section = ""
         if mode_constraints and mode_constraints.get("mode_label"):
-            preferred = mode_constraints.get("preferred_production") or []
-            avoid     = mode_constraints.get("avoid_production") or []
-            incompat  = mode_constraints.get("incompatible_cinematic") or []
-            modifier  = mode_constraints.get("cinematic_modifier") or ""
+            preferred   = mode_constraints.get("preferred_production") or []
+            avoid       = mode_constraints.get("avoid_production") or []
+            incompat    = mode_constraints.get("incompatible_cinematic") or []
+            compatible  = mode_constraints.get("compatible_cinematic") or []
+            modifier    = mode_constraints.get("cinematic_modifier") or ""
             mode_section = f"""
 EMOTIONAL MODE CONSTRAINTS (locked by Stage 2b — MUST be respected):
   Emotional mode:  {mode_constraints['mode_label']}
   Aesthetic feel:  {modifier}
   Production style — MUST choose from: {', '.join(preferred) if preferred else '(any)'}
   Production style — MUST NOT use:    {', '.join(avoid) if avoid else '(none)'}
+  Cinematic style  — PREFER from:     {', '.join(compatible) if compatible else '(any)'}
   Cinematic style  — MUST NOT use:    {', '.join(incompat) if incompat else '(none)'}
 These constraints are absolute. Violating them means ignoring the locked emotional truth.
 """.strip()
@@ -312,6 +315,9 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             lines.append(f"  Preferred prod:   {', '.join(prod_aff['preferred'])}")
         if prod_aff.get("avoid"):
             lines.append(f"  Avoid prod:       {', '.join(prod_aff['avoid'])}")
+        compat = emp.get("compatible_cinematic_styles") or []
+        if compat:
+            lines.append(f"  Prefer cinematic: {', '.join(compat)}")
         incompat = emp.get("incompatible_cinematic_styles") or []
         if incompat:
             lines.append(f"  Avoid cinematic:  {', '.join(incompat)}")
@@ -352,9 +358,10 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         if not isinstance(raw_suggestions, list):
             raw_suggestions = []
 
-        avoid_prod   = set((mode_constraints or {}).get("avoid_production") or [])
-        incompat_cin = set((mode_constraints or {}).get("incompatible_cinematic") or [])
-        preferred_prod = list((mode_constraints or {}).get("preferred_production") or [])
+        avoid_prod      = set((mode_constraints or {}).get("avoid_production") or [])
+        incompat_cin    = set((mode_constraints or {}).get("incompatible_cinematic") or [])
+        preferred_prod  = list((mode_constraints or {}).get("preferred_production") or [])
+        compatible_cin  = list((mode_constraints or {}).get("compatible_cinematic") or [])
 
         resolved = []
         for item in raw_suggestions[:3]:
@@ -377,14 +384,18 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
                     )
                     prod_id = replacement
 
-            # Post-filter: replace incompatible cinematic style
+            # Post-filter: replace incompatible cinematic style.
+            # Prefer a mode-compatible style first; fall back to any valid non-incompatible style.
             if cin_id in incompat_cin:
                 all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
-                replacement = next((c for c in all_cin if c not in incompat_cin), None)
+                replacement = next(
+                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
+                    None,
+                ) or next((c for c in all_cin if c not in incompat_cin), None)
                 if replacement:
                     logger.info(
-                        "StyleProfileEngine: replaced incompatible cinematic style %r → %r (mode constraint)",
-                        cin_id, replacement,
+                        "StyleProfileEngine: replaced incompatible cinematic style %r → %r (mode constraint, compatible=%s)",
+                        cin_id, replacement, bool(replacement in compatible_cin),
                     )
                     cin_id = replacement
 

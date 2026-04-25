@@ -112,13 +112,13 @@ def _camera_clause(camera: Dict) -> str:
 #   low_cutoff:  below this → static
 #   high_cutoff: above this → active pan/tilt
 _MODE_INTENSITY_THRESHOLDS: Dict[str, tuple] = {
-    "romantic":      (0.30, 0.60),   # lower threshold — subtle drift starts earlier
-    "sad_loss":      (0.25, 0.55),   # very soft — motion is restrained throughout
-    "nostalgic":     (0.30, 0.60),   # gentle; memory-like drifts preferred
-    "hopeful":       (0.30, 0.60),   # smooth upward energy, not harsh
-    "angry_intense": (0.40, 0.60),   # compresses range — goes active quickly
-    "spiritual":     (0.25, 0.55),   # very minimal movement; stillness honoured
-    "energetic":     (0.40, 0.65),   # high floor — nearly always active
+    "romantic":               (0.45, 0.70),   # STILLER — wide static zone; drift only at high intensity
+    "sad_loss":               (0.50, 0.75),   # STILLEST — very restrained; active only at peak
+    "nostalgic":              (0.40, 0.65),   # slight stillness bias; memory-drift aesthetic
+    "hopeful":                (0.30, 0.60),   # standard; gentle upward energy permitted
+    "angry_intense":          (0.20, 0.45),   # MOST ACTIVE — motion kicks in at low intensity
+    "spiritual_reflective":   (0.50, 0.75),   # STILLEST alongside sad_loss; stillness is the message
+    "energetic_celebration":  (0.15, 0.40),   # MOST ACTIVE — nearly always moving
 }
 
 
@@ -135,8 +135,8 @@ def _motion_mode_for_intensity(
         > 0.65   → active pan/tilt aligned with motion_philosophy direction
 
     When emotional_mode_id is supplied, per-mode thresholds from
-    _MODE_INTENSITY_THRESHOLDS override the defaults, so e.g. a spiritual
-    song stays minimal longer than an energetic one at the same intensity.
+    _MODE_INTENSITY_THRESHOLDS override the defaults, so e.g. a spiritual_reflective
+    song stays minimal longer than an energetic_celebration one at the same intensity.
 
     motion_philosophy values: still_dominant | dynamic_dominant | mixed
     """
