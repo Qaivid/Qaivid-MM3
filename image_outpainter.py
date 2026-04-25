@@ -18,6 +18,7 @@ from typing import Optional
 
 import boto3
 import requests
+from PIL import Image
 
 import r2_storage
 
@@ -328,6 +329,26 @@ def outpaint_shot_still(
     dl = requests.get(result_url, timeout=60)
     dl.raise_for_status()
     image_bytes = dl.content
+
+    # Scale to exact canonical resolution so video generation receives a true
+    # 16:9 / 9:16 frame.  The round64 geometry means Runware may return e.g.
+    # 1792×1024 instead of exactly 1920×1080; this final resize corrects that.
+    canonical = TARGET_RESOLUTIONS.get(aspect_ratio)
+    if canonical:
+        target_w, target_h = canonical
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.size != (target_w, target_h):
+                logger.info(
+                    "Scaling Runware output %dx%d → %dx%d",
+                    img.width, img.height, target_w, target_h,
+                )
+                img = img.resize((target_w, target_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="WEBP", quality=90)
+            image_bytes = buf.getvalue()
+        except Exception as exc:
+            logger.warning("Post-scale failed (%s) — using raw Runware output", exc)
 
     # Upload to R2
     r2_key    = _r2_key(project_id, shot_index)
