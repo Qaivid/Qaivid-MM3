@@ -289,6 +289,35 @@ def _recover_stalled_jobs():
             "Outpaint orphan cleanup failed: %s", exc3
         )
 
+    # ── Reset orphaned character/location reference plates stuck in 'rendering'.
+    #    Reference image generation runs in background threads; a server restart
+    #    kills them mid-flight leaving ref_status='rendering' forever.
+    #    Reset to 'pending' so the user can click Generate again from the
+    #    References Review page.
+    try:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE characters SET ref_status='pending' WHERE ref_status='rendering'"
+                )
+                nc = cur.rowcount
+                cur.execute(
+                    "UPDATE locations SET ref_status='pending' WHERE ref_status='rendering'"
+                )
+                nl = cur.rowcount
+            conn.commit()
+        if nc or nl:
+            import logging as _log6
+            _log6.getLogger("startup_recovery").warning(
+                "Reset %d orphaned character plate(s) and %d orphaned location plate(s) to pending",
+                nc, nl,
+            )
+    except Exception as exc4:
+        import logging as _log7
+        _log7.getLogger("startup_recovery").error(
+            "Entity plate orphan cleanup failed: %s", exc4
+        )
+
 
 _recover_stalled_jobs()
 
