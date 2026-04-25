@@ -2827,7 +2827,11 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         if _primary_mode:
             try:
                 from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
-                _det_pacing = _get_det_pacing(genre or "song", _primary_mode)
+                # `genre` (e.g. "song", "poem", "hip_hop") is the canonical content_type
+                # key expected by get_pacing_profile.  The column stores the same values
+                # as PACING_PROFILES keys; fall back to "song" for unknown genre strings.
+                _content_type = genre if genre in ("song", "poem") else "song"
+                _det_pacing = _get_det_pacing(_content_type, _primary_mode)
                 # Merge deterministic shot-plan hints into the pacing_profile sub-dict
                 # (additive; beat-duration clamps already set by emotional_mode_engine).
                 _existing_pp = dict(_emp_for_timeline.get("pacing_profile") or {})
