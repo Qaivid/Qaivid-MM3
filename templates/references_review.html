@@ -96,7 +96,7 @@
                         {% elif c.ref_status == 'rendering' %}Rendering
                         {% else %}Pending{% endif %}
                     </span>
-                    <span class="ref-edit-hint">Edit ↓</span>
+                    <span class="ref-edit-hint">{% if not c.ref_url %}Generate ▶{% else %}Edit ↓{% endif %}</span>
                 </div>
                 <div class="ref-card-foot">
                     <span class="ref-card-name">{{ c.name }}</span>
@@ -123,8 +123,8 @@
                 {% endif %}
             </div>
 
-            {# Edit panel — spans full grid width when visible #}
-            <div class="ref-edit-panel" id="panel-char-{{ c.id }}" hidden>
+            {# Edit panel — auto-open if no image yet so Generate button is immediately visible #}
+            <div class="ref-edit-panel" id="panel-char-{{ c.id }}" {% if c.ref_url %}hidden{% endif %}>
                 <div class="ref-edit-inner">
                     <div class="ref-edit-meta-row">
                         <strong>{{ c.name }}</strong>
@@ -215,7 +215,7 @@
                         {% elif l.ref_status == 'rendering' %}Rendering
                         {% else %}Pending{% endif %}
                     </span>
-                    <span class="ref-edit-hint">Edit ↓</span>
+                    <span class="ref-edit-hint">{% if not l.ref_url %}Generate ▶{% else %}Edit ↓{% endif %}</span>
                 </div>
                 <div class="ref-card-foot">
                     <span class="ref-card-name">{{ l.name }}</span>
@@ -223,7 +223,8 @@
                 </div>
             </div>
 
-            <div class="ref-edit-panel" id="panel-loc-{{ l.id }}" hidden>
+            {# Edit panel — auto-open if no image yet so Generate button is immediately visible #}
+            <div class="ref-edit-panel" id="panel-loc-{{ l.id }}" {% if l.ref_url %}hidden{% endif %}>
                 <div class="ref-edit-inner">
                     <div class="ref-edit-meta-row">
                         <strong>{{ l.name }}</strong>
