@@ -3278,21 +3278,15 @@ def stills_outpaint_all(project_id: str):
                         (new_url, pid, idx),
                     )
                     conn.commit()
-                logger.info("Outpaint done shot=%s url=%s", idx, new_url)
-            except OutpaintError as exc:
-                logger.error("Outpaint failed shot=%s: %s", idx, exc)
-                with db() as conn, conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
-                        (pid, idx),
-                    )
-                    conn.commit()
+                import logging as _oplog
+                _oplog.getLogger("outpaint").info("Outpaint done shot=%s url=%s", idx, new_url)
             except Exception as exc:
-                logger.exception("Outpaint unexpected error shot=%s", idx)
+                import logging as _oplog
+                _oplog.getLogger("outpaint").exception("Outpaint failed shot=%s: %s", idx, exc)
                 with db() as conn, conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
-                        (pid, idx),
+                        "UPDATE shot_assets SET outpaint_status='failed', error=%s WHERE project_id=%s AND shot_index=%s",
+                        (str(exc)[:500], pid, idx),
                     )
                     conn.commit()
 
@@ -3347,11 +3341,12 @@ def stills_outpaint_one(project_id: str, shot_index: int):
                     )
                     conn.commit()
             except Exception as exc:
-                logger.exception("Outpaint failed shot=%s", idx)
+                import logging as _tlog
+                _tlog.getLogger("outpaint").exception("Outpaint failed shot=%s: %s", idx, exc)
                 with db() as conn, conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE shot_assets SET outpaint_status='failed' WHERE project_id=%s AND shot_index=%s",
-                        (pid, idx),
+                        "UPDATE shot_assets SET outpaint_status='failed', error=%s WHERE project_id=%s AND shot_index=%s",
+                        (str(exc)[:500], pid, idx),
                     )
                     conn.commit()
 
