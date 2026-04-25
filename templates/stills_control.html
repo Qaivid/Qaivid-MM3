@@ -122,56 +122,23 @@
       <span class="sc-bulk-hint muted">Accepted: JPG, PNG, WEBP</span>
     </div>
 
-    <!-- ══ OUTPAINT PANEL ══════════════════════════════════════════════════ -->
-    <div class="op-panel" id="op-panel"
-         style="{{ '' if all_ready else 'display:none;' }}">
-      <div class="op-panel-inner">
-        <div class="op-panel-left">
-          <div class="op-icon">⬡</div>
-          <div>
-            <div class="op-title">AI Outpaint to True {{ aspect_ratio }}</div>
-            <div class="op-sub">
-              Extend every still to
-              {% if aspect_ratio == '16:9' %}1920 × 1080{% elif aspect_ratio == '9:16' %}1080 × 1920{% else %}{{ aspect_ratio }}{% endif %}
-              using FLUX Fill Dev &mdash;
-              <strong>~$0.006 / image</strong>.
-              Originals are preserved; outpainted versions go to video generation.
-            </div>
-          </div>
-        </div>
-        <div class="op-panel-right">
-          <div class="op-status-row" id="op-status-row">
-            <span class="op-pill op-pill-ready" id="op-cnt-ready">
-              {{ op_ns.op_ready }} ready
-            </span>
-            <span class="op-pill op-pill-rendering" id="op-cnt-rendering"
-                  style="{{ '' if op_ns.op_rendering > 0 else 'display:none;' }}">
-              {{ op_ns.op_rendering }} running
-            </span>
-            <span class="op-pill op-pill-failed" id="op-cnt-failed"
-                  style="{{ '' if op_ns.op_failed > 0 else 'display:none;' }}">
-              {{ op_ns.op_failed }} failed
-            </span>
-            <span class="op-pill op-pill-pending" id="op-cnt-pending"
-                  style="{{ '' if op_ns.op_pending > 0 else 'display:none;' }}">
-              {{ op_ns.op_pending }} pending
-            </span>
-          </div>
-          <button class="btn-outpaint" id="btn-outpaint-all"
-                  onclick="opOutpaintAll()"
-                  {% if all_outpainted %}style="opacity:.5;cursor:default;"{% endif %}>
-            {% if all_outpainted %}
-              ✓ All Outpainted
-            {% elif op_ns.op_rendering > 0 %}
-              ⏳ Running…
-            {% elif op_ns.op_ready > 0 %}
-              ↺ Re-outpaint All
-            {% else %}
-              ⬡ Outpaint All to {{ aspect_ratio }}
-            {% endif %}
-          </button>
-        </div>
-      </div>
+    <!-- ══ OUTPAINT BAR ══════════════════════════════════════════════════ -->
+    <div class="op-bar" id="op-panel" style="{{ '' if all_ready else 'display:none;' }}">
+      <span class="op-bar-label">⬡ Outpaint to {{ aspect_ratio }}</span>
+      <span class="op-pill op-pill-ready" id="op-cnt-ready">{{ op_ns.op_ready }} ready</span>
+      <span class="op-pill op-pill-rendering" id="op-cnt-rendering"
+            style="{{ '' if op_ns.op_rendering > 0 else 'display:none;' }}">{{ op_ns.op_rendering }} running</span>
+      <span class="op-pill op-pill-failed" id="op-cnt-failed"
+            style="{{ '' if op_ns.op_failed > 0 else 'display:none;' }}">{{ op_ns.op_failed }} failed</span>
+      <span class="op-pill op-pill-pending" id="op-cnt-pending"
+            style="{{ '' if op_ns.op_pending > 0 else 'display:none;' }}">{{ op_ns.op_pending }} pending</span>
+      <button class="btn-outpaint" id="btn-outpaint-all" onclick="opOutpaintAll()"
+              {% if all_outpainted %}style="opacity:.5;cursor:default;"{% endif %}>
+        {% if all_outpainted %}✓ All Done
+        {% elif op_ns.op_rendering > 0 %}⏳ Running…
+        {% elif op_ns.op_ready > 0 %}↺ Re-outpaint All
+        {% else %}Outpaint All{% endif %}
+      </button>
     </div>
 
     <!-- ══ TWO-COLUMN LAYOUT: filmstrip + detail ══════════════════════════ -->
@@ -432,6 +399,30 @@
 
 /* ── Quick-action buttons (legacy, kept for bulk-ops footer) ── */
 .sc-quick-btn { display: none; }
+
+/* ── Compact outpaint bar ── */
+.op-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 12px; margin: 6px 0 0;
+  background: rgba(212,255,58,.04); border: 1px solid rgba(212,255,58,.12);
+  border-radius: 8px; font-size: 12px;
+}
+.op-bar-label { color: #7a8a60; font-weight: 600; margin-right: 4px; }
+.op-pill {
+  font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
+  letter-spacing: .02em;
+}
+.op-pill-ready     { background: rgba(100,180,120,.15); color: #7ec8a4; border: 1px solid rgba(100,180,120,.25); }
+.op-pill-rendering { background: rgba(200,241,53,.1);   color: #c8f135; border: 1px solid rgba(200,241,53,.2); }
+.op-pill-failed    { background: rgba(255,107,107,.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,.2); }
+.op-pill-pending   { background: rgba(120,120,160,.1);  color: #7788aa; border: 1px solid rgba(120,120,160,.18); }
+.btn-outpaint {
+  margin-left: auto; padding: 4px 14px; font-size: 11px; font-weight: 600;
+  background: rgba(212,255,58,.1); color: #d4ff3a;
+  border: 1px solid rgba(212,255,58,.3); border-radius: 6px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.btn-outpaint:hover { background: rgba(212,255,58,.2); }
 
 /* ── Other existing shared styles ── */
 .sc-timing-bar {
