@@ -2858,6 +2858,31 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                 project_id,
             )
 
+        # MM3.1 Stage-9 explicit pacing lookup:
+        # Call get_pacing_profile(content_type, primary_mode) from deterministic_rules
+        # to read the per-mode shot-ratio/preferred-avg-duration profile and log it.
+        # This is a complementary lookup to the RhythmicAssemblyEngine's beat-duration
+        # clamping (which uses emotional_mode_packet.pacing_profile); both paths honour
+        # the detected emotional mode.
+        _primary_mode = (brain_emotional or {}).get("primary_mode") or ""
+        if _primary_mode:
+            try:
+                from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
+                _det_pacing = _get_det_pacing(genre or "song", _primary_mode)
+                logger.info(
+                    "_stage_brief_job: deterministic pacing for project=%s mode=%s "
+                    "preferred_avg=%.1fs long_ratio=%.2f short_ratio=%.2f",
+                    project_id, _primary_mode,
+                    _det_pacing.get("preferred_avg_duration", 0),
+                    _det_pacing.get("long_shot_ratio", 0),
+                    _det_pacing.get("short_shot_ratio", 0),
+                )
+            except Exception:
+                logger.debug(
+                    "_stage_brief_job: deterministic pacing lookup failed for project=%s (non-fatal)",
+                    project_id,
+                )
+
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Applying style grading…"}, stage="running_2")
 

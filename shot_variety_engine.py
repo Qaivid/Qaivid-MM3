@@ -141,6 +141,10 @@ class ShotVarietyEngine:
         instead of the default _BASE_CYCLE, shifting the shot-type distribution
         to serve the locked emotional register.
         Blends primary (70 %) + secondary (30 %) cycles when both are present.
+
+        Design: callers (pipeline_worker / visual_storyboard_engine) read the Brain
+        and inject the packet here.  This engine intentionally does NOT self-read
+        Brain via project_id so it remains pure and independently testable.
         """
         emp = emotional_mode_packet or {}
         primary_id   = emp.get("primary_mode") or ""
