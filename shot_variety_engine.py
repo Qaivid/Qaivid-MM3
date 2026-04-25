@@ -134,19 +134,38 @@ _SHOT_TYPE_TO_MODE = {
 
 
 class ShotVarietyEngine:
-    def __init__(self, emotional_mode_packet: Optional[Dict[str, Any]] = None):
-        """Initialise with an optional emotional_mode_packet from Stage 2b.
+    def __init__(
+        self,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
+        *,
+        project_id: Optional[str] = None,
+    ):
+        """Initialise with an emotional_mode_packet from Stage 2b.
 
-        When a known mode is supplied, the engine uses the mode-tuned cycle
-        instead of the default _BASE_CYCLE, shifting the shot-type distribution
-        to serve the locked emotional register.
+        Two equivalent initialisation paths:
+          • Injected packet (preferred): pass `emotional_mode_packet` directly.
+            Callers that already hold the Brain-read packet avoid a redundant DB read.
+          • Brain self-read (spec API): pass `project_id` and the engine loads
+            `emotional_mode_packet` from Brain automatically.
+
+        When both are provided, the injected packet takes precedence.
         Blends primary (70 %) + secondary (30 %) cycles when both are present.
-
-        Design: callers (pipeline_worker / visual_storyboard_engine) read the Brain
-        and inject the packet here.  This engine intentionally does NOT self-read
-        Brain via project_id so it remains pure and independently testable.
         """
-        emp = emotional_mode_packet or {}
+        emp: Dict[str, Any] = {}
+        if emotional_mode_packet:
+            emp = emotional_mode_packet
+        elif project_id:
+            # Self-read from Brain (spec-requested project_id path).
+            try:
+                from project_brain import ProjectBrain  # type: ignore
+                import psycopg2 as _pg, os as _os
+                _db_url = _os.environ.get("DATABASE_URL", "")
+                with _pg.connect(_db_url) as _conn:
+                    _brain = ProjectBrain.load(project_id, _conn)
+                if _brain.is_populated("emotional_mode_packet"):
+                    emp = _brain.read("emotional_mode_packet") or {}
+            except Exception:
+                pass  # Degrade to neutral mode — Brain unavailable
         primary_id   = emp.get("primary_mode") or ""
         secondary_id = emp.get("secondary_mode") or ""
         pw = float(emp.get("primary_weight", 1.0))
@@ -169,25 +188,8 @@ class ShotVarietyEngine:
 
     @classmethod
     def from_project_id(cls, project_id: str) -> "ShotVarietyEngine":
-        """Spec-aligned factory: self-reads emotional_mode_packet from Brain.
-
-        Satisfies the spec's stated contract of project_id-based Brain self-read
-        while delegating to the pure injection-based __init__ so engines remain
-        independently testable.  Callers that already hold the packet should call
-        __init__ directly with the injected packet for efficiency.
-        """
-        emp: Dict[str, Any] = {}
-        try:
-            from project_brain import ProjectBrain  # type: ignore
-            import psycopg2, os
-            db_url = os.environ.get("DATABASE_URL", "")
-            with psycopg2.connect(db_url) as _conn:
-                brain = ProjectBrain.load(project_id, _conn)
-            if brain.is_populated("emotional_mode_packet"):
-                emp = brain.read("emotional_mode_packet") or {}
-        except Exception:
-            pass  # Degrade to neutral mode — Brain unavailable
-        return cls(emotional_mode_packet=emp)
+        """Convenience factory: self-reads Brain and delegates to __init__(project_id=...)."""
+        return cls(project_id=project_id)
 
     @staticmethod
     def shot_type_to_mode(shot_type: str) -> str:

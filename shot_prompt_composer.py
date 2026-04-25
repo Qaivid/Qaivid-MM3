@@ -493,6 +493,7 @@ def compose_image_prompt(
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
     emotional_mode_modifier: str = "",
+    project_id: Optional[str] = None,
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
@@ -508,7 +509,26 @@ def compose_image_prompt(
         (Stage 2b Brain key).  Canonical design: callers read the Brain and pass
         the modifier here so this function stays pure and testable.  Pipeline reads
         happen in pipeline_worker._render_shot and image_generator.generate_shot_still.
+
+    project_id: when provided AND emotional_mode_modifier is empty, the function
+        self-reads `emotional_mode_packet` from Brain to derive the modifier.
+        This path supports the spec-stated project_id self-read API contract.
+        Callers that already hold the packet should pass emotional_mode_modifier
+        directly to avoid a redundant DB round-trip.
     """
+    # Spec-compliant self-read path: derive modifier from Brain when not injected.
+    if not emotional_mode_modifier and project_id:
+        try:
+            from project_brain import ProjectBrain  # type: ignore
+            import psycopg2 as _pg, os as _os
+            _db_url = _os.environ.get("DATABASE_URL", "")
+            with _pg.connect(_db_url) as _conn:
+                _brain = ProjectBrain.load(project_id, _conn)
+            if _brain.is_populated("emotional_mode_packet"):
+                _emp = _brain.read("emotional_mode_packet") or {}
+                emotional_mode_modifier = str(_emp.get("cinematic_modifier") or "").strip()
+        except Exception:
+            pass  # Fall through to empty modifier — non-fatal
     bc = brain_char or {}
     identity_seed    = (bc.get("identity_seed")    or "").strip()
     archetype        = (bc.get("archetype")        or "").strip()
