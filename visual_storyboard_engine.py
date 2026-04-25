@@ -745,11 +745,23 @@ class VisualStoryboardEngine:
     def _get_mode_adjusted_targets(self) -> Dict[str, float]:
         """Return variety targets adjusted for the current emotional mode.
 
-        Falls back to class-level defaults if mode is absent or unknown.
-        Blends: 70 % primary mode + 30 % secondary mode (when provided).
+        Primary source: emotional_mode_packet.shot_intensity_biases (Brain-first,
+        already pre-blended primary 70 % + secondary 30 % by build_emotional_mode_packet).
+        Fallback: local _EMOTIONAL_FRAMING matrix (keyed by primary_mode_id), then
+        class-level _VARIETY_TARGETS if mode is absent or unknown.
         """
         emp = self._emotional_mode_packet
-        primary_id  = emp.get("primary_mode") or ""
+
+        # Use Brain packet's pre-blended biases as the single source of truth.
+        biases = emp.get("shot_intensity_biases")
+        if isinstance(biases, dict) and biases:
+            # Ensure all expression modes have a value; fill missing ones from defaults.
+            merged = dict(self._VARIETY_TARGETS)
+            merged.update({k: v for k, v in biases.items() if isinstance(v, (int, float))})
+            return merged
+
+        # Legacy / packet-absent fallback: compute from local _EMOTIONAL_FRAMING matrix.
+        primary_id   = emp.get("primary_mode") or ""
         secondary_id = emp.get("secondary_mode") or ""
         pw = float(emp.get("primary_weight", 1.0))
         sw = float(emp.get("secondary_weight", 0.0))
