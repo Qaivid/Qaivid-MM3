@@ -262,6 +262,33 @@ def _recover_stalled_jobs():
             "Stills orphan cleanup failed: %s", exc2
         )
 
+    # ── Reset orphaned outpaint jobs stuck in 'rendering'.
+    #    Outpaint runs in per-shot background threads; a server restart kills
+    #    them mid-job and leaves outpaint_status='rendering' forever.
+    #    Reset to 'pending' so the user can re-queue from the Stills page.
+    try:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE shot_assets
+                       SET outpaint_status = 'pending'
+                     WHERE outpaint_status = 'rendering'
+                    """
+                )
+                n = cur.rowcount
+            conn.commit()
+        if n:
+            import logging as _log4
+            _log4.getLogger("startup_recovery").warning(
+                "Reset %d orphaned outpaint rendering jobs to pending", n
+            )
+    except Exception as exc3:
+        import logging as _log5
+        _log5.getLogger("startup_recovery").error(
+            "Outpaint orphan cleanup failed: %s", exc3
+        )
+
 
 _recover_stalled_jobs()
 
