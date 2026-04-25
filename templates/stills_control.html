@@ -686,6 +686,30 @@
   const ASPECT = {{ aspect_ratio | tojson }};
   const TOTAL  = {{ total_shots }};
 
+  /* ── Restore scroll position after a fallback page reload ── */
+  try {
+    const _scKey = 'sc-scroll-' + PID;
+    const _y = sessionStorage.getItem(_scKey);
+    if (_y !== null) {
+      sessionStorage.removeItem(_scKey);
+      window.addEventListener('load', function () {
+        window.scrollTo(0, parseInt(_y, 10) || 0);
+      });
+    }
+  } catch (e) {}
+
+  /* ── Reload-fallback helper. When background fetch polling fails (e.g. the
+        Replit canvas iframe blocks XHR/fetch), trigger a full-page reload
+        after a short delay so the user always sees fresh status. Scroll
+        position is preserved via sessionStorage above. ── */
+  let _reloadArmed = false;
+  function armReloadFallback() {
+    if (_reloadArmed) return;
+    _reloadArmed = true;
+    try { sessionStorage.setItem('sc-scroll-' + PID, String(window.scrollY)); } catch (e) {}
+    setTimeout(function () { try { location.reload(); } catch (e) {} }, 4000);
+  }
+
   /* ── Shot state ── */
   const shotState = {};
   {% for shot in shots %}
@@ -990,43 +1014,80 @@
     }
   };
 
-  /* ── Poll for still status changes ── */
+  /* ── Poll for still status changes ──
+        Tracks consecutive fetch failures. After 2 in a row we assume the
+        iframe is blocking background requests and arm a full page reload. ── */
   let pollTimer = null;
+  let pollFailCount = 0;
+  const POLL_FAIL_THRESHOLD = 2;
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
       const hasLive = Object.values(shotState).some(s => s.status === 'rendering');
       if (!hasLive) { clearInterval(pollTimer); pollTimer = null; return; }
+      let ok = false;
       try {
-        const r = await fetch('/project/' + PID + '/stills/status.json');
-        const data = await r.json();
-        for (const shot of data.shots) {
-          const prev = shotState[shot.shot_index];
-          if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
-            applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
+        const r = await fetch('/project/' + PID + '/stills/status.json', {
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+        });
+        if (r.ok) {
+          const data = await r.json();
+          ok = true;
+          for (const shot of data.shots) {
+            const prev = shotState[shot.shot_index];
+            if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
+              applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
+            }
           }
         }
       } catch(e) {}
+      if (ok) {
+        pollFailCount = 0;
+      } else {
+        pollFailCount++;
+        if (pollFailCount >= POLL_FAIL_THRESHOLD) {
+          clearInterval(pollTimer); pollTimer = null;
+          armReloadFallback();
+        }
+      }
     }, 3000);
   }
 
   /* ── Poll for outpaint status changes ── */
   let opPollTimer = null;
+  let opPollFailCount = 0;
   function startOpPolling() {
     if (opPollTimer) return;
     opPollTimer = setInterval(async () => {
       const hasLive = Object.values(opState).some(s => s.status === 'rendering');
       if (!hasLive) { clearInterval(opPollTimer); opPollTimer = null; return; }
+      let ok = false;
       try {
-        const r = await fetch('/project/' + PID + '/stills/outpaint-status.json');
-        const data = await r.json();
-        for (const shot of data.shots) {
-          const prev = opState[shot.shot_index];
-          if (!prev || prev.status !== shot.outpaint_status || prev.url !== shot.outpaint_url) {
-            applyOpStatus(shot.shot_index, shot.outpaint_status, shot.outpaint_url);
+        const r = await fetch('/project/' + PID + '/stills/outpaint-status.json', {
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+        });
+        if (r.ok) {
+          const data = await r.json();
+          ok = true;
+          for (const shot of data.shots) {
+            const prev = opState[shot.shot_index];
+            if (!prev || prev.status !== shot.outpaint_status || prev.url !== shot.outpaint_url) {
+              applyOpStatus(shot.shot_index, shot.outpaint_status, shot.outpaint_url);
+            }
           }
         }
       } catch(e) {}
+      if (ok) {
+        opPollFailCount = 0;
+      } else {
+        opPollFailCount++;
+        if (opPollFailCount >= POLL_FAIL_THRESHOLD) {
+          clearInterval(opPollTimer); opPollTimer = null;
+          armReloadFallback();
+        }
+      }
     }, 3000);
   }
 
