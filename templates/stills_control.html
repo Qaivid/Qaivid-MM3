@@ -215,12 +215,30 @@
         </div>
 
         <div class="ref-card-foot">
-          <span class="ref-card-name">Shot {{ shot.shot_index }}</span>
-          <span class="ref-card-meta">
-            {{ "%.1f"|format(shot.start_time or 0) }}s
-            &middot; {{ "%.1f"|format(shot.duration or 0) }}s
-            {% if shot.source == 'uploaded' %}&middot; <span style="color:#c8f135;">uploaded</span>{% endif %}
-          </span>
+          <div class="sc-foot-top">
+            <span class="ref-card-name">Shot {{ shot.shot_index }}</span>
+            <span class="ref-card-meta">
+              {{ "%.1f"|format(shot.start_time or 0) }}s &middot; {{ "%.1f"|format(shot.duration or 0) }}s
+              {% if shot.source == 'uploaded' %}&middot; <span style="color:#c8f135;">uploaded</span>{% endif %}
+            </span>
+          </div>
+
+          {# Quick action — always visible, no panel needed #}
+          {% if shot.status == 'pending' or shot.status == 'failed' %}
+          <button class="sc-quick-btn sc-quick-btn--gen" id="sc-quick-btn-{{ shot.shot_index }}"
+                  onclick="event.stopPropagation(); scGenOne({{ shot.shot_index }}, false)">
+            {% if shot.status == 'failed' %}&#8635; Retry{% else %}&#9654; Generate{% endif %}
+          </button>
+          {% elif shot.status == 'rendering' %}
+          <button class="sc-quick-btn sc-quick-btn--spinning" id="sc-quick-btn-{{ shot.shot_index }}" disabled>
+            <span class="sc-spinner" style="font-size:10px;">&#9698;</span> Generating…
+          </button>
+          {% else %}
+          <button class="sc-quick-btn sc-quick-btn--ready" id="sc-quick-btn-{{ shot.shot_index }}"
+                  onclick="event.stopPropagation(); scToggle({{ shot.shot_index }})">
+            &#8942; Options
+          </button>
+          {% endif %}
         </div>
       </div>
 
@@ -542,6 +560,33 @@
   resize: vertical; font-family: 'JetBrains Mono', monospace; line-height: 1.4;
 }
 
+/* ── Quick action button (always visible in card footer) ── */
+.ref-card-foot { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+.sc-foot-top { display: flex; flex-direction: column; gap: 2px; }
+.sc-quick-btn {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px; font-weight: 600;
+  border-radius: 6px; border: none;
+  cursor: pointer; transition: background .15s, opacity .15s;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  letter-spacing: .01em;
+}
+.sc-quick-btn--gen {
+  background: rgba(200,241,53,.12); color: #c8f135;
+  border: 1px solid rgba(200,241,53,.3);
+}
+.sc-quick-btn--gen:hover { background: rgba(200,241,53,.22); }
+.sc-quick-btn--spinning {
+  background: transparent; color: #555;
+  border: 1px solid #2a2a3a; cursor: default;
+}
+.sc-quick-btn--ready {
+  background: rgba(255,255,255,.04); color: #667;
+  border: 1px solid #1e1e2a;
+}
+.sc-quick-btn--ready:hover { background: rgba(255,255,255,.08); color: #999; }
+
 /* ── Action row inside panel ── */
 .sc-actions {
   display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
@@ -775,6 +820,27 @@
         btn.textContent = '\u25B6 Generate';
         btn.disabled = false;
         btn.onclick = () => scGenOne(idx, false);
+      }
+    }
+
+    // Update quick-action button in card footer
+    const qBtn = document.getElementById('sc-quick-btn-' + idx);
+    if (qBtn) {
+      if (status === 'pending' || status === 'failed') {
+        qBtn.className = 'sc-quick-btn sc-quick-btn--gen';
+        qBtn.disabled = false;
+        qBtn.innerHTML = status === 'failed' ? '\u21BB Retry' : '\u25B6 Generate';
+        qBtn.onclick = (e) => { e.stopPropagation(); scGenOne(idx, false); };
+      } else if (status === 'rendering') {
+        qBtn.className = 'sc-quick-btn sc-quick-btn--spinning';
+        qBtn.disabled = true;
+        qBtn.innerHTML = '<span class="sc-spinner" style="font-size:10px;">&#9698;</span> Generating\u2026';
+        qBtn.onclick = null;
+      } else {
+        qBtn.className = 'sc-quick-btn sc-quick-btn--ready';
+        qBtn.disabled = false;
+        qBtn.innerHTML = '\u22EE Options';
+        qBtn.onclick = (e) => { e.stopPropagation(); scToggle(idx); };
       }
     }
 
