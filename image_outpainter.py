@@ -276,7 +276,7 @@ def outpaint_shot_still(
         "taskType":       "imageInference",
         "taskUUID":       task_uuid,
         "model":          OUTPAINT_MODEL,
-        "positivePrompt": "cinematic",
+        "positivePrompt": "  ",
         "seedImage":      image_uuid,
         "outpaint": {
             "left":   left,
