@@ -207,6 +207,7 @@ class ProductionOrchestrator:
         timeline = self.assembly_engine.assemble_timeline(
             storyboard=storyboard,
             audio_data=audio_analytics,
+            emotional_mode_packet=emotional_mode_packet or {},
         )
         self._assert_non_empty(timeline, "Rhythmic assembly engine returned empty output.")
 

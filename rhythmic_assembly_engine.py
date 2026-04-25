@@ -25,7 +25,23 @@ class RhythmicAssemblyEngine:
         self,
         storyboard: List[Dict[str, Any]],
         audio_data: Dict[str, Any],
+        emotional_mode_packet: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
+        # Apply mode-specific duration clamps from the Brain's emotional_mode_packet.
+        # pacing_profile keys: min_shot_duration, max_shot_duration, preferred_avg_duration
+        emp = emotional_mode_packet or {}
+        mode_pacing = emp.get("pacing_profile") or {}
+        if mode_pacing.get("min_shot_duration") is not None:
+            try:
+                self.min_shot_duration = float(mode_pacing["min_shot_duration"])
+            except (TypeError, ValueError):
+                pass
+        if mode_pacing.get("max_shot_duration") is not None:
+            try:
+                self.max_shot_duration = float(mode_pacing["max_shot_duration"])
+            except (TypeError, ValueError):
+                pass
+
         validated_storyboard = self._validate_storyboard(storyboard)
         validated_audio = self._validate_audio_data(audio_data)
 

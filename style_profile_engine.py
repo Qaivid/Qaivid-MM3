@@ -441,9 +441,11 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
 
         sb = profile.get("storyboard_modifiers")
         if isinstance(sb, dict):
+            # Mode injection OVERRIDES registry values for specified keys.
+            # The emotional mode's aesthetic is the locked truth — it must win
+            # over whatever the cinematic style registry provides.
             for k, v in injection.items():
-                if k not in sb or sb[k] is None:
-                    sb[k] = v
+                sb[k] = v
         else:
             profile["storyboard_modifiers"] = dict(injection)
 

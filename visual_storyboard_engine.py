@@ -667,6 +667,72 @@ class VisualStoryboardEngine:
         "symbolic":    "impressionistic memory fragment — soft overexposed edges, dreamy framing, subject abstracted",
     }
 
+    # Mode × expression_mode framing directive matrix.
+    # Checked BEFORE _MODE_TO_FRAMING_DIRECTIVE fallback.
+    # Format: {emotional_mode_id: {expression_mode: framing_directive}}
+    _EMOTIONAL_FRAMING_DIRECTIVES: Dict[str, Dict[str, str]] = {
+        "romantic": {
+            "face":        "intimate close-up, golden warmth on skin, soft glow, shallow depth of field — closeness as feeling",
+            "body":        "slow tender medium shot, subject bathed in warm light, space feels warm and private",
+            "environment": "soft-focus wide, bokeh foreground, golden hour — the world as backdrop to love",
+            "macro":       "intimate detail — fingertips, lips, or fabric — warm tones, shallow depth, tenderness in texture",
+            "symbolic":    "dreamy memory fragment — warm haze, overexposed edges, the blur of longing",
+        },
+        "sad_loss": {
+            "face":        "still close-up — hollow or glistening eyes, grey or low-contrast light, weight in the expression",
+            "body":        "solitary medium shot — small figure in open space, isolation in the composition",
+            "environment": "wide desolate frame, flat grey light, emptiness echoing the feeling of absence",
+            "macro":       "cold still detail — an empty chair, a folded note — sharp but lifeless",
+            "symbolic":    "faded fragment — desaturated, soft edges, something half-remembered and half-gone",
+        },
+        "nostalgic": {
+            "face":        "warm medium close-up, slightly soft focus — a face remembering, vintage light halation",
+            "body":        "medium shot with gentle pullback, warm amber tones, the body as a silhouette of the past",
+            "environment": "hazy wide shot — Super-8 texture, warm grain, the world as a fading photograph",
+            "macro":       "texture detail — worn fabric, old photograph edge — warm grain, soft light",
+            "symbolic":    "memory fragment — light leak edges, warm blur, time dissolving",
+        },
+        "hopeful": {
+            "face":        "open bright close-up, lifted shadows, eyes forward — possibility in the expression",
+            "body":        "rising medium shot, bright backlighting — figure moving into light",
+            "environment": "wide bright frame — open sky, morning light, horizon suggesting possibility",
+            "macro":       "seed, open hand, first light on an object — detail as metaphor for beginning",
+            "symbolic":    "dream-forward fragment — bright soft haze, forward motion blur, lightness",
+        },
+        "angry_intense": {
+            "face":        "confrontational tight close-up — jaw, tension lines, hard side-light, the face as a statement",
+            "body":        "aggressive full-body framing — low angle push-in, subject commanding space",
+            "environment": "stark harsh wide — high contrast, shadows cutting the space, tension in composition",
+            "macro":       "violent or charged detail — clenched fist, cracked surface — hard light, sharp focus",
+            "symbolic":    "fragmented burst — quick cut texture, hard flash framing, instability made visual",
+        },
+        "spiritual_reflective": {
+            "face":        "still medium close-up, devotional soft light, eyes downward or inward — the self in surrender",
+            "body":        "near-static medium shot, incense haze or sacred light on the figure, reverence in stillness",
+            "environment": "meditative wide — sacred space, dappled light, the world as a vessel of the divine",
+            "macro":       "sacred object detail — prayer beads, candle flame, sacred geometry — soft devotional light",
+            "symbolic":    "transcendent fragment — light dissolve, the frame breathing, something beyond the visible",
+        },
+        "energetic_celebration": {
+            "face":        "bright dynamic close-up — joy, sweat, energy, saturated light, face full of life",
+            "body":        "kinetic full-body frame — motion blur, fast orbit, limbs in mid-movement",
+            "environment": "wide vibrant scene — colour explosion, crowd energy, the world at full volume",
+            "macro":       "vibrant texture detail — glitter, confetti, instruments — saturated, sharp, alive",
+            "symbolic":    "celebration fragment — fast cut, colour burst, pure kinetic joy",
+        },
+    }
+
+    def _get_framing_directive(self, expression_mode: str) -> str:
+        """Return the framing directive for an expression_mode, applying the
+        current emotional mode's matrix first before the global fallback."""
+        primary_id = (self._emotional_mode_packet or {}).get("primary_mode") or ""
+        if primary_id:
+            mode_directives = self._EMOTIONAL_FRAMING_DIRECTIVES.get(primary_id) or {}
+            directive = mode_directives.get(expression_mode)
+            if directive:
+                return directive
+        return self._MODE_TO_FRAMING_DIRECTIVE.get(expression_mode, "")
+
     def _get_mode_adjusted_targets(self) -> Dict[str, float]:
         """Return variety targets adjusted for the current emotional mode.
 
@@ -735,9 +801,10 @@ class VisualStoryboardEngine:
                 # without this the counts still show 100% face and caps never fire.
                 assigned_mode = self._SHOT_TYPE_TO_MODE.get(assigned_type, "face")
                 s["expression_mode"] = assigned_mode
-                # Update framing directive to match the new mode.
-                s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(
-                    assigned_mode, s.get("framing_directive", "")
+                # Update framing directive to match the new mode (mode-aware first).
+                s["framing_directive"] = (
+                    self._get_framing_directive(assigned_mode)
+                    or s.get("framing_directive", "")
                 )
             _cycle_idx += 1  # always advance so cycle position is deterministic
 
@@ -775,7 +842,7 @@ class VisualStoryboardEngine:
                 # Update expression_mode + its derived visual fields together
                 s["expression_mode"] = best_mode
                 s["shot_type"] = self._MODE_TO_SHOT_TYPE.get(best_mode, best_mode)
-                s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(best_mode, "")
+                s["framing_directive"] = self._get_framing_directive(best_mode)
                 s["variety_cap_reclassified"] = True
                 # Re-derive cinematography so rig/motion align with the new mode.
                 # Import is done here (not at module level) to mirror the
