@@ -520,9 +520,11 @@ def compose_image_prompt(
     if not emotional_mode_modifier and project_id:
         try:
             from project_brain import ProjectBrain  # type: ignore
-            import psycopg2 as _pg, os as _os
+            import psycopg as _pg
+            from psycopg.rows import dict_row as _dict_row
+            import os as _os
             _db_url = _os.environ.get("DATABASE_URL", "")
-            with _pg.connect(_db_url) as _conn:
+            with _pg.connect(_db_url, row_factory=_dict_row) as _conn:
                 _brain = ProjectBrain.load(project_id, _conn)
             if _brain.is_populated("emotional_mode_packet"):
                 _emp = _brain.read("emotional_mode_packet") or {}

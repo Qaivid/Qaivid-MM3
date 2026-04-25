@@ -445,11 +445,32 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             profile["justification"] = justification
             resolved.append(profile)
 
+        # Helper: produce a mode-consistent default using the same compatible-nudge logic
+        # so all fallback appends are also constrained by mode.
+        def _mode_default() -> Dict[str, Any]:
+            def_cin_id = "cinematic_natural"
+            if compatible_cin:
+                first_compatible = next(
+                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
+                    None,
+                )
+                if first_compatible:
+                    def_cin_id = first_compatible
+            def_prod_id = (preferred_prod[0]
+                           if preferred_prod and preferred_prod[0] not in avoid_prod
+                              and StyleProfileRegistry.get_production_style(preferred_prod[0])
+                           else "split_narrative_performance")
+            profile = StyleProfileRegistry.build_style_profile(def_prod_id, def_cin_id)
+            profile["justification"] = (
+                "Mode-consistent fallback — registry default adjusted for emotional constraints."
+            )
+            return profile
+
         if not resolved:
-            resolved.append(self._default_suggestion())
+            resolved.append(_mode_default())
 
         if len(resolved) < 2:
-            resolved.append(self._default_suggestion())
+            resolved.append(_mode_default())
 
         return resolved
 
