@@ -430,13 +430,22 @@ class VisualStoryboardEngine:
             ).strip()
             _table_directive, frame_idx = self._pick_frame(mode)  # advance counter
             framing_bias = self._derive_framing_bias(mode, frame_idx)
+            # Mode-aware framing directive (consulted in ALL paths):
+            # Prepended when it adds context beyond the beat/table signal.
+            _mode_directive = self._get_framing_directive(mode)
+
             if _cam_motive:
-                # Beat-driven: the shot_event signal is the sole directive.
-                # The static-table string is discarded; counter already advanced.
-                frame_directive = _cam_motive
+                # Beat-driven: camera_motivation is primary; mode directive provides
+                # emotional lens prefix so mode language leads the instruction.
+                frame_directive = (
+                    f"{_mode_directive}; {_cam_motive}" if _mode_directive else _cam_motive
+                )
             else:
-                # Fallback: static framing rotation (no beat signal present)
-                frame_directive = _table_directive
+                # Static-table fallback (no beat signal): mode directive leads,
+                # followed by the rotation-table framing string.
+                frame_directive = (
+                    f"{_mode_directive}; {_table_directive}" if _mode_directive else _table_directive
+                )
 
             if pending_cutaway:
                 frame_directive = (

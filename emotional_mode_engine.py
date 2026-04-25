@@ -86,7 +86,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["conceptual_abstract", "documentary_candid"],
         },
         "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
-        "compatible_cinematic_styles":   ["soft_poetic", "golden_hour", "arthouse_minimalist"],
+        "compatible_cinematic_styles":   ["soft_poetic", "cinematic_natural", "arthouse_minimalist"],
     },
 
     "sad_loss": {
@@ -132,7 +132,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "preferred": ["narrative", "single_location", "split_narrative_performance"],
             "avoid":     ["performance"],
         },
-        "incompatible_cinematic_styles": ["vibrant_bold", "energetic_celebration"],
+        "incompatible_cinematic_styles": ["vibrant_bold"],
         "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "monochrome"],
     },
 
@@ -227,7 +227,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["conceptual_abstract"],
         },
         "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
-        "compatible_cinematic_styles":   ["golden_hour", "soft_poetic", "split_tone"],
+        "compatible_cinematic_styles":   ["cinematic_natural", "soft_poetic", "cinematic_realism"],
     },
 
     "angry_intense": {
@@ -274,7 +274,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["single_location", "documentary_candid"],
         },
         "incompatible_cinematic_styles": ["soft_poetic", "arthouse_minimalist", "vintage_grain"],
-        "compatible_cinematic_styles":   ["noir_dramatic", "high_contrast", "raw_documentary"],
+        "compatible_cinematic_styles":   ["noir_dramatic", "cinematic_realism", "cinematic_natural"],
     },
 
     "spiritual_reflective": {
@@ -320,7 +320,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "preferred": ["conceptual_abstract", "single_location", "narrative"],
             "avoid":     ["performance"],
         },
-        "incompatible_cinematic_styles": ["vibrant_bold", "angry_intense"],
+        "incompatible_cinematic_styles": ["vibrant_bold", "cinematic_realism"],
         "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "surrealist_dream"],
     },
 
@@ -368,7 +368,7 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "avoid":     ["single_location", "narrative"],
         },
         "incompatible_cinematic_styles": ["arthouse_minimalist", "monochrome", "noir_dramatic"],
-        "compatible_cinematic_styles":   ["vibrant_bold", "pop_cinematic", "saturated_vivid"],
+        "compatible_cinematic_styles":   ["vibrant_bold", "cinematic_natural", "cinematic_realism"],
     },
 }
 

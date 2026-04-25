@@ -82,8 +82,21 @@ class StyleProfileEngine:
             return [self._apply_mode_merge(s, emotional_mode_packet) for s in resolved]
         except Exception:
             logger.exception("StyleProfileEngine.suggest failed — returning mode-constrained defaults")
-            # Apply mode merge to the fallback so emotional restrictions hold even on model failure.
-            fallback = self._apply_mode_merge(self._default_suggestion(), emotional_mode_packet)
+            # Run fallback through the same avoid/incompatible post-filter as normal suggestions
+            # so mode constraints (avoid/incompatible) hold even on model failure.
+            # Use a raw-format dict so _resolve_suggestions can apply replacements.
+            synthetic_raw = {
+                "suggestions": [{
+                    "production_style_id": "split_narrative_performance",
+                    "cinematic_style_id":  "cinematic_realism",
+                    "justification":       (
+                        "Versatile narrative blend with naturalistic cinematography — "
+                        "default fallback when style analysis is unavailable."
+                    ),
+                }]
+            }
+            resolved_fallback = self._resolve_suggestions(synthetic_raw, mode_constraints=mode_constraints)
+            fallback = self._apply_mode_merge(resolved_fallback[0], emotional_mode_packet)
             return [fallback]
 
     def _extract_mode_constraints(self, emp: Dict[str, Any]) -> Dict[str, Any]:
