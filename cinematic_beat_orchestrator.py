@@ -8,7 +8,7 @@ MM3.1 cinematic enrichment layer — standalone debug / test utility.
   that file handles the full context→storyboard→timeline pipeline.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Optional imports (fail-safe)
 def _opt_import(name):
@@ -30,11 +30,15 @@ chorus_engine = _opt_import("chorus_evolution_engine")
 
 
 class CinematicBeatOrchestrator:
-    def __init__(self):
+    def __init__(self, emotional_mode_packet: Optional[Dict[str, Any]] = None):
         self.cine = cinematic_beat_engine.CinematicBeatEngine() if cinematic_beat_engine else None
         self.behaviour = behaviour_mapper.BehaviourMapper() if behaviour_mapper else None
         self.event_builder = shot_event_builder.ShotEventBuilder() if shot_event_builder else None
-        self.variety = shot_variety_engine.ShotVarietyEngine() if shot_variety_engine else None
+        # MM3.1: inject emotional_mode_packet so variety cycle is mode-aware.
+        self.variety = (
+            shot_variety_engine.ShotVarietyEngine(emotional_mode_packet=emotional_mode_packet or {})
+            if shot_variety_engine else None
+        )
         self.validator = generic_shot_validator.GenericShotValidator() if generic_shot_validator else None
         self.camera = camera_motivation_engine.CameraMotivationEngine() if camera_motivation_engine else None
         self.still = still_builder.StillKeyframePromptBuilder() if still_builder else None
