@@ -17,3 +17,9 @@ id = "IIuIkxbqkRmTkVboHKLZI"
 uri = "file://stills_page_files.zip"
 type = "unspecified"
 title = "Stills Page Source Files"
+
+[[outputs]]
+id = "M47q4mJCgiHsBlaKk9HyV"
+uri = "file://postprod_design_files.zip"
+type = "unspecified"
+title = "Post Production Design Files"
