@@ -519,26 +519,38 @@ def _save_to_r2(fal_url: str, r2_key: str) -> str:
 
 
 def _run_fal(model: str, payload: dict, timeout_s: int = 240) -> dict:
+    """Submit a job to FAL and block until it completes or the hard timeout fires.
+
+    The old loop used ``handler.get()`` inside a ``while time.time() < deadline``
+    loop — but ``handler.get()`` is a *blocking* call that never yields back to
+    the loop, so the deadline was never enforced.  We now run ``handler.get()``
+    on a dedicated thread and use ``future.result(timeout=...)`` which gives us a
+    genuine wall-clock cutoff regardless of how long FAL blocks.
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
     _ensure_key()
-    deadline = time.time() + timeout_s
     handler = fal_client.submit(model, arguments=payload)
-    last_exc: Exception | None = None
-    while time.time() < deadline:
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="fal-get") as _ex:
+        _fut = _ex.submit(handler.get)
         try:
-            result = handler.get()
-            if result is not None:
-                return result
+            result = _fut.result(timeout=timeout_s)
+        except _FutureTimeout:
+            _fut.cancel()
+            raise ImageGenerationError(
+                f"FAL timed out after {timeout_s}s on {model}"
+            )
         except Exception as exc:
-            last_exc = exc
             err_str = str(exc)
-            # Validation / client errors (4xx-equivalent) — fail immediately
-            if any(sig in err_str for sig in ("422", "400", "ValidationError",
-                                               "loc", "field required", "value_error")):
-                raise ImageGenerationError(f"FAL validation error on {model}: {exc}") from exc
-        time.sleep(2.0)
-    raise ImageGenerationError(
-        f"FAL timed out after {timeout_s}s on {model}: {last_exc}"
-    ) from last_exc
+            if any(sig in err_str for sig in (
+                "422", "400", "ValidationError", "field required", "value_error"
+            )):
+                raise ImageGenerationError(
+                    f"FAL validation error on {model}: {exc}"
+                ) from exc
+            raise ImageGenerationError(f"FAL error on {model}: {exc}") from exc
+    if result is None:
+        raise ImageGenerationError(f"FAL returned empty result for {model}")
+    return result
 
 
 def _extract_image_url(result: dict) -> str:
