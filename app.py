@@ -3085,29 +3085,53 @@ def stills_status_json(project_id: str):
     })
 
 
+def _wants_json() -> bool:
+    """True if caller is an AJAX client that prefers a JSON response.
+
+    We accept either the X-Requested-With=fetch header (set by our JS) or
+    an explicit Accept: application/json. Plain HTML form POSTs land here
+    without either, and we redirect them back to the project page so the
+    button works without JavaScript.
+    """
+    if request.headers.get("X-Requested-With") == "fetch":
+        return True
+    accept = (request.headers.get("Accept") or "").lower()
+    return "application/json" in accept and "text/html" not in accept
+
+
 @app.route("/project/<project_id>/stills/generate/<int:shot_index>", methods=["POST"])
 @login_required
 def stills_generate_one(project_id: str, shot_index: int):
-    """Kick generation for a single shot (AJAX — returns JSON)."""
+    """Kick generation for a single shot.
+
+    Returns JSON for AJAX callers; redirects back to the project page for
+    plain HTML form POSTs (so the button works even when JS is blocked).
+    """
     _stills_control_guard(project_id)
     kick_single_shot(project_id, shot_index)
-    return jsonify({"ok": True, "shot_index": shot_index})
+    if _wants_json():
+        return jsonify({"ok": True, "shot_index": shot_index})
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/project/<project_id>/stills/generate-all", methods=["POST"])
 @login_required
 def stills_generate_all(project_id: str):
-    """Kick generation for shots (AJAX — returns JSON).
+    """Kick generation for shots.
 
     Query/body param ``force=1`` regenerates every shot, including those
     already marked ``ready`` (used by the bulk Regenerate All button).
     Without it, only non-ready shots are queued.
+
+    Returns JSON for AJAX callers; redirects for plain HTML form POSTs.
     """
     _stills_control_guard(project_id)
     force_raw = (request.values.get("force") or "").strip().lower()
     force = force_raw in ("1", "true", "yes", "on")
     kick_all_pending_shots(project_id, force=force)
-    return jsonify({"ok": True, "force": force})
+    if _wants_json():
+        return jsonify({"ok": True, "force": force})
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/project/<project_id>/stills/prompt", methods=["POST"])
@@ -3866,10 +3890,14 @@ def project_retry_all_failed_shots(project_id: str):
         abort(404)
     try:
         n = retry_all_failed_shots(project_id)
-        return jsonify({"ok": True, "queued": n})
+        if _wants_json():
+            return jsonify({"ok": True, "queued": n})
+        return redirect(url_for("project_detail", project_id=project_id))
     except Exception as exc:
         logger.exception("retry_all_failed_shots failed for project=%s", project_id)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        if _wants_json():
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/project/<project_id>/retry/shot/<int:shot_index>", methods=["POST"])
