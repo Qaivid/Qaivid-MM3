@@ -61,15 +61,19 @@
         {% endif %}
     </div>
 
+    {# Post Production is always reachable once stills are approved (idx>=8),
+       regardless of whether Video Assembly is in progress. #}
+    {% set stills_done = (actual_idx >= 8) %}
     <nav class="ss-nav">
         {% for stage_key, num, label, icon in steps %}
         {% set sidx = loop.index0 %}
         {% set is_active = (viewing == stage_key) %}
         {% set is_done = (sidx < actual_idx) %}
-        {% set is_clickable = sidx <= actual_idx and not is_active %}
+        {% set is_pp = (stage_key == 'post_production') %}
+        {% set is_clickable = (sidx <= actual_idx or (is_pp and stills_done)) and not is_active %}
         <div class="ss-nav-item {% if is_active %}ss-active{% elif is_done %}ss-done{% endif %}">
             {% if is_clickable %}
-            <a href="{{ url_for('project_detail', project_id=project.id, at=stage_key) }}"
+            <a href="{% if is_pp %}{{ url_for('postprod_page', project_id=project.id) }}{% else %}{{ url_for('project_detail', project_id=project.id, at=stage_key) }}{% endif %}"
                class="ss-nav-link" title="{{ label }}">
                 <span class="ss-icon">{{ icon }}</span>
                 <span class="ss-label">{{ label }}</span>

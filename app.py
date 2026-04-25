@@ -3693,7 +3693,8 @@ def postprod_page(project_id: str):
     if not project:
         abort(404)
     if project.get("stage") not in ("post_production", "stills_control", "videos_review",
-                                    "final_review", "complete", "stills_review"):
+                                    "final_review", "complete", "stills_review",
+                                    "video_assembly_review", "running_video_assembly"):
         flash("Post Production is not available yet — approve your stills first.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
