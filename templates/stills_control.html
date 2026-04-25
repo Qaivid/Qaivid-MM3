@@ -1139,16 +1139,28 @@
 
         Returns false to suppress native submit, true to allow it. ── */
   window.scQuickSubmit = function(ev, idx) {
+    // CRITICAL: cancel the native submit BEFORE doing anything else, so a
+    // throw inside applyStatus / startPolling / fetch setup can never let the
+    // browser navigate away. Without this, any error caused the form to POST
+    // normally and the whole page reloaded.
+    if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+
+    const form = (ev && ev.target) ? ev.target : null;
+    // No fetch available (very old browser or sandboxed iframe with no fetch):
+    // submit natively as a last resort.
+    if (typeof window.fetch !== 'function') {
+      if (form && typeof form.submit === 'function') form.submit();
+      return false;
+    }
+
     // Optimistically flip the card to "Rendering" so the user sees feedback
-    // instantly regardless of how the POST is dispatched.
+    // instantly. Wrapped in try/catch so a UI helper error can't break submit.
     try { applyStatus(idx, 'rendering', null, null); } catch (e) {}
     try { startPolling(); } catch (e) {}
 
-    const form = ev.target;
-    // If fetch isn't available for any reason, let the form submit natively.
-    if (typeof window.fetch !== 'function') return true;
-
-    fetch(form.action, {
+    const action = form ? form.action
+                        : ('/project/' + PID + '/stills/generate/' + idx);
+    fetch(action, {
       method: 'POST',
       headers: {
         'X-CSRFToken': CSRF,
@@ -1157,14 +1169,13 @@
       },
       credentials: 'same-origin'
     }).then(function(resp) {
-      if (!resp.ok) {
-        // Server rejected the fetch — fall back to native form submit so
-        // the user always gets *some* response.
-        form.submit();
+      if (!resp.ok && resp.status >= 500) {
+        // Server error — surface it but do NOT reload the page.
+        try { applyStatus(idx, 'failed', null, 'Server error ' + resp.status); } catch(e){}
       }
     }).catch(function() {
-      // Network/iframe blocked the fetch — fall back to native submit.
-      form.submit();
+      // Network blip — mark failed but stay on the page so the user can retry.
+      try { applyStatus(idx, 'failed', null, 'Network error — please retry'); } catch(e){}
     });
     return false;
   };
