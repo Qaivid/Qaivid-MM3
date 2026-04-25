@@ -1054,7 +1054,13 @@
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
-      const hasLive = Object.values(shotState).some(s => s.status === 'rendering');
+      // Keep polling while ANY shot is queued OR rendering. The worker
+      // flips 'queued' → 'rendering' only when its thread picks the job
+      // up, so checking just for 'rendering' would prematurely stop the
+      // poll on the very first tick after a click.
+      const hasLive = Object.values(shotState).some(
+        s => s.status === 'rendering' || s.status === 'queued'
+      );
       if (!hasLive) { clearInterval(pollTimer); pollTimer = null; return; }
       let ok = false;
       try {
@@ -1091,7 +1097,11 @@
   function startOpPolling() {
     if (opPollTimer) return;
     opPollTimer = setInterval(async () => {
-      const hasLive = Object.values(opState).some(s => s.status === 'rendering');
+      // Same fix as the main poll loop: include 'queued' so the loop
+      // doesn't kill itself before the worker thread picks the job up.
+      const hasLive = Object.values(opState).some(
+        s => s.status === 'rendering' || s.status === 'queued'
+      );
       if (!hasLive) { clearInterval(opPollTimer); opPollTimer = null; return; }
       let ok = false;
       try {
