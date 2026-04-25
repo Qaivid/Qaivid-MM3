@@ -1051,36 +1051,21 @@
   let pollTimer = null;
   let pollFailCount = 0;
   const POLL_FAIL_THRESHOLD = 2;
-  function startPolling() {
-    if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      // Keep polling while ANY shot is queued OR rendering. The worker
-      // flips 'queued' → 'rendering' only when its thread picks the job
-      // up, so checking just for 'rendering' would prematurely stop the
-      // poll on the very first tick after a click.
-      const hasLive = Object.values(shotState).some(
-        s => s.status === 'rendering' || s.status === 'queued'
-      );
-      if (!hasLive) { clearInterval(pollTimer); pollTimer = null; return; }
-      let ok = false;
-      try {
-        const r = await fetch('/project/' + PID + '/stills/status.json', {
-          credentials: 'same-origin',
-          headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
-        });
-        if (r.ok) {
-          const data = await r.json();
-          ok = true;
-          for (const shot of data.shots) {
-            const prev = shotState[shot.shot_index];
-            if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
-              applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
-            }
+  async function _pollOnce() {
+    try {
+      const r = await fetch('/project/' + PID + '/stills/status.json', {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        pollFailCount = 0;
+        for (const shot of data.shots) {
+          const prev = shotState[shot.shot_index];
+          if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
+            applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
           }
         }
-      } catch(e) {}
-      if (ok) {
-        pollFailCount = 0;
       } else {
         pollFailCount++;
         if (pollFailCount >= POLL_FAIL_THRESHOLD) {
@@ -1088,40 +1073,47 @@
           armReloadFallback();
         }
       }
-    }, 3000);
+    } catch(e) {
+      pollFailCount++;
+      if (pollFailCount >= POLL_FAIL_THRESHOLD) {
+        clearInterval(pollTimer); pollTimer = null;
+        armReloadFallback();
+      }
+    }
+    // Stop the interval once no shots are active (rendering/queued).
+    // It restarts automatically via startPolling() on the next Generate click.
+    const hasLive = Object.values(shotState).some(
+      s => s.status === 'rendering' || s.status === 'queued'
+    );
+    if (!hasLive && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    // Fire immediately so the first result appears within milliseconds,
+    // not after a 3-second delay. Then keep going every 3 s.
+    _pollOnce();
+    pollTimer = setInterval(_pollOnce, 3000);
   }
 
   /* ── Poll for outpaint status changes ── */
   let opPollTimer = null;
   let opPollFailCount = 0;
-  function startOpPolling() {
-    if (opPollTimer) return;
-    opPollTimer = setInterval(async () => {
-      // Same fix as the main poll loop: include 'queued' so the loop
-      // doesn't kill itself before the worker thread picks the job up.
-      const hasLive = Object.values(opState).some(
-        s => s.status === 'rendering' || s.status === 'queued'
-      );
-      if (!hasLive) { clearInterval(opPollTimer); opPollTimer = null; return; }
-      let ok = false;
-      try {
-        const r = await fetch('/project/' + PID + '/stills/outpaint-status.json', {
-          credentials: 'same-origin',
-          headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
-        });
-        if (r.ok) {
-          const data = await r.json();
-          ok = true;
-          for (const shot of data.shots) {
-            const prev = opState[shot.shot_index];
-            if (!prev || prev.status !== shot.outpaint_status || prev.url !== shot.outpaint_url) {
-              applyOpStatus(shot.shot_index, shot.outpaint_status, shot.outpaint_url);
-            }
+  async function _opPollOnce() {
+    try {
+      const r = await fetch('/project/' + PID + '/stills/outpaint-status.json', {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        opPollFailCount = 0;
+        for (const shot of data.shots) {
+          const prev = opState[shot.shot_index];
+          if (!prev || prev.status !== shot.outpaint_status || prev.url !== shot.outpaint_url) {
+            applyOpStatus(shot.shot_index, shot.outpaint_status, shot.outpaint_url);
           }
         }
-      } catch(e) {}
-      if (ok) {
-        opPollFailCount = 0;
       } else {
         opPollFailCount++;
         if (opPollFailCount >= POLL_FAIL_THRESHOLD) {
@@ -1129,7 +1121,23 @@
           armReloadFallback();
         }
       }
-    }, 3000);
+    } catch(e) {
+      opPollFailCount++;
+      if (opPollFailCount >= POLL_FAIL_THRESHOLD) {
+        clearInterval(opPollTimer); opPollTimer = null;
+        armReloadFallback();
+      }
+    }
+    const hasLive = Object.values(opState).some(
+      s => s.status === 'rendering' || s.status === 'queued'
+    );
+    if (!hasLive && opPollTimer) { clearInterval(opPollTimer); opPollTimer = null; }
+  }
+
+  function startOpPolling() {
+    if (opPollTimer) return;
+    _opPollOnce();
+    opPollTimer = setInterval(_opPollOnce, 3000);
   }
 
   /* ── Form submit upgrade — try fetch first, fall through to plain
@@ -1379,12 +1387,13 @@
     } catch(e) {}
   };
 
-  /* ── Auto-start polling if any are queued/rendering on load. The
-        server-side <meta http-equiv="refresh"> guarantees the page will
-        eventually reload even if this polling fetch is blocked, so this
-        is purely the smooth-UX path. ── */
-  if (Object.values(opState).some(s => s.status === 'rendering' || s.status === 'queued')) startOpPolling();
-  if (Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued')) startPolling();
+  /* ── Always start both polls on page load.
+        Each poll fires once immediately, then every 3 s. It self-terminates
+        as soon as no shots remain active (rendering/queued), so there is no
+        unnecessary polling when everything is already done. When the user
+        clicks Generate the poll restarts automatically via startPolling(). ── */
+  startPolling();
+  startOpPolling();
 
   updateCounters();
   updateOpCounters();
