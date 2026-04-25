@@ -414,6 +414,23 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
                     )
                     cin_id = replacement
 
+            # Post-filter: if a compatible_cinematic_styles list exists and the selected
+            # style is not in it (but is also not blocked), prefer the first compatible
+            # style so mode-positive aesthetics are actively enforced, not just used for
+            # replacement.
+            elif compatible_cin and cin_id not in compatible_cin:
+                preferred_cin = next(
+                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
+                    None,
+                )
+                if preferred_cin:
+                    logger.info(
+                        "StyleProfileEngine: nudged cinematic style %r → %r "
+                        "(not in compatible list for mode, preferring compatible)",
+                        cin_id, preferred_cin,
+                    )
+                    cin_id = preferred_cin
+
             prod = StyleProfileRegistry.get_production_style(prod_id)
             cin = StyleProfileRegistry.get_cinematic_style(cin_id)
 
