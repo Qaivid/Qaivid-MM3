@@ -3247,6 +3247,27 @@ def stills_upload_one(project_id: str, shot_index: int):
     return jsonify({"ok": True, "url": _asset_url(file_url)})
 
 
+def _outpaint_scene_hint(prompt: str) -> str:
+    """Extract a short scene hint from a full visual prompt for use as an outpaint guide.
+
+    Runware's Fill model only needs a brief description of what the scene looks
+    like so it can extend the edges coherently — the full cinematic prompt (with
+    character descriptions, lighting notes, etc.) is not only unnecessary but
+    risks exceeding the 3000-char API limit.  We take the first sentence only.
+    """
+    if not prompt or not prompt.strip():
+        return "cinematic scene, high quality"
+    text = prompt.strip()
+    # Split on the first sentence boundary (.  !  ?  ;  newline)
+    import re
+    m = re.search(r'[.!?;\n]', text)
+    if m:
+        text = text[:m.start()].strip()
+    # Hard cap at 200 chars — well within Runware's 3000-char max
+    text = text[:200].strip()
+    return text if len(text) >= 2 else "cinematic scene, high quality"
+
+
 @app.route("/project/<project_id>/stills/outpaint-all", methods=["POST"])
 @login_required
 def stills_outpaint_all(project_id: str):
@@ -3294,7 +3315,8 @@ def stills_outpaint_all(project_id: str):
     for a in ready:
         idx = a["shot_index"]
         tl  = next((s for s in timeline if (s.get("shot_index") or s.get("timeline_index")) == idx), {})
-        prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or a.get("prompt") or "")
+        raw_prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or a.get("prompt") or "")
+        prompt = _outpaint_scene_hint(raw_prompt)
         t = threading.Thread(
             target=_run_outpaint,
             args=(project_id, idx, a["file_path"], prompt, aspect),
@@ -3322,7 +3344,8 @@ def stills_outpaint_one(project_id: str, shot_index: int):
 
     timeline = project.get("styled_timeline") or []
     tl = next((s for s in timeline if (s.get("shot_index") or s.get("timeline_index")) == shot_index), {})
-    prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or asset.get("prompt") or "")
+    raw_prompt = (tl.get("styled_visual_prompt") or tl.get("visual_prompt") or asset.get("prompt") or "")
+    prompt = _outpaint_scene_hint(raw_prompt)
 
     def _run(pid, idx, url, pr, ar):
         with app.app_context():
