@@ -2,6 +2,14 @@
 {% set active_stage = 'stills_control' %}
 {% block title %}{{ project.name }} — Stills · Qaivid{% endblock %}
 
+{# Browser-native auto-refresh while any shot is queued/rendering. This is
+   the bulletproof fallback that works even when background fetch polling
+   is blocked by an iframe sandbox. Scroll position is preserved client-side
+   via sessionStorage (see the script block at the bottom of the page). #}
+{% block extra_head %}
+{% if any_live %}<meta http-equiv="refresh" content="6">{% endif %}
+{% endblock %}
+
 {% block content %}
 {% set ns = namespace(pending=0, generating=0, ready=0, failed=0) %}
 {% for s in shots %}
@@ -1327,9 +1335,12 @@
     } catch(e) {}
   };
 
-  /* ── Auto-start polling if any are already rendering on load ── */
-  if (Object.values(opState).some(s => s.status === 'rendering')) startOpPolling();
-  if (Object.values(shotState).some(s => s.status === 'rendering')) startPolling();
+  /* ── Auto-start polling if any are queued/rendering on load. The
+        server-side <meta http-equiv="refresh"> guarantees the page will
+        eventually reload even if this polling fetch is blocked, so this
+        is purely the smooth-UX path. ── */
+  if (Object.values(opState).some(s => s.status === 'rendering' || s.status === 'queued')) startOpPolling();
+  if (Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued')) startPolling();
 
   updateCounters();
   updateOpCounters();

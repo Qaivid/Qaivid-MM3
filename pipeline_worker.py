@@ -4066,13 +4066,21 @@ def kick_single_shot(project_id: str, shot_index: int) -> None:
         logger.warning("kick_single_shot: shot_index %s not in timeline", shot_index)
         return
 
-    # Honour any user-edited prompt stored in shot_assets
+    # Honour any user-edited prompt stored in shot_assets, and mark the row
+    # as 'queued' synchronously so the very next page render shows activity
+    # (the executor thread will flip it to 'rendering' when it picks up).
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT prompt FROM shot_assets WHERE project_id=%s AND shot_index=%s",
             (project_id, shot_index),
         )
         asset_row = cur.fetchone()
+        cur.execute(
+            "UPDATE shot_assets SET status='queued', error=NULL "
+            " WHERE project_id=%s AND shot_index=%s",
+            (project_id, shot_index),
+        )
+        conn.commit()
     if asset_row and asset_row.get("prompt"):
         shot = {**shot, "styled_visual_prompt": asset_row["prompt"]}
 
@@ -4102,6 +4110,11 @@ def kick_all_pending_shots(project_id: str, force: bool = False) -> None:
         return
     timeline = list(row["styled_timeline"])
 
+    # Collect indices we will submit so we can mark them 'queued' in one
+    # batch UPDATE before kicking the executor — this guarantees the next
+    # page render shows activity even if the worker thread hasn't started.
+    queued_indices: list = []
+    submissions: list = []
     for shot in timeline:
         idx = shot.get("shot_index") or shot.get("timeline_index")
         asset = asset_rows.get(idx, {})
@@ -4110,6 +4123,19 @@ def kick_all_pending_shots(project_id: str, force: bool = False) -> None:
         merged = {**shot}
         if asset.get("prompt"):
             merged["styled_visual_prompt"] = asset["prompt"]
+        queued_indices.append(idx)
+        submissions.append(merged)
+
+    if queued_indices:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE shot_assets SET status='queued', error=NULL "
+                " WHERE project_id=%s AND shot_index = ANY(%s)",
+                (project_id, queued_indices),
+            )
+            conn.commit()
+
+    for merged in submissions:
         _SHOT_EXECUTOR.submit(_render_shot, project_id, merged, None, None)
 
 
@@ -4391,10 +4417,12 @@ def retry_all_failed_shots(project_id: str) -> int:
         shot = timeline_by_idx.get(idx)
         if not shot:
             continue
-        # Reset to pending so _render_shot can update it
+        # Mark as 'queued' synchronously so the immediate post-redirect
+        # page render shows the shot as in-flight (and any_live=True →
+        # browser meta-refresh keeps polling).
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
-                "UPDATE shot_assets SET status='pending', error=NULL "
+                "UPDATE shot_assets SET status='queued', error=NULL "
                 " WHERE project_id=%s AND shot_index=%s",
                 (project_id, idx),
             )

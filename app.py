@@ -496,9 +496,15 @@ def _save_upload_to_r2(project_id: str, file_storage, r2_sub: str, prefix: str) 
 
 def _shot_payload(asset: dict, shot: dict) -> dict:
     idx = asset["shot_index"]
+    # 'queued' and 'rendering' are both mid-flight states. The template only
+    # has visuals for 'rendering', so collapse 'queued' → 'rendering' here
+    # for display purposes (the underlying DB row remains 'queued' until the
+    # worker picks it up).
+    raw_status = asset["status"]
+    display_status = "rendering" if raw_status == "queued" else raw_status
     return {
         "shot_index": idx,
-        "status": asset["status"],
+        "status": display_status,
         "url": _asset_url(asset.get("file_path")),
         "error": asset.get("error"),
         "meaning": shot.get("meaning"),
@@ -1345,6 +1351,17 @@ def project_detail(project_id: str):
         # Aspect ratio from project settings
         aspect_ratio = (project.get("settings") or {}).get("aspect_ratio") or "16:9"
 
+        # Any shot or outpaint that's still mid-flight → enable browser-native
+        # auto-refresh as a bulletproof fallback for environments where
+        # background fetch polling is blocked (e.g. the Replit canvas iframe).
+        any_live = any(
+            (s.get("status") in ("queued", "rendering"))
+            for s in shots
+        ) or any(
+            (op.get("status") in ("queued", "rendering"))
+            for op in outpaint_by_idx.values()
+        )
+
         return render_template(
             "stills_control.html",
             project=project,
@@ -1354,6 +1371,7 @@ def project_detail(project_id: str):
             dur_scale=scale,
             outpaint_by_idx=outpaint_by_idx,
             aspect_ratio=aspect_ratio,
+            any_live=any_live,
         )
 
     if stage == "stills_review":
@@ -3071,11 +3089,12 @@ def stills_status_json(project_id: str):
     if project.get("stage") not in ("stills_control", "stills_review"):
         abort(403)
     assets = _get_shot_assets(project_id)
+    # Collapse 'queued' → 'rendering' for the client (matches _shot_payload)
     return jsonify({
         "shots": [
             {
                 "shot_index": a["shot_index"],
-                "status": a["status"],
+                "status": ("rendering" if a["status"] == "queued" else a["status"]),
                 "url": _asset_url(a.get("file_path")),
                 "source": a.get("source"),
                 "error": a.get("error"),
