@@ -2824,6 +2824,17 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # (b) log the full effective pacing so the runtime path is explicit and traceable.
         _emp_for_timeline = dict(brain_emotional) if brain_emotional else {}
         _primary_mode = _emp_for_timeline.get("primary_mode") or ""
+        # Integration health-check: log a WARNING when emotional_mode_packet is
+        # absent at Stage 9+.  This should never happen in a clean pipeline run
+        # (Stage 2b writes the packet before Stage 3), but surfaces misconfiguration
+        # or data loss early without hard-failing the render job.
+        if not _primary_mode:
+            logger.warning(
+                "Stage-9 render: emotional_mode_packet.primary_mode absent for "
+                "project=%s — pacing/mode overrides will not be applied.  "
+                "Check that Stage 2b completed successfully.",
+                project_id,
+            )
         if _primary_mode:
             try:
                 from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
