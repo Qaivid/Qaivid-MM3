@@ -10,8 +10,7 @@
             <span class="stage-badge">Stage 9 — Stills</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
-                Per-shot stills have been rendered. Review each frame, retry any that failed,
-                then continue to Post Production to build your video — or go straight to AI video animation.
+                Per-shot stills have been rendered. Click any card to edit its prompt or retry.
                 {% set ok = shots|selectattr('status','equalto','ready')|list|length %}
                 {% set fail = shots|selectattr('status','equalto','failed')|list|length %}
                 <strong>{{ ok }}/{{ shots|length }} ready</strong>{% if fail %} · <span style="color:#ff6b6b;">{{ fail }} failed</span>{% endif %}.
@@ -39,49 +38,83 @@
         </div>
         {% endif %}
 
-        <div class="stills-grid">
+        <div class="ss-gallery" id="ss-grid">
             {% for shot in shots %}
-            <div class="still-card still-{{ shot.status }}">
-                <div class="still-img-wrap">
+
+            {# ── Shot card ── #}
+            <div class="ss-card ss-card--{{ shot.status }}"
+                 id="ss-card-{{ shot.shot_index }}"
+                 onclick="ssToggle({{ shot.shot_index }})">
+                <div class="ss-thumb">
                     {% if shot.url %}
-                    <a href="{{ shot.url }}" target="_blank" rel="noopener">
-                        <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
-                    </a>
+                    <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
                     {% else %}
-                    <div class="still-placeholder">
-                        {% if shot.status == "failed" %}⚠ Failed{% elif shot.status == "rendering" %}Rendering…{% else %}Pending{% endif %}
+                    <div class="ss-ph">
+                        {% if shot.status == "failed" %}⚠{% elif shot.status == "rendering" %}⏳{% else %}•••{% endif %}
                     </div>
                     {% endif %}
+                    <span class="ss-spill ss-spill--{{ shot.status }}">
+                        {% if shot.status == 'ready' %}✓ Ready
+                        {% elif shot.status == 'failed' %}⚠ Failed
+                        {% elif shot.status == 'rendering' %}Rendering
+                        {% else %}Pending{% endif %}
+                    </span>
+                    <span class="ss-edit-hint">Edit ↓</span>
                 </div>
-                <div class="still-meta">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span class="still-num">Shot {{ shot.shot_index }}</span>
-                        <span class="still-time">{{ "%.1f"|format(shot.start_time or 0) }}s · {{ "%.1f"|format(shot.duration or 0) }}s</span>
-                    </div>
-                    <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">
-                        <span class="mode-pill mode-{{ shot.expression_mode or 'env' }}">{{ shot.expression_mode or "—" }}</span>
-                        {% if shot.function %}<span class="ctx-tag">{{ shot.function }}</span>{% endif %}
-                        {% if shot.intensity is not none %}<span class="ctx-tag">int {{ "%.2f"|format(shot.intensity) }}</span>{% endif %}
-                        {% if shot.transition %}<span class="ctx-tag">{{ shot.transition }}</span>{% endif %}
-                        {% if shot.repeat_status == "repeat" %}<span class="ctx-tag" style="opacity:.6;">repeat</span>{% endif %}
-                    </div>
-                    {% if shot.meaning %}
-                    <div class="muted" style="margin-top:6px; font-size:12px; line-height:1.4;">{{ shot.meaning[:140] }}</div>
-                    {% endif %}
-                    {% if shot.prompt %}
-                    <details style="margin-top:6px;">
-                        <summary style="cursor:pointer; font-size:12px; color:#9aa6b2;">prompt</summary>
-                        <div style="font-size:11px; color:#aab2bd; margin-top:4px; line-height:1.5;">{{ shot.prompt }}</div>
-                    </details>
-                    {% endif %}
-                    {% if shot.error %}
-                    <span class="still-err">{{ shot.error[:120] }}</span>
-                    {% endif %}
-                    {% if shot.status == "failed" %}
-                    <button class="btn-mini retry-still" data-idx="{{ shot.shot_index }}" data-pid="{{ project.id }}">retry</button>
-                    {% endif %}
+                <div class="ss-foot">
+                    <span class="ss-num">Shot {{ shot.shot_index }}</span>
+                    <span class="ss-time">{{ "%.1f"|format(shot.start_time or 0) }}s · {{ "%.1f"|format(shot.duration or 0) }}s</span>
                 </div>
             </div>
+
+            {# ── Edit panel — full-width grid row ── #}
+            <div class="ss-edit-panel" id="ss-panel-{{ shot.shot_index }}" hidden>
+                <div class="ss-edit-inner" onclick="event.stopPropagation()">
+
+                    {% if shot.meaning %}
+                    <div style="font-size:12px;color:#7a8594;line-height:1.45;padding-bottom:10px;border-bottom:1px solid #1e1e2a;">
+                        {{ shot.meaning }}
+                    </div>
+                    {% endif %}
+
+                    <div class="ss-err" id="ss-err-{{ shot.shot_index }}"
+                         style="{{ '' if shot.error else 'display:none;' }}">
+                        {{ shot.error[:150] if shot.error else '' }}
+                    </div>
+
+                    <div>
+                        <label class="ss-label">Prompt — edit before generating</label>
+                        <textarea class="ss-ta" id="ss-prompt-{{ shot.shot_index }}"
+                                  rows="4" maxlength="4000"
+                                  onblur="ssSavePrompt({{ shot.shot_index }}, this.value)"
+                                  >{{ shot.prompt or '' }}</textarea>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                            <button class="btn-mini"
+                                    onclick="ssSavePrompt({{ shot.shot_index }}, document.getElementById('ss-prompt-{{ shot.shot_index }}').value)">
+                                Save prompt
+                            </button>
+                            <span id="ss-saved-{{ shot.shot_index }}"
+                                  style="display:none;font-size:10px;color:#7ec8a4;">Saved</span>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+                        {% if shot.status == 'ready' %}
+                        <button class="btn-mini"
+                                onclick="ssGenOne({{ shot.shot_index }}, true)">&#8635; Regen</button>
+                        {% elif shot.status == 'failed' %}
+                        <button class="btn-mini"
+                                onclick="ssGenOne({{ shot.shot_index }}, false)">&#8635; Retry</button>
+                        {% else %}
+                        <button class="btn-mini"
+                                onclick="ssGenOne({{ shot.shot_index }}, false)">&#9654; Generate</button>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+            {# /ss-edit-panel #}
+
             {% endfor %}
         </div>
 
@@ -100,20 +133,193 @@
     </div>
 </div>
 
+<style>
+.ss-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+    align-items: start;
+    margin: 20px 0;
+}
+
+.ss-card {
+    background: #13131c;
+    border: 1px solid #22222e;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+    user-select: none;
+    position: relative;
+}
+.ss-card:hover          { border-color: #3a3a50; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.ss-card--ready         { border-color: rgba(76,175,125,.3); }
+.ss-card--failed        { border-color: rgba(224,85,85,.3); }
+.ss-card--open          { border-color: #d4ff3a; box-shadow: 0 0 0 1px #d4ff3a22; }
+
+.ss-thumb {
+    position: relative;
+    aspect-ratio: 16/9;
+    background: #0d0d14;
+    overflow: hidden;
+}
+.ss-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.ss-ph {
+    width:100%; height:100%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; color:#2a2a3a;
+}
+
+.ss-spill {
+    position:absolute; top:7px; right:7px;
+    font-size:10px; font-weight:700;
+    padding:2px 8px; border-radius:10px;
+    letter-spacing:.3px; pointer-events:none;
+}
+.ss-spill--ready    { background:rgba(76,175,125,.22);  color:#4cdb90; border:1px solid rgba(76,175,125,.38); }
+.ss-spill--pending  { background:rgba(255,177,66,.14);  color:#ffb142; border:1px solid rgba(255,177,66,.28); }
+.ss-spill--failed   { background:rgba(224,85,85,.18);   color:#ff7070; border:1px solid rgba(224,85,85,.32); }
+.ss-spill--rendering{ background:rgba(85,153,255,.18);  color:#88aaff; border:1px solid rgba(85,153,255,.32); }
+
+.ss-edit-hint {
+    position:absolute; bottom:7px; right:7px;
+    font-size:9px; font-weight:600; color:#777;
+    background:rgba(0,0,0,.55); padding:2px 7px; border-radius:5px;
+    letter-spacing:.4px; text-transform:uppercase;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+}
+.ss-card:hover .ss-edit-hint,
+.ss-card--open .ss-edit-hint { opacity:1; }
+.ss-card--open .ss-edit-hint { color:#d4ff3a; }
+
+.ss-foot {
+    padding:8px 10px 10px;
+    display:flex; justify-content:space-between; align-items:center;
+}
+.ss-num  { font-size:13px; font-weight:700; color:#dde4ef; }
+.ss-time { font-size:11px; color:#556; }
+
+/* Edit panel — spans full grid width as a new row */
+.ss-edit-panel {
+    grid-column: 1 / -1;
+    background: #0e0e1a;
+    border: 1px solid #d4ff3a44;
+    border-radius: 12px;
+    margin-bottom: 4px;
+    display: block;
+}
+.ss-edit-panel[hidden] { display: none !important; }
+.ss-edit-panel::before {
+    content:'';
+    display:block; width:0; height:0;
+    border-left:8px solid transparent;
+    border-right:8px solid transparent;
+    border-bottom:8px solid #d4ff3a44;
+    margin:0 auto;
+    position:relative; top:-1px;
+}
+.ss-edit-inner {
+    padding:16px 20px 20px;
+    display:flex; flex-direction:column; gap:12px;
+}
+.ss-label {
+    display:block; font-size:11px; font-weight:600;
+    color:#9aa6b2; letter-spacing:.4px; text-transform:uppercase;
+    margin-bottom:6px;
+}
+.ss-ta {
+    width:100%; box-sizing:border-box;
+    background:#0a0a14; border:1px solid #2a2a3c;
+    border-radius:8px; color:#dde4ef;
+    font-size:13px; line-height:1.55; padding:10px 12px;
+    resize:vertical; font-family:inherit;
+}
+.ss-ta:focus { outline:none; border-color:#d4ff3a66; }
+.ss-err {
+    background:rgba(224,85,85,.12); border:1px solid rgba(224,85,85,.3);
+    border-radius:8px; padding:8px 12px;
+    font-size:12px; color:#ff8080;
+}
+</style>
+
 <script>
-document.querySelectorAll('.retry-still').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        btn.textContent = '…'; btn.disabled = true;
-        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        const csrf = csrfMeta ? csrfMeta.content : '';
-        const res = await fetch(`/project/${btn.dataset.pid}/retry/shot/${btn.dataset.idx}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf}
+(function () {
+    const PID  = {{ project.id | tojson }};
+    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+    let _openPanel = null;
+
+    function _closeAll() {
+        document.querySelectorAll('.ss-edit-panel').forEach(p => { p.hidden = true; });
+        document.querySelectorAll('.ss-card').forEach(c => {
+            c.classList.remove('ss-card--open');
+            const h = c.querySelector('.ss-edit-hint');
+            if (h) h.textContent = 'Edit ↓';
         });
-        const data = await res.json();
-        if (data.ok) { btn.textContent = 'queued'; setTimeout(() => location.reload(), 3000); }
-        else { btn.textContent = 'err'; btn.disabled = false; }
-    });
-});
+        _openPanel = null;
+    }
+
+    window.ssToggle = function (idx) {
+        const panelId = 'ss-panel-' + idx;
+        const panel   = document.getElementById(panelId);
+        const card    = document.getElementById('ss-card-' + idx);
+        if (!panel) return;
+
+        if (_openPanel === panelId) { _closeAll(); return; }
+
+        _closeAll();
+        panel.hidden = false;
+        if (card) {
+            card.classList.add('ss-card--open');
+            const h = card.querySelector('.ss-edit-hint');
+            if (h) h.textContent = '↑ Close';
+        }
+        _openPanel = panelId;
+        setTimeout(() => {
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 60);
+    };
+
+    window.ssSavePrompt = function (idx, value) {
+        const v = (value || '').trim();
+        if (!v) return;
+        fetch('/project/' + PID + '/stills/prompt', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ shot_index: idx, prompt: v })
+        }).then(r => r.json()).then(data => {
+            if (data.ok) {
+                const el = document.getElementById('ss-saved-' + idx);
+                if (el) { el.style.display = ''; setTimeout(() => { el.style.display = 'none'; }, 2000); }
+            }
+        }).catch(() => {});
+    };
+
+    window.ssGenOne = function (idx, regen) {
+        const btn = event && event.target ? event.target : null;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ …'; }
+        const prompt = (document.getElementById('ss-prompt-' + idx) || {}).value || '';
+        fetch('/project/' + PID + '/stills/generate/' + idx, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF,
+                'X-Requested-With': 'fetch',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ prompt: prompt, regen: regen })
+        }).then(r => r.json()).then(data => {
+            if (data.ok !== false) {
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                const err = document.getElementById('ss-err-' + idx);
+                if (err) { err.textContent = data.error || 'Error'; err.style.display = ''; }
+                if (btn) { btn.disabled = false; btn.textContent = '⚠ Retry'; }
+            }
+        }).catch(() => { if (btn) { btn.disabled = false; btn.textContent = '⚠ Retry'; } });
+    };
+})();
 </script>
 {% endblock %}

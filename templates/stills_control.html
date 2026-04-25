@@ -286,9 +286,8 @@
           {% endif %}
           </div>
         </div>
-      </div>{# /ref-card #}
 
-      {# ── Expand edit panel — full-width grid sibling (same pattern as references) ── #}
+      {# ── Expand edit panel — inside the card so it always sits below the right card ── #}
       <div class="sc-edit-panel" id="sc-panel-{{ shot.shot_index }}" hidden>
         <div class="ref-edit-inner" onclick="event.stopPropagation()">
 
@@ -364,6 +363,7 @@
 
         </div>
       </div>{# /sc-edit-panel #}
+      </div>{# /ref-card #}
 
       {% endfor %}
     </div>
@@ -579,12 +579,14 @@
 .sc-op-badge--failed   { background: rgba(255,107,107,.25); color: #ff6b6b; border: 1px solid #ff6b6b40; }
 
 /* ── Edit expand panel — full-width grid row (same pattern as references) ── */
+/* sc-card must NOT clip its child panel */
+.sc-card { overflow: visible !important; }
+
 .sc-edit-panel {
-  grid-column: 1 / -1;
   background: #0e0e1a;
   border: 1px solid #d4ff3a44;
-  border-radius: 12px;
-  margin-bottom: 4px;
+  border-radius: 0 0 12px 12px;
+  margin-top: 4px;
   display: block;
 }
 /* Defeat any stylesheet that might override the [hidden] UA rule. */
@@ -1047,8 +1049,10 @@
 
   /* ── Expand/collapse edit panel ── */
   window.scToggle = function(idx) {
+    console.log('[scToggle] called with idx=', idx);
     const panel  = document.getElementById('sc-panel-' + idx);
     const card   = document.getElementById('sc-card-' + idx);
+    console.log('[scToggle] panel=', panel, 'card=', card);
     if (!panel) return;
     const isOpen = !panel.hidden;
     // Close all other panels
@@ -1064,11 +1068,9 @@
     } else {
       panel.hidden = false;
       card.classList.add('ref-card--open');
-      // Scroll the CARD into view (mirrors the working references pattern).
-      // block:'nearest' leaves the card in place if already visible, then
-      // the panel row appears just below it — no over-shooting.
+      // Scroll the PANEL into view so it is always visible after opening.
       setTimeout(() => {
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }, 60);
     }
   };
