@@ -1,123 +1,118 @@
 {% extends "base.html" %}
 {% set active_stage = 'post_production' %}
 {% block title %}{{ project.name }} — Post Production · Qaivid{% endblock %}
+{% block body_class %}pp-nle-mode{% endblock %}
 
 {% block content %}
 <div class="pp-wrap">
   {% include '_stage_header.html' %}
 
-  <!-- ── Project info bar ──────────────────────────────────────────────── -->
-  <div class="pp-info-bar">
-    <span class="pp-project-badge">{{ project.name }}</span>
-    <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
-  </div>
+  <!-- ══ NLE STUDIO — CapCut / Filmora style full-screen editor ═══════ -->
 
-  <!-- ── YouTube-style video tab bar ───────────────────────────────────── -->
-  <div class="pp-video-tab-bar">
-    <!-- Left: large mode tabs -->
-    <div class="pp-video-tabs" id="pp-source-switcher">
-      <button class="pp-vtab active" id="pill-quick"
-              onclick="ppSwitchMode('quick')"
-              title="Animated stills with Ken Burns effects">
-        <span class="pp-vtab-icon">⚡</span>
-        <span class="pp-vtab-label">Quick Video</span>
-        {% if quick_video_url %}<span class="pp-vtab-dot pp-vtab-dot-quick"></span>{% endif %}
-      </button>
-      <button class="pp-vtab {% if not ai_video_url %}pp-vtab-locked{% endif %}"
-              id="pill-ai"
-              onclick="ppSwitchMode('ai')"
-              title="{% if ai_video_url %}Apply effects to full AI-rendered video{% else %}AI video not rendered yet — use Full AI Render below{% endif %}">
-        <span class="pp-vtab-icon">🎬</span>
-        <span class="pp-vtab-label">AI Rendered</span>
-        {% if ai_video_url %}<span class="pp-vtab-dot pp-vtab-dot-ai"></span>{% endif %}
-      </button>
+  <!-- ── Studio topbar ─────────────────────────────────────────────────── -->
+  <header class="nle-topbar">
+    <div class="nle-tb-left">
+      <a href="{{ url_for('projects') }}" class="nle-back">← Projects</a>
+      <span class="nle-tb-sep"></span>
+      <span class="nle-tb-name">{{ project.name }}</span>
+      <span class="nle-tb-meta">{{ shots|length }} shots · {{ total_duration }}s</span>
     </div>
 
-    <!-- Right: mode-specific action buttons -->
-    <div class="pp-tab-actions">
+    <div class="nle-tb-center">
+      <div class="nle-mode-tabs" id="pp-source-switcher">
+        <button class="nle-mtab active" id="pill-quick"
+                onclick="ppSwitchMode('quick')"
+                title="Animated stills with Ken Burns effects">
+          <span class="nle-mt-icon">⚡</span> Quick Video
+          {% if quick_video_url %}<span class="nle-mt-dot nle-mt-dot-q"></span>{% endif %}
+        </button>
+        <button class="nle-mtab {% if not ai_video_url %}nle-mtab-locked{% endif %}"
+                id="pill-ai"
+                onclick="ppSwitchMode('ai')"
+                title="{% if ai_video_url %}Apply effects to AI-rendered video{% else %}AI video not rendered yet{% endif %}">
+          <span class="nle-mt-icon">🎬</span> AI Rendered
+          {% if ai_video_url %}<span class="nle-mt-dot nle-mt-dot-ai"></span>{% endif %}
+        </button>
+      </div>
+    </div>
+
+    <div class="nle-tb-right">
       <!-- Quick mode actions -->
-      <button class="pp-btn pp-btn-generate pp-quick-only" id="btn-generate" onclick="ppGenerate()">
-        ▶ Generate Quick Video
-      </button>
+      <button class="nle-btn nle-btn-gen pp-quick-only" id="btn-generate" onclick="ppGenerate()">▶ Generate</button>
       {% if quick_video_url %}
-      <a class="pp-btn pp-btn-download pp-quick-only" id="btn-download"
+      <a class="nle-btn nle-btn-dl pp-quick-only" id="btn-download"
          href="{{ quick_video_url }}" download target="_blank">⬇ Download</a>
       <button id="btn-share-quick" onclick="toggleShareQuick('{{ project.id }}', this)"
-              class="pp-btn pp-quick-only {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
-              title="Share on the Qaivid homepage">
+              class="nle-btn pp-quick-only {% if project.shared %}pp-btn-shared nle-btn-shared{% else %}pp-btn-share nle-btn-share{% endif %}">
         {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
       </button>
       {% else %}
-      <a class="pp-btn pp-btn-download pp-btn-download-hidden pp-quick-only" id="btn-download"
+      <a class="nle-btn nle-btn-dl pp-quick-only nle-btn-hidden" id="btn-download"
          href="#" download target="_blank">⬇ Download</a>
       {% endif %}
       <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}"
             style="display:inline;" class="pp-quick-only" id="form-advance">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="pp-btn pp-btn-ai">Full AI Render →</button>
+        <button type="submit" class="nle-btn nle-btn-ai">Full AI Render →</button>
       </form>
 
-      <!-- AI mode actions (hidden until AI mode active) -->
+      <!-- AI mode actions -->
       {% if ai_video_url %}
-      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
-              onclick="ppGenerateAI()" style="display:none;">
-        ▶ Apply &amp; Export AI Video
-      </button>
-      <a class="pp-btn pp-btn-download {% if not ai_export_url %}pp-btn-download-hidden{% endif %} pp-ai-only"
+      <button class="nle-btn nle-btn-gen pp-ai-only" id="btn-generate-ai"
+              onclick="ppGenerateAI()" style="display:none;">▶ Apply &amp; Export</button>
+      <a class="nle-btn nle-btn-dl pp-ai-only {% if not ai_export_url %}nle-btn-hidden{% endif %}"
          id="btn-download-ai" href="{{ ai_export_url or '#' }}" download target="_blank"
-         style="display:none;">⬇ Download AI Export</a>
+         style="display:none;">⬇ Download AI</a>
       {% else %}
-      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
-              disabled style="display:none; opacity:.5; cursor:not-allowed;">
-        ▶ Apply &amp; Export AI Video
-      </button>
+      <button class="nle-btn nle-btn-gen pp-ai-only" id="btn-generate-ai"
+              disabled style="display:none; opacity:.45; cursor:not-allowed;">▶ Apply &amp; Export</button>
       {% endif %}
 
-      <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save</button>
+      <button class="nle-btn nle-btn-save" id="btn-save" onclick="ppSave()">Save</button>
     </div>
-  </div>
+  </header>
 
-  <!-- ── Status bar ─────────────────────────────────────────────────────── -->
+  <!-- ── Status / error bars ──────────────────────────────────────────── -->
   <div class="pp-status-bar" id="pp-status-bar" style="display:none;">
     <div class="pp-status-spinner"></div>
-    <span id="pp-status-text">Generating quick video…</span>
+    <span id="pp-status-text">Generating…</span>
   </div>
   <div class="pp-error-bar" id="pp-error-bar" style="display:none;">
     <span id="pp-error-text"></span>
   </div>
 
-  <!-- ── Studio split layout ───────────────────────────────────────────── -->
-  <div class="pp-studio">
+  <!-- ══ NLE BODY: player | tools ════════════════════════════════════════ -->
+  <div class="nle-body">
 
-    <!-- Hidden audio player (synced to stills preview) -->
+    <!-- Hidden audio (beat-synced preview) -->
     {% if audio_url %}
     <audio id="pp-audio" preload="auto" style="display:none">
       <source src="{{ audio_url }}" type="audio/mpeg">
     </audio>
     {% endif %}
 
-    <!-- Left: preview + thumbnail strip -->
-    <div class="pp-preview-col">
+    <!-- ── Player column (left / center) ──────────────────────────────── -->
+    <div class="nle-player-col">
+
+      <!-- Edge-to-edge video player -->
       <div class="pp-preview-frame" id="pp-preview-frame">
-        <!-- Ken Burns animated current still (Quick mode) -->
+
+        <!-- Ken Burns (Quick mode) -->
         <div class="pp-kb-wrap" id="pp-kb-wrap">
           <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
           <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
           <div class="pp-sub-preview" id="pp-sub-preview"></div>
-          <!-- Logo overlay previews -->
           <div class="pp-logo-tl" id="pp-logo-tl"></div>
           <div class="pp-logo-tr" id="pp-logo-tr"></div>
           <div class="pp-logo-bl" id="pp-logo-bl"></div>
           <div class="pp-logo-br" id="pp-logo-br"></div>
         </div>
 
-        <!-- AI video player + live preview overlay (AI mode, hidden by default) -->
+        <!-- AI video (AI mode) -->
         {% if ai_video_url %}
         <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
           <video id="pp-ai-video" class="pp-ai-video"
-                 src="{{ ai_video_url }}" preload="metadata" controls playsinline>
-          </video>
-          <!-- Overlay elements mirror the Quick-mode overlays -->
+                 src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
           <div class="pp-ai-overlay" id="pp-ai-overlay">
             <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
             <div class="pp-sub-preview"    id="pp-ai-sub-preview"></div>
@@ -132,68 +127,30 @@
           <div class="pp-ai-no-video-icon">🎬</div>
           <p>AI video not rendered yet.</p>
           <p class="pp-ai-no-video-hint">Generate your AI video clips first, then come back here to apply effects and export.</p>
-          <button class="pp-btn pp-btn-ai pp-ai-no-video-cta"
+          <button class="nle-btn nle-btn-ai"
                   onclick="document.getElementById('form-advance').submit()">
             Full AI Render →
           </button>
         </div>
         {% endif %}
 
-        <!-- Play controls (Quick mode only) -->
-        <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
-          <button class="pp-ctrl-btn" onclick="ppPrev()" title="Previous">◀</button>
-          <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()" title="Play/Pause">▶</button>
-          <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶▶</button>
-          <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
-        </div>
-      </div>
-
-      <!-- Thumbnail strip -->
-      <div class="pp-thumb-strip" id="pp-thumb-strip">
-        {% for shot in shots %}
-        <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
-             id="pp-thumb-{{ shot.shot_index }}"
-             data-idx="{{ shot.shot_index }}"
-             data-dur="{{ shot.duration or 4.0 }}"
-             onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
-             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s — click to configure Ken Burns">
-          {% if shot.url %}
-          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
-          {% else %}
-          <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
-          {% endif %}
-          <div class="pp-thumb-meta">
-            <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
-            <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
-                    onclick="ppEditDuration(event, {{ shot.shot_index }})"
-                    title="Click to override duration">
-              {{ '%.1f'|format(shot.duration or 4.0) }}s
-            </button>
-            <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+        <!-- Playback controls — float at bottom of player (Quick mode) -->
+        <div class="nle-playback pp-quick-ctrl" id="pp-quick-controls">
+          <button class="nle-pb-btn" onclick="ppPrev()" title="Previous">◀</button>
+          <button class="nle-pb-btn nle-pb-play" id="pp-play-btn" onclick="ppTogglePlay()" title="Play / Pause">▶</button>
+          <button class="nle-pb-btn" onclick="ppNext()" title="Next">▶▶</button>
+          <div class="nle-pb-track">
+            <div class="nle-pb-fill" id="pp-scrub-fill"></div>
           </div>
-          <!-- KB override popover -->
-          <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
-            <div class="pp-kb-pop-label">Ken Burns for shot {{ shot.shot_index }}</div>
-            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
-              <option value="">— Use global —</option>
-              <option value="zoom-in">Zoom In</option>
-              <option value="zoom-out">Zoom Out</option>
-              <option value="pan-left">Pan Left</option>
-              <option value="pan-right">Pan Right</option>
-              <option value="pan-up">Pan Up</option>
-              <option value="pan-down">Pan Down</option>
-              <option value="static">Static</option>
-              <option value="random">Random</option>
-            </select>
-            <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
-          </div>
+          <span class="nle-pb-time" id="pp-time-display">0.0s / 0.0s</span>
         </div>
-        {% endfor %}
-      </div>
-    </div>
 
-    <!-- Right: 5-tab control panel -->
-    <div class="pp-control-panel">
+      </div><!-- /pp-preview-frame -->
+
+    </div><!-- /nle-player-col -->
+
+    <!-- ── Right tools panel ──────────────────────────────────────────── -->
+    <aside class="pp-control-panel">
       <div class="pp-tabs">
         <button class="pp-tab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
         <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
@@ -587,38 +544,608 @@
           or come back later — the Download button will appear when ready.
         </p>
       </div>
-    </div><!-- /pp-control-panel -->
-  </div><!-- /pp-studio -->
-  <div style="max-width:600px;margin:2rem auto 0;padding:0 1rem 2rem;">
-    {% include '_redo_panel.html' %}
-  </div>
+    </aside><!-- /pp-control-panel -->
+
+  </div><!-- /nle-body -->
+
+  <!-- ══ FILMSTRIP TIMELINE (full width, bottom) ══════════════════════════ -->
+  <div class="pp-thumb-strip nle-filmstrip" id="pp-thumb-strip">
+    {% for shot in shots %}
+    <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
+         id="pp-thumb-{{ shot.shot_index }}"
+         data-idx="{{ shot.shot_index }}"
+         data-dur="{{ shot.duration or 4.0 }}"
+         onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
+         title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s — click to configure">
+      {% if shot.url %}
+      <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+      {% else %}
+      <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
+      {% endif %}
+      <div class="pp-thumb-meta">
+        <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
+        <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
+                onclick="ppEditDuration(event, {{ shot.shot_index }})"
+                title="Click to override duration">
+          {{ '%.1f'|format(shot.duration or 4.0) }}s
+        </button>
+        <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+      </div>
+      <!-- KB override popover -->
+      <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
+        <div class="pp-kb-pop-label">Shot {{ shot.shot_index }} motion</div>
+        <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
+          <option value="">— Use global —</option>
+          <option value="zoom-in">Zoom In</option>
+          <option value="zoom-out">Zoom Out</option>
+          <option value="pan-left">Pan Left</option>
+          <option value="pan-right">Pan Right</option>
+          <option value="pan-up">Pan Up</option>
+          <option value="pan-down">Pan Down</option>
+          <option value="static">Static</option>
+          <option value="random">Random</option>
+        </select>
+        <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div><!-- /nle-filmstrip -->
+
+  <div style="display:none;">{% include '_redo_panel.html' %}</div>
+
 </div><!-- /pp-wrap -->
 
 {% endblock %}
 
 {% block extra_scripts %}
 <style>
-/* ── Layout ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════
+   NLE STUDIO — Full-screen video editor (CapCut / Filmora style)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Full-screen override ─────────────────────────────────────────────── */
+body.pp-nle-mode {
+  overflow: hidden;
+  height: 100vh;
+  background: #07070d;
+}
+body.pp-nle-mode .topbar      { display: none !important; }
+body.pp-nle-mode .studio-sidebar { display: none !important; }
+
+/* ── Main wrapper: full-viewport flex column ──────────────────────────── */
 .pp-wrap {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  min-height: calc(100vh - 64px);
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  align-items: start;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh;
+  overflow: hidden;
+  background: #07070d;
+  color: #cfd6df;
+  font-family: 'Inter', sans-serif;
 }
 .pp-wrap > *:not(.studio-sidebar) {
-  grid-column: 2;
-  padding-left: 20px;
-  padding-right: 20px;
-}
-@media (max-width: 640px) {
-  .pp-wrap { grid-template-columns: 1fr; }
-  .pp-wrap > *:not(.studio-sidebar) { grid-column: 1; }
+  grid-column: unset !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
-/* ── Info bar ─────────────────────────────────────────────────────────── */
+/* ══ NLE TOPBAR ═════════════════════════════════════════════════════════ */
+.nle-topbar {
+  flex-shrink: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  gap: 12px;
+  background: #0b0b1a;
+  border-bottom: 1px solid #18182e;
+  z-index: 10;
+}
+.nle-tb-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.nle-back {
+  color: #5a6270;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid #1e1e30;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.nle-back:hover { color: #d4ff3a; border-color: rgba(212,255,58,.3); }
+.nle-tb-sep {
+  width: 1px;
+  height: 20px;
+  background: #1e1e30;
+  flex-shrink: 0;
+}
+.nle-tb-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.nle-tb-meta {
+  color: #444460;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.nle-tb-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+.nle-mode-tabs {
+  display: flex;
+  background: #0d0d1c;
+  border: 1px solid #1e1e30;
+  border-radius: 10px;
+  padding: 4px;
+  gap: 3px;
+}
+.nle-mtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 20px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #4a5260;
+  transition: all .18s;
+  white-space: nowrap;
+  position: relative;
+}
+.nle-mtab:hover { color: #cfd6df; background: rgba(255,255,255,.06); }
+.nle-mtab.active {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(124,58,237,.35);
+}
+.nle-mtab-locked { opacity: .45; cursor: not-allowed !important; }
+.nle-mtab-locked:hover { background: transparent !important; color: #4a5260 !important; }
+.nle-mt-icon { font-size: 14px; }
+.nle-mt-dot {
+  position: absolute;
+  top: 5px; right: 6px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.nle-mt-dot-q  { background: #4ade80; box-shadow: 0 0 4px #4ade80; }
+.nle-mt-dot-ai { background: #f59e0b; box-shadow: 0 0 4px #f59e0b; }
+.nle-tb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* ── NLE action buttons ──────────────────────────────────────────────── */
+.nle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #1e1e30;
+  background: #0d0d1c;
+  color: #8899aa;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: all .15s;
+}
+.nle-btn:hover { border-color: #3a3a58; color: #cfd6df; background: #12122a; }
+.nle-btn-gen {
+  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(109,40,217,.3);
+}
+.nle-btn-gen:hover { filter: brightness(1.12); }
+.nle-btn-dl  { background: #0f1a0f; color: #4ade80; border-color: rgba(74,222,128,.25); }
+.nle-btn-dl:hover { background: rgba(74,222,128,.12); }
+.nle-btn-ai  {
+  background: linear-gradient(135deg, #b45309, #92400e);
+  border-color: transparent;
+  color: #fef3c7;
+}
+.nle-btn-ai:hover { filter: brightness(1.12); }
+.nle-btn-save { background: #0f0f1c; color: #8899aa; }
+.nle-btn-save:hover { color: #fff; }
+.nle-btn-save.dirty { color: #d4ff3a; border-color: rgba(212,255,58,.35); }
+.nle-btn-share { background: #0e1825; color: #60a5fa; border-color: rgba(96,165,250,.25); }
+.nle-btn-share:hover { background: rgba(96,165,250,.12); }
+.nle-btn-shared { background: rgba(212,255,58,.08); color: #d4ff3a; border-color: rgba(212,255,58,.3); }
+.nle-btn-hidden { display: none !important; }
+
+/* ══ STATUS / ERROR BARS ════════════════════════════════════════════════ */
+.pp-status-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(37,99,235,.12);
+  border-bottom: 1px solid rgba(37,99,235,.25);
+  font-size: 13px;
+  color: #93c5fd;
+}
+.pp-status-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(147,197,253,.3);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.pp-error-bar {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: rgba(239,68,68,.1);
+  border-bottom: 1px solid rgba(239,68,68,.25);
+  font-size: 13px;
+  color: #fca5a5;
+}
+
+/* ══ NLE BODY (player + tools grid) ════════════════════════════════════ */
+.nle-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+}
+
+/* ── Player column ───────────────────────────────────────────────────── */
+.nle-player-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ── Edge-to-edge player frame ───────────────────────────────────────── */
+.pp-preview-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  /* No border, no border-radius, no max-height — true edge-to-edge */
+}
+/* Aspect ratio variants (applied via JS: ppSelectAR) */
+.pp-preview-frame.ar-9-16  { aspect-ratio: 9/16; max-width: 56.25vh; margin: 0 auto; }
+.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-width: 100vh;   margin: 0 auto; }
+.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-width: 133.33vh; margin: 0 auto; }
+
+/* ── Ken Burns image ──────────────────────────────────────────────────── */
+.pp-kb-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.pp-kb-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Ken Burns keyframe animations */
+@keyframes kb-zoom-in   { from { transform: scale(1);    } to { transform: scale(1.12); } }
+@keyframes kb-zoom-out  { from { transform: scale(1.12); } to { transform: scale(1);    } }
+@keyframes kb-pan-left  { from { transform: translateX(0) scale(1.06);  } to { transform: translateX(-6%) scale(1.06); } }
+@keyframes kb-pan-right { from { transform: translateX(0) scale(1.06);  } to { transform: translateX(6%)  scale(1.06); } }
+@keyframes kb-pan-up    { from { transform: translateY(0) scale(1.06);  } to { transform: translateY(-6%) scale(1.06); } }
+@keyframes kb-pan-down  { from { transform: translateY(0) scale(1.06);  } to { transform: translateY(6%)  scale(1.06); } }
+
+.pp-kb-wrap.kb-zoom-in   .pp-kb-img { animation: kb-zoom-in   var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-zoom-out  .pp-kb-img { animation: kb-zoom-out  var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-left  .pp-kb-img { animation: kb-pan-left  var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-right .pp-kb-img { animation: kb-pan-right var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-up    .pp-kb-img { animation: kb-pan-up    var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-down  .pp-kb-img { animation: kb-pan-down  var(--kb-dur,4s) ease-in-out forwards; }
+
+/* ── Filter / subtitle / logo overlays ──────────────────────────────── */
+.pp-filter-overlay {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+.pp-sub-preview {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90%;
+  text-align: center;
+  pointer-events: none;
+  font-size: 24px;
+  font-family: Arial, sans-serif;
+  color: #fff;
+  text-shadow: 1.5px 1.5px 0 #000;
+  background: rgba(0,0,0,.5);
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+.pp-logo-tl { position: absolute; top: 14px; left: 14px; max-width: 120px; }
+.pp-logo-tr { position: absolute; top: 14px; right: 14px; max-width: 120px; }
+.pp-logo-bl { position: absolute; bottom: 14px; left: 14px; max-width: 120px; }
+.pp-logo-br { position: absolute; bottom: 14px; right: 14px; max-width: 120px; }
+
+/* ── AI video overlay ────────────────────────────────────────────────── */
+.pp-ai-video-wrap {
+  position: absolute;
+  inset: 0;
+  display: none;
+  background: #000;
+}
+.pp-ai-video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.pp-ai-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ── No-video placeholder ────────────────────────────────────────────── */
+.pp-ai-no-video {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #08080f;
+  text-align: center;
+  padding: 32px;
+  color: #5a6270;
+}
+.pp-ai-no-video-icon { font-size: 48px; }
+.pp-ai-no-video p { font-size: 15px; color: #8899aa; margin: 0; }
+.pp-ai-no-video-hint { font-size: 13px !important; color: #4a5260 !important; max-width: 340px; }
+
+/* ── Playback controls (floating bar at bottom of player) ─────────────── */
+.nle-playback {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(to top, rgba(0,0,0,.85) 0%, transparent 100%);
+  z-index: 5;
+}
+.nle-pb-btn {
+  background: rgba(255,255,255,.12);
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 5px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.nle-pb-btn:hover { background: rgba(255,255,255,.22); }
+.nle-pb-play { width: 40px; height: 40px; font-size: 16px; background: rgba(255,255,255,.18); border-radius: 50%; }
+.nle-pb-play:hover { background: rgba(255,255,255,.28); }
+.nle-pb-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.nle-pb-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 2px;
+  width: 0%;
+  transition: width .1s linear;
+}
+.nle-pb-time {
+  color: rgba(255,255,255,.6);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ══ TOOLS PANEL (right side) ═══════════════════════════════════════════ */
+.pp-control-panel {
+  border-left: 1px solid #14142a;
+  background: #0a0a18;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  position: relative; /* reset any old top/right/bottom positioning */
+  top: unset; right: unset; bottom: unset;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ── Panel tabs ──────────────────────────────────────────────────────── */
+.pp-tabs {
+  display: flex;
+  border-bottom: 1px solid #14142a;
+  flex-shrink: 0;
+  background: #0b0b1a;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pp-tabs::-webkit-scrollbar { display: none; }
+.pp-tab {
+  flex: 1;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  color: #4a5260;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  min-width: 52px;
+}
+.pp-tab:hover { color: #8899aa; }
+.pp-tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: rgba(37,99,235,.07); }
+
+/* ── Panel content area ──────────────────────────────────────────────── */
+.pp-panel { display: none; flex-direction: column; gap: 0; padding: 14px 14px 20px; overflow-y: auto; flex: 1; }
+.pp-panel.active { display: flex; }
+
+/* ══ FILMSTRIP TIMELINE (full-width bottom bar) ══════════════════════════ */
+.nle-filmstrip {
+  flex-shrink: 0;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #0b0b18;
+  border-top: 2px solid #14142a;
+  padding: 6px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a40 #0b0b18;
+}
+.nle-filmstrip::-webkit-scrollbar { height: 4px; }
+.nle-filmstrip::-webkit-scrollbar-track { background: #0b0b18; }
+.nle-filmstrip::-webkit-scrollbar-thumb { background: #2a2a40; border-radius: 2px; }
+
+/* ── Film thumbnail items ────────────────────────────────────────────── */
+.pp-thumb-item {
+  flex-shrink: 0;
+  width: 90px;
+  height: 72px;
+  position: relative;
+  border-radius: 5px;
+  overflow: visible;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color .15s, transform .12s;
+}
+.pp-thumb-item:hover { border-color: #2563eb; transform: translateY(-2px); }
+.pp-thumb-item.active { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb, 0 4px 14px rgba(37,99,235,.4); }
+.pp-thumb-item img {
+  width: 90px;
+  height: 56px;
+  object-fit: cover;
+  display: block;
+  border-radius: 3px;
+}
+.pp-thumb-placeholder {
+  width: 90px;
+  height: 56px;
+  background: #18182e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3a3a58;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 3px;
+}
+.pp-thumb-meta {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 2px 0;
+  font-size: 9px;
+  color: #444460;
+}
+.pp-thumb-idx { font-weight: 700; color: #6060a0; }
+.pp-thumb-dur-badge {
+  background: rgba(37,99,235,.15);
+  color: #60a5fa;
+  border: none;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .12s;
+}
+.pp-thumb-dur-badge:hover { background: rgba(37,99,235,.3); }
+.pp-kb-badge {
+  color: #d4ff3a;
+  font-size: 9px;
+}
+
+/* ── KB popover ──────────────────────────────────────────────────────── */
+.pp-kb-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  background: #12122a;
+  border: 1px solid #2a2a48;
+  border-radius: 9px;
+  padding: 12px;
+  min-width: 180px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.pp-kb-pop-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8899aa;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.pp-kb-pop-select {
+  width: 100%;
+  background: #0d0d1c;
+  color: #cfd6df;
+  border: 1px solid #2a2a48;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.pp-kb-pop-clear {
+  background: transparent;
+  border: 1px solid #2a2a48;
+  color: #5a6270;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  width: 100%;
+  transition: color .15s;
+}
+.pp-kb-pop-clear:hover { color: #ef4444; border-color: rgba(239,68,68,.4); }
+
+/* ── Info bar (legacy — kept for redo panel) ─────────────────────────── */
 .pp-info-bar {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 0 6px;
@@ -689,164 +1216,13 @@
 .pp-btn-ai { border-color: #f5a623; color: #f5a623; background: rgba(245,166,35,.06); }
 .pp-btn-ai:hover { background: rgba(245,166,35,.14); color: #f5a623; }
 .pp-btn-generate-full { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+.pp-btn-share  { border-color: rgba(96,165,250,.3); color: #60a5fa; background: rgba(96,165,250,.06); }
+.pp-btn-share:hover { background: rgba(96,165,250,.12); }
+.pp-btn-shared { border-color: rgba(212,255,58,.3); color: #d4ff3a; background: rgba(212,255,58,.06); }
 
-/* Status / error bars */
-.pp-status-bar {
-  display: flex; align-items: center; gap: 10px;
-  background: rgba(37,99,235,.12); border: 1px solid rgba(37,99,235,.3);
-  color: #93c5fd; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
-  font-size: 13px;
-}
-.pp-status-spinner {
-  width: 14px; height: 14px; border-radius: 50%;
-  border: 2px solid rgba(147,197,253,.3); border-top-color: #93c5fd;
-  animation: ppSpin 1s linear infinite; flex-shrink: 0;
-}
-@keyframes ppSpin { to { transform: rotate(360deg); } }
-.pp-error-bar {
-  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
-  color: #f87171; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
-  font-size: 13px;
-}
+/* (Old status/error bars replaced by NLE CSS above) */
 
-/* ── Studio layout ───────────────────────────────────────────────────── */
-.pp-studio {
-  display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; align-items: start;
-}
-@media (max-width: 900px) { .pp-studio { grid-template-columns: 1fr; } }
-
-/* ── Preview ─────────────────────────────────────────────────────────── */
-.pp-preview-col { display: flex; flex-direction: column; gap: 10px; }
-.pp-preview-frame {
-  background: #000; border-radius: 12px; overflow: hidden;
-  aspect-ratio: 16/9; position: relative;
-  border: 1px solid #1e1e30;
-  box-shadow: 0 4px 32px rgba(0,0,0,.6);
-}
-.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 540px; }
-.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-height: 540px; }
-.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-height: 540px; }
-
-.pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
-.pp-kb-img  {
-  width: 100%; height: 100%; object-fit: cover;
-  transform-origin: center center;
-  transition: transform 0.05s linear;
-}
-/* Ken Burns CSS animations */
-.pp-kb-wrap.kb-zoom-in  .pp-kb-img { animation: ppKBZoomIn  var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-zoom-out .pp-kb-img { animation: ppKBZoomOut var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-pan-left .pp-kb-img { animation: ppKBPanLeft var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-pan-right .pp-kb-img{ animation: ppKBPanRight var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-pan-up   .pp-kb-img { animation: ppKBPanUp  var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-pan-down .pp-kb-img { animation: ppKBPanDown var(--kb-dur,4s) ease-in-out forwards; }
-@keyframes ppKBZoomIn  { from { transform: scale(1); }   to { transform: scale(1.18); } }
-@keyframes ppKBZoomOut { from { transform: scale(1.18); } to { transform: scale(1); } }
-@keyframes ppKBPanLeft { from { transform: scale(1.1) translateX(4%); }  to { transform: scale(1.1) translateX(-4%); } }
-@keyframes ppKBPanRight{ from { transform: scale(1.1) translateX(-4%); } to { transform: scale(1.1) translateX(4%); } }
-@keyframes ppKBPanUp   { from { transform: scale(1.1) translateY(4%); }  to { transform: scale(1.1) translateY(-4%); } }
-@keyframes ppKBPanDown { from { transform: scale(1.1) translateY(-4%); } to { transform: scale(1.1) translateY(4%); } }
-
-.pp-filter-overlay {
-  position: absolute; inset: 0; pointer-events: none;
-  mix-blend-mode: color; opacity: 0; transition: opacity .3s;
-}
-.pp-sub-preview {
-  position: absolute; left: 5%; right: 5%; bottom: 10%;
-  text-align: center; pointer-events: none; font-size: 18px;
-  text-shadow: 0 1px 3px #000; color: #fff; transition: all .2s;
-}
-/* Logo overlays */
-.pp-logo-tl,.pp-logo-tr,.pp-logo-bl,.pp-logo-br {
-  position: absolute; max-width: 120px; pointer-events: none;
-  opacity: .9; transition: opacity .2s;
-}
-.pp-logo-tl { top: 14px; left: 14px; }
-.pp-logo-tr { top: 14px; right: 14px; }
-.pp-logo-bl { bottom: 14px; left: 14px; }
-.pp-logo-br { bottom: 14px; right: 14px; }
-
-/* Controls bar */
-.pp-controls {
-  position: absolute; bottom: 0; left: 0; right: 0;
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  background: linear-gradient(transparent, rgba(0,0,0,.7));
-}
-.pp-ctrl-btn {
-  background: rgba(255,255,255,.12); border: none; color: #fff;
-  padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-}
-.pp-ctrl-btn:hover { background: rgba(255,255,255,.22); }
-.pp-time-display { color: rgba(255,255,255,.6); font-size: 11px; margin-left: auto; font-family: monospace; }
-
-/* ── Thumbnail strip ─────────────────────────────────────────────────── */
-.pp-thumb-strip {
-  display: flex; gap: 6px; overflow-x: auto; padding: 6px 0;
-  scrollbar-width: thin; scrollbar-color: #2a2a38 transparent;
-}
-.pp-thumb-item {
-  flex: 0 0 auto; width: 72px; cursor: pointer;
-  border-radius: 6px; overflow: visible; position: relative;
-  border: 2px solid transparent; transition: border-color .15s;
-}
-.pp-thumb-item img, .pp-thumb-placeholder {
-  width: 72px; height: 48px; object-fit: cover;
-  border-radius: 4px; display: block; background: #1a1f26;
-}
-.pp-thumb-placeholder {
-  display: flex; align-items: center; justify-content: center;
-  color: #444; font-size: 11px;
-}
-.pp-thumb-item.active { border-color: #d4ff3a; }
-.pp-thumb-item:hover  { border-color: #4a4a60; }
-.pp-thumb-meta {
-  display: flex; align-items: center; gap: 2px;
-  padding: 2px 2px 0; flex-wrap: wrap;
-}
-.pp-thumb-idx { font-size: 9px; color: #5a6270; flex: 0 0 auto; }
-.pp-thumb-dur-badge {
-  font-size: 9px; background: rgba(255,255,255,.08); border: none;
-  color: #9aa6b2; padding: 1px 4px; border-radius: 3px; cursor: pointer;
-  font-family: monospace; transition: background .1s; flex: 1;
-}
-.pp-thumb-dur-badge:hover { background: rgba(212,255,58,.15); color: #d4ff3a; }
-.pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
-
-/* KB override popover */
-.pp-kb-popover {
-  position: absolute; bottom: 100%; left: 0; z-index: 200;
-  background: #1a1f26; border: 1px solid #3a3a50;
-  border-radius: 8px; padding: 10px; min-width: 170px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.6);
-}
-.pp-kb-pop-label { font-size: 11px; color: #9aa6b2; margin-bottom: 6px; }
-.pp-kb-pop-select {
-  width: 100%; background: #0d1018; border: 1px solid #2a3040;
-  color: #cfd6df; border-radius: 4px; padding: 4px; font-size: 11px;
-  margin-bottom: 6px;
-}
-.pp-kb-pop-clear {
-  font-size: 10px; color: #ff6b6b; background: none; border: none;
-  cursor: pointer; padding: 0; text-decoration: underline;
-}
-
-/* ── Control panel ───────────────────────────────────────────────────── */
-.pp-control-panel {
-  background: #11111a; border: 1px solid #2a2a38; border-radius: 10px;
-  overflow: hidden; position: sticky; top: 70px;
-}
-.pp-tabs {
-  display: flex; border-bottom: 1px solid #2a2a38; background: #0d0d14;
-}
-.pp-tab {
-  flex: 1; padding: 9px 4px; background: none; border: none;
-  color: #5a6270; font-size: 11px; cursor: pointer; font-weight: 600;
-  letter-spacing: .02em; transition: all .15s; border-bottom: 2px solid transparent;
-}
-.pp-tab:hover  { color: #9aa6b2; }
-.pp-tab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; }
-.pp-panel { display: none; padding: 14px; }
-.pp-panel.active { display: block; }
+/* ── (Old layout rules removed — replaced by NLE CSS above) ─────────── */
 
 /* Controls */
 .pp-ctrl-group { margin-bottom: 14px; }
