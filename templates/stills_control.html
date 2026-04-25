@@ -2,13 +2,10 @@
 {% set active_stage = 'stills_control' %}
 {% block title %}{{ project.name }} — Stills · Qaivid{% endblock %}
 
-{# Browser-native auto-refresh while any shot is queued/rendering. This is
-   the bulletproof fallback that works even when background fetch polling
-   is blocked by an iframe sandbox. Scroll position is preserved client-side
-   via sessionStorage (see the script block at the bottom of the page). #}
-{% block extra_head %}
-{% if any_live %}<meta http-equiv="refresh" content="6">{% endif %}
-{% endblock %}
+{# Auto-refresh while any shot is queued/rendering is now driven by JS
+   (see the script block at the bottom of the page) instead of a meta
+   refresh, so it can pause when the user has an edit panel open. #}
+{% block extra_head %}{% endblock %}
 
 {% block content %}
 {% set ns = namespace(pending=0, generating=0, ready=0, failed=0) %}
@@ -580,7 +577,10 @@
   border: 1px solid #d4ff3a44;
   border-radius: 12px;
   margin-bottom: 4px;
+  display: block;
 }
+/* Defeat any stylesheet that might override the [hidden] UA rule. */
+.sc-edit-panel[hidden] { display: none !important; }
 .sc-edit-panel::before {
   content: '';
   display: block; width: 0; height: 0;
@@ -715,8 +715,31 @@
     if (_reloadArmed) return;
     _reloadArmed = true;
     try { sessionStorage.setItem('sc-scroll-' + PID, String(window.scrollY)); } catch (e) {}
-    setTimeout(function () { try { location.reload(); } catch (e) {} }, 4000);
+    setTimeout(function () { try { safeReload(); } catch (e) {} }, 4000);
   }
+
+  /* ── Smart auto-reload while shots are still rendering. Replaces the old
+        <meta http-equiv="refresh"> so we can SKIP the reload whenever the
+        user has an edit panel open or is typing in a field. Without this
+        the page would reload every 6s and snap any opened Edit/Options
+        panel shut before the user could interact with it. ── */
+  function isEditingNow() {
+    if (document.querySelector('.sc-edit-panel:not([hidden])')) return true;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) {
+      return true;
+    }
+    return false;
+  }
+  function safeReload() {
+    if (isEditingNow()) return;             // user is busy — don't yank the page
+    try { sessionStorage.setItem('sc-scroll-' + PID, String(window.scrollY)); } catch (e) {}
+    try { location.reload(); } catch (e) {}
+  }
+  {% if any_live %}
+  /* Re-check every 6s; only actually reload when the user is idle. */
+  setInterval(safeReload, 6000);
+  {% endif %}
 
   /* ── Shot state ── */
   const shotState = {};
