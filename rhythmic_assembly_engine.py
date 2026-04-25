@@ -14,12 +14,23 @@ class RhythmicAssemblyEngine:
     DEFAULT_BEATS_PER_BAR = 4
     DEFAULT_MIN_SHOT_DURATION = 2.0   # WAN 2.6 minimum billable duration
     DEFAULT_MAX_SHOT_DURATION = 15.0  # WAN 2.6 maximum duration
+    DEFAULT_PREFERRED_AVG_DURATION = 6.0  # neutral average shot length (seconds)
     DEFAULT_INTENSITY = 0.5
+
+    # Canonical pacing_profile field schema (shared with emotional_mode_engine &
+    # deterministic_rules):
+    #   min_shot_duration       float  — hard floor for any single shot (seconds)
+    #   max_shot_duration       float  — hard ceiling for any single shot (seconds)
+    #   preferred_avg_duration  float  — soft target average shot length (seconds);
+    #                                    used to bias the scaling pass toward the
+    #                                    intended tempo feel without overriding the
+    #                                    beat-quantised rhythm.
 
     def __init__(self):
         self.default_fps = self.DEFAULT_FPS
         self.min_shot_duration = self.DEFAULT_MIN_SHOT_DURATION
         self.max_shot_duration = self.DEFAULT_MAX_SHOT_DURATION
+        self.preferred_avg_duration = self.DEFAULT_PREFERRED_AVG_DURATION
 
     def assemble_timeline(
         self,
@@ -27,8 +38,9 @@ class RhythmicAssemblyEngine:
         audio_data: Dict[str, Any],
         emotional_mode_packet: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
-        # Apply mode-specific duration clamps from the Brain's emotional_mode_packet.
-        # pacing_profile keys: min_shot_duration, max_shot_duration, preferred_avg_duration
+        # Apply mode-specific pacing from the Brain's emotional_mode_packet.
+        # All three canonical pacing_profile keys are consumed here:
+        #   min_shot_duration, max_shot_duration, preferred_avg_duration.
         emp = emotional_mode_packet or {}
         mode_pacing = emp.get("pacing_profile") or {}
         if mode_pacing.get("min_shot_duration") is not None:
@@ -39,6 +51,16 @@ class RhythmicAssemblyEngine:
         if mode_pacing.get("max_shot_duration") is not None:
             try:
                 self.max_shot_duration = float(mode_pacing["max_shot_duration"])
+            except (TypeError, ValueError):
+                pass
+        if mode_pacing.get("preferred_avg_duration") is not None:
+            try:
+                raw_avg = float(mode_pacing["preferred_avg_duration"])
+                # Clamp preferred average within [min, max] to stay consistent.
+                self.preferred_avg_duration = max(
+                    self.min_shot_duration,
+                    min(self.max_shot_duration, raw_avg),
+                )
             except (TypeError, ValueError):
                 pass
 
