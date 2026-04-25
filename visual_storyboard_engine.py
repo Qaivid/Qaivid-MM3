@@ -4,20 +4,38 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Deterministic 10-item shot-type cycle used by _enforce_variety_caps as a
-# fallback seed when the cinematic beat engine didn't assign shot_type values.
-# Distribution: 30% environment, 20% face, 20% body, 20% macro, 10% symbolic.
+# Deterministic 20-item shot-type cycle — fallback seed for _enforce_variety_caps.
+# Matches the target distribution exactly across one full cycle:
+#   face (CU+ECU) 25%  →  5 × close_up
+#   face (H&S)    15%  →  3 × head_shoulders
+#   body (medium) 20%  →  4 × medium_shot
+#   body (full)   10%  →  2 × full_body
+#   body (move)    6%  →  1 × movement  (≈ 5%)
+#   env (wide)    10%  →  2 × wide_shot
+#   env (drone)    4%  →  1 × drone      (≈ 5%)
+#   macro (insert) 5%  →  1 × insert
+#   symbolic       5%  →  1 × memory_fragment
 _BASE_VARIETY_CYCLE = [
-    "wide_environment",   # environment
-    "portrait",           # face
-    "object_detail",      # macro
-    "movement",           # body
-    "wide_environment",   # environment
-    "over_shoulder",      # body
-    "empty_frame",        # environment
-    "object_detail",      # macro
-    "portrait",           # face
-    "reflection",         # symbolic
+    "close_up",          # face — CU
+    "medium_shot",       # body — medium/¾
+    "head_shoulders",    # face — H&S
+    "wide_shot",         # environment — wide
+    "full_body",         # body — full figure
+    "close_up",          # face — CU
+    "movement",          # body — movement
+    "insert",            # macro
+    "head_shoulders",    # face — H&S
+    "medium_shot",       # body — medium/¾
+    "close_up",          # face — CU
+    "drone",             # environment — aerial
+    "full_body",         # body — full figure
+    "head_shoulders",    # face — H&S
+    "medium_shot",       # body — medium/¾
+    "close_up",          # face — CU
+    "wide_shot",         # environment — wide
+    "memory_fragment",   # symbolic
+    "medium_shot",       # body — medium/¾
+    "close_up",          # face — CU
 ]
 
 
@@ -97,14 +115,28 @@ class VisualStoryboardEngine:
 
     # MM3.1 — shot_type (from ShotVarietyEngine) → expression_mode override
     _SHOT_TYPE_TO_MODE: Dict[str, str] = {
-        "portrait":         "face",
-        "movement":         "body",
-        "over_shoulder":    "body",
-        "wide_environment": "environment",
-        "empty_frame":      "environment",
-        "object_detail":    "macro",
-        "reflection":       "symbolic",
-        "silhouette":       "symbolic",
+        # face
+        "close_up":          "face",
+        "extreme_close_up":  "face",
+        "head_shoulders":    "face",
+        "portrait":          "face",    # legacy alias
+        # body
+        "medium_shot":       "body",
+        "full_body":         "body",
+        "movement":          "body",
+        "over_shoulder":     "body",
+        # environment
+        "wide_shot":         "environment",
+        "wide_environment":  "environment",   # legacy alias
+        "drone":             "environment",
+        "empty_frame":       "environment",
+        # macro
+        "insert":            "macro",
+        "object_detail":     "macro",   # legacy alias
+        # symbolic
+        "memory_fragment":   "symbolic",
+        "reflection":        "symbolic",   # legacy alias
+        "silhouette":        "symbolic",
     }
 
     # =========================================================================
@@ -550,51 +582,49 @@ class VisualStoryboardEngine:
     # MM3.1 VARIETY CAP ENFORCER
     # =========================================================================
 
-    # Target distribution (MM3.1 spec): face≈20%, body≈30%, env≈20%, macro≈20%, symbolic≈10%
-    # Caps are set 5pp above target to absorb natural variation without over-correcting.
-    # ── Shot variety distribution (music video standard) ─────────────────────
-    # environment gets the largest budget — wide/establishing shots ground the
-    # viewer in the song's world and prevent the video from being wall-to-wall
-    # close-ups.  face is capped hard at 25 % (emotional peaks only).
+    # ── Shot variety distribution ─────────────────────────────────────────────
+    # Targets match the director-spec distribution (sum = 100 %):
+    #   face  40 % = CU/ECU 25 % + Head&Shoulders 15 %
+    #   body  36 % = Medium/¾ 20 % + Full-body 10 % + Movement 6 %
+    #   env   14 % = Wide 10 % + Drone 4 %
+    #   macro  5 % = Inserts
+    #   sym    5 % = Memory / Fragments
+    # Caps are set ~5 pp above target to absorb natural lyric variation.
     _VARIETY_CAPS: Dict[str, float] = {
-        "face":        0.25,   # max 25 % — emotional peaks, tears, eyes
-        "body":        0.25,   # max 25 % — gestures, walking, full-figure
-        "environment": 0.40,   # max 40 % — location, landscape, cultural world
-        "macro":       0.25,   # max 25 % — meaningful objects / inserts
-        "symbolic":    0.15,   # max 15 % — silhouette, abstract, poetic
+        "face":        0.45,   # max 45 % — CU + H&S combined
+        "body":        0.42,   # max 42 % — medium + full + movement
+        "environment": 0.20,   # max 20 % — wide + drone
+        "macro":       0.10,   # max 10 % — inserts
+        "symbolic":    0.10,   # max 10 % — memory / fragments
     }
 
-    # Ideal target fractions — underrepresented category is chosen first when
-    # the cap enforcer reclassifies over-budget shots.
+    # Ideal target fractions — most-underrepresented category absorbs reclassified shots.
     _VARIETY_TARGETS: Dict[str, float] = {
-        "face":        0.20,   # 20 % close-up / portrait
-        "body":        0.20,   # 20 % body / action
-        "environment": 0.30,   # 30 % wide / establishing
-        "macro":       0.20,   # 20 % insert / object detail
-        "symbolic":    0.10,   # 10 % silhouette / abstract
+        "face":        0.40,   # 40 % (CU+ECU 25 % + H&S 15 %)
+        "body":        0.36,   # 36 % (Medium 20 % + Full 10 % + Movement 6 %)
+        "environment": 0.14,   # 14 % (Wide 10 % + Drone 4 %)
+        "macro":       0.05,   # 5 % inserts
+        "symbolic":    0.05,   # 5 % memory / fragments
     }
 
-    # Canonical shot_type labels per expression_mode.
-    # Values must round-trip through _SHOT_TYPE_TO_MODE (above) — i.e. every
-    # value here must appear as a key there so the reverse lookup is stable.
-    # "wide_environment" and "silhouette" are the representative canonical
-    # varieties for their respective modes, matching the variety taxonomy.
+    # Representative canonical shot_type per expression_mode.
+    # Used when the cap enforcer reclassifies a shot and needs to assign one type.
     _MODE_TO_SHOT_TYPE: Dict[str, str] = {
-        "face":        "portrait",
-        "body":        "movement",
-        "environment": "wide_environment",
-        "macro":       "object_detail",
-        "symbolic":    "silhouette",
+        "face":        "close_up",
+        "body":        "medium_shot",
+        "environment": "wide_shot",
+        "macro":       "insert",
+        "symbolic":    "memory_fragment",
     }
 
-    # Canonical framing directive per expression_mode — applied when the
-    # cap enforcer reclassifies a shot so the visual framing changes too.
+    # Canonical framing directive per expression_mode — applied when the cap
+    # enforcer reclassifies a shot so the visual framing changes in the prompt.
     _MODE_TO_FRAMING_DIRECTIVE: Dict[str, str] = {
-        "face":        "medium close-up, slightly below eye line, soft focus on expression",
-        "body":        "full body in frame, dynamic angle, movement through negative space",
-        "environment": "wide establishing shot, static or slow pan, environment as subject",
-        "macro":       "extreme close-up, shallow depth of field, detail fills frame",
-        "symbolic":    "silhouette mid-shot, backlit, subject abstracted in space",
+        "face":        "tight close-up, eyes and upper face fill the frame, soft focus, shallow depth of field",
+        "body":        "medium ¾ body shot — subject from mid-thigh upward, in emotional context of the space",
+        "environment": "wide establishing shot, static or slow pan, the location is the subject",
+        "macro":       "extreme close-up insert, meaningful object detail fills frame, sharp focus, shallow depth",
+        "symbolic":    "impressionistic memory fragment — soft overexposed edges, dreamy framing, subject abstracted",
     }
 
     def _enforce_variety_caps(
