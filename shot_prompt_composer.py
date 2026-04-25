@@ -20,16 +20,20 @@ from typing import Optional, Dict, Any
 
 # ── Quality boosters and negative prompt (Flux-tuned) ─────────────────
 QUALITY_BOOSTERS = (
-    "shot on Arri Alexa, 35mm anamorphic, fine film grain, "
-    "professional cinematography, photorealistic, sharp focus, "
-    "ultra-detailed, natural skin texture"
+    "cinematic realism, music video film still, "
+    "warm color grade, lifted shadows, rich deep tones, "
+    "shallow depth of field, beautiful intentional light, "
+    "sharp focus on subject, professional music video cinematography, "
+    "striking yet authentic, prestige production quality"
 )
 
 DEFAULT_NEGATIVE = (
     "blurry, watermark, text overlay, logo, deformed anatomy, "
-    "extra fingers, mutated hands, oversaturated cartoon, low quality, "
-    "jpeg artifacts, oversharpened, plastic skin, cgi look, "
-    "amateur photography, bad composition"
+    "extra fingers, mutated hands, cartoon, anime, illustration, "
+    "jpeg artifacts, plastic skin, cgi look, "
+    "amateur photography, bad composition, "
+    "ugly, unflattering, harsh shadows, flat lighting, "
+    "gritty documentary rawness, dull desaturated colors, mundane snapshot"
 )
 
 # Culture-specific negative additions keyed by a substring that must appear

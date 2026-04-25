@@ -46,7 +46,7 @@ PRODUCTION_STYLES: Dict[str, Dict[str, Any]] = {
             "performance_hint": "Actor in scene, emotionally engaged with surroundings.",
         },
         "compatible_cinematic_styles": [
-            "cinematic_natural", "noir_dramatic", "soft_poetic",
+            "cinematic_realism", "cinematic_natural", "noir_dramatic", "soft_poetic",
             "vintage_grain", "monochrome", "arthouse_minimalist",
         ],
     },
@@ -71,7 +71,7 @@ PRODUCTION_STYLES: Dict[str, Dict[str, Any]] = {
             "performance_hint": "Artist performing: direct camera engagement, high presence.",
         },
         "compatible_cinematic_styles": [
-            "cinematic_natural", "vibrant_bold", "noir_dramatic",
+            "cinematic_realism", "cinematic_natural", "vibrant_bold", "noir_dramatic",
             "soft_poetic", "monochrome", "vintage_grain",
         ],
     },
@@ -98,7 +98,7 @@ PRODUCTION_STYLES: Dict[str, Dict[str, Any]] = {
             "performance_hint": "Mix: some shots are actor-in-scene, some are artist performing.",
         },
         "compatible_cinematic_styles": [
-            "cinematic_natural", "vibrant_bold", "soft_poetic",
+            "cinematic_realism", "cinematic_natural", "vibrant_bold", "soft_poetic",
             "noir_dramatic", "vintage_grain", "monochrome", "arthouse_minimalist",
         ],
     },
@@ -150,7 +150,7 @@ PRODUCTION_STYLES: Dict[str, Dict[str, Any]] = {
             "performance_hint": "Subjects unaware of camera or natural in its presence.",
         },
         "compatible_cinematic_styles": [
-            "cinematic_natural", "vintage_grain", "monochrome",
+            "cinematic_realism", "cinematic_natural", "vintage_grain", "monochrome",
             "arthouse_minimalist", "soft_poetic",
         ],
     },
@@ -176,7 +176,7 @@ PRODUCTION_STYLES: Dict[str, Dict[str, Any]] = {
             "performance_hint": "Character anchored in the single space throughout.",
         },
         "compatible_cinematic_styles": [
-            "arthouse_minimalist", "cinematic_natural", "soft_poetic",
+            "cinematic_realism", "arthouse_minimalist", "cinematic_natural", "soft_poetic",
             "monochrome", "noir_dramatic", "vintage_grain",
         ],
     },
@@ -418,6 +418,66 @@ CINEMATIC_STYLES: Dict[str, Dict[str, Any]] = {
             "conceptual_abstract", "performance", "split_narrative_performance",
         ],
     },
+
+    "cinematic_realism": {
+        "id": "cinematic_realism",
+        "label": "Cinematic Realism",
+        "description": (
+            "The sweet spot of music video aesthetics. Real people, real places — but elevated "
+            "through intentional light, color grade, and a camera that finds the beauty in "
+            "authenticity. Think AP Dhillon, Diljit Dosanjh, or any prestige Punjabi/South Asian "
+            "music video. Characters look their best without looking artificial. Locations are the "
+            "beautiful version of real places — golden-hour fields, warm-lit havelis, blue-hour "
+            "streets. Not documentary rawness. Not Bollywood kitsch. Cinematic truth."
+        ),
+        "context_directive": (
+            "CINEMATIC STYLE — CINEMATIC REALISM: "
+            "visual_constraints should emphasise the elevated, beautiful version of real environments. "
+            "Characters are real and authentic but presented at their most striking — "
+            "professional styling, intentional lighting, natural skin in cinematic grade. "
+            "Palette is warm and rich: golden hour, amber shadows, lifted blacks, deep skin tones. "
+            "Avoid flat naturalism, documentary rawness, or artificial glamour. "
+            "Every frame should feel like a film still from a prestige music video production. "
+            "world_assumptions should reflect the beautiful, aspirational version of the cultural world — "
+            "real locations found at their most cinematic moment of light and atmosphere."
+        ),
+        "storyboard_modifiers": {
+            "camera_style": "cinematic_realism",
+            "lighting": (
+                "golden hour, warm side-light, or soft dramatic overcast — "
+                "always intentional, always beautiful, never flat"
+            ),
+            "movement": "deliberate and elegant — motivated by emotion, not restlessness",
+            "atmosphere_note": (
+                "authentic and aspirational — the real world at its most cinematic, "
+                "warm color grade, prestige music video production quality"
+            ),
+        },
+        "image_generation_suffix": (
+            "cinematic realism, music video film still, warm color grade, "
+            "golden hour light, shallow depth of field, prestige production quality, "
+            "striking yet authentic, beautifully lit"
+        ),
+        "character_plate_hint": (
+            "cinematic realism portrait — real authentic features elevated by intentional professional lighting, "
+            "music video film-still quality, warm side-lit or golden-hour fill light, "
+            "shallow depth of field with subject sharply in focus, "
+            "beautifully styled and presented, culturally specific and authentic, "
+            "natural skin texture with cinematic color grade, striking but real"
+        ),
+        "location_plate_hint": (
+            "cinematic realism location — the beautiful elevated version of this real place, "
+            "golden hour or soft dramatic overcast light, rich warm color grade, "
+            "prestige film establishing shot, wide cinematic framing, "
+            "no people in frame, geographically and architecturally specific, "
+            "music video production design quality, visually stunning yet authentic"
+        ),
+        "style_preset_mapping": "cinematic_natural",
+        "compatible_production_styles": [
+            "narrative", "performance", "split_narrative_performance",
+            "documentary_candid", "single_location",
+        ],
+    },
 }
 
 
@@ -473,7 +533,7 @@ class StyleProfileRegistry:
     def default_style_profile() -> Dict[str, Any]:
         """Fallback for projects that pre-date the Style Profile Engine."""
         return StyleProfileRegistry.build_style_profile(
-            "narrative", "cinematic_natural"
+            "split_narrative_performance", "cinematic_realism"
         )
 
     @staticmethod
@@ -506,27 +566,27 @@ class StyleProfileRegistry:
 
         if high_energy and bright:
             candidates = [
-                {"production_id": "performance", "cinematic_id": "vibrant_bold"},
+                {"production_id": "performance", "cinematic_id": "cinematic_realism"},
+                {"production_id": "split_narrative_performance", "cinematic_id": "vibrant_bold"},
                 {"production_id": "conceptual_abstract", "cinematic_id": "noir_dramatic"},
-                {"production_id": "split_narrative_performance", "cinematic_id": "cinematic_natural"},
             ]
         elif high_energy:
             candidates = [
-                {"production_id": "performance", "cinematic_id": "noir_dramatic"},
-                {"production_id": "split_narrative_performance", "cinematic_id": "vibrant_bold"},
+                {"production_id": "performance", "cinematic_id": "cinematic_realism"},
+                {"production_id": "split_narrative_performance", "cinematic_id": "noir_dramatic"},
                 {"production_id": "conceptual_abstract", "cinematic_id": "arthouse_minimalist"},
             ]
         elif bpm > 0 and bpm < 80:
             candidates = [
-                {"production_id": "narrative", "cinematic_id": "soft_poetic"},
-                {"production_id": "single_location", "cinematic_id": "cinematic_natural"},
+                {"production_id": "narrative", "cinematic_id": "cinematic_realism"},
+                {"production_id": "single_location", "cinematic_id": "soft_poetic"},
                 {"production_id": "split_narrative_performance", "cinematic_id": "vintage_grain"},
             ]
         else:
             candidates = [
-                {"production_id": "split_narrative_performance", "cinematic_id": "cinematic_natural"},
-                {"production_id": "narrative", "cinematic_id": "soft_poetic"},
-                {"production_id": "performance", "cinematic_id": "noir_dramatic"},
+                {"production_id": "split_narrative_performance", "cinematic_id": "cinematic_realism"},
+                {"production_id": "narrative", "cinematic_id": "cinematic_realism"},
+                {"production_id": "performance", "cinematic_id": "soft_poetic"},
             ]
 
         # Filter out any ID not in the registry (guard for future registry changes)

@@ -289,6 +289,15 @@ def ai_build_ref_prompts(
         rules_lines = continuity_rules if isinstance(continuity_rules, list) else [str(continuity_rules)]
         global_rules_block = "GLOBAL CONTINUITY RULES (apply to ALL prompts):\n" + "\n".join(f"- {r}" for r in rules_lines if r)
 
+    # Pull per-style aesthetic hints if the registry provides them
+    _style_label    = cin.get("label", "")
+    _char_hint      = cin.get("character_plate_hint", CHARACTER_REF_HINT)
+    _loc_hint       = cin.get("location_plate_hint",  ENV_REF_HINT)
+    _img_suffix     = cin.get("image_generation_suffix", "")
+    _style_note     = (
+        f"CINEMATIC STYLE: {_style_label}. " if _style_label else ""
+    )
+
     system_msg = (
         "You are a cinematographer and image prompt specialist writing reference asset prompts "
         "for an AI image generation model. "
@@ -300,7 +309,11 @@ def ai_build_ref_prompts(
         "You enforce identity consistency: if an identity_seed or archetype is given, those rules are absolute — "
         "do not invent physical traits that contradict them. "
         "AI image models require EXPLICIT country and region names to generate geographically correct images — "
-        "local architectural terms alone are NOT sufficient."
+        "local architectural terms alone are NOT sufficient. "
+        f"{_style_note}"
+        f"CHARACTER PORTRAIT AESTHETIC: {_char_hint} "
+        f"LOCATION AESTHETIC: {_loc_hint}"
+        + (f" Always end prompts with: {_img_suffix}" if _img_suffix else "")
     )
 
     extra_blocks = "\n\n".join(filter(None, [motif_block, global_rules_block]))
@@ -477,16 +490,19 @@ def _save_bytes_to_r2(img_bytes: bytes, r2_key: str) -> str:
     return r2_storage.upload_bytes(img_bytes, r2_key, content_type="image/png")
 
 CHARACTER_REF_HINT = (
-    "photorealistic portrait, cinematic lighting, sharp facial detail, "
-    "natural skin texture, head-and-shoulders composition, "
-    "culturally authentic appearance, regionally accurate clothing and features"
+    "cinematic realism portrait — real authentic features elevated by intentional professional lighting, "
+    "music video film-still quality, warm side-lit or golden-hour fill light, "
+    "shallow depth of field with subject sharply in focus, "
+    "beautifully styled and presented, culturally specific and authentic, "
+    "natural skin texture with cinematic color grade, striking but real"
 )
 
 ENV_REF_HINT = (
-    "establishing shot, photorealistic, cinematic wide angle, atmospheric lighting, "
-    "no people, rich environmental detail, naturalistic color, "
-    "geographically and architecturally authentic, true to local culture and heritage, "
-    "accurate regional architecture and materials"
+    "cinematic realism location — the beautiful elevated version of this real place, "
+    "golden hour or soft dramatic overcast light, rich warm color grade, "
+    "prestige film establishing shot, wide cinematic framing, "
+    "no people in frame, geographically and architecturally specific, "
+    "music video production design quality, visually stunning yet authentic"
 )
 
 
@@ -645,13 +661,18 @@ def generate_character_ref(speaker: dict, location_dna: str, project_id: str) ->
     return _save_to_r2(fal_url, r2_key)
 
 
-def build_character_plate_prompt(character: dict, location_dna: str = "Universal") -> str:
+def build_character_plate_prompt(character: dict, location_dna: str = "Universal",
+                                  cinematic_style: Optional[dict] = None) -> str:
     """Build a director-style casting-brief prompt for a character.
 
     Uses flowing prose rather than a labelled checklist so the image model
     can interpret the character naturally.  The `appearance` field is skipped
     because it is typically an auto-generated concatenation of the other
     fields, which would just repeat information already present.
+
+    If a cinematic_style dict from the registry is supplied, its
+    `character_plate_hint` replaces the global CHARACTER_REF_HINT so the
+    aesthetic language is fully style-driven.
     """
     name     = (character.get("name")    or "").strip()
     role     = (character.get("role")    or character.get("entity_type") or "").strip()
@@ -699,7 +720,11 @@ def build_character_plate_prompt(character: dict, location_dna: str = "Universal
     world = world_parts[0] if world_parts else ""
     world_line = f"{pronoun} belongs to the world of {world}." if world else ""
 
-    parts = [who_line, complexion_line, look_line, world_line, CHARACTER_REF_HINT + "."]
+    hint = (
+        (cinematic_style or {}).get("character_plate_hint")
+        or CHARACTER_REF_HINT
+    )
+    parts = [who_line, complexion_line, look_line, world_line, hint + "."]
     return " ".join(" ".join(p.split()) for p in parts if p)
 
 
@@ -747,7 +772,8 @@ _TOD_PHRASES = {
 }
 
 
-def build_location_plate_prompt(location: dict) -> str:
+def build_location_plate_prompt(location: dict,
+                                 cinematic_style: Optional[dict] = None) -> str:
     """Build a director-style cinematic prompt for a location.
 
     Rather than a structured field checklist (which over-constrains image
@@ -757,6 +783,9 @@ def build_location_plate_prompt(location: dict) -> str:
     intentionally omitted — it is the same world-DNA string for every
     location in a project, so including it forces identical architectural
     elements into every scene.
+
+    If a cinematic_style dict from the registry is supplied, its
+    `location_plate_hint` replaces the global ENV_REF_HINT.
     """
     name     = (location.get("name")                  or "").strip()
     desc     = (location.get("description")            or "").strip()
@@ -810,8 +839,12 @@ def build_location_plate_prompt(location: dict) -> str:
     )
 
     # ── Assemble ─────────────────────────────────────────────────────────────
+    loc_hint = (
+        (cinematic_style or {}).get("location_plate_hint")
+        or ENV_REF_HINT
+    )
     parts = [opening, scene_sentence, props_sentence, atmo_sentence,
-             framing, ENV_REF_HINT + "."]
+             framing, loc_hint + "."]
     return " ".join(" ".join(p.split()) for p in parts if p)
 
 
