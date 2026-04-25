@@ -45,6 +45,7 @@ from image_generator import (
     generate_location_plate,
     generate_shot_still,
 )
+from emotional_mode_engine import classify_emotional_mode
 from style_profile_engine import StyleProfileEngine
 from style_profile_registry import StyleProfileRegistry
 from video_generator import VideoGenerationError, generate_shot_video
@@ -590,6 +591,7 @@ def _render_video(project_id: str, shot: dict) -> None:
     cinematic_style:        Optional[str]       = None
     lighting_logic:         Optional[str]       = None
     motion_philosophy:      str                 = "mixed"
+    emotional_mode_id_video: str               = ""
     character_db_id:        Optional[int]       = None
     location_db_id:         Optional[int]       = None
     character_semantic_id:  Optional[str]       = None
@@ -688,6 +690,10 @@ def _render_video(project_id: str, shot: dict) -> None:
         _np = _vbrain.read("narrative_packet") or {}
         motion_philosophy = str(_np.get("motion_philosophy") or "mixed").strip() or "mixed"
 
+        # emotional_mode_packet — mode-tuned intensity thresholds
+        _emp_video = _vbrain.read("emotional_mode_packet") if _vbrain.is_populated("emotional_mode_packet") else {}
+        emotional_mode_id_video: str = str((_emp_video or {}).get("primary_mode") or "").strip()
+
     except Exception:
         logger.debug(
             "_render_video: brain load failed for project=%s shot=%s (non-fatal, using legacy path)",
@@ -706,6 +712,7 @@ def _render_video(project_id: str, shot: dict) -> None:
             cinematic_style=cinematic_style,
             lighting_logic=lighting_logic,
             continuity_rules=continuity_rules,
+            emotional_mode_id=emotional_mode_id_video,
         )
 
         # If brain prompt is empty, fall back to shot dict or stored DB value.
@@ -2134,6 +2141,11 @@ def _stage_style_job(project_id: str) -> None:
                     {"stage": "style", "label": "Analysing content for style suggestions…"},
                     stage="running_style")
 
+        try:
+            emotional_mode_packet = brain.read("emotional_mode_packet") if brain.is_populated("emotional_mode_packet") else {}
+        except Exception:
+            emotional_mode_packet = {}
+
         engine = StyleProfileEngine(api_key)
         suggestions = _run_async(engine.suggest(
             text=text,
@@ -2141,6 +2153,7 @@ def _stage_style_job(project_id: str) -> None:
             audio_analytics=audio_data_blob,
             context_packet=context_packet,
             narrative_packet=narrative_packet,
+            emotional_mode_packet=emotional_mode_packet,
         ))
 
         with _db() as conn, conn.cursor() as cur:
@@ -2234,6 +2247,78 @@ def _stage1_job(project_id: str) -> None:
         logger.exception("Stage 1 failed for project=%s", project_id)
         _set_status(project_id, "failed",
                     {"stage": "error", "label": "Stage 1 failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
+def _stage_2b_emotional_job(project_id: str) -> None:
+    """Stage 2b — Emotional Mode Engine.
+
+    Reads context_packet (Stage 2) and audio_data from the Brain / project row,
+    classifies the dominant emotional mode, and writes emotional_mode_packet
+    to the Brain.  Then immediately kicks Stage 3 (Narrative Intelligence).
+
+    Brain principle: emotional_mode_packet is written here and read by all
+    downstream stages — nothing downstream re-derives the mode independently.
+    """
+    try:
+        _set_status(project_id, "running",
+                    {"stage": "emotional_mode",
+                     "label": "Classifying emotional mode…"},
+                    stage="running_2b")
+
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            context_packet  = brain.read("context_packet") or {}
+            raw_input       = brain.read("raw_input")      or {}
+
+        # audio_data may be in raw_input (Brain) or in the legacy projects column.
+        audio_data = raw_input.get("audio_data") or {}
+        if not audio_data:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute("SELECT audio_data, genre FROM projects WHERE id=%s", (project_id,))
+                row = cur.fetchone()
+            if row:
+                audio_data = dict(row.get("audio_data") or {})
+                if not audio_data.get("genre"):
+                    audio_data["genre"] = row.get("genre") or "song"
+
+        import asyncio as _asyncio
+
+        def _run_async_inner(coro):
+            try:
+                loop = _asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        future = ex.submit(_asyncio.run, coro)
+                        return future.result(timeout=30)
+                return loop.run_until_complete(coro)
+            except RuntimeError:
+                return _asyncio.run(coro)
+
+        packet = _run_async_inner(classify_emotional_mode(context_packet, audio_data))
+
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("emotional_mode_packet", packet)
+            brain.save(conn)
+            conn.commit()
+
+        logger.info(
+            "Stage 2b: wrote emotional_mode_packet for project=%s "
+            "(primary=%s secondary=%s method=%s)",
+            project_id,
+            packet.get("primary_mode"),
+            packet.get("secondary_mode"),
+            packet.get("classifier_method"),
+        )
+
+        kick_stage_narrative(project_id)
+
+    except Exception as exc:
+        logger.exception("Stage 2b failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Emotional mode classification failed."},
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
@@ -2518,13 +2603,14 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             brain_style     = brain.read("style_packet") or {}
             brain_input     = brain.read("input_structure") or {}
             brain_settings  = brain.read("project_settings") or {}
+            brain_emotional = brain.read("emotional_mode_packet") if brain.is_populated("emotional_mode_packet") else {}
         except Exception:
             logger.exception(
                 "Stage storyboard: failed to load ProjectBrain for project=%s — "
                 "falling back to legacy columns.", project_id
             )
             brain_context, brain_narrative, brain_style = {}, {}, {}
-            brain_input, brain_settings = {}, {}
+            brain_input, brain_settings, brain_emotional = {}, {}, {}
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
@@ -2611,6 +2697,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                     narrative_packet=narrative_packet,
                     style_profile=style_profile,
                     project_settings=project_settings,
+                    emotional_mode_packet=brain_emotional or {},
                 ))
                 _v2_holder["scenes"]        = scenes
                 _v2_holder["used_fallback"] = used_fallback
@@ -2728,6 +2815,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             # Brief runs AFTER storyboard now (master spec) — never pass it.
             creative_brief=None,
             timed_lyrics=timed_lyrics or None,
+            emotional_mode_packet=brain_emotional or {},
         ))
         raw_storyboard = pre_result.get("storyboard") or []
         raw_timeline = pre_result.get("timeline") or []
@@ -3682,6 +3770,14 @@ def kick_stage_narrative(project_id: str) -> None:
     _EXECUTOR.submit(_stage_narrative_job, project_id)
 
 
+def kick_stage_2b_emotional(project_id: str) -> None:
+    """Stage 2b — Emotional Mode Engine.
+    Classifies the dominant emotional mode from context_packet + audio_data,
+    writes emotional_mode_packet to the Brain, then kicks Stage 3 (Narrative).
+    """
+    _EXECUTOR.submit(_stage_2b_emotional_job, project_id)
+
+
 def kick_stage_2(project_id: str, name: str, overrides: dict) -> None:
     _EXECUTOR.submit(_stage2_job, project_id, name, overrides)
 
@@ -3810,6 +3906,16 @@ def composed_prompts_for_project(project_id: str) -> dict:
     ctx = row.get("context_packet") or {}
     sp = row.get("style_profile") or {}
 
+    _emotional_mode_modifier_str = ""
+    try:
+        with _db() as _brain_conn:
+            _brain = ProjectBrain.load(project_id, _brain_conn)
+        if _brain.is_populated("emotional_mode_packet"):
+            _emp = _brain.read("emotional_mode_packet") or {}
+            _emotional_mode_modifier_str = str(_emp.get("cinematic_modifier") or "").strip()
+    except Exception:
+        pass
+
     try:
         from style_grading_engine import (
             pick_lighting_variant as _pick_lighting,
@@ -3917,6 +4023,7 @@ def composed_prompts_for_project(project_id: str) -> dict:
                 has_character_ref=bool(char_url) and has_human_focus,
                 has_environment_ref=bool(env_url),
                 cine_prefix=cine_prefix,
+                emotional_mode_modifier=_emotional_mode_modifier_str,
             )
             out[idx] = prompt
         except Exception:
@@ -3967,6 +4074,16 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
         except Exception:
             cine_prefix = ""
 
+    _preview_mode_modifier = ""
+    try:
+        with _db() as _pm_conn:
+            _pm_brain = ProjectBrain.load(project_id, _pm_conn)
+        if _pm_brain.is_populated("emotional_mode_packet"):
+            _pm_emp = _pm_brain.read("emotional_mode_packet") or {}
+            _preview_mode_modifier = str(_pm_emp.get("cinematic_modifier") or "").strip()
+    except Exception:
+        pass
+
     prompt, _ = compose_image_prompt(
         shot,
         character=character,
@@ -3974,6 +4091,7 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
         has_character_ref=bool(char_url) and has_human_focus,
         has_environment_ref=bool(env_url),
         cine_prefix=cine_prefix,
+        emotional_mode_modifier=_preview_mode_modifier,
     )
     return prompt
 

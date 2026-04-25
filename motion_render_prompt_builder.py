@@ -105,30 +105,55 @@ def _camera_clause(camera: Dict) -> str:
     return "camera: " + ", ".join(parts)
 
 
+# ── MM3.1 Emotional Mode Intensity Thresholds ────────────────────────────────
+# Per-mode overrides for the low/mid/high intensity band cutoffs.
+# Keys: emotional_mode_id (matches emotional_mode_engine.py mode IDs)
+# Values: (low_cutoff, high_cutoff) — replaces global (0.35, 0.65)
+#   low_cutoff:  below this → static
+#   high_cutoff: above this → active pan/tilt
+_MODE_INTENSITY_THRESHOLDS: Dict[str, tuple] = {
+    "romantic":      (0.30, 0.60),   # lower threshold — subtle drift starts earlier
+    "sad_loss":      (0.25, 0.55),   # very soft — motion is restrained throughout
+    "nostalgic":     (0.30, 0.60),   # gentle; memory-like drifts preferred
+    "hopeful":       (0.30, 0.60),   # smooth upward energy, not harsh
+    "angry_intense": (0.40, 0.60),   # compresses range — goes active quickly
+    "spiritual":     (0.25, 0.55),   # very minimal movement; stillness honoured
+    "energetic":     (0.40, 0.65),   # high floor — nearly always active
+}
+
+
 def _motion_mode_for_intensity(
     emotional_intensity: float,
     motion_philosophy: str,
+    emotional_mode_id: str = "",
 ) -> str:
     """Return a spec motion mode string scaled to emotional intensity and philosophy.
 
-    Intensity bands (spec rule):
+    Default intensity bands (spec rule):
         < 0.35   → static / minimal  (still_dominant philosophies held here)
         0.35–0.65 → subtle drift or slow zoom
         > 0.65   → active pan/tilt aligned with motion_philosophy direction
+
+    When emotional_mode_id is supplied, per-mode thresholds from
+    _MODE_INTENSITY_THRESHOLDS override the defaults, so e.g. a spiritual
+    song stays minimal longer than an energetic one at the same intensity.
 
     motion_philosophy values: still_dominant | dynamic_dominant | mixed
     """
     phi = (motion_philosophy or "mixed").lower().strip()
 
-    if emotional_intensity < 0.35:
+    thresholds = _MODE_INTENSITY_THRESHOLDS.get(emotional_mode_id or "", (0.35, 0.65))
+    low_cut, high_cut = thresholds
+
+    if emotional_intensity < low_cut:
         return _MOTION_MODES["static"]
 
-    if emotional_intensity <= 0.65:
+    if emotional_intensity <= high_cut:
         if phi == "still_dominant":
             return _MOTION_MODES["slow_zoom_in"]
         return _MOTION_MODES["drift"]
 
-    # High intensity (> 0.65) — active pan/tilt for all philosophies
+    # High intensity (> high_cut) — active pan/tilt for all philosophies
     # Direction is tuned by motion_philosophy.
     if phi == "still_dominant":
         return _MOTION_MODES["pan_left"]    # controlled active pan
@@ -211,6 +236,7 @@ def build_video_clip_prompt(
     lighting_logic: Optional[str] = None,
     continuity_rules: Optional[List[str]] = None,
     max_chars: int = _MODEL_MAX_CHARS,
+    emotional_mode_id: str = "",
 ) -> str:
     """Build a brain-aware WAN 2.6 Flash video prompt for a single shot.
 
@@ -270,10 +296,10 @@ def build_video_clip_prompt(
         hint = cinematic_style.strip()
         _add(hint)
 
-    # 7. Motion instruction — scaled to emotional_intensity + motion_philosophy
+    # 7. Motion instruction — scaled to emotional_intensity + motion_philosophy + mode
     raw_intensity = shot.get("emotional_intensity") or "medium"
     intensity_f = _intensity_float(raw_intensity)
-    motion_clause = _motion_mode_for_intensity(intensity_f, motion_philosophy)
+    motion_clause = _motion_mode_for_intensity(intensity_f, motion_philosophy, emotional_mode_id)
     if motion_clause:
         _add(motion_clause)
 

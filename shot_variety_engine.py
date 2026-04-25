@@ -4,7 +4,7 @@ shot_variety_engine.py
 Purpose:
 Assign diverse shot_type values across a sequence to enforce cinematic variety.
 
-Director-spec target distribution:
+Director-spec target distribution (default):
     25 % close_up        (face — CU / ECU)
     15 % head_shoulders  (face — H&S / MCU)
     20 % medium_shot     (body — medium / ¾ body)
@@ -17,9 +17,10 @@ Director-spec target distribution:
 
 A 20-item base cycle hits these targets exactly.
 Emotion intensity nudges the assigned type for very high or very low shots.
+Emotional mode adjusts the cycle to serve the locked emotional register.
 """
 
-from typing import List, Dict
+from typing import Any, Dict, List, Optional
 
 
 _BASE_CYCLE = [
@@ -44,6 +45,67 @@ _BASE_CYCLE = [
     "medium_shot",       # body — medium/¾
     "close_up",          # face — CU
 ]
+
+# ── MM3.1 Emotional Mode Cycles ───────────────────────────────────────────────
+# 20-item cycles tuned to each mode's target shot distribution.
+# romantic:      face 47%, body 32%, env 12%, macro 5%, symbolic 4%
+# sad_loss:      face 45%, body 31%, env 13%, macro 5%, symbolic 6%
+# nostalgic:     face 35%, body 34%, env 17%, macro 5%, symbolic 9%
+# hopeful:       face 33%, body 33%, env 22%, macro 5%, symbolic 7%
+# angry_intense: face 35%, body 46%, env 10%, macro 5%, symbolic 4%
+# spiritual:     face 28%, body 28%, env 22%, macro 7%, symbolic 15%
+# energetic:     face 35%, body 51%, env 10%, macro 4%, symbolic 0%
+_MODE_CYCLES: Dict[str, List[str]] = {
+    "romantic": [
+        "close_up",        "medium_shot",     "head_shoulders",   "wide_shot",
+        "close_up",        "full_body",        "head_shoulders",   "insert",
+        "close_up",        "medium_shot",      "extreme_close_up", "head_shoulders",
+        "full_body",       "medium_shot",      "close_up",         "drone",
+        "close_up",        "memory_fragment",  "movement",         "close_up",
+    ],
+    "sad_loss": [
+        "close_up",        "medium_shot",      "head_shoulders",   "memory_fragment",
+        "close_up",        "full_body",        "head_shoulders",   "wide_shot",
+        "close_up",        "insert",           "extreme_close_up", "medium_shot",
+        "head_shoulders",  "close_up",         "wide_shot",        "memory_fragment",
+        "medium_shot",     "full_body",        "drone",            "close_up",
+    ],
+    "nostalgic": [
+        "close_up",        "medium_shot",      "wide_shot",        "memory_fragment",
+        "head_shoulders",  "full_body",        "close_up",         "memory_fragment",
+        "medium_shot",     "wide_shot",        "head_shoulders",   "insert",
+        "extreme_close_up","medium_shot",      "drone",            "close_up",
+        "full_body",       "movement",         "head_shoulders",   "medium_shot",
+    ],
+    "hopeful": [
+        "close_up",        "medium_shot",      "wide_shot",        "head_shoulders",
+        "full_body",       "wide_shot",        "close_up",         "memory_fragment",
+        "medium_shot",     "wide_shot",        "head_shoulders",   "insert",
+        "extreme_close_up","drone",            "medium_shot",      "close_up",
+        "full_body",       "movement",         "head_shoulders",   "medium_shot",
+    ],
+    "angry_intense": [
+        "close_up",        "movement",         "medium_shot",      "head_shoulders",
+        "movement",        "full_body",        "close_up",         "wide_shot",
+        "movement",        "medium_shot",      "extreme_close_up", "movement",
+        "head_shoulders",  "full_body",        "medium_shot",      "drone",
+        "close_up",        "insert",           "memory_fragment",  "close_up",
+    ],
+    "spiritual": [
+        "memory_fragment", "medium_shot",      "wide_shot",        "close_up",
+        "drone",           "memory_fragment",  "head_shoulders",   "wide_shot",
+        "insert",          "medium_shot",      "memory_fragment",  "close_up",
+        "full_body",       "drone",            "head_shoulders",   "insert",
+        "close_up",        "extreme_close_up", "movement",         "wide_shot",
+    ],
+    "energetic": [
+        "movement",        "close_up",         "medium_shot",      "movement",
+        "head_shoulders",  "full_body",        "movement",         "medium_shot",
+        "close_up",        "movement",         "head_shoulders",   "full_body",
+        "wide_shot",       "movement",         "medium_shot",      "extreme_close_up",
+        "drone",           "movement",         "insert",           "close_up",
+    ],
+}
 
 _SHOT_TYPE_TO_MODE = {
     # face
@@ -72,8 +134,34 @@ _SHOT_TYPE_TO_MODE = {
 
 
 class ShotVarietyEngine:
-    def __init__(self):
-        self.shot_types = list(_BASE_CYCLE)
+    def __init__(self, emotional_mode_packet: Optional[Dict[str, Any]] = None):
+        """Initialise with an optional emotional_mode_packet from Stage 2b.
+
+        When a known mode is supplied, the engine uses the mode-tuned cycle
+        instead of the default _BASE_CYCLE, shifting the shot-type distribution
+        to serve the locked emotional register.
+        Blends primary (70 %) + secondary (30 %) cycles when both are present.
+        """
+        emp = emotional_mode_packet or {}
+        primary_id   = emp.get("primary_mode") or ""
+        secondary_id = emp.get("secondary_mode") or ""
+        pw = float(emp.get("primary_weight", 1.0))
+        sw = float(emp.get("secondary_weight", 0.0))
+
+        primary_cycle = _MODE_CYCLES.get(primary_id)
+        if not primary_cycle:
+            self.shot_types = list(_BASE_CYCLE)
+        elif secondary_id and sw > 0 and _MODE_CYCLES.get(secondary_id):
+            secondary_cycle = _MODE_CYCLES[secondary_id]
+            blended: List[str] = []
+            for i in range(20):
+                if i / 20 < pw:
+                    blended.append(primary_cycle[i % len(primary_cycle)])
+                else:
+                    blended.append(secondary_cycle[i % len(secondary_cycle)])
+            self.shot_types = blended
+        else:
+            self.shot_types = list(primary_cycle)
 
     @staticmethod
     def shot_type_to_mode(shot_type: str) -> str:

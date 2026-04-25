@@ -37,6 +37,7 @@ from pipeline_worker import (
     kick_pipeline,
     kick_stage_0,
     kick_stage_1,
+    kick_stage_2b_emotional,
     kick_stage_narrative,
     kick_stage_style,
     kick_stage_2,
@@ -155,6 +156,7 @@ def _recover_stalled_jobs():
     stage_kickers = {
         "running_0":               kick_stage_0,
         "running_1":               kick_stage_1,
+        "running_2b":              kick_stage_2b_emotional,
         "running_narrative":       kick_stage_narrative,
         "running_style":           kick_stage_style,
         "running_brief":           kick_stage_brief,
@@ -1897,7 +1899,7 @@ def advance_stage_2(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
-    kick_stage_narrative(project_id)
+    kick_stage_2b_emotional(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 

@@ -231,12 +231,35 @@ def _format_style_light(style_profile: Dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def _format_emotional_mode(emp: Dict[str, Any]) -> str:
+    """Compact EMOTIONAL MODE block from emotional_mode_packet (Stage 2b).
+    Returns "" if the packet is empty.
+    """
+    if not emp:
+        return ""
+    label    = emp.get("mode_label") or emp.get("primary_mode") or ""
+    modifier = emp.get("cinematic_modifier") or ""
+    if not label:
+        return ""
+    lines = [f"  Mode:           {label}"]
+    if modifier:
+        lines.append(f"  Aesthetic feel: {modifier}")
+    prod_aff = emp.get("production_affinity") or {}
+    if prod_aff.get("preferred"):
+        lines.append(f"  Production:     {', '.join(prod_aff['preferred'])}")
+    tone_words = emp.get("tone_words") or []
+    if tone_words:
+        lines.append(f"  Tone words:     {', '.join(tone_words[:5])}")
+    return "EMOTIONAL MODE (Stage 2b — intent must serve this register):\n" + "\n".join(lines)
+
+
 def _user_prompt(
     input_structure: Dict[str, Any],
     context_packet:  Dict[str, Any],
     narrative_packet: Dict[str, Any],
     style_profile:   Dict[str, Any],
     project_settings: Dict[str, Any],
+    emotional_mode_packet: Optional[Dict[str, Any]] = None,
 ) -> str:
     # NARRATIVE INTELLIGENCE block (re-use the narrative_engine formatter)
     narrative_block = ""
@@ -285,12 +308,15 @@ def _user_prompt(
     else:
         scene_count_hint = ""
 
+    mode_block = _format_emotional_mode(emotional_mode_packet or {})
+
     return (
         "INPUT STRUCTURE (Stage 1 — sections + repetition):\n"
         + _format_input_structure(input_structure or {})
         + "\n\nCONTEXT PACKET (Stage 2 — locked meaning, world, speaker):\n"
         + _format_context(context_packet or {})
         + ("\n\n" + narrative_block if narrative_block else "")
+        + ("\n\n" + mode_block if mode_block else "")
         + "\n\nSTYLE PACKET (Stage 4 — light tone influence ONLY):\n"
         + _format_style_light(style_profile or {})
         + "\n\nPROJECT SETTINGS:\n"
@@ -480,6 +506,7 @@ async def generate_storyboard_v2(
     narrative_packet: Dict[str, Any],
     style_profile:   Optional[Dict[str, Any]] = None,
     project_settings: Optional[Dict[str, Any]] = None,
+    emotional_mode_packet: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Generate the v2 storyboard intent layer.
 
@@ -503,6 +530,7 @@ async def generate_storyboard_v2(
                     narrative_packet or {},
                     style_profile,
                     project_settings,
+                    emotional_mode_packet=emotional_mode_packet or {},
                 )},
             ],
         )

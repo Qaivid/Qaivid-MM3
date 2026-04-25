@@ -147,6 +147,7 @@ class ProductionOrchestrator:
         style_profile: Optional[Dict[str, Any]] = None,
         creative_brief: Optional[Dict[str, Any]] = None,
         timed_lyrics: Optional[List[Dict[str, Any]]] = None,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         text = self._validate_text(text)
         genre = self._validate_genre(genre)
@@ -197,7 +198,9 @@ class ProductionOrchestrator:
                 )
 
         storyboard = self.storyboard_engine.build_storyboard(
-            context_packet, style_profile=style_profile
+            context_packet,
+            style_profile=style_profile,
+            emotional_mode_packet=emotional_mode_packet or {},
         )
         self._assert_non_empty(storyboard, "Storyboard engine returned empty output.")
 

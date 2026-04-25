@@ -492,6 +492,7 @@ def compose_image_prompt(
     cine_prefix: str = "",
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
+    emotional_mode_modifier: str = "",
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
@@ -594,6 +595,11 @@ def compose_image_prompt(
 
     body = _inject_verb_fallback(body, shot)
     body = _inject_env_fallback(body, shot)
+
+    # Prepend emotional mode modifier so it primes the diffusion model's
+    # interpretation before all other descriptors (mood-first prompting).
+    if emotional_mode_modifier and emotional_mode_modifier.strip():
+        body = emotional_mode_modifier.strip().rstrip(".") + ". " + body
 
     prompt = _attach_envelope(
         body, cine_prefix, has_character_ref, has_environment_ref,

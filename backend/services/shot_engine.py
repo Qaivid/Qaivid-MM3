@@ -14,7 +14,7 @@ CAMERA_HEIGHTS = ["eye-level", "low-angle", "high-angle", "overhead", "dutch-til
 CAMERA_BEHAVIORS = ["static", "slow-pan-left", "slow-pan-right", "track-forward", "track-back", "dolly-in", "dolly-out", "handheld", "crane-up", "crane-down", "orbit"]
 
 
-def build_shots_for_scene(scene: Dict[str, Any], context_packet: Dict[str, Any], project_settings: Dict[str, Any] = None, content_type: str = "song") -> List[Dict[str, Any]]:
+def build_shots_for_scene(scene: Dict[str, Any], context_packet: Dict[str, Any], project_settings: Dict[str, Any] = None, content_type: str = "song", emotional_mode_id: str = "") -> List[Dict[str, Any]]:
     settings = project_settings or {}
     density = settings.get("shot_density", "medium")
     temporal_status = scene.get("temporal_status", "present")
@@ -23,8 +23,8 @@ def build_shots_for_scene(scene: Dict[str, Any], context_packet: Dict[str, Any],
     line_meanings = context_packet.get("line_meanings", [])
     lyric_span = scene.get("lyric_span", [])
 
-    # Get pacing profile for this content type
-    pacing = get_pacing_profile(content_type)
+    # Get pacing profile — mode-aware when emotional_mode_id is provided
+    pacing = get_pacing_profile(content_type, emotional_mode_id)
 
     # Get relevant line meanings for this scene
     scene_lines = [lm for lm in line_meanings if lm.get("line_index") in lyric_span]

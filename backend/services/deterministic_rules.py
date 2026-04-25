@@ -2,8 +2,12 @@
 Pacing Profiles — Ported from Qaivid 1.0 storyboard-engine-v2/types.ts
 Per-content-type shot duration and density rules.
 Used by the Shot Engine to determine shot count and duration per scene.
+
+MM3.1 extension: EMOTIONAL_PACING_PROFILES adds per-mode overrides keyed by
+(content_type, emotional_mode_id).  get_pacing_profile() accepts an optional
+emotional_mode_id param and merges the override on top of the base profile.
 """
-from typing import Dict
+from typing import Dict, Optional
 
 PACING_PROFILES: Dict[str, Dict[str, float]] = {
     "song": {
@@ -180,8 +184,77 @@ SETTING_PATTERNS = [
 ]
 
 
-def get_pacing_profile(content_type: str) -> Dict[str, float]:
-    return PACING_PROFILES.get(content_type, PACING_PROFILES["song"])
+# ── MM3.1 Emotional Mode Pacing Overrides ────────────────────────────────────
+# Indexed as EMOTIONAL_PACING_PROFILES[content_type][emotional_mode_id].
+# Each entry is a partial dict — only keys that differ from the base profile.
+# get_pacing_profile() merges these on top of the content-type base.
+EMOTIONAL_PACING_PROFILES: Dict[str, Dict[str, Dict[str, float]]] = {
+    "song": {
+        "romantic": {
+            "preferred_avg_duration": 7.5,
+            "long_shot_ratio":  0.35,
+            "medium_shot_ratio": 0.50,
+            "short_shot_ratio":  0.15,
+        },
+        "sad_loss": {
+            "preferred_avg_duration": 8.0,
+            "long_shot_ratio":  0.40,
+            "medium_shot_ratio": 0.48,
+            "short_shot_ratio":  0.12,
+        },
+        "nostalgic": {
+            "preferred_avg_duration": 7.0,
+            "long_shot_ratio":  0.35,
+            "medium_shot_ratio": 0.52,
+            "short_shot_ratio":  0.13,
+        },
+        "hopeful": {
+            "preferred_avg_duration": 6.5,
+            "long_shot_ratio":  0.28,
+            "medium_shot_ratio": 0.55,
+            "short_shot_ratio":  0.17,
+        },
+        "angry_intense": {
+            "preferred_avg_duration": 4.5,
+            "long_shot_ratio":  0.12,
+            "medium_shot_ratio": 0.43,
+            "short_shot_ratio":  0.45,
+        },
+        "spiritual": {
+            "preferred_avg_duration": 9.0,
+            "long_shot_ratio":  0.45,
+            "medium_shot_ratio": 0.45,
+            "short_shot_ratio":  0.10,
+        },
+        "energetic": {
+            "preferred_avg_duration": 4.0,
+            "long_shot_ratio":  0.10,
+            "medium_shot_ratio": 0.40,
+            "short_shot_ratio":  0.50,
+        },
+    },
+}
+
+
+def get_pacing_profile(
+    content_type: str,
+    emotional_mode_id: Optional[str] = None,
+) -> Dict[str, float]:
+    """Return the pacing profile for a given content type.
+
+    When emotional_mode_id is supplied, the per-mode override from
+    EMOTIONAL_PACING_PROFILES is merged on top of the base profile so
+    e.g. a spiritual song uses longer shot durations than the default.
+    """
+    base = dict(PACING_PROFILES.get(content_type, PACING_PROFILES["song"]))
+    if emotional_mode_id:
+        overrides = (
+            EMOTIONAL_PACING_PROFILES.get(content_type, {}).get(emotional_mode_id) or
+            EMOTIONAL_PACING_PROFILES.get("song", {}).get(emotional_mode_id) or
+            {}
+        )
+        base.update(overrides)
+    return base
 
 
 def detect_emotional_shift(text: str) -> str:

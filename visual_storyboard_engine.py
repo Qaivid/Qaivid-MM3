@@ -38,6 +38,41 @@ _BASE_VARIETY_CYCLE = [
     "close_up",          # face — CU
 ]
 
+# ── MM3.1 Emotional Mode Framing Matrix ────────────────────────────────────
+# Overrides to _VARIETY_TARGETS and _VARIETY_CAPS keyed by emotional_mode_id.
+# Each entry: {"targets": {...}, "caps": {...}}
+# All target dicts must sum to 1.00; cap values ≥ corresponding targets.
+_EMOTIONAL_FRAMING: Dict[str, Dict[str, Dict[str, float]]] = {
+    "romantic": {
+        "targets": {"face": 0.47, "body": 0.32, "environment": 0.12, "macro": 0.05, "symbolic": 0.04},
+        "caps":    {"face": 0.55, "body": 0.38, "environment": 0.15, "macro": 0.10, "symbolic": 0.08},
+    },
+    "sad_loss": {
+        "targets": {"face": 0.45, "body": 0.31, "environment": 0.13, "macro": 0.05, "symbolic": 0.06},
+        "caps":    {"face": 0.52, "body": 0.38, "environment": 0.15, "macro": 0.10, "symbolic": 0.15},
+    },
+    "nostalgic": {
+        "targets": {"face": 0.35, "body": 0.34, "environment": 0.17, "macro": 0.05, "symbolic": 0.09},
+        "caps":    {"face": 0.45, "body": 0.40, "environment": 0.22, "macro": 0.10, "symbolic": 0.18},
+    },
+    "hopeful": {
+        "targets": {"face": 0.33, "body": 0.33, "environment": 0.22, "macro": 0.05, "symbolic": 0.07},
+        "caps":    {"face": 0.42, "body": 0.42, "environment": 0.28, "macro": 0.10, "symbolic": 0.12},
+    },
+    "angry_intense": {
+        "targets": {"face": 0.35, "body": 0.46, "environment": 0.10, "macro": 0.05, "symbolic": 0.04},
+        "caps":    {"face": 0.45, "body": 0.55, "environment": 0.15, "macro": 0.10, "symbolic": 0.08},
+    },
+    "spiritual": {
+        "targets": {"face": 0.28, "body": 0.28, "environment": 0.22, "macro": 0.07, "symbolic": 0.15},
+        "caps":    {"face": 0.38, "body": 0.35, "environment": 0.28, "macro": 0.12, "symbolic": 0.22},
+    },
+    "energetic": {
+        "targets": {"face": 0.35, "body": 0.51, "environment": 0.10, "macro": 0.04, "symbolic": 0.00},
+        "caps":    {"face": 0.45, "body": 0.58, "environment": 0.12, "macro": 0.08, "symbolic": 0.05},
+    },
+}
+
 
 class VisualStoryboardEngine:
     """
@@ -300,6 +335,9 @@ class VisualStoryboardEngine:
         self._cinematic_beats_by_index: Dict[int, Dict[str, Any]] = {}
         self._shot_events_by_index: Dict[int, Dict[str, Any]] = {}
 
+        # Emotional mode packet (Stage 2b) — populated in build_storyboard().
+        self._emotional_mode_packet: Dict[str, Any] = {}
+
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -312,9 +350,11 @@ class VisualStoryboardEngine:
         self,
         context_packet: Dict[str, Any],
         style_profile: Optional[Dict[str, Any]] = None,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         ctx = self._validate_context_packet(context_packet)
         self._active_style_profile: Dict[str, Any] = style_profile or {}
+        self._emotional_mode_packet: Dict[str, Any] = emotional_mode_packet or {}
         ctx = self._attach_optional_cinematic_layers(ctx)
 
         # Reset rotation state so each build_storyboard() call is deterministic,
@@ -627,6 +667,43 @@ class VisualStoryboardEngine:
         "symbolic":    "impressionistic memory fragment — soft overexposed edges, dreamy framing, subject abstracted",
     }
 
+    def _get_mode_adjusted_targets(self) -> Dict[str, float]:
+        """Return variety targets adjusted for the current emotional mode.
+
+        Falls back to class-level defaults if mode is absent or unknown.
+        Blends: 70 % primary mode + 30 % secondary mode (when provided).
+        """
+        emp = self._emotional_mode_packet
+        primary_id  = emp.get("primary_mode") or ""
+        secondary_id = emp.get("secondary_mode") or ""
+        pw = float(emp.get("primary_weight", 1.0))
+        sw = float(emp.get("secondary_weight", 0.0))
+
+        primary_framing = _EMOTIONAL_FRAMING.get(primary_id)
+        if not primary_framing:
+            return dict(self._VARIETY_TARGETS)
+
+        targets = {k: v * pw for k, v in primary_framing["targets"].items()}
+
+        if secondary_id and sw > 0:
+            secondary_framing = _EMOTIONAL_FRAMING.get(secondary_id)
+            if secondary_framing:
+                for k, v in secondary_framing["targets"].items():
+                    targets[k] = targets.get(k, 0.0) + v * sw
+
+        return targets
+
+    def _get_mode_adjusted_caps(self) -> Dict[str, float]:
+        """Return variety caps adjusted for the current emotional mode."""
+        emp = self._emotional_mode_packet
+        primary_id  = emp.get("primary_mode") or ""
+
+        primary_framing = _EMOTIONAL_FRAMING.get(primary_id)
+        if not primary_framing:
+            return dict(self._VARIETY_CAPS)
+
+        return dict(primary_framing["caps"])
+
     def _enforce_variety_caps(
         self,
         storyboard: List[Dict[str, Any]],
@@ -664,8 +741,11 @@ class VisualStoryboardEngine:
                 )
             _cycle_idx += 1  # always advance so cycle position is deterministic
 
+        active_caps    = self._get_mode_adjusted_caps()
+        active_targets = self._get_mode_adjusted_targets()
+
         total = len(storyboard)
-        counts: Dict[str, int] = {m: 0 for m in self._VARIETY_CAPS}
+        counts: Dict[str, int] = {m: 0 for m in active_caps}
         for s in storyboard:
             m = s.get("expression_mode", "face")
             if m in counts:
@@ -674,13 +754,13 @@ class VisualStoryboardEngine:
         reclassified_count = 0
         for s in storyboard:
             m = s.get("expression_mode", "face")
-            cap = self._VARIETY_CAPS.get(m, 1.0)
+            cap = active_caps.get(m, 1.0)
             if m not in counts or counts[m] / total <= cap:
                 continue
             # Find the most underrepresented category (furthest below its target)
             best_mode = m
             best_deficit = -1.0
-            for candidate, target in self._VARIETY_TARGETS.items():
+            for candidate, target in active_targets.items():
                 if candidate == m:
                     continue
                 current_frac = counts.get(candidate, 0) / total
@@ -831,7 +911,9 @@ class VisualStoryboardEngine:
         try:
             if enriched.get("shot_events"):
                 from shot_variety_engine import ShotVarietyEngine
-                variety_engine = ShotVarietyEngine()
+                variety_engine = ShotVarietyEngine(
+                    emotional_mode_packet=self._emotional_mode_packet or {},
+                )
                 enriched["shot_events"] = variety_engine.apply_variety(enriched["shot_events"])
         except Exception:
             pass

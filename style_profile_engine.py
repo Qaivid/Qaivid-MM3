@@ -46,6 +46,7 @@ class StyleProfileEngine:
         culture_pack_id: Optional[str] = None,
         context_packet: Optional[Dict[str, Any]] = None,
         narrative_packet: Optional[Dict[str, Any]] = None,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Suggest 2-3 style profiles for this content.
@@ -65,23 +66,54 @@ class StyleProfileEngine:
         culture_pack_id = culture_pack_id or "none"
         context_packet = context_packet or {}
         narrative_packet = narrative_packet or {}
+        emotional_mode_packet = emotional_mode_packet or {}
 
-        system_prompt = self._build_system_prompt()
+        mode_constraints = self._extract_mode_constraints(emotional_mode_packet)
+        system_prompt = self._build_system_prompt(mode_constraints=mode_constraints)
         user_prompt = self._build_user_prompt(
             text, genre, audio_analytics, culture_pack_id,
-            context_packet, narrative_packet,
+            context_packet, narrative_packet, emotional_mode_packet,
         )
 
         try:
             raw = await self._call_model(system_prompt, user_prompt)
             suggestions_raw = self._safe_parse_json(raw)
-            return self._resolve_suggestions(suggestions_raw)
+            resolved = self._resolve_suggestions(suggestions_raw, mode_constraints=mode_constraints)
+            return [self._apply_mode_merge(s, emotional_mode_packet) for s in resolved]
         except Exception:
             logger.exception("StyleProfileEngine.suggest failed — returning defaults")
             return [self._default_suggestion()]
 
-    def _build_system_prompt(self) -> str:
+    def _extract_mode_constraints(self, emp: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract filtering constraints from an emotional_mode_packet (or empty dict)."""
+        if not emp:
+            return {}
+        return {
+            "mode_label":              emp.get("mode_label", ""),
+            "cinematic_modifier":      emp.get("cinematic_modifier", ""),
+            "preferred_production":    (emp.get("production_affinity") or {}).get("preferred") or [],
+            "avoid_production":        (emp.get("production_affinity") or {}).get("avoid") or [],
+            "incompatible_cinematic":  emp.get("incompatible_cinematic_styles") or [],
+        }
+
+    def _build_system_prompt(self, mode_constraints: Optional[Dict[str, Any]] = None) -> str:
         registry_summary = StyleProfileRegistry.registry_summary_for_llm()
+
+        mode_section = ""
+        if mode_constraints and mode_constraints.get("mode_label"):
+            preferred = mode_constraints.get("preferred_production") or []
+            avoid     = mode_constraints.get("avoid_production") or []
+            incompat  = mode_constraints.get("incompatible_cinematic") or []
+            modifier  = mode_constraints.get("cinematic_modifier") or ""
+            mode_section = f"""
+EMOTIONAL MODE CONSTRAINTS (locked by Stage 2b — MUST be respected):
+  Emotional mode:  {mode_constraints['mode_label']}
+  Aesthetic feel:  {modifier}
+  Production style — MUST choose from: {', '.join(preferred) if preferred else '(any)'}
+  Production style — MUST NOT use:    {', '.join(avoid) if avoid else '(none)'}
+  Cinematic style  — MUST NOT use:    {', '.join(incompat) if incompat else '(none)'}
+These constraints are absolute. Violating them means ignoring the locked emotional truth.
+""".strip()
 
         return f"""
 You are a world-class music video creative director and visual stylist.
@@ -93,6 +125,8 @@ You have access to a fixed registry of Production Styles and Cinematic Styles.
 You must only use IDs from this registry — do not invent new IDs.
 
 {registry_summary}
+
+{mode_section}
 
 For each recommendation you must:
 1. Choose one production_style_id from the PRODUCTION STYLES list above.
@@ -138,6 +172,7 @@ Rules:
         culture_pack_id: str,
         context_packet: Optional[Dict[str, Any]] = None,
         narrative_packet: Optional[Dict[str, Any]] = None,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
     ) -> str:
         bpm = audio_analytics.get("bpm") or "unknown"
         energy = audio_analytics.get("avg_energy") or audio_analytics.get("energy") or "unknown"
@@ -154,8 +189,9 @@ Rules:
 
         lyrics_excerpt = text[:800].strip() if text else "(no lyrics provided)"
 
-        context_block = self._build_context_block(context_packet or {})
+        context_block   = self._build_context_block(context_packet or {})
         narrative_block = self._build_narrative_block(narrative_packet or {})
+        mode_block      = self._build_mode_block(emotional_mode_packet or {})
 
         return f"""
 SONG / CONTENT:
@@ -166,14 +202,14 @@ BPM: {bpm}
 Energy profile: {energy_profile}
 Avg energy: {energy}
 Brightness: {brightness}{gender_line}
-{context_block}{narrative_block}
+{context_block}{narrative_block}{mode_block}
 LYRICS (excerpt):
 {lyrics_excerpt}
 
 Suggest 2-3 style profile combinations that would make a great music video for this content.
-When STORY CONTEXT and NARRATIVE INTELLIGENCE are present above, your suggestions
-MUST honour them — choose visual styles that serve the locked meaning, world,
-speaker, and storytelling strategy. Reference these decisions in your justifications.
+When STORY CONTEXT, NARRATIVE INTELLIGENCE, and EMOTIONAL MODE are present above, your
+suggestions MUST honour them — choose visual styles that serve the locked meaning, world,
+speaker, emotional register, and storytelling strategy. Reference these in your justifications.
 """.strip()
 
     def _build_context_block(self, ctx: Dict[str, Any]) -> str:
@@ -258,6 +294,29 @@ speaker, and storytelling strategy. Reference these decisions in your justificat
             logger.exception("StyleProfileEngine: failed to format narrative_packet")
             return ""
 
+    def _build_mode_block(self, emp: Dict[str, Any]) -> str:
+        """Compact EMOTIONAL MODE block from emotional_mode_packet (Stage 2b).
+        Returns "" if the packet is empty.
+        """
+        if not isinstance(emp, dict) or not emp:
+            return ""
+        label    = emp.get("mode_label") or emp.get("primary_mode") or ""
+        modifier = emp.get("cinematic_modifier") or ""
+        if not label:
+            return ""
+        lines = [f"  Mode:             {label}"]
+        if modifier:
+            lines.append(f"  Cinematic feel:   {modifier}")
+        prod_aff = emp.get("production_affinity") or {}
+        if prod_aff.get("preferred"):
+            lines.append(f"  Preferred prod:   {', '.join(prod_aff['preferred'])}")
+        if prod_aff.get("avoid"):
+            lines.append(f"  Avoid prod:       {', '.join(prod_aff['avoid'])}")
+        incompat = emp.get("incompatible_cinematic_styles") or []
+        if incompat:
+            lines.append(f"  Avoid cinematic:  {', '.join(incompat)}")
+        return "\nEMOTIONAL MODE (locked by Stage 2b — style must serve this register):\n" + "\n".join(lines) + "\n"
+
     async def _call_model(self, system_prompt: str, user_prompt: str) -> str:
         response = await self.client.chat.completions.create(
             model=_MODEL,
@@ -284,10 +343,18 @@ speaker, and storytelling strategy. Reference these decisions in your justificat
             logger.warning("StyleProfileEngine: JSON parse failed, returning empty")
             return {"suggestions": []}
 
-    def _resolve_suggestions(self, raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _resolve_suggestions(
+        self,
+        raw: Dict[str, Any],
+        mode_constraints: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         raw_suggestions = raw.get("suggestions") or []
         if not isinstance(raw_suggestions, list):
             raw_suggestions = []
+
+        avoid_prod   = set((mode_constraints or {}).get("avoid_production") or [])
+        incompat_cin = set((mode_constraints or {}).get("incompatible_cinematic") or [])
+        preferred_prod = list((mode_constraints or {}).get("preferred_production") or [])
 
         resolved = []
         for item in raw_suggestions[:3]:
@@ -296,6 +363,30 @@ speaker, and storytelling strategy. Reference these decisions in your justificat
             prod_id = str(item.get("production_style_id") or "").strip()
             cin_id = str(item.get("cinematic_style_id") or "").strip()
             justification = str(item.get("justification") or "").strip()
+
+            # Post-filter: replace disallowed production style with preferred
+            if prod_id in avoid_prod:
+                replacement = next(
+                    (p for p in preferred_prod if p not in avoid_prod and StyleProfileRegistry.get_production_style(p)),
+                    None,
+                )
+                if replacement:
+                    logger.info(
+                        "StyleProfileEngine: replaced disallowed production style %r → %r (mode constraint)",
+                        prod_id, replacement,
+                    )
+                    prod_id = replacement
+
+            # Post-filter: replace incompatible cinematic style
+            if cin_id in incompat_cin:
+                all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
+                replacement = next((c for c in all_cin if c not in incompat_cin), None)
+                if replacement:
+                    logger.info(
+                        "StyleProfileEngine: replaced incompatible cinematic style %r → %r (mode constraint)",
+                        cin_id, replacement,
+                    )
+                    cin_id = replacement
 
             prod = StyleProfileRegistry.get_production_style(prod_id)
             cin = StyleProfileRegistry.get_cinematic_style(cin_id)
@@ -318,6 +409,40 @@ speaker, and storytelling strategy. Reference these decisions in your justificat
             resolved.append(self._default_suggestion())
 
         return resolved
+
+    def _apply_mode_merge(self, profile: Dict[str, Any], emp: Dict[str, Any]) -> Dict[str, Any]:
+        """Blend emotional_mode_packet's style_modifier_injection into the resolved style profile.
+
+        The profile already has a storyboard_modifiers block from the registry.
+        We overlay the mode's style_modifier_injection dict on top so mode-specific
+        defaults win while allowing registry values to remain where the mode doesn't
+        specify anything.
+        """
+        if not emp:
+            return profile
+
+        injection = emp.get("style_modifier_injection") or {}
+        if not injection:
+            return profile
+
+        import copy
+        profile = copy.deepcopy(profile)
+
+        sb = profile.get("storyboard_modifiers")
+        if isinstance(sb, dict):
+            for k, v in injection.items():
+                if k not in sb or sb[k] is None:
+                    sb[k] = v
+        else:
+            profile["storyboard_modifiers"] = dict(injection)
+
+        profile.setdefault("emotional_mode", {
+            "mode_id":    emp.get("primary_mode") or emp.get("mode_id") or "",
+            "mode_label": emp.get("mode_label") or "",
+            "weight":     emp.get("primary_weight", 1.0),
+        })
+
+        return profile
 
     def _default_suggestion(self) -> Dict[str, Any]:
         profile = StyleProfileRegistry.default_style_profile()
