@@ -225,6 +225,37 @@ def _recover_stalled_jobs():
         import logging as _log
         _log.getLogger("startup_recovery").error("Recovery scan failed: %s", exc)
 
+    # ── Also reset orphaned shot_assets that are stuck in
+    #    'rendering' or 'queued' for projects at stills_control / stills_review.
+    #    These are shots whose worker threads died when the server restarted;
+    #    no running pipeline stage owns them so the block above skips them.
+    #    Reset to 'pending' so the user can retry them from the Stills page.
+    try:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE shot_assets sa
+                       SET status = 'pending', error = NULL
+                      FROM projects p
+                     WHERE sa.project_id = p.id
+                       AND p.stage IN ('stills_control', 'stills_review')
+                       AND sa.status IN ('rendering', 'queued')
+                    """
+                )
+                n = cur.rowcount
+            conn.commit()
+        if n:
+            import logging as _log2
+            _log2.getLogger("startup_recovery").warning(
+                "Reset %d orphaned rendering/queued shot_assets to pending", n
+            )
+    except Exception as exc2:
+        import logging as _log3
+        _log3.getLogger("startup_recovery").error(
+            "Stills orphan cleanup failed: %s", exc2
+        )
+
 
 _recover_stalled_jobs()
 
