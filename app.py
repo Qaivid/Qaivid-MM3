@@ -1749,7 +1749,31 @@ def advance_stage_style(project_id: str):
     cin_id = request.form.get("cinematic_style_id") or ""
 
     from style_profile_registry import StyleProfileRegistry
-    style_profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
+
+    # MM3.1 Stage-4 mode-constrained style persistence:
+    # Load emotional_mode_packet from Brain (written by Stage 2b) and run the
+    # user's selection through apply_mode_constraints_to_selection() so that:
+    #   1. Avoided production styles are replaced with mode-preferred ones.
+    #   2. Incompatible or non-compatible cinematic styles are replaced/nudged.
+    #   3. style_modifier_injection is merged (override) into storyboard_modifiers.
+    # This ensures the canonical Brain style_packet is always mode-consistent,
+    # regardless of what the user selected.
+    _emp_for_style = {}
+    try:
+        with db() as _style_brain_conn:
+            _style_brain = ProjectBrain.load(project_id, _style_brain_conn)
+        if _style_brain.is_populated("emotional_mode_packet"):
+            _emp_for_style = _style_brain.read("emotional_mode_packet") or {}
+    except Exception:
+        app.logger.debug(
+            "advance_stage_style: could not load emotional_mode_packet for "
+            "project=%s (non-fatal — proceeding without mode constraints)", project_id,
+        )
+
+    from style_profile_engine import StyleProfileEngine
+    style_profile = StyleProfileEngine.apply_mode_constraints_to_selection(
+        prod_id, cin_id, _emp_for_style
+    )
 
     # ── Persist the chosen style: legacy column + Project Brain (Stage 4) ──
     # The brain.style_packet namespace is owned by Stage 4 — writing the
@@ -1770,8 +1794,9 @@ def advance_stage_style(project_id: str):
             brain.save(conn)
             conn.commit()
         app.logger.info(
-            "ProjectBrain: wrote style_packet for project=%s (preset=%s)",
+            "ProjectBrain: wrote style_packet for project=%s (preset=%s, mode=%s)",
             project_id, style_profile.get("preset"),
+            style_profile.get("emotional_mode", {}).get("mode_id", "none"),
         )
     except Exception:
         # Brain write must not block the user's pick — log and continue.

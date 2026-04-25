@@ -496,3 +496,103 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             "suitable for most song types and easily refined once the context is analysed."
         )
         return profile
+
+    @staticmethod
+    def apply_mode_constraints_to_selection(
+        production_style_id: str,
+        cinematic_style_id: str,
+        emotional_mode_packet: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Apply emotional mode constraints to a user-selected style pair and return
+        a fully merged, mode-constrained style_packet.
+
+        Used at style selection persistence time (advance_stage_style) so the
+        canonical Brain style_packet always has mode modifiers injected and
+        incompatible/avoided style IDs replaced — regardless of user selection.
+
+        Steps:
+          1. Replace disallowed production style ID with a mode-preferred one.
+          2. Replace incompatible (or non-compatible) cinematic style ID.
+          3. Build the profile from the (possibly corrected) IDs.
+          4. Apply style_modifier_injection from the mode packet (override semantics).
+        """
+        emp = emotional_mode_packet or {}
+
+        avoid_prod      = set((emp.get("production_affinity") or {}).get("avoid") or [])
+        preferred_prod  = list((emp.get("production_affinity") or {}).get("preferred") or [])
+        incompat_cin    = set(emp.get("incompatible_cinematic_styles") or [])
+        compatible_cin  = list(emp.get("compatible_cinematic_styles") or [])
+
+        prod_id = production_style_id or "split_narrative_performance"
+        cin_id  = cinematic_style_id  or "cinematic_natural"
+
+        # Replace disallowed production style.
+        if prod_id in avoid_prod:
+            replacement = next(
+                (p for p in preferred_prod if p not in avoid_prod and StyleProfileRegistry.get_production_style(p)),
+                None,
+            )
+            if replacement:
+                logger.info(
+                    "StyleProfileEngine.apply_mode_constraints: "
+                    "replaced avoided production %r → %r", prod_id, replacement,
+                )
+                prod_id = replacement
+
+        # Replace incompatible or non-compatible cinematic style.
+        if cin_id in incompat_cin:
+            all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
+            replacement = next(
+                (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
+                None,
+            ) or next((c for c in all_cin if c not in incompat_cin), None)
+            if replacement:
+                logger.info(
+                    "StyleProfileEngine.apply_mode_constraints: "
+                    "replaced incompatible cinematic %r → %r", cin_id, replacement,
+                )
+                cin_id = replacement
+        elif compatible_cin and cin_id not in compatible_cin:
+            preferred_cin = next(
+                (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
+                None,
+            )
+            if preferred_cin:
+                logger.info(
+                    "StyleProfileEngine.apply_mode_constraints: "
+                    "nudged cinematic %r → %r (prefer compatible)", cin_id, preferred_cin,
+                )
+                cin_id = preferred_cin
+
+        # Validate IDs; fall back if unknown.
+        prod = StyleProfileRegistry.get_production_style(prod_id)
+        cin  = StyleProfileRegistry.get_cinematic_style(cin_id)
+        if not prod:
+            prod_id = "split_narrative_performance"
+        if not cin:
+            cin_id = "cinematic_natural"
+
+        profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
+
+        # Apply mode style modifier injection (override semantics).
+        injection = emp.get("style_modifier_injection") or {}
+        if injection:
+            import copy as _copy
+            profile = _copy.deepcopy(profile)
+            sb = profile.get("storyboard_modifiers")
+            if isinstance(sb, dict):
+                for k, v in injection.items():
+                    sb[k] = v
+            else:
+                profile["storyboard_modifiers"] = dict(injection)
+
+        # Tag profile with mode metadata so consumers can verify constraints were applied.
+        if emp.get("primary_mode"):
+            profile["emotional_mode"] = {
+                "mode_id":    emp.get("primary_mode", ""),
+                "mode_label": emp.get("mode_label", ""),
+                "weight":     emp.get("primary_weight", 1.0),
+                "constrained": True,
+            }
+
+        return profile
