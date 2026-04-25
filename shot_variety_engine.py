@@ -19,16 +19,16 @@ from typing import List, Dict
 
 
 _BASE_CYCLE = [
-    "portrait",           # face
-    "movement",           # body — physical action
-    "wide_environment",   # environment — breath of space
-    "object_detail",      # macro — meaningful object
-    "movement",           # body
-    "portrait",           # face
-    "empty_frame",        # environment — absence / space
+    "wide_environment",   # environment — location establisher (30% target)
+    "portrait",           # face — emotional close-up (20% target)
+    "object_detail",      # macro — meaningful prop/insert (20% target)
+    "movement",           # body — full-figure action (20% target)
+    "wide_environment",   # environment
     "over_shoulder",      # body — relational frame
+    "empty_frame",        # environment — absence / breathing space
     "object_detail",      # macro
-    "reflection",         # symbolic
+    "portrait",           # face
+    "reflection",         # symbolic — silhouette / abstract (10% target)
 ]
 
 _SHOT_TYPE_TO_MODE = {

@@ -4,6 +4,22 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Deterministic 10-item shot-type cycle used by _enforce_variety_caps as a
+# fallback seed when the cinematic beat engine didn't assign shot_type values.
+# Distribution: 30% environment, 20% face, 20% body, 20% macro, 10% symbolic.
+_BASE_VARIETY_CYCLE = [
+    "wide_environment",   # environment
+    "portrait",           # face
+    "object_detail",      # macro
+    "movement",           # body
+    "wide_environment",   # environment
+    "over_shoulder",      # body
+    "empty_frame",        # environment
+    "object_detail",      # macro
+    "portrait",           # face
+    "reflection",         # symbolic
+]
+
 
 class VisualStoryboardEngine:
     """
@@ -536,21 +552,26 @@ class VisualStoryboardEngine:
 
     # Target distribution (MM3.1 spec): face≈20%, body≈30%, env≈20%, macro≈20%, symbolic≈10%
     # Caps are set 5pp above target to absorb natural variation without over-correcting.
+    # ── Shot variety distribution (music video standard) ─────────────────────
+    # environment gets the largest budget — wide/establishing shots ground the
+    # viewer in the song's world and prevent the video from being wall-to-wall
+    # close-ups.  face is capped hard at 25 % (emotional peaks only).
     _VARIETY_CAPS: Dict[str, float] = {
-        "face":        0.25,   # target 20%
-        "body":        0.35,   # target 30%
-        "environment": 0.25,   # target 20%
-        "macro":       0.25,   # target 20%
-        "symbolic":    0.15,   # target 10%
+        "face":        0.25,   # max 25 % — emotional peaks, tears, eyes
+        "body":        0.25,   # max 25 % — gestures, walking, full-figure
+        "environment": 0.40,   # max 40 % — location, landscape, cultural world
+        "macro":       0.25,   # max 25 % — meaningful objects / inserts
+        "symbolic":    0.15,   # max 15 % — silhouette, abstract, poetic
     }
 
-    # Ideal target fractions used for underrepresented-category selection
+    # Ideal target fractions — underrepresented category is chosen first when
+    # the cap enforcer reclassifies over-budget shots.
     _VARIETY_TARGETS: Dict[str, float] = {
-        "face":        0.20,
-        "body":        0.30,
-        "environment": 0.20,
-        "macro":       0.20,
-        "symbolic":    0.10,
+        "face":        0.20,   # 20 % close-up / portrait
+        "body":        0.20,   # 20 % body / action
+        "environment": 0.30,   # 30 % wide / establishing
+        "macro":       0.20,   # 20 % insert / object detail
+        "symbolic":    0.10,   # 10 % silhouette / abstract
     }
 
     # Canonical shot_type labels per expression_mode.
@@ -586,11 +607,32 @@ class VisualStoryboardEngine:
         re-deriving the cinematography/motion_prompt so rig/motion stay aligned
         with the new category.
 
-        Only fires when the variety engine is active (shot_type present on at
-        least one shot); otherwise returns storyboard as-is.
+        Always runs — even when the cinematic beat engine produced no shot_type
+        assignments (e.g. failed silently).  In that case a deterministic cycle
+        is used to seed shot_type so the caps have something to work against.
         """
-        if not storyboard or not any(s.get("shot_type") for s in storyboard):
+        if not storyboard:
             return storyboard
+
+        # ── Seed shot_type from a deterministic cycle for any shots missing it.
+        # This ensures the cap enforcer always has a shot_type to reclassify,
+        # even when the cinematic beat / variety engine produced no output.
+        _cycle = list(_BASE_VARIETY_CYCLE)
+        _cycle_len = len(_cycle)
+        _cycle_idx = 0
+        for s in storyboard:
+            if not s.get("shot_type"):
+                assigned_type = _cycle[_cycle_idx % _cycle_len]
+                s["shot_type"] = assigned_type
+                # Also update expression_mode so cap counts reflect the new type;
+                # without this the counts still show 100% face and caps never fire.
+                assigned_mode = self._SHOT_TYPE_TO_MODE.get(assigned_type, "face")
+                s["expression_mode"] = assigned_mode
+                # Update framing directive to match the new mode.
+                s["framing_directive"] = self._MODE_TO_FRAMING_DIRECTIVE.get(
+                    assigned_mode, s.get("framing_directive", "")
+                )
+            _cycle_idx += 1  # always advance so cycle position is deterministic
 
         total = len(storyboard)
         counts: Dict[str, int] = {m: 0 for m in self._VARIETY_CAPS}
