@@ -503,6 +503,11 @@ def compose_image_prompt(
                 Provides world DNA (world, environment_type, key_textures,
                 palette_anchor, architecture).
     Both fall back cleanly to DB-only behaviour when None or {}.
+
+    emotional_mode_modifier: cinematic aesthetic string from emotional_mode_packet
+        (Stage 2b Brain key).  Canonical design: callers read the Brain and pass
+        the modifier here so this function stays pure and testable.  Pipeline reads
+        happen in pipeline_worker._render_shot and image_generator.generate_shot_still.
     """
     bc = brain_char or {}
     identity_seed    = (bc.get("identity_seed")    or "").strip()

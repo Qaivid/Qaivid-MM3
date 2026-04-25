@@ -81,8 +81,10 @@ class StyleProfileEngine:
             resolved = self._resolve_suggestions(suggestions_raw, mode_constraints=mode_constraints)
             return [self._apply_mode_merge(s, emotional_mode_packet) for s in resolved]
         except Exception:
-            logger.exception("StyleProfileEngine.suggest failed — returning defaults")
-            return [self._default_suggestion()]
+            logger.exception("StyleProfileEngine.suggest failed — returning mode-constrained defaults")
+            # Apply mode merge to the fallback so emotional restrictions hold even on model failure.
+            fallback = self._apply_mode_merge(self._default_suggestion(), emotional_mode_packet)
+            return [fallback]
 
     def _extract_mode_constraints(self, emp: Dict[str, Any]) -> Dict[str, Any]:
         """Extract filtering constraints from an emotional_mode_packet (or empty dict)."""
