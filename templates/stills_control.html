@@ -234,7 +234,8 @@
           <span class="sc-op-badge" id="op-badge-{{ shot.shot_index }}" style="display:none;"></span>
           {% endif %}
 
-          <span class="ref-edit-hint">Edit ↓</span>
+          <span class="ref-edit-hint"
+                onclick="event.stopPropagation(); scToggle({{ shot.shot_index }})">Edit ↓</span>
         </div>
 
         <div class="ref-card-foot">
@@ -246,16 +247,15 @@
             </span>
           </div>
 
-          {# Quick action — always visible, no panel needed.
-             Uses a real <form> POST so the button works even if JS / fetch
-             is blocked (e.g. inside iframe sandboxes). The JS upgrade in
-             the script block intercepts the submit and uses fetch when
-             available, preserving the no-reload UX. #}
+          {# Quick-action row — always visible, no panel needed.
+             Wrapped in sc-foot-btns so applyStatus can replace innerHTML
+             entirely when status changes via the poll. #}
+          <div class="sc-foot-btns" id="sc-foot-btns-{{ shot.shot_index }}"
+               onclick="event.stopPropagation()">
           {% if shot.status == 'pending' or shot.status == 'failed' %}
           <form method="post"
                 action="{{ url_for('stills_generate_one', project_id=project.id, shot_index=shot.shot_index) }}"
                 class="sc-quick-form"
-                onclick="event.stopPropagation();"
                 onsubmit="return scQuickSubmit(event, {{ shot.shot_index }});">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit"
@@ -266,17 +266,25 @@
             </button>
           </form>
           {% elif shot.status == 'rendering' %}
-          <button class="sc-quick-btn sc-quick-btn--spinning" id="sc-quick-btn-{{ shot.shot_index }}" disabled>
+          <button class="sc-quick-btn sc-quick-btn--spinning"
+                  id="sc-quick-btn-{{ shot.shot_index }}" disabled>
             <span class="sc-spinner" style="font-size:10px;">&#9698;</span> Generating…
           </button>
           {% else %}
           <button type="button"
+                  class="sc-quick-btn sc-quick-btn--regen"
+                  id="sc-regen-quick-{{ shot.shot_index }}"
+                  onclick="scGenOne({{ shot.shot_index }}, true)">
+            &#8635; Regen
+          </button>
+          <button type="button"
                   class="sc-quick-btn sc-quick-btn--ready"
                   id="sc-quick-btn-{{ shot.shot_index }}"
-                  onclick="event.stopPropagation(); scToggle({{ shot.shot_index }})">
+                  onclick="scToggle({{ shot.shot_index }})">
             &#8942; Options
           </button>
           {% endif %}
+          </div>
         </div>
       </div>
 
@@ -476,7 +484,7 @@
     font-size: 9px; font-weight: 600; color: #777;
     background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 5px;
     letter-spacing: .4px; text-transform: uppercase;
-    pointer-events: none; opacity: 0; transition: opacity .15s;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
 }
 .ref-card:hover .ref-edit-hint,
 .ref-card--open .ref-edit-hint { opacity: 1; }
@@ -613,6 +621,13 @@
   display: flex; align-items: center; justify-content: center; gap: 5px;
   letter-spacing: .01em;
 }
+/* Two-button row for ready state */
+.sc-foot-btns {
+  display: flex; gap: 4px; align-items: center;
+}
+.sc-foot-btns .sc-quick-form { flex: 1; }
+.sc-foot-btns .sc-quick-btn:only-child { flex: 1; }
+
 .sc-quick-btn--gen {
   background: rgba(200,241,53,.12); color: #c8f135;
   border: 1px solid rgba(200,241,53,.3);
@@ -627,6 +642,11 @@
   border: 1px solid #1e1e2a;
 }
 .sc-quick-btn--ready:hover { background: rgba(255,255,255,.08); color: #999; }
+.sc-quick-btn--regen {
+  background: rgba(90,90,160,.15); color: #8899cc;
+  border: 1px solid rgba(90,90,160,.3);
+}
+.sc-quick-btn--regen:hover { background: rgba(90,90,160,.3); color: #aabbee; }
 
 /* ── Action row inside panel ── */
 .sc-actions {
@@ -911,24 +931,27 @@
       }
     }
 
-    // Update quick-action button in card footer
-    const qBtn = document.getElementById('sc-quick-btn-' + idx);
-    if (qBtn) {
+    // Replace the entire quick-action button row in the card footer.
+    // Using innerHTML on the wrapper avoids orphan <form> nodes when
+    // status flips between pending (form+button) and other states.
+    const footBtns = document.getElementById('sc-foot-btns-' + idx);
+    if (footBtns) {
       if (status === 'pending' || status === 'failed') {
-        qBtn.className = 'sc-quick-btn sc-quick-btn--gen';
-        qBtn.disabled = false;
-        qBtn.innerHTML = status === 'failed' ? '\u21BB Retry' : '\u25B6 Generate';
-        qBtn.onclick = (e) => { e.stopPropagation(); scGenOne(idx, false); };
+        const label = status === 'failed' ? '\u21BB Retry' : '\u25B6 Generate';
+        footBtns.innerHTML =
+          `<button class="sc-quick-btn sc-quick-btn--gen" id="sc-quick-btn-${idx}">${label}</button>`;
+        const b = footBtns.firstElementChild;
+        b.onclick = () => scGenOne(idx, false);
       } else if (status === 'rendering') {
-        qBtn.className = 'sc-quick-btn sc-quick-btn--spinning';
-        qBtn.disabled = true;
-        qBtn.innerHTML = '<span class="sc-spinner" style="font-size:10px;">&#9698;</span> Generating\u2026';
-        qBtn.onclick = null;
+        footBtns.innerHTML =
+          `<button class="sc-quick-btn sc-quick-btn--spinning" id="sc-quick-btn-${idx}" disabled>` +
+          `<span class="sc-spinner" style="font-size:10px;">&#9698;</span> Generating\u2026</button>`;
       } else {
-        qBtn.className = 'sc-quick-btn sc-quick-btn--ready';
-        qBtn.disabled = false;
-        qBtn.innerHTML = '\u22EE Options';
-        qBtn.onclick = (e) => { e.stopPropagation(); scToggle(idx); };
+        footBtns.innerHTML =
+          `<button class="sc-quick-btn sc-quick-btn--regen" id="sc-regen-quick-${idx}">\u21BB Regen</button>` +
+          `<button class="sc-quick-btn sc-quick-btn--ready" id="sc-quick-btn-${idx}">\u22EE Options</button>`;
+        footBtns.querySelector('#sc-regen-quick-' + idx).onclick = () => scGenOne(idx, true);
+        footBtns.querySelector('#sc-quick-btn-' + idx).onclick  = () => scToggle(idx);
       }
     }
 
@@ -1041,7 +1064,16 @@
     } else {
       panel.hidden = false;
       card.classList.add('ref-card--open');
-      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // scrollIntoView can behave oddly inside iframe proxies; fall back
+      // to a direct window.scrollTo so the panel is always visible.
+      setTimeout(() => {
+        const rect = panel.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const target = scrollTop + rect.top - 80;
+        if (rect.bottom > window.innerHeight || rect.top < 60) {
+          window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+        }
+      }, 0);
     }
   };
 
