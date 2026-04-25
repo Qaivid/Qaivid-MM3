@@ -733,8 +733,10 @@ class VisualStoryboardEngine:
 
     def _get_framing_directive(self, expression_mode: str) -> str:
         """Return the framing directive for an expression_mode, applying the
-        current emotional mode's matrix first before the global fallback."""
-        primary_id = (self._emotional_mode_packet or {}).get("primary_mode") or ""
+        current emotional mode's matrix first before the global fallback.
+        Safe to call regardless of initialisation path — falls back to default
+        directives when no emotional_mode_packet has been injected."""
+        primary_id = (getattr(self, "_emotional_mode_packet", None) or {}).get("primary_mode") or ""
         if primary_id:
             mode_directives = self._EMOTIONAL_FRAMING_DIRECTIVES.get(primary_id) or {}
             directive = mode_directives.get(expression_mode)
@@ -749,8 +751,10 @@ class VisualStoryboardEngine:
         already pre-blended primary 70 % + secondary 30 % by build_emotional_mode_packet).
         Fallback: local _EMOTIONAL_FRAMING matrix (keyed by primary_mode_id), then
         class-level _VARIETY_TARGETS if mode is absent or unknown.
+        Safe to call regardless of initialisation path — defaults to neutral when
+        no emotional_mode_packet has been injected.
         """
-        emp = self._emotional_mode_packet
+        emp = getattr(self, "_emotional_mode_packet", None) or {}
 
         # Use Brain packet's pre-blended biases as the single source of truth.
         biases = emp.get("shot_intensity_biases")
@@ -781,8 +785,9 @@ class VisualStoryboardEngine:
         return targets
 
     def _get_mode_adjusted_caps(self) -> Dict[str, float]:
-        """Return variety caps adjusted for the current emotional mode."""
-        emp = self._emotional_mode_packet
+        """Return variety caps adjusted for the current emotional mode.
+        Safe to call regardless of initialisation path — defaults to neutral."""
+        emp = getattr(self, "_emotional_mode_packet", None) or {}
         primary_id  = emp.get("primary_mode") or ""
 
         primary_framing = _EMOTIONAL_FRAMING.get(primary_id)

@@ -493,7 +493,6 @@ def compose_image_prompt(
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
     emotional_mode_modifier: str = "",
-    project_id: Optional[str] = None,
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
@@ -509,33 +508,9 @@ def compose_image_prompt(
         (Stage 2b Brain key).  Canonical design: callers read the Brain and pass
         the modifier here so this function stays pure and testable.  Pipeline reads
         happen in pipeline_worker._render_shot and image_generator.generate_shot_still.
-
-    project_id: when provided AND emotional_mode_modifier is empty, the function
-        self-reads `emotional_mode_packet` from Brain to derive the modifier.
-        This path supports the spec-stated project_id self-read API contract.
-        Callers that already hold the packet should pass emotional_mode_modifier
-        directly to avoid a redundant DB round-trip.
+        Applied on BOTH the standard composition path and the user_override path so
+        all generated prompts carry the active emotional register.
     """
-    # Spec-compliant self-read path: derive modifier from Brain when not injected.
-    if not emotional_mode_modifier and project_id:
-        try:
-            from project_brain import ProjectBrain  # type: ignore
-            import psycopg as _pg
-            from psycopg.rows import dict_row as _dict_row
-            import os as _os
-            _db_url = _os.environ.get("DATABASE_URL", "")
-            with _pg.connect(_db_url, row_factory=_dict_row) as _conn:
-                _brain = ProjectBrain.load(project_id, _conn)
-            if _brain.is_populated("emotional_mode_packet"):
-                _emp = _brain.read("emotional_mode_packet") or {}
-                emotional_mode_modifier = str(_emp.get("cinematic_modifier") or "").strip()
-        except Exception as _exc:
-            import logging as _logging
-            _logging.getLogger(__name__).debug(
-                "[compose_image_prompt] Brain self-read failed for project_id=%r — "
-                "emotional_mode_modifier will be empty. Reason: %s",
-                project_id, _exc,
-            )
     bc = brain_char or {}
     identity_seed    = (bc.get("identity_seed")    or "").strip()
     archetype        = (bc.get("archetype")        or "").strip()
