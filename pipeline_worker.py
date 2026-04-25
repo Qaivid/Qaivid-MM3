@@ -2814,22 +2814,47 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # director_note/central_metaphor would be lost when the storyboard
         # rebuilds context from raw text).
         #
-        # MM3.1 pacing wiring: emotional_mode_packet.pacing_profile flows from
-        # here → ProductionOrchestrator.run_to_timeline()
-        #   → ProductionOrchestrator.assemble_timeline(emotional_mode_packet=...)
-        #     → RhythmicAssemblyEngine.assemble_timeline(emotional_mode_packet=...)
-        #       → per-shot duration clamping using pacing_profile min/max_beat_duration.
-        # This is the primary (and only) place pipeline_worker injects mode pacing.
-        _emp_pacing = (brain_emotional or {}).get("pacing_profile") or {}
-        if _emp_pacing:
-            logger.info(
-                "_stage_brief_job: applying emotional pacing for project=%s "
-                "mode=%s min=%.2f max=%.2f",
-                project_id,
-                (brain_emotional or {}).get("primary_mode", "?"),
-                _emp_pacing.get("min_beat_duration", 0),
-                _emp_pacing.get("max_beat_duration", 0),
-            )
+        # MM3.1 Stage-9 pacing:
+        # (a) call get_pacing_profile(content_type, primary_mode) from deterministic_rules
+        #     to obtain the mode-adjusted shot-ratio/preferred-avg-duration profile and
+        #     merge those values into the live emotional_mode_packet that will be passed
+        #     downstream — this ensures RhythmicAssemblyEngine and any other consumer of
+        #     the packet can reference both the beat-duration clamps AND the content-type
+        #     ratio/avg hints in a single coherent packet.
+        # (b) log the full effective pacing so the runtime path is explicit and traceable.
+        _emp_for_timeline = dict(brain_emotional) if brain_emotional else {}
+        _primary_mode = _emp_for_timeline.get("primary_mode") or ""
+        if _primary_mode:
+            try:
+                from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
+                _det_pacing = _get_det_pacing(genre or "song", _primary_mode)
+                # Merge deterministic shot-plan hints into the pacing_profile sub-dict
+                # (additive; beat-duration clamps already set by emotional_mode_engine).
+                _existing_pp = dict(_emp_for_timeline.get("pacing_profile") or {})
+                _existing_pp.update({
+                    k: _det_pacing[k]
+                    for k in ("preferred_avg_duration", "long_shot_ratio",
+                              "medium_shot_ratio", "short_shot_ratio",
+                              "min_shot_duration", "max_shot_duration")
+                    if k in _det_pacing
+                })
+                _emp_for_timeline["pacing_profile"] = _existing_pp
+                logger.info(
+                    "_stage_brief_job: enriched pacing_profile for project=%s mode=%s "
+                    "preferred_avg=%.1fs long_ratio=%.2f short_ratio=%.2f "
+                    "beat_min=%.2f beat_max=%.2f",
+                    project_id, _primary_mode,
+                    _existing_pp.get("preferred_avg_duration", 0),
+                    _existing_pp.get("long_shot_ratio", 0),
+                    _existing_pp.get("short_shot_ratio", 0),
+                    _existing_pp.get("min_beat_duration", 0),
+                    _existing_pp.get("max_beat_duration", 0),
+                )
+            except Exception:
+                logger.debug(
+                    "_stage_brief_job: deterministic pacing merge failed for project=%s (non-fatal)",
+                    project_id,
+                )
         pre_result = _run_async(orchestrator.run_to_timeline(
             text=text, genre=genre,
             audio_analytics=audio_data_blob,
@@ -2837,7 +2862,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             # Brief runs AFTER storyboard now (master spec) — never pass it.
             creative_brief=None,
             timed_lyrics=timed_lyrics or None,
-            emotional_mode_packet=brain_emotional or {},
+            emotional_mode_packet=_emp_for_timeline,
         ))
         raw_storyboard = pre_result.get("storyboard") or []
         raw_timeline = pre_result.get("timeline") or []
@@ -2857,31 +2882,6 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                 "running in legacy mode (cinematic_beat_engine modules may be missing)",
                 project_id,
             )
-
-        # MM3.1 Stage-9 explicit pacing lookup:
-        # Call get_pacing_profile(content_type, primary_mode) from deterministic_rules
-        # to read the per-mode shot-ratio/preferred-avg-duration profile and log it.
-        # This is a complementary lookup to the RhythmicAssemblyEngine's beat-duration
-        # clamping (which uses emotional_mode_packet.pacing_profile); both paths honour
-        # the detected emotional mode.
-        _primary_mode = (brain_emotional or {}).get("primary_mode") or ""
-        if _primary_mode:
-            try:
-                from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
-                _det_pacing = _get_det_pacing(genre or "song", _primary_mode)
-                logger.info(
-                    "_stage_brief_job: deterministic pacing for project=%s mode=%s "
-                    "preferred_avg=%.1fs long_ratio=%.2f short_ratio=%.2f",
-                    project_id, _primary_mode,
-                    _det_pacing.get("preferred_avg_duration", 0),
-                    _det_pacing.get("long_shot_ratio", 0),
-                    _det_pacing.get("short_shot_ratio", 0),
-                )
-            except Exception:
-                logger.debug(
-                    "_stage_brief_job: deterministic pacing lookup failed for project=%s (non-fatal)",
-                    project_id,
-                )
 
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Applying style grading…"}, stage="running_2")
