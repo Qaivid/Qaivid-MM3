@@ -529,8 +529,13 @@ def compose_image_prompt(
             if _brain.is_populated("emotional_mode_packet"):
                 _emp = _brain.read("emotional_mode_packet") or {}
                 emotional_mode_modifier = str(_emp.get("cinematic_modifier") or "").strip()
-        except Exception:
-            pass  # Fall through to empty modifier — non-fatal
+        except Exception as _exc:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "[compose_image_prompt] Brain self-read failed for project_id=%r — "
+                "emotional_mode_modifier will be empty. Reason: %s",
+                project_id, _exc,
+            )
     bc = brain_char or {}
     identity_seed    = (bc.get("identity_seed")    or "").strip()
     archetype        = (bc.get("archetype")        or "").strip()
@@ -543,8 +548,14 @@ def compose_image_prompt(
         body = _clean_text(user_override)
         body = _inject_verb_fallback(body, shot)
         body = _inject_env_fallback(body, shot)
+        # Always prepend mode modifier so user-edited prompts remain mode-aware.
+        effective_cine = (
+            f"{emotional_mode_modifier}, {cine_prefix}".strip(", ")
+            if emotional_mode_modifier and cine_prefix
+            else emotional_mode_modifier or cine_prefix
+        )
         prompt = _attach_envelope(
-            body, cine_prefix, has_character_ref, has_environment_ref,
+            body, effective_cine, has_character_ref, has_environment_ref,
             identity_seed=identity_seed,
             archetype=archetype,
             continuity_rules=char_rules or None,

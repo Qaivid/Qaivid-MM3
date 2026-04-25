@@ -166,8 +166,13 @@ class ShotVarietyEngine:
                     _brain = ProjectBrain.load(project_id, _conn)
                 if _brain.is_populated("emotional_mode_packet"):
                     emp = _brain.read("emotional_mode_packet") or {}
-            except Exception:
-                pass  # Degrade to neutral mode — Brain unavailable
+            except Exception as _exc:
+                import logging as _logging
+                _logging.getLogger(__name__).debug(
+                    "[ShotVarietyEngine] Brain self-read failed for project_id=%r — "
+                    "degrading to neutral mode. Reason: %s",
+                    project_id, _exc,
+                )
         primary_id   = emp.get("primary_mode") or ""
         secondary_id = emp.get("secondary_mode") or ""
         pw = float(emp.get("primary_weight", 1.0))
