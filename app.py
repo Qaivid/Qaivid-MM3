@@ -3459,16 +3459,16 @@ def stills_approve(project_id: str):
     if not advanced:
         flash("Cannot advance — project is not at the stills review step.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    # Seed video_asset rows (queued status) up front so the post-render
-    # Video Studio has entries to display once clips are produced.
-    try:
-        timeline = project.get("styled_timeline") or []
-        shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in timeline]
-        seed_video_rows(project_id, shot_indices)
-    except Exception:
-        pass  # Non-fatal; studio page works fine without pre-seeded rows
-    kick_stage_video_assembly(project_id)
-    return redirect(url_for("project_detail", project_id=project_id))
+    # Advance directly to Post Production so the user can generate a Quick
+    # Video immediately.  Full AI render is available from within Post Production.
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET stage='post_production', status='awaiting_review', "
+            "       updated_at=NOW() WHERE id=%s",
+            (project_id,),
+        )
+        conn.commit()
+    return redirect(url_for("postprod_page", project_id=project_id))
 
 
 # ── Video clips status JSON (polling) ─────────────────────────────────────
@@ -3692,8 +3692,8 @@ def postprod_page(project_id: str):
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
-    if project.get("stage") not in ("post_production", "videos_review", "final_review",
-                                    "complete", "stills_review"):
+    if project.get("stage") not in ("post_production", "stills_control", "videos_review",
+                                    "final_review", "complete", "stills_review"):
         flash("Post Production is not available yet — approve your stills first.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
@@ -3914,15 +3914,23 @@ def postprod_ai_status(project_id: str):
 @app.route("/project/<project_id>/postprod/advance", methods=["POST"])
 @login_required
 def postprod_advance(project_id: str):
-    """Skip quick video — kick AI render (Stage 4) and go to videos_review."""
+    """From Post Production, kick Full AI Render pipeline (video assembly → clips → stitch)."""
     project = _get_project(project_id, current_user()["id"])
     if not project:
         abort(404)
     stage = project.get("stage")
-    if stage not in ("post_production", "stills_review"):
+    if stage not in ("post_production", "stills_review", "stills_control"):
         flash("Cannot advance from this stage.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    kick_stage_4(project_id)
+    # Pre-seed video_asset rows so the Video Studio has display entries ready.
+    try:
+        timeline = project.get("styled_timeline") or []
+        shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in timeline]
+        seed_video_rows(project_id, shot_indices)
+    except Exception:
+        pass  # Non-fatal
+    # Build motion plan first (parks at video_assembly_review for approval).
+    kick_stage_video_assembly(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 

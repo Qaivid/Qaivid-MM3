@@ -6,71 +6,74 @@
 <div class="pp-wrap">
   {% include '_stage_header.html' %}
 
-  <!-- ── Top toolbar ────────────────────────────────────────────────────── -->
-  <div class="pp-toolbar">
-    <div class="pp-toolbar-left">
-      <span class="pp-project-badge">{{ project.name }}</span>
-      <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
-      <!-- Source mode switcher -->
-      <div class="pp-source-switcher" id="pp-source-switcher">
-        <button class="pp-source-pill active" id="pill-quick"
-                onclick="ppSwitchMode('quick')" title="Animated stills with Ken Burns effects">
-          ⚡ Quick Video
-        </button>
-        <button class="pp-source-pill {% if not ai_video_url %}pp-source-pill-locked{% endif %}"
-                id="pill-ai"
-                onclick="ppSwitchMode('ai')"
-                title="{% if ai_video_url %}Apply effects to full AI-rendered video{% else %}AI video not rendered yet — click Full AI Render below{% endif %}">
-          🎬 AI Rendered
-          {% if ai_video_url %}<span class="pp-source-ready-dot"></span>{% endif %}
-        </button>
-      </div>
-    </div>
-    <div class="pp-toolbar-right">
-      <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save Settings</button>
+  <!-- ── Project info bar ──────────────────────────────────────────────── -->
+  <div class="pp-info-bar">
+    <span class="pp-project-badge">{{ project.name }}</span>
+    <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
+  </div>
 
-      <!-- Quick mode buttons -->
+  <!-- ── YouTube-style video tab bar ───────────────────────────────────── -->
+  <div class="pp-video-tab-bar">
+    <!-- Left: large mode tabs -->
+    <div class="pp-video-tabs" id="pp-source-switcher">
+      <button class="pp-vtab active" id="pill-quick"
+              onclick="ppSwitchMode('quick')"
+              title="Animated stills with Ken Burns effects">
+        <span class="pp-vtab-icon">⚡</span>
+        <span class="pp-vtab-label">Quick Video</span>
+        {% if quick_video_url %}<span class="pp-vtab-dot pp-vtab-dot-quick"></span>{% endif %}
+      </button>
+      <button class="pp-vtab {% if not ai_video_url %}pp-vtab-locked{% endif %}"
+              id="pill-ai"
+              onclick="ppSwitchMode('ai')"
+              title="{% if ai_video_url %}Apply effects to full AI-rendered video{% else %}AI video not rendered yet — use Full AI Render below{% endif %}">
+        <span class="pp-vtab-icon">🎬</span>
+        <span class="pp-vtab-label">AI Rendered</span>
+        {% if ai_video_url %}<span class="pp-vtab-dot pp-vtab-dot-ai"></span>{% endif %}
+      </button>
+    </div>
+
+    <!-- Right: mode-specific action buttons -->
+    <div class="pp-tab-actions">
+      <!-- Quick mode actions -->
       <button class="pp-btn pp-btn-generate pp-quick-only" id="btn-generate" onclick="ppGenerate()">
         ▶ Generate Quick Video
       </button>
       {% if quick_video_url %}
-      <a class="pp-btn pp-btn-download pp-quick-only" id="btn-download" href="{{ quick_video_url }}" download target="_blank">
-        ⬇ Download
-      </a>
-      <button id="btn-share-quick"
-              onclick="toggleShareQuick('{{ project.id }}', this)"
+      <a class="pp-btn pp-btn-download pp-quick-only" id="btn-download"
+         href="{{ quick_video_url }}" download target="_blank">⬇ Download</a>
+      <button id="btn-share-quick" onclick="toggleShareQuick('{{ project.id }}', this)"
               class="pp-btn pp-quick-only {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
-              title="Share this quick video on the Qaivid homepage">
+              title="Share on the Qaivid homepage">
         {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
       </button>
       {% else %}
-      <a class="pp-btn pp-btn-download pp-btn-download-hidden pp-quick-only" id="btn-download" href="#" download target="_blank">
-        ⬇ Download
-      </a>
+      <a class="pp-btn pp-btn-download pp-btn-download-hidden pp-quick-only" id="btn-download"
+         href="#" download target="_blank">⬇ Download</a>
       {% endif %}
-      <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}" style="display:inline;" class="pp-quick-only" id="form-advance">
+      <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}"
+            style="display:inline;" class="pp-quick-only" id="form-advance">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="pp-btn pp-btn-ai">Full AI Render →</button>
       </form>
 
-      <!-- AI mode buttons (hidden by default) -->
+      <!-- AI mode actions (hidden until AI mode active) -->
       {% if ai_video_url %}
       <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
               onclick="ppGenerateAI()" style="display:none;">
         ▶ Apply &amp; Export AI Video
       </button>
       <a class="pp-btn pp-btn-download {% if not ai_export_url %}pp-btn-download-hidden{% endif %} pp-ai-only"
-         id="btn-download-ai"
-         href="{{ ai_export_url or '#' }}" download target="_blank"
-         style="display:none;">
-        ⬇ Download AI Export
-      </a>
+         id="btn-download-ai" href="{{ ai_export_url or '#' }}" download target="_blank"
+         style="display:none;">⬇ Download AI Export</a>
       {% else %}
       <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
               disabled style="display:none; opacity:.5; cursor:not-allowed;">
         ▶ Apply &amp; Export AI Video
       </button>
       {% endif %}
+
+      <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save</button>
     </div>
   </div>
 
@@ -615,19 +618,55 @@
   .pp-wrap > *:not(.studio-sidebar) { grid-column: 1; }
 }
 
-.pp-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  background: #11111a; border: 1px solid #2a2a38; border-radius: 10px;
-  padding: 10px 16px; margin: 14px 0 10px; gap: 12px; flex-wrap: wrap;
+/* ── Info bar ─────────────────────────────────────────────────────────── */
+.pp-info-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0 6px;
 }
-.pp-toolbar-left  { display: flex; align-items: center; gap: 12px; }
-.pp-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pp-project-badge {
   font-weight: 700; font-size: 14px; color: #fff;
   background: rgba(212,255,58,.08); border: 1px solid rgba(212,255,58,.2);
   padding: 4px 10px; border-radius: 6px;
 }
 .pp-shot-count { color: #5a6270; font-size: 12px; }
+
+/* ── YouTube-style video tab bar ──────────────────────────────────────── */
+.pp-video-tab-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 0 0 14px; border-bottom: 1px solid #1c1c2e;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.pp-video-tabs {
+  display: flex; gap: 4px;
+  background: #0d0d18; border: 1px solid #1e1e30;
+  border-radius: 12px; padding: 5px;
+}
+.pp-vtab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 22px; border-radius: 8px;
+  font-size: 14px; font-weight: 700; letter-spacing: .01em;
+  cursor: pointer; border: none; background: transparent;
+  color: #5a6270; transition: all .18s; white-space: nowrap;
+}
+.pp-vtab:hover { color: #cfd6df; background: rgba(255,255,255,.06); }
+.pp-vtab.active {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  box-shadow: 0 2px 14px rgba(37,99,235,.35);
+}
+.pp-vtab-icon { font-size: 16px; line-height: 1; }
+.pp-vtab-label { }
+.pp-vtab-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.pp-vtab-dot-quick { background: #d4ff3a; }
+.pp-vtab-dot-ai    { background: #22c55e; }
+.pp-vtab-locked { opacity: .45; cursor: default; }
+.pp-vtab-locked:hover { color: #5a6270 !important; background: transparent !important; }
+
+.pp-tab-actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
 
 /* Buttons */
 .pp-btn {
@@ -677,15 +716,16 @@
 @media (max-width: 900px) { .pp-studio { grid-template-columns: 1fr; } }
 
 /* ── Preview ─────────────────────────────────────────────────────────── */
-.pp-preview-col { display: flex; flex-direction: column; gap: 10px; max-width: 700px; }
+.pp-preview-col { display: flex; flex-direction: column; gap: 10px; }
 .pp-preview-frame {
-  background: #000; border-radius: 10px; overflow: hidden;
+  background: #000; border-radius: 12px; overflow: hidden;
   aspect-ratio: 16/9; position: relative;
-  border: 1px solid #2a2a38; max-height: 400px;
+  border: 1px solid #1e1e30;
+  box-shadow: 0 4px 32px rgba(0,0,0,.6);
 }
-.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 400px; }
-.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-height: 400px; }
-.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-height: 400px; }
+.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 540px; }
+.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-height: 540px; }
+.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-height: 540px; }
 
 .pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
 .pp-kb-img  {
