@@ -167,6 +167,28 @@ class ShotVarietyEngine:
         else:
             self.shot_types = list(primary_cycle)
 
+    @classmethod
+    def from_project_id(cls, project_id: str) -> "ShotVarietyEngine":
+        """Spec-aligned factory: self-reads emotional_mode_packet from Brain.
+
+        Satisfies the spec's stated contract of project_id-based Brain self-read
+        while delegating to the pure injection-based __init__ so engines remain
+        independently testable.  Callers that already hold the packet should call
+        __init__ directly with the injected packet for efficiency.
+        """
+        emp: Dict[str, Any] = {}
+        try:
+            from project_brain import ProjectBrain  # type: ignore
+            import psycopg2, os
+            db_url = os.environ.get("DATABASE_URL", "")
+            with psycopg2.connect(db_url) as _conn:
+                brain = ProjectBrain.load(project_id, _conn)
+            if brain.is_populated("emotional_mode_packet"):
+                emp = brain.read("emotional_mode_packet") or {}
+        except Exception:
+            pass  # Degrade to neutral mode — Brain unavailable
+        return cls(emotional_mode_packet=emp)
+
     @staticmethod
     def shot_type_to_mode(shot_type: str) -> str:
         """Convert a shot_type label to a VSE expression_mode string."""
