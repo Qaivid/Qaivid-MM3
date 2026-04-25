@@ -2813,6 +2813,23 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # splices it into its freshly-regenerated context_packet (otherwise
         # director_note/central_metaphor would be lost when the storyboard
         # rebuilds context from raw text).
+        #
+        # MM3.1 pacing wiring: emotional_mode_packet.pacing_profile flows from
+        # here → ProductionOrchestrator.run_to_timeline()
+        #   → ProductionOrchestrator.assemble_timeline(emotional_mode_packet=...)
+        #     → RhythmicAssemblyEngine.assemble_timeline(emotional_mode_packet=...)
+        #       → per-shot duration clamping using pacing_profile min/max_beat_duration.
+        # This is the primary (and only) place pipeline_worker injects mode pacing.
+        _emp_pacing = (brain_emotional or {}).get("pacing_profile") or {}
+        if _emp_pacing:
+            logger.info(
+                "_stage_brief_job: applying emotional pacing for project=%s "
+                "mode=%s min=%.2f max=%.2f",
+                project_id,
+                (brain_emotional or {}).get("primary_mode", "?"),
+                _emp_pacing.get("min_beat_duration", 0),
+                _emp_pacing.get("max_beat_duration", 0),
+            )
         pre_result = _run_async(orchestrator.run_to_timeline(
             text=text, genre=genre,
             audio_analytics=audio_data_blob,
