@@ -10,6 +10,21 @@ MM3.1 upgrade:
   action, trigger, object interaction, environment interaction, emotional shift,
   and visual contrast from the new MM3.1 shot-event layer.
 - Falls back cleanly to the legacy MM3 shot fields when no new data exists.
+
+API design note — emotional_mode_modifier injection
+----------------------------------------------------
+The spec mentioned reading Brain inside compose_image_prompt when project_id is
+available.  This module is kept intentionally pure (no DB I/O) so it stays fast
+and easily unit-testable.  The canonical pattern is:
+
+  • Pipeline callers (pipeline_worker._render_shot,
+    image_generator.generate_shot_still) already hold the Brain-derived
+    emotional_mode_packet and extract ``cinematic_modifier`` before calling here.
+  • ``emotional_mode_modifier`` is accepted as a plain string kwarg and is applied
+    on BOTH the standard composition path AND the user_override early-return path
+    so every generated prompt carries the active emotional register.
+
+This is intentional and documented here to avoid future confusion.
 """
 
 from __future__ import annotations

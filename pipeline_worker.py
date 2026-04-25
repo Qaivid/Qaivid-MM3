@@ -2814,33 +2814,23 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         # director_note/central_metaphor would be lost when the storyboard
         # rebuilds context from raw text).
         #
-        # MM3.1 Stage-9 pacing:
-        # (a) call get_pacing_profile(content_type, primary_mode) from deterministic_rules
-        #     to obtain the mode-adjusted shot-ratio/preferred-avg-duration profile and
-        #     merge those values into the live emotional_mode_packet that will be passed
-        #     downstream — this ensures RhythmicAssemblyEngine and any other consumer of
-        #     the packet can reference both the beat-duration clamps AND the content-type
-        #     ratio/avg hints in a single coherent packet.
-        # (b) log the full effective pacing so the runtime path is explicit and traceable.
+        # MM3.1 Stage-9: merge mode-aware pacing into emotional_mode_packet for
+        # downstream consumers (RhythmicAssemblyEngine, etc.).
         _emp_for_timeline = dict(brain_emotional) if brain_emotional else {}
         _primary_mode = _emp_for_timeline.get("primary_mode") or ""
-        # Integration health-check: log a WARNING when emotional_mode_packet is
-        # absent at Stage 9+.  This should never happen in a clean pipeline run
-        # (Stage 2b writes the packet before Stage 3), but surfaces misconfiguration
-        # or data loss early without hard-failing the render job.
         if not _primary_mode:
+            # Stage 2b should have written this before Stage 3.  Log so ops can spot
+            # missing Brain writes without failing the render.
             logger.warning(
-                "Stage-9 render: emotional_mode_packet.primary_mode absent for "
-                "project=%s — pacing/mode overrides will not be applied.  "
-                "Check that Stage 2b completed successfully.",
+                "Stage-9: emotional_mode_packet.primary_mode absent for project=%s — "
+                "pacing/mode overrides skipped.  Check Stage 2b completed.",
                 project_id,
             )
         if _primary_mode:
             try:
                 from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
-                # `genre` (e.g. "song", "poem", "hip_hop") is the canonical content_type
-                # key expected by get_pacing_profile.  The column stores the same values
-                # as PACING_PROFILES keys; fall back to "song" for unknown genre strings.
+                # genre (DB column) == content_type key in PACING_PROFILES.
+                # Only "song"/"poem" have distinct profiles; others fall back to "song".
                 _content_type = genre if genre in ("song", "poem") else "song"
                 _det_pacing = _get_det_pacing(_content_type, _primary_mode)
                 # Merge deterministic shot-plan hints into the pacing_profile sub-dict

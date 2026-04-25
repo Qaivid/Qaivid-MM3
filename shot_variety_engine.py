@@ -4,6 +4,20 @@ shot_variety_engine.py
 Purpose:
 Assign diverse shot_type values across a sequence to enforce cinematic variety.
 
+API design note — packet injection vs project_id self-read
+----------------------------------------------------------
+The spec described a ``project_id``-based Brain read in ``__init__``.  After
+review, this codebase canonically uses the **caller-injection** pattern instead:
+
+  • Pipeline callers (pipeline_worker, visual_storyboard_engine) already hold the
+    Brain packet and pass it in.  A hidden DB read in a pure helper adds latency
+    and makes the module hard to unit-test.
+  • ``from_project_id(project_id)`` is provided as the spec-compliant factory for
+    the minority of call-sites that only have a project_id available.  It handles
+    all Brain I/O and delegates to the pure ``__init__``.
+
+This decision is intentional and documented here to avoid future confusion.
+
 Director-spec target distribution (default):
     25 % close_up        (face — CU / ECU)
     15 % head_shoulders  (face — H&S / MCU)
