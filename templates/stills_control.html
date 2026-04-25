@@ -874,7 +874,7 @@
     const btn = document.getElementById('btn-outpaint-all');
     if (btn) { btn.textContent = '\u23F3 Queuing\u2026'; btn.style.opacity = '.7'; }
     try {
-      const resp = await fetch('/project/' + PID + '/stills/outpaint-all', { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
+      const resp = await fetch('/project/' + PID + '/stills/outpaint-all', { method: 'POST', headers: { 'X-CSRFToken': CSRF }, credentials: 'same-origin' });
       const data = await resp.json();
       if (!data.ok) { alert('Outpaint error: ' + (data.error || 'unknown')); return; }
       for (const [idx, s] of Object.entries(shotState)) {
@@ -887,7 +887,7 @@
   window.opOutpaintOne = async function(idx) {
     applyOpStatus(idx, 'rendering', null);
     startOpPolling();
-    try { await fetch('/project/' + PID + '/stills/outpaint/' + idx, { method: 'POST', headers: { 'X-CSRFToken': CSRF } }); }
+    try { await fetch('/project/' + PID + '/stills/outpaint/' + idx, { method: 'POST', headers: { 'X-CSRFToken': CSRF }, credentials: 'same-origin' }); }
     catch(e) { applyOpStatus(idx, 'failed', null); }
   };
 
