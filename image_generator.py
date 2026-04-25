@@ -43,16 +43,16 @@ SHOT_MODEL_ENV_I2I = "fal-ai/flux/dev/image-to-image"
 # Deprecated alias sdxl_face → standard (ip-adapter-face-id-plus was removed).
 STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell for all shot types
 
-# ── OpenAI gpt-image-1.5 cheap-mode constants ────────────────────────────────
-# Cheap mode routes ALL generation (refs + stills) through gpt-image-1.5 at
+# ── OpenAI gpt-image-1 cheap-mode constants ──────────────────────────────────
+# Cheap mode routes ALL generation (refs + stills) through gpt-image-1 at
 # "low" quality. Cost: $0.009–$0.013/image (1024×1024 → 1536×1024)
 # vs ~$0.025–0.05 for FAL flux-pulid quality mode.
-# Labelled "GPT Image 1.5 · Low" in the admin UI.
-# gpt-image-1.5 supports image-to-image and multi-image references —
+# Labelled "GPT Image 1 · Low" in the admin UI.
+# gpt-image-1 supports image-to-image and multi-image references —
 # face identity + scene atmosphere preserved in a single edit call.
 # Sizes: 1024x1536 (portrait) for character refs, 1536x1024 for everything
-# else (landscape, nearest to 16:9 that gpt-image-1.5 supports).
-OPENAI_IMAGE_MODEL = "gpt-image-1.5"
+# else (landscape, nearest to 16:9 that gpt-image-1 supports).
+OPENAI_IMAGE_MODEL = "gpt-image-1"
 OPENAI_CHEAP_QUALITY = "low"
 OPENAI_SIZE_LANDSCAPE = "1536x1024"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
@@ -83,7 +83,7 @@ def _openai_client():
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         raise ImageGenerationError("OPENAI_API_KEY is not set in secrets.")
-    return OpenAI(api_key=key)
+    return OpenAI(api_key=key, timeout=180.0)
 
 
 def ai_build_ref_prompts(
