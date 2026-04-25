@@ -53,7 +53,7 @@
       <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}"
             style="display:inline;" class="pp-quick-only" id="form-advance">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="nle-btn nle-btn-ai">Full AI Render →</button>
+        <button type="submit" class="nle-btn nle-btn-ai">AI Render →</button>
       </form>
 
       <!-- AI mode actions -->
@@ -635,71 +635,76 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  gap: 12px;
+  padding: 0 12px;
+  gap: 8px;
   background: #0b0b1a;
   border-bottom: 1px solid #18182e;
   z-index: 10;
+  overflow: hidden;
 }
 .nle-tb-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 .nle-back {
   color: #5a6270;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   text-decoration: none;
-  padding: 5px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid #1e1e30;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: color .15s, border-color .15s;
 }
 .nle-back:hover { color: #d4ff3a; border-color: rgba(212,255,58,.3); }
 .nle-tb-sep {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: #1e1e30;
   flex-shrink: 0;
 }
 .nle-tb-name {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  max-width: 160px;
 }
 .nle-tb-meta {
   color: #444460;
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .nle-tb-center {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   justify-content: center;
+  min-width: 0;
 }
 .nle-mode-tabs {
   display: flex;
   background: #0d0d1c;
   border: 1px solid #1e1e30;
-  border-radius: 10px;
-  padding: 4px;
-  gap: 3px;
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
 }
 .nle-mtab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 20px;
-  border-radius: 7px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   border: none;
@@ -713,15 +718,15 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 .nle-mtab.active {
   background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   color: #fff;
-  box-shadow: 0 2px 12px rgba(124,58,237,.35);
+  box-shadow: 0 2px 10px rgba(124,58,237,.35);
 }
 .nle-mtab-locked { opacity: .45; cursor: not-allowed !important; }
 .nle-mtab-locked:hover { background: transparent !important; color: #4a5260 !important; }
-.nle-mt-icon { font-size: 14px; }
+.nle-mt-icon { font-size: 13px; }
 .nle-mt-dot {
   position: absolute;
-  top: 5px; right: 6px;
-  width: 6px; height: 6px;
+  top: 4px; right: 5px;
+  width: 5px; height: 5px;
   border-radius: 50%;
 }
 .nle-mt-dot-q  { background: #4ade80; box-shadow: 0 0 4px #4ade80; }
@@ -729,7 +734,7 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 .nle-tb-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex: 0 0 auto;
 }
 
@@ -737,10 +742,10 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
 .nle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  border-radius: 7px;
-  font-size: 12px;
+  gap: 4px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   border: 1px solid #1e1e30;
@@ -995,29 +1000,28 @@ body.pp-nle-mode .studio-sidebar { display: none !important; }
   display: flex;
   border-bottom: 1px solid #14142a;
   flex-shrink: 0;
-  background: #0b0b1a;
+  background: #0a0a18;
   overflow-x: auto;
   scrollbar-width: none;
 }
 .pp-tabs::-webkit-scrollbar { display: none; }
 .pp-tab {
   flex: 1;
-  padding: 10px 4px;
+  padding: 11px 6px;
   border: none;
   background: transparent;
-  color: #4a5260;
+  color: #5a6475;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all .15s;
   white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  min-width: 52px;
+  letter-spacing: .02em;
+  min-width: 54px;
 }
-.pp-tab:hover { color: #8899aa; }
-.pp-tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: rgba(37,99,235,.07); }
+.pp-tab:hover { color: #9aaabb; background: rgba(255,255,255,.03); }
+.pp-tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: rgba(37,99,235,.08); }
 
 /* ── Panel content area ──────────────────────────────────────────────── */
 .pp-panel { display: none; flex-direction: column; gap: 0; padding: 14px 14px 20px; overflow-y: auto; flex: 1; }
