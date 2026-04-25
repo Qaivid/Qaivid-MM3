@@ -139,6 +139,10 @@
         {% elif op_ns.op_ready > 0 %}↺ Re-outpaint All
         {% else %}Outpaint All{% endif %}
       </button>
+      <button class="btn-outpaint-remaining" id="btn-outpaint-remaining" onclick="opOutpaintRemaining()"
+              style="{{ '' if (op_ns.op_ready > 0 and op_ns.op_pending + op_ns.op_failed > 0) else 'display:none;' }}">
+        ⬡ Outpaint Remaining ({{ op_ns.op_pending + op_ns.op_failed }})
+      </button>
     </div>
 
     <!-- ══ TWO-COLUMN LAYOUT: filmstrip + detail ══════════════════════════ -->
@@ -423,6 +427,13 @@
   cursor: pointer; transition: background .15s; white-space: nowrap;
 }
 .btn-outpaint:hover { background: rgba(212,255,58,.2); }
+.btn-outpaint-remaining {
+  padding: 4px 10px; font-size: 10px; font-weight: 600;
+  background: rgba(100,160,255,.08); color: #7ab0ff;
+  border: 1px solid rgba(100,160,255,.25); border-radius: 6px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.btn-outpaint-remaining:hover { background: rgba(100,160,255,.18); }
 
 /* ── Other existing shared styles ── */
 .sc-timing-bar {
@@ -728,6 +739,13 @@
       else if (opReady > 0) { btn.textContent = '\u21BA Re-outpaint All'; btn.style.opacity = ''; btn.style.cursor = ''; }
       else { btn.textContent = '\u2B21 Outpaint All to ' + ASPECT; btn.style.opacity = ''; btn.style.cursor = ''; }
     }
+    const btnRem = document.getElementById('btn-outpaint-remaining');
+    if (btnRem) {
+      const remCount = opPending + opFailed;
+      const showRem = opReady > 0 && remCount > 0 && opRendering === 0;
+      btnRem.style.display = showRem ? '' : 'none';
+      btnRem.textContent = '\u2B21 Outpaint Remaining (' + remCount + ')';
+    }
   }
 
   /* ── Poll for still status changes ── */
@@ -879,6 +897,20 @@
       if (!data.ok) { alert('Outpaint error: ' + (data.error || 'unknown')); return; }
       for (const [idx, s] of Object.entries(shotState)) {
         if (s.status === 'ready') applyOpStatus(parseInt(idx), 'rendering', null);
+      }
+      startOpPolling();
+    } catch(e) { alert('Network error starting outpaint.'); }
+  };
+
+  window.opOutpaintRemaining = async function() {
+    const btnRem = document.getElementById('btn-outpaint-remaining');
+    if (btnRem) { btnRem.textContent = '\u23F3 Queuing\u2026'; btnRem.style.opacity = '.7'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/outpaint-remaining', { method: 'POST', headers: { 'X-CSRFToken': CSRF }, credentials: 'same-origin' });
+      const data = await resp.json();
+      if (!data.ok) { alert('Outpaint error: ' + (data.error || 'unknown')); return; }
+      for (const [idx, op] of Object.entries(opState)) {
+        if (op.status !== 'ready') applyOpStatus(parseInt(idx), 'rendering', null);
       }
       startOpPolling();
     } catch(e) { alert('Network error starting outpaint.'); }

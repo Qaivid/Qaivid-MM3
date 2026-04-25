@@ -3303,6 +3303,66 @@ def stills_outpaint_all(project_id: str):
     return jsonify({"ok": True, "queued": len(ready), "aspect_ratio": aspect})
 
 
+@app.route("/project/<project_id>/stills/outpaint-remaining", methods=["POST"])
+@login_required
+def stills_outpaint_remaining(project_id: str):
+    """Queue outpainting only for shots not yet outpainted (status != ready)."""
+    _stills_control_guard(project_id)
+    project = _get_project(project_id, current_user()["id"])
+    aspect = ((project.get("settings") or {}).get("aspect_ratio") or "16:9")
+    assets = _get_shot_assets(project_id)
+    remaining = [
+        a for a in assets
+        if a.get("status") == "ready"
+        and a.get("file_path")
+        and a.get("outpaint_status") != "ready"
+    ]
+    if not remaining:
+        return jsonify({"ok": False, "error": "No remaining shots to outpaint."}), 400
+
+    import threading
+    from image_outpainter import outpaint_shot_still, OutpaintError
+
+    def _run_remaining(pid, idx, url, prompt, ar):
+        with app.app_context():
+            try:
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='rendering' WHERE project_id=%s AND shot_index=%s",
+                        (pid, idx),
+                    )
+                    conn.commit()
+                new_url = outpaint_shot_still(pid, idx, url, prompt, ar)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_url=%s, outpaint_status='ready' WHERE project_id=%s AND shot_index=%s",
+                        (new_url, pid, idx),
+                    )
+                    conn.commit()
+                import logging as _oplog
+                _oplog.getLogger("outpaint").info("Outpaint done shot=%s url=%s", idx, new_url)
+            except Exception as exc:
+                import logging as _oplog
+                _oplog.getLogger("outpaint").exception("Outpaint failed shot=%s: %s", idx, exc)
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET outpaint_status='failed', error=%s WHERE project_id=%s AND shot_index=%s",
+                        (str(exc)[:500], pid, idx),
+                    )
+                    conn.commit()
+
+    for a in remaining:
+        idx = a["shot_index"]
+        t = threading.Thread(
+            target=_run_remaining,
+            args=(project_id, idx, a["file_path"], "", aspect),
+            daemon=True,
+        )
+        t.start()
+
+    return jsonify({"ok": True, "queued": len(remaining), "aspect_ratio": aspect})
+
+
 @app.route("/project/<project_id>/stills/outpaint/<int:shot_index>", methods=["POST"])
 @login_required
 def stills_outpaint_one(project_id: str, shot_index: int):
