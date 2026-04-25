@@ -3,152 +3,487 @@
 {% block title %}{{ project.name }} — Post Production · Qaivid{% endblock %}
 
 {% block content %}
-<div class="pp-wrap">
-  {% include '_stage_header.html' %}
+<div class="pp-nle" id="pp-nle-root">
 
-  <!-- ── Project info bar ──────────────────────────────────────────────── -->
-  <div class="pp-info-bar">
-    <span class="pp-project-badge">{{ project.name }}</span>
-    <span class="pp-shot-count">{{ shots|length }} shots · {{ total_duration }}s</span>
-  </div>
+  <!-- Hidden audio -->
+  {% if audio_url %}
+  <audio id="pp-audio" preload="auto" style="display:none">
+    <source src="{{ audio_url }}" type="audio/mpeg">
+  </audio>
+  {% endif %}
 
-  <!-- ── YouTube-style video tab bar ───────────────────────────────────── -->
-  <div class="pp-video-tab-bar">
-    <!-- Left: large mode tabs -->
-    <div class="pp-video-tabs" id="pp-source-switcher">
-      <button class="pp-vtab active" id="pill-quick"
-              onclick="ppSwitchMode('quick')"
-              title="Animated stills with Ken Burns effects">
-        <span class="pp-vtab-icon">⚡</span>
-        <span class="pp-vtab-label">Quick Video</span>
-        {% if quick_video_url %}<span class="pp-vtab-dot pp-vtab-dot-quick"></span>{% endif %}
-      </button>
-      <button class="pp-vtab {% if not ai_video_url %}pp-vtab-locked{% endif %}"
-              id="pill-ai"
-              onclick="ppSwitchMode('ai')"
-              title="{% if ai_video_url %}Apply effects to full AI-rendered video{% else %}AI video not rendered yet — use Full AI Render below{% endif %}">
-        <span class="pp-vtab-icon">🎬</span>
-        <span class="pp-vtab-label">AI Rendered</span>
-        {% if ai_video_url %}<span class="pp-vtab-dot pp-vtab-dot-ai"></span>{% endif %}
-      </button>
+  <!-- ══ TOPBAR: project + mode switcher + action buttons ════════════════ -->
+  <div class="pp-nle-topbar">
+    <div class="pp-nle-tb-left">
+      <a href="{{ url_for('project_detail', project_id=project.id) }}" class="pp-nle-back">‹ Back</a>
+      <div class="pp-nle-sep"></div>
+      <span class="pp-nle-title">{{ project.name }}</span>
+      <span class="pp-nle-meta">({{ shots|length }} shots · {{ total_duration }}s total)</span>
     </div>
-
-    <!-- Right: mode-specific action buttons -->
-    <div class="pp-tab-actions">
-      <!-- Quick mode actions -->
-      <button class="pp-btn pp-btn-generate pp-quick-only" id="btn-generate" onclick="ppGenerate()">
+    <div class="pp-nle-tb-right">
+      <div class="pp-nle-modesw" id="pp-source-switcher">
+        <button class="pp-nle-mpill active" id="pill-quick" onclick="ppSwitchMode('quick')">
+          ⚡ Quick Video{% if quick_video_url %}<span class="pp-nle-pdot pp-nle-pdot-q"></span>{% endif %}
+        </button>
+        <button class="pp-nle-mpill {% if not ai_video_url %}pp-nle-mpill-locked{% endif %}"
+                id="pill-ai" onclick="ppSwitchMode('ai')">
+          🎬 AI Rendered{% if ai_video_url %}<span class="pp-nle-pdot pp-nle-pdot-ai"></span>{% endif %}
+        </button>
+      </div>
+      <div class="pp-nle-sep"></div>
+      <button class="pp-nle-btn pp-nle-btn-gen pp-quick-only" id="btn-generate" onclick="ppGenerate()">
         ▶ Generate Quick Video
       </button>
-      {% if quick_video_url %}
-      <a class="pp-btn pp-btn-download pp-quick-only" id="btn-download"
-         href="{{ quick_video_url }}" download target="_blank">⬇ Download</a>
-      <button id="btn-share-quick" onclick="toggleShareQuick('{{ project.id }}', this)"
-              class="pp-btn pp-quick-only {% if project.shared %}pp-btn-shared{% else %}pp-btn-share{% endif %}"
-              title="Share on the Qaivid homepage">
-        {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
+      {% if ai_video_url %}
+      <button class="pp-nle-btn pp-nle-btn-gen pp-ai-only" id="btn-generate-ai" onclick="ppGenerateAI()" style="display:none;">
+        ▶ Apply &amp; Export AI
       </button>
       {% else %}
-      <a class="pp-btn pp-btn-download pp-btn-download-hidden pp-quick-only" id="btn-download"
-         href="#" download target="_blank">⬇ Download</a>
+      <button class="pp-nle-btn pp-nle-btn-gen pp-ai-only" id="btn-generate-ai"
+              disabled style="display:none;opacity:.4;cursor:not-allowed;">▶ Apply &amp; Export AI</button>
       {% endif %}
       <form method="post" action="{{ url_for('postprod_advance', project_id=project.id) }}"
             style="display:inline;" class="pp-quick-only" id="form-advance">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="pp-btn pp-btn-ai">Full AI Render →</button>
+        <button type="submit" class="pp-nle-btn pp-nle-btn-ai">Full AI Render →</button>
       </form>
-
-      <!-- AI mode actions (hidden until AI mode active) -->
-      {% if ai_video_url %}
-      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
-              onclick="ppGenerateAI()" style="display:none;">
-        ▶ Apply &amp; Export AI Video
-      </button>
-      <a class="pp-btn pp-btn-download {% if not ai_export_url %}pp-btn-download-hidden{% endif %} pp-ai-only"
-         id="btn-download-ai" href="{{ ai_export_url or '#' }}" download target="_blank"
-         style="display:none;">⬇ Download AI Export</a>
-      {% else %}
-      <button class="pp-btn pp-btn-generate pp-ai-only" id="btn-generate-ai"
-              disabled style="display:none; opacity:.5; cursor:not-allowed;">
-        ▶ Apply &amp; Export AI Video
-      </button>
-      {% endif %}
-
-      <button class="pp-btn pp-btn-save" id="btn-save" onclick="ppSave()">Save</button>
     </div>
   </div>
 
-  <!-- ── Status bar ─────────────────────────────────────────────────────── -->
-  <div class="pp-status-bar" id="pp-status-bar" style="display:none;">
-    <div class="pp-status-spinner"></div>
-    <span id="pp-status-text">Generating quick video…</span>
+  <!-- ══ TOOLBAR: breadcrumb + status + badge + save ══════════════════════ -->
+  <div class="pp-nle-toolbar">
+    <div class="pp-nle-tb2-left">
+      <span class="pp-nle-breadcrumb">{{ project.name }}</span>
+    </div>
+    <div class="pp-nle-tb2-mid">
+      <div class="pp-status-bar" id="pp-status-bar" style="display:none;">
+        <div class="pp-status-spinner"></div>
+        <span id="pp-status-text">Generating quick video…</span>
+      </div>
+      <div class="pp-error-bar" id="pp-error-bar" style="display:none;">
+        <span id="pp-error-text"></span>
+      </div>
+    </div>
+    <div class="pp-nle-tb2-right">
+      {% if ai_video_url %}<span class="pp-nle-ai-badge">✓ AI Rendered</span>{% endif %}
+      {% if quick_video_url %}
+      <a class="pp-nle-btn pp-nle-btn-dl pp-quick-only" id="btn-download"
+         href="{{ quick_video_url }}" download target="_blank">⬇ Download</a>
+      {% else %}
+      <a class="pp-nle-btn pp-nle-btn-dl pp-quick-only" id="btn-download"
+         href="#" style="display:none;">⬇ Download</a>
+      {% endif %}
+      {% if ai_video_url %}
+      <a class="pp-nle-btn pp-nle-btn-dl pp-ai-only {% if not ai_export_url %}pp-btn-download-hidden{% endif %}"
+         id="btn-download-ai" href="{{ ai_export_url or '#' }}" download target="_blank"
+         style="display:none;">⬇ DL AI</a>
+      {% else %}
+      <a class="pp-nle-btn pp-nle-btn-dl pp-ai-only" id="btn-download-ai"
+         href="#" style="display:none;">⬇ DL AI</a>
+      {% endif %}
+      <button id="btn-share-quick" onclick="toggleShareQuick('{{ project.id }}', this)"
+              class="pp-nle-btn {% if project.shared %}pp-nle-btn-shared{% else %}pp-nle-btn-share{% endif %} pp-quick-only">
+        {% if project.shared %}✦ Shared{% else %}↗ Share{% endif %}
+      </button>
+      <button class="pp-nle-btn pp-nle-btn-save" id="btn-save" onclick="ppSave()">Save</button>
+    </div>
   </div>
-  <div class="pp-error-bar" id="pp-error-bar" style="display:none;">
-    <span id="pp-error-text"></span>
-  </div>
 
-  <!-- ── Studio split layout ───────────────────────────────────────────── -->
-  <div class="pp-studio">
+  <!-- ══ MAIN WORKSPACE: player | controls ════════════════════════════════ -->
+  <div class="pp-nle-main">
 
-    <!-- Hidden audio player (synced to stills preview) -->
-    {% if audio_url %}
-    <audio id="pp-audio" preload="auto" style="display:none">
-      <source src="{{ audio_url }}" type="audio/mpeg">
-    </audio>
-    {% endif %}
+    <!-- Left: video player -->
+    <div class="pp-nle-player-col">
+      <div class="pp-nle-player-area">
+        <div class="pp-preview-frame" id="pp-preview-frame">
 
-    <!-- Left: preview + thumbnail strip -->
-    <div class="pp-preview-col">
-      <div class="pp-preview-frame" id="pp-preview-frame">
-        <!-- Ken Burns animated current still (Quick mode) -->
-        <div class="pp-kb-wrap" id="pp-kb-wrap">
-          <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
-          <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
-          <div class="pp-sub-preview" id="pp-sub-preview"></div>
-          <!-- Logo overlay previews -->
-          <div class="pp-logo-tl" id="pp-logo-tl"></div>
-          <div class="pp-logo-tr" id="pp-logo-tr"></div>
-          <div class="pp-logo-bl" id="pp-logo-bl"></div>
-          <div class="pp-logo-br" id="pp-logo-br"></div>
-        </div>
+          <!-- Ken Burns image (Quick mode) -->
+          <div class="pp-kb-wrap" id="pp-kb-wrap">
+            <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
+            <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
+            <div class="pp-sub-preview" id="pp-sub-preview"></div>
+            <div class="pp-logo-tl" id="pp-logo-tl"></div>
+            <div class="pp-logo-tr" id="pp-logo-tr"></div>
+            <div class="pp-logo-bl" id="pp-logo-bl"></div>
+            <div class="pp-logo-br" id="pp-logo-br"></div>
+          </div>
 
-        <!-- AI video player + live preview overlay (AI mode, hidden by default) -->
-        {% if ai_video_url %}
-        <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
-          <video id="pp-ai-video" class="pp-ai-video"
-                 src="{{ ai_video_url }}" preload="metadata" controls playsinline>
-          </video>
-          <!-- Overlay elements mirror the Quick-mode overlays -->
-          <div class="pp-ai-overlay" id="pp-ai-overlay">
-            <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
-            <div class="pp-sub-preview"    id="pp-ai-sub-preview"></div>
-            <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
-            <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
-            <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
-            <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+          <!-- AI video (AI mode) -->
+          {% if ai_video_url %}
+          <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
+            <video id="pp-ai-video" class="pp-ai-video"
+                   src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
+            <div class="pp-ai-overlay" id="pp-ai-overlay">
+              <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
+              <div class="pp-sub-preview" id="pp-ai-sub-preview"></div>
+              <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
+              <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
+              <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
+              <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+            </div>
+          </div>
+          {% else %}
+          <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
+            <div class="pp-ai-no-video-icon">🎬</div>
+            <p>AI video not rendered yet.</p>
+            <p class="pp-ai-no-video-hint">Generate AI clips first, then apply effects and export.</p>
+            <button class="pp-nle-btn pp-nle-btn-ai"
+                    onclick="document.getElementById('form-advance').submit()">
+              Full AI Render →
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- Playback controls overlay (Quick mode) -->
+          <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
+            <button class="pp-ctrl-btn" onclick="ppPrev()" title="First">⏮</button>
+            <button class="pp-ctrl-btn" onclick="ppPrev()" title="Prev">◀</button>
+            <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()">▶</button>
+            <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶</button>
+            <button class="pp-ctrl-btn" onclick="ppNext()" title="Last">⏭</button>
+            <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
+            <span class="pp-shot-lbl">CURRENT SHOT: <strong id="pp-shot-num">1</strong></span>
           </div>
         </div>
-        {% else %}
-        <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
-          <div class="pp-ai-no-video-icon">🎬</div>
-          <p>AI video not rendered yet.</p>
-          <p class="pp-ai-no-video-hint">Generate your AI video clips first, then come back here to apply effects and export.</p>
-          <button class="pp-btn pp-btn-ai pp-ai-no-video-cta"
-                  onclick="document.getElementById('form-advance').submit()">
-            Full AI Render →
-          </button>
-        </div>
-        {% endif %}
+      </div>
+    </div>
 
-        <!-- Play controls (Quick mode only) -->
-        <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
-          <button class="pp-ctrl-btn" onclick="ppPrev()" title="Previous">◀</button>
-          <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()" title="Play/Pause">▶</button>
-          <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶▶</button>
-          <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
+    <!-- Right: tabbed control panel -->
+    <div class="pp-control-panel">
+      <div class="pp-tabs">
+        <button class="pp-tab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
+        <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
+        <button class="pp-tab" onclick="ppTab(this,'over')">Overlays</button>
+        <button class="pp-tab" onclick="ppTab(this,'filt')">Filters</button>
+        <button class="pp-tab" onclick="ppTab(this,'expo')">Export</button>
+      </div>
+
+      <!-- Animation -->
+      <div class="pp-panel active" id="pp-panel-anim">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Global Ken Burns Motion</label>
+          <select class="pp-ctrl-select" id="ctrl-kb-mode" onchange="ppConfigChange()">
+            <option value="zoom-in">Zoom In</option>
+            <option value="zoom-out">Zoom Out</option>
+            <option value="pan-left">Pan Left</option>
+            <option value="pan-right">Pan Right</option>
+            <option value="pan-up">Pan Up</option>
+            <option value="pan-down">Pan Down</option>
+            <option value="static">Static (no motion)</option>
+            <option value="random">Random per shot</option>
+          </select>
+          <p class="pp-ctrl-hint">Click any thumbnail to set a per-shot override.</p>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Transition Between Shots</label>
+          <select class="pp-ctrl-select" id="ctrl-transition" onchange="ppConfigChange()">
+            <option value="crossfade">Crossfade (dissolve)</option>
+            <option value="cut">Hard Cut</option>
+            <option value="dip-to-black">Dip to Black</option>
+            <option value="dissolve">Dissolve</option>
+            <option value="wipe">Wipe Left</option>
+          </select>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Transition Duration
+            <span class="pp-ctrl-val" id="val-trans-dur">0.8s</span>
+          </label>
+          <input type="range" class="pp-range" id="ctrl-trans-dur"
+                 min="0.2" max="2.0" step="0.1" value="0.8"
+                 oninput="ppRangeVal('trans-dur',this.value,'s'); ppConfigChange()">
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Text Area</label>
+          <textarea class="pp-ctrl-select" id="ctrl-text-area" rows="3"
+                    placeholder="Optional text overlay..." style="resize:vertical;"
+                    onchange="ppConfigChange()"></textarea>
         </div>
       </div>
 
-      <!-- Thumbnail strip -->
+      <!-- Subtitles -->
+      <div class="pp-panel" id="pp-panel-subs">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Upload Subtitle File</label>
+          <div class="pp-upload-area" id="srt-upload-area">
+            <input type="file" accept=".srt,.vtt" id="srt-file-input"
+                   style="display:none;" onchange="ppUploadSrt(this)">
+            <button class="pp-upload-btn" onclick="document.getElementById('srt-file-input').click()">
+              ↑ Choose .srt or .vtt
+            </button>
+            <span class="pp-upload-name" id="srt-filename">No file uploaded</span>
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Style Preset</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-preset" onchange="ppSubPreset(this.value); ppConfigChange()">
+            <option value="none">None</option>
+            <option value="classic-white">Classic White</option>
+            <option value="neon-glow">Neon Glow</option>
+            <option value="cinematic-gold">Cinematic Gold</option>
+            <option value="bold-impact">Bold Impact</option>
+            <option value="documentary">Documentary</option>
+            <option value="minimal">Minimal</option>
+            <option value="kids-fun">Kids Fun</option>
+            <option value="cartoon-bubble">Cartoon Bubble</option>
+            <option value="electric">Electric</option>
+            <option value="rainbow-karaoke">Rainbow Karaoke</option>
+            <option value="candy-pop">Candy Pop</option>
+          </select>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Font</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-font" onchange="ppConfigChange(); ppSubPreview()">
+            <optgroup label="Sans-Serif">
+              <option>Arial</option><option>Verdana</option><option>Trebuchet MS</option>
+              <option>Franklin Gothic Medium</option><option>Gill Sans</option>
+              <option>Calibri</option><option>Segoe UI</option><option>Tahoma</option>
+              <option>Century Gothic</option><option>Futura</option>
+            </optgroup>
+            <optgroup label="Serif">
+              <option>Georgia</option><option>Times New Roman</option>
+              <option>Palatino</option><option>Garamond</option>
+              <option>Book Antiqua</option><option>Baskerville</option><option>Didot</option>
+            </optgroup>
+            <optgroup label="Display / Impact">
+              <option>Impact</option><option>Anton</option><option>Bebas Neue</option>
+              <option>Black Han Sans</option><option>Oswald</option>
+            </optgroup>
+            <optgroup label="Monospace">
+              <option>Courier New</option><option>Consolas</option><option>Lucida Console</option>
+            </optgroup>
+            <optgroup label="Casual">
+              <option>Comic Sans MS</option><option>Marker Felt</option>
+            </optgroup>
+            <optgroup label="Multilingual (Noto)">
+              <option value="Noto Sans">Noto Sans (Latin + CJK)</option>
+              <option value="Noto Serif">Noto Serif (Latin + CJK)</option>
+              <option value="Noto Sans JP">Noto Sans JP (Japanese)</option>
+              <option value="Noto Sans KR">Noto Sans KR (Korean)</option>
+              <option value="Noto Sans SC">Noto Sans SC (Simplified Chinese)</option>
+              <option value="Noto Sans TC">Noto Sans TC (Traditional Chinese)</option>
+              <option value="Noto Sans Arabic">Noto Sans Arabic</option>
+              <option value="Noto Sans Devanagari">Noto Sans Devanagari (Hindi)</option>
+              <option value="Noto Sans Hebrew">Noto Sans Hebrew</option>
+              <option value="Noto Sans Thai">Noto Sans Thai</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Font Size <span class="pp-ctrl-val" id="val-sub-size">24px</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-size" min="12" max="72" step="1" value="24"
+                   oninput="ppRangeVal('sub-size',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Outline <span class="pp-ctrl-val" id="val-sub-outline">1.5px</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-outline" min="0" max="5" step="0.5" value="1.5"
+                   oninput="ppRangeVal('sub-outline',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Text Colour</label>
+            <input type="color" class="pp-color" id="ctrl-sub-color" value="#ffffff"
+                   oninput="ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Background</label>
+            <input type="color" class="pp-color" id="ctrl-sub-bg" value="#000000"
+                   oninput="ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Vertical pos <span class="pp-ctrl-val" id="val-sub-y">90%</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-y" min="0" max="100" step="1" value="90"
+                   oninput="ppRangeVal('sub-y',this.value,'%'); ppSubPreview(); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Drop Shadow <span class="pp-ctrl-val" id="val-sub-shadow">0px</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-shadow" min="0" max="8" step="0.5" value="0"
+                   oninput="ppRangeVal('sub-shadow',this.value,'px'); ppSubPreview(); ppConfigChange()">
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Position / Alignment</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-align" onchange="ppConfigChange(); ppSubPreview()">
+            <option value="2">Bottom Centre</option>
+            <option value="1">Bottom Left</option>
+            <option value="3">Bottom Right</option>
+            <option value="8">Top Centre</option>
+            <option value="7">Top Left</option>
+            <option value="9">Top Right</option>
+            <option value="5">Middle Centre</option>
+          </select>
+        </div>
+        <div class="pp-ctrl-group pp-two-col">
+          <div>
+            <label class="pp-ctrl-label">Left Margin <span class="pp-ctrl-val" id="val-sub-marginl">10px</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-marginl" min="0" max="300" step="5" value="10"
+                   oninput="ppRangeVal('sub-marginl',this.value,'px'); ppConfigChange()">
+          </div>
+          <div>
+            <label class="pp-ctrl-label">Right Margin <span class="pp-ctrl-val" id="val-sub-marginr">10px</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-marginr" min="0" max="300" step="5" value="10"
+                   oninput="ppRangeVal('sub-marginr',this.value,'px'); ppConfigChange()">
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Animation</label>
+          <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange()">
+            <option value="none">None</option>
+            <option value="fade">Fade In</option>
+            <option value="typewriter">Typewriter</option>
+            <option value="slide-up">Slide Up</option>
+            <option value="pop">Pop</option>
+            <option value="karaoke">Karaoke (word-by-word colour highlight)</option>
+          </select>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Preview text</label>
+          <div id="pp-sub-preview-box" class="pp-sub-preview-box">Sample subtitle text</div>
+        </div>
+      </div>
+
+      <!-- Overlays -->
+      <div class="pp-panel" id="pp-panel-over">
+        {% for slot_id, slot_label in [('top-left','Top Left'),('top-right','Top Right'),('bottom-left','Bottom Left'),('bottom-right','Bottom Right')] %}
+        <div class="pp-ctrl-group pp-logo-slot" id="logo-slot-{{ slot_id }}">
+          <div class="pp-logo-slot-header">
+            <label class="pp-ctrl-label">{{ slot_label }} Logo</label>
+            <span class="pp-logo-uploaded" id="logo-fn-{{ slot_id }}"></span>
+          </div>
+          <div class="pp-upload-area">
+            <input type="file" accept="image/png" id="logo-file-{{ slot_id }}"
+                   style="display:none;" onchange="ppUploadLogo('{{ slot_id }}', this)">
+            <button class="pp-upload-btn" onclick="document.getElementById('logo-file-{{ slot_id }}').click()">↑ Upload PNG</button>
+          </div>
+          <div class="pp-logo-controls" id="logo-ctrl-{{ slot_id }}" style="display:none;">
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">Width <span class="pp-ctrl-val" id="val-logo-w-{{ slot_id }}">120px</span></label>
+                <input type="range" class="pp-range" id="ctrl-logo-w-{{ slot_id }}" min="40" max="400" step="10" value="120"
+                       oninput="ppRangeVal('logo-w-{{ slot_id }}',this.value,'px'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Height (auto=-1) <span class="pp-ctrl-val" id="val-logo-h-{{ slot_id }}">auto</span></label>
+                <input type="range" class="pp-range" id="ctrl-logo-h-{{ slot_id }}" min="-1" max="400" step="10" value="-1"
+                       oninput="ppLogoHVal('{{ slot_id }}',this.value); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+            </div>
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">Opacity <span class="pp-ctrl-val" id="val-logo-op-{{ slot_id }}">90%</span></label>
+                <input type="range" class="pp-range" id="ctrl-logo-op-{{ slot_id }}" min="0" max="100" step="5" value="90"
+                       oninput="ppRangeVal('logo-op-{{ slot_id }}',this.value,'%'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
+              </div>
+              <div></div>
+            </div>
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">X Offset <span class="pp-ctrl-val" id="val-logo-x-{{ slot_id }}">0px</span></label>
+                <input type="range" class="pp-range" id="ctrl-logo-x-{{ slot_id }}" min="-200" max="200" step="5" value="0"
+                       oninput="ppRangeVal('logo-x-{{ slot_id }}',this.value,'px'); ppConfigChange()">
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Y Offset <span class="pp-ctrl-val" id="val-logo-y-{{ slot_id }}">0px</span></label>
+                <input type="range" class="pp-range" id="ctrl-logo-y-{{ slot_id }}" min="-200" max="200" step="5" value="0"
+                       oninput="ppRangeVal('logo-y-{{ slot_id }}',this.value,'px'); ppConfigChange()">
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Filters -->
+      <div class="pp-panel" id="pp-panel-filt">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Colour Preset</label>
+          <div class="pp-filter-grid" id="pp-filter-grid">
+            {% for fk, fl in [('original','Original'),('film-grain','Film Grain'),('vintage','Vintage'),
+                               ('bleach-bypass','Bleach Bypass'),('teal-orange','Teal & Orange'),
+                               ('desaturated','Desaturated'),('high-contrast','High Contrast'),
+                               ('warm-glow','Warm Glow'),('cool-tone','Cool Tone')] %}
+            <button class="pp-filter-chip {% if fk=='original' %}active{% endif %}"
+                    data-filter="{{ fk }}" onclick="ppSelectFilter('{{ fk }}')">{{ fl }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Intensity <span class="pp-ctrl-val" id="val-filt-intensity">100%</span></label>
+          <input type="range" class="pp-range" id="ctrl-filt-intensity" min="0" max="100" step="5" value="100"
+                 oninput="ppRangeVal('filt-intensity',this.value,'%'); ppApplyFilterPreview(); ppConfigChange()">
+        </div>
+        <div class="pp-filter-preview" id="pp-filter-preview">
+          {% if shots and shots[0].url %}
+          <img src="{{ shots[0].url }}" alt="filter preview" id="pp-filter-preview-img">
+          {% endif %}
+          <div class="pp-filter-preview-label" id="pp-filter-preview-label">Original</div>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="pp-panel" id="pp-panel-expo">
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Aspect Ratio</label>
+          <div class="pp-ar-grid">
+            {% for ar, arl in [('16:9','16:9  Landscape'),('9:16','9:16  Vertical'),('1:1','1:1  Square'),('4:3','4:3  Classic')] %}
+            <button class="pp-ar-chip {% if ar=='16:9' %}active{% endif %}"
+                    data-ar="{{ ar }}" onclick="ppSelectAR('{{ ar }}')">{{ arl }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Fill Mode</label>
+          <div class="pp-ar-grid">
+            <button class="pp-ar-chip active" data-fill="crop" onclick="ppSelectFill('crop')">Crop to fill</button>
+            <button class="pp-ar-chip" data-fill="blur-fill" onclick="ppSelectFill('blur-fill')">Blur fill (letterbox)</button>
+          </div>
+          <p class="pp-ctrl-hint">Blur fill adds blurred edges instead of cropping.</p>
+        </div>
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Quality Preset</label>
+          <select class="pp-ctrl-select" id="ctrl-quality" onchange="ppConfigChange()">
+            <option value="480p">480p — Fast preview</option>
+            <option value="720p">720p — HD preview</option>
+            <option value="1080p" selected>1080p — Full HD</option>
+            <option value="1080p-hq">1080p HQ — High quality</option>
+            <option value="4k">4K — Maximum quality</option>
+          </select>
+        </div>
+        <div class="pp-export-summary">
+          <div class="pp-export-row"><span>Shots</span><strong>{{ shots|length }}</strong></div>
+          <div class="pp-export-row"><span>Total duration</span><strong>{{ total_duration }}s</strong></div>
+          <div class="pp-export-row">
+            <span>Ready stills</span>
+            <strong>{{ shots|selectattr('status','equalto','ready')|list|length }}</strong>
+          </div>
+        </div>
+        <button class="pp-nle-btn pp-nle-btn-gen pp-quick-only" id="btn-generate-expo"
+                style="width:100%;justify-content:center;padding:10px;" onclick="ppGenerate()">▶ Generate Quick Video</button>
+        <button class="pp-nle-btn pp-nle-btn-gen pp-ai-only" id="btn-generate-expo-ai"
+                style="width:100%;justify-content:center;padding:10px;display:none;" onclick="ppGenerateAI()">▶ Apply &amp; Export AI Video</button>
+        <p class="pp-ctrl-hint" style="margin-top:8px;">Generation runs in background. Download appears when ready.</p>
+      </div>
+
+    </div><!-- /pp-control-panel -->
+  </div><!-- /pp-nle-main -->
+
+  <!-- ══ TIMELINE: filmstrip + audio ══════════════════════════════════════ -->
+  <div class="pp-nle-timeline">
+    <!-- Time ruler -->
+    <div class="pp-nle-tl-ruler">
+      <div class="pp-nle-tl-rl-label">▣ Track</div>
+      <div class="pp-nle-tl-ruler-marks" id="pp-tl-ruler-marks">
+        <span>00:00:00:00</span><span>01:00:00:00</span><span>02:00:00:00</span>
+        <span>03:00:00:00</span><span>04:00:00:00</span><span>05:00:00:00</span>
+        <span>06:00:00:00</span><span>07:00:00:00</span><span>08:00:00:00</span>
+      </div>
+    </div>
+    <!-- Shot filmstrip -->
+    <div class="pp-nle-tl-filmrow">
+      <div class="pp-nle-tl-rl-label">Track</div>
       <div class="pp-thumb-strip" id="pp-thumb-strip">
         {% for shot in shots %}
         <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
@@ -163,7 +498,7 @@
           <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
           {% endif %}
           <div class="pp-thumb-meta">
-            <span class="pp-thumb-idx">{{ shot.shot_index }}</span>
+            <span class="pp-thumb-idx">She {{ shot.shot_index }}</span>
             <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
                     onclick="ppEditDuration(event, {{ shot.shot_index }})"
                     title="Click to override duration">
@@ -171,7 +506,6 @@
             </button>
             <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
           </div>
-          <!-- KB override popover -->
           <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
             <div class="pp-kb-pop-label">Ken Burns for shot {{ shot.shot_index }}</div>
             <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
@@ -191,541 +525,298 @@
         {% endfor %}
       </div>
     </div>
-
-    <!-- Right: 5-tab control panel -->
-    <div class="pp-control-panel">
-      <div class="pp-tabs">
-        <button class="pp-tab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
-        <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
-        <button class="pp-tab" onclick="ppTab(this,'over')">Overlays</button>
-        <button class="pp-tab" onclick="ppTab(this,'filt')">Filters</button>
-        <button class="pp-tab" onclick="ppTab(this,'expo')">Export</button>
+    <!-- Audio track -->
+    <div class="pp-nle-tl-audiorow">
+      <div class="pp-nle-tl-rl-label">🎵 Audio</div>
+      <div class="pp-nle-audio-wave">
+        <div class="pp-nle-audio-fill"></div>
       </div>
+    </div>
+  </div><!-- /pp-nle-timeline -->
 
-      <!-- ── Animation tab ──────────────────────────────────────────────── -->
-      <div class="pp-panel active" id="pp-panel-anim">
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Global Ken Burns Motion</label>
-          <select class="pp-ctrl-select" id="ctrl-kb-mode" onchange="ppConfigChange()">
-            <option value="zoom-in">Zoom In</option>
-            <option value="zoom-out">Zoom Out</option>
-            <option value="pan-left">Pan Left</option>
-            <option value="pan-right">Pan Right</option>
-            <option value="pan-up">Pan Up</option>
-            <option value="pan-down">Pan Down</option>
-            <option value="static">Static (no motion)</option>
-            <option value="random">Random per shot</option>
-          </select>
-          <p class="pp-ctrl-hint">Click any thumbnail to set a per-shot override.</p>
-        </div>
+  <!-- Redo panel (hidden, legacy) -->
+  <div style="display:none;">{% include '_redo_panel.html' %}</div>
 
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Transition Between Shots</label>
-          <select class="pp-ctrl-select" id="ctrl-transition" onchange="ppConfigChange()">
-            <option value="crossfade">Crossfade (dissolve)</option>
-            <option value="cut">Hard Cut</option>
-            <option value="dip-to-black">Dip to Black</option>
-            <option value="dissolve">Dissolve</option>
-            <option value="wipe">Wipe Left</option>
-          </select>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Transition Duration
-            <span class="pp-ctrl-val" id="val-trans-dur">0.8s</span>
-          </label>
-          <input type="range" class="pp-range" id="ctrl-trans-dur"
-                 min="0.2" max="2.0" step="0.1" value="0.8"
-                 oninput="ppRangeVal('trans-dur',this.value,'s'); ppConfigChange()">
-        </div>
-      </div>
-
-      <!-- ── Subtitles tab ──────────────────────────────────────────────── -->
-      <div class="pp-panel" id="pp-panel-subs">
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Upload Subtitle File</label>
-          <div class="pp-upload-area" id="srt-upload-area">
-            <input type="file" accept=".srt,.vtt" id="srt-file-input"
-                   style="display:none;" onchange="ppUploadSrt(this)">
-            <button class="pp-upload-btn" onclick="document.getElementById('srt-file-input').click()">
-              ↑ Choose .srt or .vtt
-            </button>
-            <span class="pp-upload-name" id="srt-filename">No file uploaded</span>
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Style Preset</label>
-          <select class="pp-ctrl-select" id="ctrl-sub-preset" onchange="ppSubPreset(this.value); ppConfigChange()">
-            <option value="none">None</option>
-            <option value="classic-white">Classic White</option>
-            <option value="neon-glow">Neon Glow</option>
-            <option value="cinematic-gold">Cinematic Gold</option>
-            <option value="bold-impact">Bold Impact</option>
-            <option value="documentary">Documentary</option>
-            <option value="minimal">Minimal</option>
-            <option value="kids-fun">Kids Fun</option>
-            <option value="cartoon-bubble">Cartoon Bubble</option>
-            <option value="electric">Electric</option>
-            <option value="rainbow-karaoke">Rainbow Karaoke</option>
-            <option value="candy-pop">Candy Pop</option>
-          </select>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Font</label>
-          <select class="pp-ctrl-select" id="ctrl-sub-font" onchange="ppConfigChange(); ppSubPreview()">
-            <optgroup label="Sans-Serif">
-              <option>Arial</option>
-              <option>Verdana</option>
-              <option>Trebuchet MS</option>
-              <option>Franklin Gothic Medium</option>
-              <option>Gill Sans</option>
-              <option>Calibri</option>
-              <option>Segoe UI</option>
-              <option>Tahoma</option>
-              <option>Century Gothic</option>
-              <option>Futura</option>
-            </optgroup>
-            <optgroup label="Serif">
-              <option>Georgia</option>
-              <option>Times New Roman</option>
-              <option>Palatino</option>
-              <option>Garamond</option>
-              <option>Book Antiqua</option>
-              <option>Baskerville</option>
-              <option>Didot</option>
-            </optgroup>
-            <optgroup label="Display / Impact">
-              <option>Impact</option>
-              <option>Anton</option>
-              <option>Bebas Neue</option>
-              <option>Black Han Sans</option>
-              <option>Oswald</option>
-            </optgroup>
-            <optgroup label="Monospace">
-              <option>Courier New</option>
-              <option>Consolas</option>
-              <option>Lucida Console</option>
-            </optgroup>
-            <optgroup label="Casual">
-              <option>Comic Sans MS</option>
-              <option>Marker Felt</option>
-            </optgroup>
-            <optgroup label="Multilingual (Noto)">
-              <option value="Noto Sans">Noto Sans (Latin + CJK)</option>
-              <option value="Noto Serif">Noto Serif (Latin + CJK)</option>
-              <option value="Noto Sans JP">Noto Sans JP (Japanese)</option>
-              <option value="Noto Sans KR">Noto Sans KR (Korean)</option>
-              <option value="Noto Sans SC">Noto Sans SC (Simplified Chinese)</option>
-              <option value="Noto Sans TC">Noto Sans TC (Traditional Chinese)</option>
-              <option value="Noto Sans Arabic">Noto Sans Arabic</option>
-              <option value="Noto Sans Devanagari">Noto Sans Devanagari (Hindi)</option>
-              <option value="Noto Sans Hebrew">Noto Sans Hebrew</option>
-              <option value="Noto Sans Thai">Noto Sans Thai</option>
-            </optgroup>
-          </select>
-        </div>
-
-        <div class="pp-ctrl-group pp-two-col">
-          <div>
-            <label class="pp-ctrl-label">Font Size
-              <span class="pp-ctrl-val" id="val-sub-size">24px</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-size"
-                   min="12" max="72" step="1" value="24"
-                   oninput="ppRangeVal('sub-size',this.value,'px'); ppSubPreview(); ppConfigChange()">
-          </div>
-          <div>
-            <label class="pp-ctrl-label">Outline
-              <span class="pp-ctrl-val" id="val-sub-outline">1.5px</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-outline"
-                   min="0" max="5" step="0.5" value="1.5"
-                   oninput="ppRangeVal('sub-outline',this.value,'px'); ppSubPreview(); ppConfigChange()">
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group pp-two-col">
-          <div>
-            <label class="pp-ctrl-label">Text Colour</label>
-            <input type="color" class="pp-color" id="ctrl-sub-color" value="#ffffff"
-                   oninput="ppSubPreview(); ppConfigChange()">
-          </div>
-          <div>
-            <label class="pp-ctrl-label">Background</label>
-            <input type="color" class="pp-color" id="ctrl-sub-bg" value="#000000"
-                   oninput="ppSubPreview(); ppConfigChange()">
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group pp-two-col">
-          <div>
-            <label class="pp-ctrl-label">Vertical pos
-              <span class="pp-ctrl-val" id="val-sub-y">90%</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-y"
-                   min="0" max="100" step="1" value="90"
-                   oninput="ppRangeVal('sub-y',this.value,'%'); ppSubPreview(); ppConfigChange()">
-          </div>
-          <div>
-            <label class="pp-ctrl-label">Drop Shadow
-              <span class="pp-ctrl-val" id="val-sub-shadow">0px</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-shadow"
-                   min="0" max="8" step="0.5" value="0"
-                   oninput="ppRangeVal('sub-shadow',this.value,'px'); ppSubPreview(); ppConfigChange()">
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Position / Alignment</label>
-          <select class="pp-ctrl-select" id="ctrl-sub-align" onchange="ppConfigChange(); ppSubPreview()">
-            <option value="2">Bottom Centre</option>
-            <option value="1">Bottom Left</option>
-            <option value="3">Bottom Right</option>
-            <option value="8">Top Centre</option>
-            <option value="7">Top Left</option>
-            <option value="9">Top Right</option>
-            <option value="5">Middle Centre</option>
-          </select>
-        </div>
-
-        <div class="pp-ctrl-group pp-two-col">
-          <div>
-            <label class="pp-ctrl-label">Left Margin
-              <span class="pp-ctrl-val" id="val-sub-marginl">10px</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-marginl"
-                   min="0" max="300" step="5" value="10"
-                   oninput="ppRangeVal('sub-marginl',this.value,'px'); ppConfigChange()">
-          </div>
-          <div>
-            <label class="pp-ctrl-label">Right Margin
-              <span class="pp-ctrl-val" id="val-sub-marginr">10px</span>
-            </label>
-            <input type="range" class="pp-range" id="ctrl-sub-marginr"
-                   min="0" max="300" step="5" value="10"
-                   oninput="ppRangeVal('sub-marginr',this.value,'px'); ppConfigChange()">
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Animation</label>
-          <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange()">
-            <option value="none">None</option>
-            <option value="fade">Fade In</option>
-            <option value="typewriter">Typewriter</option>
-            <option value="slide-up">Slide Up</option>
-            <option value="pop">Pop</option>
-            <option value="karaoke">Karaoke (word-by-word colour highlight)</option>
-          </select>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Preview text</label>
-          <div id="pp-sub-preview-box" class="pp-sub-preview-box">Sample subtitle text</div>
-        </div>
-      </div>
-
-      <!-- ── Overlays tab ──────────────────────────────────────────────── -->
-      <div class="pp-panel" id="pp-panel-over">
-        {% for slot_id, slot_label in [('top-left','Top Left'), ('top-right','Top Right'), ('bottom-left','Bottom Left'), ('bottom-right','Bottom Right')] %}
-        <div class="pp-ctrl-group pp-logo-slot" id="logo-slot-{{ slot_id }}">
-          <div class="pp-logo-slot-header">
-            <label class="pp-ctrl-label">{{ slot_label }} Logo</label>
-            <span class="pp-logo-uploaded" id="logo-fn-{{ slot_id }}"></span>
-          </div>
-          <div class="pp-upload-area">
-            <input type="file" accept="image/png"
-                   id="logo-file-{{ slot_id }}" style="display:none;"
-                   onchange="ppUploadLogo('{{ slot_id }}', this)">
-            <button class="pp-upload-btn" onclick="document.getElementById('logo-file-{{ slot_id }}').click()">
-              ↑ Upload PNG
-            </button>
-          </div>
-          <div class="pp-logo-controls" id="logo-ctrl-{{ slot_id }}" style="display:none;">
-            <div class="pp-two-col" style="margin-top:8px;">
-              <div>
-                <label class="pp-ctrl-label">Width
-                  <span class="pp-ctrl-val" id="val-logo-w-{{ slot_id }}">120px</span>
-                </label>
-                <input type="range" class="pp-range" id="ctrl-logo-w-{{ slot_id }}"
-                       min="40" max="400" step="10" value="120"
-                       oninput="ppRangeVal('logo-w-{{ slot_id }}',this.value,'px'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
-              </div>
-              <div>
-                <label class="pp-ctrl-label">Height (auto=-1)
-                  <span class="pp-ctrl-val" id="val-logo-h-{{ slot_id }}">auto</span>
-                </label>
-                <input type="range" class="pp-range" id="ctrl-logo-h-{{ slot_id }}"
-                       min="-1" max="400" step="10" value="-1"
-                       oninput="ppLogoHVal('{{ slot_id }}',this.value); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
-              </div>
-            </div>
-            <div class="pp-two-col" style="margin-top:8px;">
-              <div>
-                <label class="pp-ctrl-label">Opacity
-                  <span class="pp-ctrl-val" id="val-logo-op-{{ slot_id }}">90%</span>
-                </label>
-                <input type="range" class="pp-range" id="ctrl-logo-op-{{ slot_id }}"
-                       min="0" max="100" step="5" value="90"
-                       oninput="ppRangeVal('logo-op-{{ slot_id }}',this.value,'%'); ppLogoPreview('{{ slot_id }}'); ppConfigChange()">
-              </div>
-              <div></div>
-            </div>
-            <div class="pp-two-col" style="margin-top:8px;">
-              <div>
-                <label class="pp-ctrl-label">X Offset
-                  <span class="pp-ctrl-val" id="val-logo-x-{{ slot_id }}">0px</span>
-                </label>
-                <input type="range" class="pp-range" id="ctrl-logo-x-{{ slot_id }}"
-                       min="-200" max="200" step="5" value="0"
-                       oninput="ppRangeVal('logo-x-{{ slot_id }}',this.value,'px'); ppConfigChange()">
-              </div>
-              <div>
-                <label class="pp-ctrl-label">Y Offset
-                  <span class="pp-ctrl-val" id="val-logo-y-{{ slot_id }}">0px</span>
-                </label>
-                <input type="range" class="pp-range" id="ctrl-logo-y-{{ slot_id }}"
-                       min="-200" max="200" step="5" value="0"
-                       oninput="ppRangeVal('logo-y-{{ slot_id }}',this.value,'px'); ppConfigChange()">
-              </div>
-            </div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- ── Filters tab ────────────────────────────────────────────────── -->
-      <div class="pp-panel" id="pp-panel-filt">
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Colour Preset</label>
-          <div class="pp-filter-grid" id="pp-filter-grid">
-            {% for fk, fl in [('original','Original'),('film-grain','Film Grain'),('vintage','Vintage'),
-                               ('bleach-bypass','Bleach Bypass'),('teal-orange','Teal & Orange'),
-                               ('desaturated','Desaturated'),('high-contrast','High Contrast'),
-                               ('warm-glow','Warm Glow'),('cool-tone','Cool Tone')] %}
-            <button class="pp-filter-chip {% if fk=='original' %}active{% endif %}"
-                    data-filter="{{ fk }}"
-                    onclick="ppSelectFilter('{{ fk }}')">{{ fl }}</button>
-            {% endfor %}
-          </div>
-        </div>
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Intensity
-            <span class="pp-ctrl-val" id="val-filt-intensity">100%</span>
-          </label>
-          <input type="range" class="pp-range" id="ctrl-filt-intensity"
-                 min="0" max="100" step="5" value="100"
-                 oninput="ppRangeVal('filt-intensity',this.value,'%'); ppApplyFilterPreview(); ppConfigChange()">
-        </div>
-        <div class="pp-filter-preview" id="pp-filter-preview">
-          {% if shots and shots[0].url %}
-          <img src="{{ shots[0].url }}" alt="filter preview" id="pp-filter-preview-img">
-          {% endif %}
-          <div class="pp-filter-preview-label" id="pp-filter-preview-label">Original</div>
-        </div>
-      </div>
-
-      <!-- ── Export tab ─────────────────────────────────────────────────── -->
-      <div class="pp-panel" id="pp-panel-expo">
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Aspect Ratio</label>
-          <div class="pp-ar-grid">
-            {% for ar, arl in [('16:9','16:9  Landscape'),('9:16','9:16  Vertical'),('1:1','1:1  Square'),('4:3','4:3  Classic')] %}
-            <button class="pp-ar-chip {% if ar=='16:9' %}active{% endif %}"
-                    data-ar="{{ ar }}"
-                    onclick="ppSelectAR('{{ ar }}')">{{ arl }}</button>
-            {% endfor %}
-          </div>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Fill Mode</label>
-          <div class="pp-ar-grid">
-            <button class="pp-ar-chip active" data-fill="crop" onclick="ppSelectFill('crop')">
-              Crop to fill
-            </button>
-            <button class="pp-ar-chip" data-fill="blur-fill" onclick="ppSelectFill('blur-fill')">
-              Blur fill (letterbox)
-            </button>
-          </div>
-          <p class="pp-ctrl-hint">Blur fill adds blurred edges instead of cropping when the still doesn't match the target ratio.</p>
-        </div>
-
-        <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Quality Preset</label>
-          <select class="pp-ctrl-select" id="ctrl-quality" onchange="ppConfigChange()">
-            <option value="480p">480p — Fast preview</option>
-            <option value="720p">720p — HD preview</option>
-            <option value="1080p" selected>1080p — Full HD</option>
-            <option value="1080p-hq">1080p HQ — High quality</option>
-            <option value="4k">4K — Maximum quality</option>
-          </select>
-        </div>
-
-        <div class="pp-export-summary">
-          <div class="pp-export-row">
-            <span>Shots</span><strong>{{ shots|length }}</strong>
-          </div>
-          <div class="pp-export-row">
-            <span>Total duration</span><strong>{{ total_duration }}s</strong>
-          </div>
-          <div class="pp-export-row">
-            <span>Ready stills</span>
-            <strong>{{ shots|selectattr('status','equalto','ready')|list|length }}</strong>
-          </div>
-        </div>
-
-        <button class="pp-btn pp-btn-generate pp-btn-generate-full pp-quick-only" id="btn-generate-expo"
-                onclick="ppGenerate()">▶ Generate Quick Video</button>
-        <button class="pp-btn pp-btn-generate pp-btn-generate-full pp-ai-only" id="btn-generate-expo-ai"
-                onclick="ppGenerateAI()" style="display:none;">▶ Apply &amp; Export AI Video</button>
-        <p class="pp-ctrl-hint" style="margin-top:8px;">
-          Generation runs in the background. Stay on this page to see progress,
-          or come back later — the Download button will appear when ready.
-        </p>
-      </div>
-    </div><!-- /pp-control-panel -->
-  </div><!-- /pp-studio -->
-  <div style="max-width:600px;margin:2rem auto 0;padding:0 1rem 2rem;">
-    {% include '_redo_panel.html' %}
-  </div>
-</div><!-- /pp-wrap -->
-
+</div><!-- /pp-nle -->
 {% endblock %}
 
 {% block extra_scripts %}
 <style>
-/* ── Layout ──────────────────────────────────────────────────────────── */
-.pp-wrap {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  min-height: calc(100vh - 64px);
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  align-items: start;
-}
-.pp-wrap > *:not(.studio-sidebar) {
-  grid-column: 2;
-  padding-left: 20px;
-  padding-right: 20px;
-}
-@media (max-width: 640px) {
-  .pp-wrap { grid-template-columns: 1fr; }
-  .pp-wrap > *:not(.studio-sidebar) { grid-column: 1; }
+/* ══════════════════════════════════════════════════════════════════════
+   POST PRODUCTION NLE STUDIO
+   Full-screen DaVinci Resolve-style layout
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Hide global chrome */
+body { overflow: hidden !important; }
+.topbar        { display: none !important; }
+.studio-sidebar { display: none !important; }
+
+/* Root wrapper */
+.pp-nle {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #1a1a22;
+  color: #cfd6df;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
 }
 
-/* ── Info bar ─────────────────────────────────────────────────────────── */
-.pp-info-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 0 6px;
+/* ══ TOPBAR ════════════════════════════════════════════════════════════ */
+.pp-nle-topbar {
+  flex-shrink: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  gap: 10px;
+  background: #0f0f14;
+  border-bottom: 1px solid #252530;
+  z-index: 20;
 }
-.pp-project-badge {
-  font-weight: 700; font-size: 14px; color: #fff;
-  background: rgba(212,255,58,.08); border: 1px solid rgba(212,255,58,.2);
-  padding: 4px 10px; border-radius: 6px;
+.pp-nle-tb-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
-.pp-shot-count { color: #5a6270; font-size: 12px; }
+.pp-nle-back {
+  color: #6a7585;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid #252530;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s;
+}
+.pp-nle-back:hover { color: #d4ff3a; border-color: rgba(212,255,58,.3); }
+.pp-nle-sep {
+  width: 1px; height: 18px;
+  background: #252530;
+  flex-shrink: 0;
+}
+.pp-nle-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.pp-nle-meta {
+  font-size: 11px;
+  color: #4a5260;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pp-nle-tb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
-/* ── YouTube-style video tab bar ──────────────────────────────────────── */
-.pp-video-tab-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 0 0 14px; border-bottom: 1px solid #1c1c2e;
-  margin-bottom: 16px; flex-wrap: wrap;
+/* Mode switcher pills */
+.pp-nle-modesw {
+  display: flex;
+  background: #0c0c14;
+  border: 1px solid #252530;
+  border-radius: 7px;
+  padding: 3px;
+  gap: 2px;
 }
-.pp-video-tabs {
-  display: flex; gap: 4px;
-  background: #0d0d18; border: 1px solid #1e1e30;
-  border-radius: 12px; padding: 5px;
+.pp-nle-mpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 13px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #5a6270;
+  transition: all .15s;
+  white-space: nowrap;
 }
-.pp-vtab {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 22px; border-radius: 8px;
-  font-size: 14px; font-weight: 700; letter-spacing: .01em;
-  cursor: pointer; border: none; background: transparent;
-  color: #5a6270; transition: all .18s; white-space: nowrap;
-}
-.pp-vtab:hover { color: #cfd6df; background: rgba(255,255,255,.06); }
-.pp-vtab.active {
+.pp-nle-mpill:hover { color: #cfd6df; background: rgba(255,255,255,.06); }
+.pp-nle-mpill.active {
   background: linear-gradient(135deg, #2563eb, #7c3aed);
   color: #fff;
-  box-shadow: 0 2px 14px rgba(37,99,235,.35);
+  box-shadow: 0 2px 8px rgba(37,99,235,.3);
 }
-.pp-vtab-icon { font-size: 16px; line-height: 1; }
-.pp-vtab-label { }
-.pp-vtab-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+.pp-nle-mpill-locked { opacity: .4; cursor: default; }
+.pp-nle-mpill-locked:hover { color: #5a6270 !important; background: transparent !important; }
+.pp-nle-pdot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
-.pp-vtab-dot-quick { background: #d4ff3a; }
-.pp-vtab-dot-ai    { background: #22c55e; }
-.pp-vtab-locked { opacity: .45; cursor: default; }
-.pp-vtab-locked:hover { color: #5a6270 !important; background: transparent !important; }
-
-.pp-tab-actions {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
+.pp-nle-pdot-q  { background: #d4ff3a; }
+.pp-nle-pdot-ai { background: #22c55e; }
 
 /* Buttons */
-.pp-btn {
-  padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
-  cursor: pointer; border: 1px solid #2a2a38; background: #1a1f26;
-  color: #cfd6df; transition: all .15s; text-decoration: none; display: inline-flex;
-  align-items: center; gap: 5px;
+.pp-nle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #252530;
+  background: #1a1f2a;
+  color: #cfd6df;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: all .15s;
+  font-family: inherit;
 }
-.pp-btn:hover { border-color: #444; color: #fff; }
-.pp-btn-save { border-color: #2a2a38; }
-.pp-btn-save.dirty { border-color: #f5a623; color: #f5a623; }
-.pp-btn-generate {
-  background: linear-gradient(135deg,#2563eb,#7c3aed);
-  border-color: transparent; color: #fff;
+.pp-nle-btn:hover { border-color: #3a3f50; color: #fff; background: #22283a; }
+.pp-nle-btn-gen {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(37,99,235,.25);
 }
-.pp-btn-generate:hover { opacity: .9; color: #fff; }
-.pp-btn-download { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.08); }
-.pp-btn-download:hover { background: rgba(34,197,94,.15); color: #22c55e; }
+.pp-nle-btn-gen:hover { opacity: .9; color: #fff; }
+.pp-nle-btn-ai  { border-color: #f5a623; color: #f5a623; background: rgba(245,166,35,.06); }
+.pp-nle-btn-ai:hover { background: rgba(245,166,35,.14); }
+.pp-nle-btn-dl  { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.06); }
+.pp-nle-btn-dl:hover { background: rgba(34,197,94,.14); }
+.pp-nle-btn-save { background: #1a1f2a; }
+.pp-nle-btn-save:hover { color: #d4ff3a; border-color: rgba(212,255,58,.3); }
+.pp-nle-btn-save.dirty { color: #d4ff3a; border-color: rgba(212,255,58,.4); }
+.pp-nle-btn-share  { border-color: #3a8ef5; color: #3a8ef5; background: rgba(58,142,245,.06); }
+.pp-nle-btn-share:hover  { background: rgba(58,142,245,.14); }
+.pp-nle-btn-shared { border-color: #d4ff3a; color: #d4ff3a; background: rgba(212,255,58,.06); }
 .pp-btn-download-hidden { display: none !important; }
-.pp-btn-ai { border-color: #f5a623; color: #f5a623; background: rgba(245,166,35,.06); }
-.pp-btn-ai:hover { background: rgba(245,166,35,.14); color: #f5a623; }
-.pp-btn-generate-full { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
 
-/* Status / error bars */
+/* AI badge */
+.pp-nle-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(34,197,94,.1);
+  border: 1px solid rgba(34,197,94,.3);
+  color: #22c55e;
+  white-space: nowrap;
+}
+
+/* ══ TOOLBAR (2nd row) ════════════════════════════════════════════════ */
+.pp-nle-toolbar {
+  flex-shrink: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  background: #141420;
+  border-bottom: 1px solid #1e1e2a;
+}
+.pp-nle-tb2-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pp-nle-breadcrumb {
+  font-size: 12px;
+  color: #5a6270;
+  white-space: nowrap;
+}
+.pp-nle-tb2-mid {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.pp-nle-tb2-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Status / error bars (inline in toolbar) */
 .pp-status-bar {
-  display: flex; align-items: center; gap: 10px;
-  background: rgba(37,99,235,.12); border: 1px solid rgba(37,99,235,.3);
-  color: #93c5fd; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: #93c5fd;
+  font-size: 12px;
+  padding: 0 8px;
 }
 .pp-status-spinner {
-  width: 14px; height: 14px; border-radius: 50%;
-  border: 2px solid rgba(147,197,253,.3); border-top-color: #93c5fd;
-  animation: ppSpin 1s linear infinite; flex-shrink: 0;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(147,197,253,.3);
+  border-top-color: #93c5fd;
+  animation: ppSpin 1s linear infinite;
+  flex-shrink: 0;
 }
 @keyframes ppSpin { to { transform: rotate(360deg); } }
 .pp-error-bar {
-  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
-  color: #f87171; padding: 10px 16px; border-radius: 8px; margin-bottom: 10px;
-  font-size: 13px;
+  background: transparent;
+  color: #f87171;
+  font-size: 12px;
+  padding: 0 8px;
 }
 
-/* ── Studio layout ───────────────────────────────────────────────────── */
-.pp-studio {
-  display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; align-items: start;
+/* ══ MAIN WORKSPACE ═══════════════════════════════════════════════════ */
+.pp-nle-main {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
 }
-@media (max-width: 900px) { .pp-studio { grid-template-columns: 1fr; } }
 
-/* ── Preview ─────────────────────────────────────────────────────────── */
-.pp-preview-col { display: flex; flex-direction: column; gap: 10px; }
+/* Player column */
+.pp-nle-player-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+}
+.pp-nle-player-area {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+
+/* 16:9 player frame */
 .pp-preview-frame {
-  background: #000; border-radius: 12px; overflow: hidden;
-  aspect-ratio: 16/9; position: relative;
-  border: 1px solid #1e1e30;
-  box-shadow: 0 4px 32px rgba(0,0,0,.6);
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  aspect-ratio: 16/9;
+  width: 100%;
+  max-height: 100%;
 }
-.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16; max-height: 540px; }
-.pp-preview-frame.ar-1-1   { aspect-ratio: 1/1;  max-height: 540px; }
-.pp-preview-frame.ar-4-3   { aspect-ratio: 4/3;  max-height: 540px; }
+.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16;  width: auto; height: 100%; }
+.pp-preview-frame.ar-1-1  { aspect-ratio: 1/1;   width: auto; height: 100%; }
+.pp-preview-frame.ar-4-3  { aspect-ratio: 4/3;   width: auto; height: 100%; }
 
 .pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
 .pp-kb-img  {
@@ -733,19 +824,19 @@
   transform-origin: center center;
   transition: transform 0.05s linear;
 }
-/* Ken Burns CSS animations */
+/* Ken Burns animations */
 .pp-kb-wrap.kb-zoom-in  .pp-kb-img { animation: ppKBZoomIn  var(--kb-dur,4s) ease-in-out forwards; }
 .pp-kb-wrap.kb-zoom-out .pp-kb-img { animation: ppKBZoomOut var(--kb-dur,4s) ease-in-out forwards; }
 .pp-kb-wrap.kb-pan-left .pp-kb-img { animation: ppKBPanLeft var(--kb-dur,4s) ease-in-out forwards; }
 .pp-kb-wrap.kb-pan-right .pp-kb-img{ animation: ppKBPanRight var(--kb-dur,4s) ease-in-out forwards; }
-.pp-kb-wrap.kb-pan-up   .pp-kb-img { animation: ppKBPanUp  var(--kb-dur,4s) ease-in-out forwards; }
+.pp-kb-wrap.kb-pan-up   .pp-kb-img { animation: ppKBPanUp   var(--kb-dur,4s) ease-in-out forwards; }
 .pp-kb-wrap.kb-pan-down .pp-kb-img { animation: ppKBPanDown var(--kb-dur,4s) ease-in-out forwards; }
-@keyframes ppKBZoomIn  { from { transform: scale(1); }   to { transform: scale(1.18); } }
+@keyframes ppKBZoomIn  { from { transform: scale(1); }    to { transform: scale(1.18); } }
 @keyframes ppKBZoomOut { from { transform: scale(1.18); } to { transform: scale(1); } }
-@keyframes ppKBPanLeft { from { transform: scale(1.1) translateX(4%); }  to { transform: scale(1.1) translateX(-4%); } }
-@keyframes ppKBPanRight{ from { transform: scale(1.1) translateX(-4%); } to { transform: scale(1.1) translateX(4%); } }
-@keyframes ppKBPanUp   { from { transform: scale(1.1) translateY(4%); }  to { transform: scale(1.1) translateY(-4%); } }
-@keyframes ppKBPanDown { from { transform: scale(1.1) translateY(-4%); } to { transform: scale(1.1) translateY(4%); } }
+@keyframes ppKBPanLeft { from { transform: scale(1.1) translateX(4%);  } to { transform: scale(1.1) translateX(-4%); } }
+@keyframes ppKBPanRight{ from { transform: scale(1.1) translateX(-4%); } to { transform: scale(1.1) translateX(4%);  } }
+@keyframes ppKBPanUp   { from { transform: scale(1.1) translateY(4%);  } to { transform: scale(1.1) translateY(-4%); } }
+@keyframes ppKBPanDown { from { transform: scale(1.1) translateY(-4%); } to { transform: scale(1.1) translateY(4%);  } }
 
 .pp-filter-overlay {
   position: absolute; inset: 0; pointer-events: none;
@@ -756,7 +847,6 @@
   text-align: center; pointer-events: none; font-size: 18px;
   text-shadow: 0 1px 3px #000; color: #fff; transition: all .2s;
 }
-/* Logo overlays */
 .pp-logo-tl,.pp-logo-tr,.pp-logo-bl,.pp-logo-br {
   position: absolute; max-width: 120px; pointer-events: none;
   opacity: .9; transition: opacity .2s;
@@ -766,89 +856,75 @@
 .pp-logo-bl { bottom: 14px; left: 14px; }
 .pp-logo-br { bottom: 14px; right: 14px; }
 
-/* Controls bar */
+/* AI video */
+.pp-ai-video-wrap { position: absolute; inset: 0; display: none; flex-direction: column; }
+.pp-ai-video { width: 100%; height: 100%; object-fit: contain; background: #000; flex: 1; }
+.pp-ai-overlay { position: absolute; inset: 0; pointer-events: none; }
+.pp-ai-no-video {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: #5a6270; padding: 20px; text-align: center;
+}
+.pp-ai-no-video-icon { font-size: 40px; }
+.pp-ai-no-video p { font-size: 13px; margin: 0; color: #5a6270; }
+.pp-ai-no-video-hint { font-size: 12px !important; color: #3a3f4a !important; }
+
+/* Playback controls */
 .pp-controls {
   position: absolute; bottom: 0; left: 0; right: 0;
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  background: linear-gradient(transparent, rgba(0,0,0,.7));
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(transparent, rgba(0,0,0,.75));
 }
 .pp-ctrl-btn {
   background: rgba(255,255,255,.12); border: none; color: #fff;
-  padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  padding: 5px 9px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  transition: background .12s;
 }
 .pp-ctrl-btn:hover { background: rgba(255,255,255,.22); }
-.pp-time-display { color: rgba(255,255,255,.6); font-size: 11px; margin-left: auto; font-family: monospace; }
+.pp-time-display {
+  color: rgba(255,255,255,.7); font-size: 11px;
+  margin-left: 6px; font-family: monospace; white-space: nowrap;
+}
+.pp-shot-lbl {
+  font-size: 11px; color: rgba(255,255,255,.5);
+  margin-left: auto; white-space: nowrap;
+}
+.pp-shot-lbl strong { color: rgba(255,255,255,.8); }
 
-/* ── Thumbnail strip ─────────────────────────────────────────────────── */
-.pp-thumb-strip {
-  display: flex; gap: 6px; overflow-x: auto; padding: 6px 0;
-  scrollbar-width: thin; scrollbar-color: #2a2a38 transparent;
-}
-.pp-thumb-item {
-  flex: 0 0 auto; width: 72px; cursor: pointer;
-  border-radius: 6px; overflow: visible; position: relative;
-  border: 2px solid transparent; transition: border-color .15s;
-}
-.pp-thumb-item img, .pp-thumb-placeholder {
-  width: 72px; height: 48px; object-fit: cover;
-  border-radius: 4px; display: block; background: #1a1f26;
-}
-.pp-thumb-placeholder {
-  display: flex; align-items: center; justify-content: center;
-  color: #444; font-size: 11px;
-}
-.pp-thumb-item.active { border-color: #d4ff3a; }
-.pp-thumb-item:hover  { border-color: #4a4a60; }
-.pp-thumb-meta {
-  display: flex; align-items: center; gap: 2px;
-  padding: 2px 2px 0; flex-wrap: wrap;
-}
-.pp-thumb-idx { font-size: 9px; color: #5a6270; flex: 0 0 auto; }
-.pp-thumb-dur-badge {
-  font-size: 9px; background: rgba(255,255,255,.08); border: none;
-  color: #9aa6b2; padding: 1px 4px; border-radius: 3px; cursor: pointer;
-  font-family: monospace; transition: background .1s; flex: 1;
-}
-.pp-thumb-dur-badge:hover { background: rgba(212,255,58,.15); color: #d4ff3a; }
-.pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
-
-/* KB override popover */
-.pp-kb-popover {
-  position: absolute; bottom: 100%; left: 0; z-index: 200;
-  background: #1a1f26; border: 1px solid #3a3a50;
-  border-radius: 8px; padding: 10px; min-width: 170px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.6);
-}
-.pp-kb-pop-label { font-size: 11px; color: #9aa6b2; margin-bottom: 6px; }
-.pp-kb-pop-select {
-  width: 100%; background: #0d1018; border: 1px solid #2a3040;
-  color: #cfd6df; border-radius: 4px; padding: 4px; font-size: 11px;
-  margin-bottom: 6px;
-}
-.pp-kb-pop-clear {
-  font-size: 10px; color: #ff6b6b; background: none; border: none;
-  cursor: pointer; padding: 0; text-decoration: underline;
-}
-
-/* ── Control panel ───────────────────────────────────────────────────── */
+/* ══ RIGHT CONTROL PANEL ══════════════════════════════════════════════ */
 .pp-control-panel {
-  background: #11111a; border: 1px solid #2a2a38; border-radius: 10px;
-  overflow: hidden; position: sticky; top: 70px;
+  width: 280px;
+  flex-shrink: 0;
+  background: #11111a;
+  border-left: 1px solid #1e1e2a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .pp-tabs {
-  display: flex; border-bottom: 1px solid #2a2a38; background: #0d0d14;
+  display: flex;
+  border-bottom: 1px solid #1e1e2a;
+  background: #0d0d14;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.pp-tabs::-webkit-scrollbar { display: none; }
 .pp-tab {
-  flex: 1; padding: 9px 4px; background: none; border: none;
-  color: #5a6270; font-size: 11px; cursor: pointer; font-weight: 600;
-  letter-spacing: .02em; transition: all .15s; border-bottom: 2px solid transparent;
+  flex: 1; padding: 9px 4px;
+  background: none; border: none;
+  color: #5a6270; font-size: 11px; font-weight: 600;
+  cursor: pointer; letter-spacing: .02em;
+  transition: all .15s; border-bottom: 2px solid transparent;
+  white-space: nowrap; min-width: 50px; font-family: inherit;
 }
 .pp-tab:hover  { color: #9aa6b2; }
 .pp-tab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; }
-.pp-panel { display: none; padding: 14px; }
+.pp-panel { display: none; padding: 14px; overflow-y: auto; flex: 1; }
 .pp-panel.active { display: block; }
 
-/* Controls */
+/* Controls inside panel */
 .pp-ctrl-group { margin-bottom: 14px; }
 .pp-ctrl-label {
   display: block; font-size: 10px; font-weight: 700; color: #6a7585;
@@ -857,8 +933,8 @@
 .pp-ctrl-val { color: #c8f135; font-weight: 700; margin-left: 4px; }
 .pp-ctrl-select {
   width: 100%; background: #0d1018; border: 1px solid #2a3040;
-  color: #cfd6df; border-radius: 6px; padding: 7px 10px; font-size: 12px;
-  font-family: inherit;
+  color: #cfd6df; border-radius: 6px; padding: 7px 10px;
+  font-size: 12px; font-family: inherit;
 }
 .pp-ctrl-hint { font-size: 10px; color: #4a5260; margin: 4px 0 0; line-height: 1.4; }
 .pp-range {
@@ -867,57 +943,42 @@
 }
 .pp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pp-color {
-  width: 100%; height: 34px; border-radius: 6px; border: 1px solid #2a3040;
-  background: #0d1018; cursor: pointer; padding: 2px;
+  width: 100%; height: 34px; border-radius: 6px;
+  border: 1px solid #2a3040; background: #0d1018; cursor: pointer; padding: 2px;
 }
-.pp-upload-area {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
+.pp-upload-area { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pp-upload-btn {
   background: rgba(212,255,58,.07); border: 1px dashed rgba(212,255,58,.3);
   color: #c8f135; padding: 5px 12px; border-radius: 6px; font-size: 11px;
-  cursor: pointer; transition: background .15s;
+  cursor: pointer; transition: background .15s; font-family: inherit;
 }
 .pp-upload-btn:hover { background: rgba(212,255,58,.14); }
 .pp-upload-name { font-size: 10px; color: #4a5260; }
-.pp-logo-slot { border: 1px solid #1e2230; border-radius: 6px; padding: 10px; }
+.pp-logo-slot { border: 1px solid #1e2230; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
 .pp-logo-slot-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .pp-logo-uploaded { font-size: 10px; color: #22c55e; }
-.pp-logo-controls { }
-
-/* Filter grid */
-.pp-filter-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 12px;
-}
+.pp-filter-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; margin-bottom: 12px; }
 .pp-filter-chip {
   background: #1a1f26; border: 1px solid #2a3040; color: #7a8594;
   border-radius: 5px; padding: 5px 4px; font-size: 10px; cursor: pointer;
-  text-align: center; transition: all .15s; font-weight: 600;
+  text-align: center; transition: all .15s; font-weight: 600; font-family: inherit;
 }
 .pp-filter-chip:hover  { border-color: #4a5260; color: #cfd6df; }
 .pp-filter-chip.active { border-color: #d4ff3a; color: #d4ff3a; background: rgba(212,255,58,.07); }
-
 .pp-filter-preview { position: relative; border-radius: 6px; overflow: hidden; margin-top: 10px; }
-.pp-filter-preview img {
-  width: 100%; display: block; border-radius: 6px; transition: filter .3s;
-}
+.pp-filter-preview img { width: 100%; display: block; border-radius: 6px; transition: filter .3s; }
 .pp-filter-preview-label {
-  position: absolute; bottom: 6px; right: 8px;
-  font-size: 10px; color: rgba(255,255,255,.6);
-  background: rgba(0,0,0,.4); padding: 2px 6px; border-radius: 3px;
+  position: absolute; bottom: 6px; right: 8px; font-size: 10px;
+  color: rgba(255,255,255,.6); background: rgba(0,0,0,.4); padding: 2px 6px; border-radius: 3px;
 }
-
-/* Aspect ratio grid */
 .pp-ar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .pp-ar-chip {
   background: #1a1f26; border: 1px solid #2a3040; color: #7a8594;
   border-radius: 5px; padding: 6px 4px; font-size: 10px; cursor: pointer;
-  text-align: center; transition: all .15s; font-weight: 600;
+  text-align: center; transition: all .15s; font-weight: 600; font-family: inherit;
 }
 .pp-ar-chip:hover  { border-color: #4a5260; color: #cfd6df; }
 .pp-ar-chip.active { border-color: #38e1ff; color: #38e1ff; background: rgba(56,225,255,.07); }
-
-/* Export summary */
 .pp-export-summary {
   background: #0d1018; border: 1px solid #1e2230; border-radius: 6px;
   padding: 10px 12px; margin-bottom: 12px;
@@ -927,71 +988,182 @@
   font-size: 12px; color: #7a8594; padding: 3px 0;
 }
 .pp-export-row strong { color: #cfd6df; }
-
-/* Subtitle preview box */
 .pp-sub-preview-box {
   background: rgba(0,0,0,.5); border-radius: 4px; padding: 8px;
   text-align: center; font-size: 18px; color: #fff;
-  transition: all .2s; min-height: 40px;
-  border: 1px solid #1e2230;
+  transition: all .2s; min-height: 40px; border: 1px solid #1e2230;
 }
 
-/* ── Source mode switcher ────────────────────────────────────────────── */
-.pp-source-switcher {
-  display: flex; align-items: center; gap: 2px;
-  background: #0d0d14; border: 1px solid #2a2a38;
-  border-radius: 8px; padding: 3px;
+/* KB popover */
+.pp-kb-popover {
+  position: absolute; bottom: 100%; left: 0; z-index: 200;
+  background: #1a1f26; border: 1px solid #3a3a50;
+  border-radius: 8px; padding: 10px; min-width: 170px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
 }
-.pp-source-pill {
-  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
-  cursor: pointer; border: none; background: transparent;
-  color: #5a6270; transition: all .15s; display: inline-flex; align-items: center; gap: 5px;
-  white-space: nowrap;
+.pp-kb-pop-label { font-size: 11px; color: #9aa6b2; margin-bottom: 6px; }
+.pp-kb-pop-select {
+  width: 100%; background: #0d1018; border: 1px solid #2a3040;
+  color: #cfd6df; border-radius: 4px; padding: 4px; font-size: 11px; margin-bottom: 6px;
 }
-.pp-source-pill:hover { color: #cfd6df; background: rgba(255,255,255,.05); }
-.pp-source-pill.active {
-  background: linear-gradient(135deg,#2563eb,#7c3aed);
-  color: #fff;
-}
-.pp-source-pill-locked { opacity: .5; cursor: default; }
-.pp-source-pill-locked:hover { color: #5a6270; background: transparent; }
-.pp-source-ready-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #22c55e; display: inline-block; flex-shrink: 0;
+.pp-kb-pop-clear {
+  font-size: 10px; color: #ff6b6b; background: none; border: none;
+  cursor: pointer; padding: 0; text-decoration: underline;
 }
 
-/* ── AI Video player ─────────────────────────────────────────────────── */
-.pp-ai-video-wrap {
-  position: absolute; inset: 0; display: none; flex-direction: column;
+/* ══ TIMELINE ══════════════════════════════════════════════════════════ */
+.pp-nle-timeline {
+  flex-shrink: 0;
+  height: 128px;
+  display: flex;
+  flex-direction: column;
+  background: #0c0c14;
+  border-top: 2px solid #1e1e2a;
 }
-.pp-ai-video {
-  width: 100%; height: 100%; object-fit: contain; background: #000;
+
+/* Time ruler row */
+.pp-nle-tl-ruler {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  flex-shrink: 0;
+  background: #0f0f18;
+  border-bottom: 1px solid #1e1e2a;
+}
+.pp-nle-tl-rl-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #3a3f4a;
+  padding: 0 8px;
+  border-right: 1px solid #1e1e2a;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.pp-nle-tl-ruler-marks {
   flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 0;
+  overflow: hidden;
 }
-/* Overlay on top of AI video — pointer-events off so native controls still work */
-.pp-ai-overlay {
-  position: absolute; inset: 0; pointer-events: none;
+.pp-nle-tl-ruler-marks span {
+  font-size: 9px;
+  color: #3a4050;
+  font-family: monospace;
+  flex: 1;
+  text-align: left;
 }
-.pp-ai-no-video {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 10px;
-  color: #5a6270; padding: 20px; text-align: center;
-}
-.pp-ai-no-video-icon { font-size: 40px; }
-.pp-ai-no-video p { font-size: 13px; margin: 0; color: #5a6270; }
-.pp-ai-no-video .pp-ai-no-video-hint { font-size: 12px; color: #3a3f4a; }
-.pp-ai-no-video strong { color: #f5a623; }
-.pp-ai-no-video-cta { margin-top: 6px; font-size: 13px; padding: 8px 18px; }
 
-/* ── Mode visibility helpers ─────────────────────────────────────────── */
-.pp-ai-mode .pp-quick-only  { display: none !important; }
-.pp-ai-mode .pp-quick-ctrl  { display: none !important; }
-.pp-ai-mode .pp-quick-only-tab { display: none !important; }
-.pp-ai-mode .pp-ai-only     { display: inline-flex !important; }
-.pp-ai-mode #pp-kb-wrap     { display: none !important; }
-.pp-ai-mode #pp-ai-video-wrap { display: flex !important; }
-.pp-ai-mode #pp-ai-no-video  { display: flex !important; }
-.pp-ai-mode #pp-thumb-strip { opacity: .4; pointer-events: none; }
+/* Filmstrip row */
+.pp-nle-tl-filmrow {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 0;
+  min-height: 0;
+  border-bottom: 1px solid #1e1e2a;
+  background: #1a1e2a;
+}
+.pp-nle-tl-filmrow .pp-nle-tl-rl-label {
+  font-size: 10px;
+  color: #5a6270;
+  align-self: center;
+}
+
+/* Thumbnail strip (filmstrip) */
+.pp-thumb-strip {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+  align-items: stretch;
+  padding: 4px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a38 transparent;
+}
+.pp-thumb-strip::-webkit-scrollbar { height: 3px; }
+.pp-thumb-strip::-webkit-scrollbar-thumb { background: #2a2a38; border-radius: 2px; }
+
+.pp-thumb-item {
+  flex: 0 0 auto;
+  width: 90px;
+  cursor: pointer;
+  border-radius: 4px;
+  overflow: visible;
+  position: relative;
+  border: 2px solid rgba(255,255,255,.06);
+  transition: border-color .15s;
+  background: #111520;
+}
+.pp-thumb-item.active { border-color: #d4ff3a; }
+.pp-thumb-item:hover  { border-color: rgba(212,255,58,.4); }
+.pp-thumb-item img, .pp-thumb-placeholder {
+  width: 90px; height: 50px; object-fit: cover;
+  border-radius: 2px; display: block; background: #1a1f26;
+}
+.pp-thumb-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: #444; font-size: 11px;
+}
+.pp-thumb-meta {
+  display: flex; align-items: center; gap: 2px;
+  padding: 2px 3px 0; flex-wrap: nowrap; overflow: hidden;
+}
+.pp-thumb-idx { font-size: 8px; color: #5a6270; flex-shrink: 0; white-space: nowrap; overflow: hidden; max-width: 40px; }
+.pp-thumb-dur-badge {
+  font-size: 8px; background: rgba(255,255,255,.08); border: none;
+  color: #9aa6b2; padding: 1px 4px; border-radius: 3px; cursor: pointer;
+  font-family: monospace; transition: background .1s; margin-left: auto; flex-shrink: 0;
+}
+.pp-thumb-dur-badge:hover { background: rgba(212,255,58,.15); color: #d4ff3a; }
+.pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
+
+/* Audio row */
+.pp-nle-tl-audiorow {
+  display: flex;
+  align-items: stretch;
+  height: 34px;
+  flex-shrink: 0;
+  background: #0e0e18;
+}
+.pp-nle-tl-audiorow .pp-nle-tl-rl-label { align-self: center; }
+.pp-nle-audio-wave {
+  flex: 1;
+  background: #1a1e2a;
+  margin: 4px 4px;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.pp-nle-audio-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    rgba(56,225,255,.15) 0%,
+    rgba(56,225,255,.35) 20%,
+    rgba(56,225,255,.15) 40%,
+    rgba(56,225,255,.4)  60%,
+    rgba(56,225,255,.2)  80%,
+    rgba(56,225,255,.3)  100%
+  );
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' preserveAspectRatio='none' viewBox='0 0 200 26'%3E%3Cpath d='M0,13 Q5,5 10,13 Q15,21 20,13 Q25,5 30,13 Q35,21 40,13 Q45,6 50,13 Q55,20 60,13 Q65,5 70,13 Q75,21 80,13 Q85,3 90,13 Q95,22 100,13 Q105,5 110,13 Q115,21 120,13 Q125,7 130,13 Q135,19 140,13 Q145,4 150,13 Q155,22 160,13 Q165,6 170,13 Q175,20 180,13 Q185,5 190,13 Q195,21 200,13' stroke='%2338e1ff' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  mask-size: 100% 100%;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' preserveAspectRatio='none' viewBox='0 0 200 26'%3E%3Cpath d='M0,13 Q5,5 10,13 Q15,21 20,13 Q25,5 30,13 Q35,21 40,13 Q45,6 50,13 Q55,20 60,13 Q65,5 70,13 Q75,21 80,13 Q85,3 90,13 Q95,22 100,13 Q105,5 110,13 Q115,21 120,13 Q125,7 130,13 Q135,19 140,13 Q145,4 150,13 Q155,22 160,13 Q165,6 170,13 Q175,20 180,13 Q185,5 190,13 Q195,21 200,13' stroke='%2338e1ff' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% 100%;
+}
+
+/* ══ MODE VISIBILITY ══════════════════════════════════════════════════ */
+.pp-ai-mode .pp-quick-only      { display: none !important; }
+.pp-ai-mode .pp-quick-ctrl      { display: none !important; }
+.pp-ai-mode .pp-quick-only-tab  { display: none !important; }
+.pp-ai-mode .pp-ai-only         { display: inline-flex !important; }
+.pp-ai-mode #pp-kb-wrap         { display: none !important; }
+.pp-ai-mode #pp-ai-video-wrap   { display: flex !important; }
+.pp-ai-mode #pp-ai-no-video     { display: flex !important; }
+.pp-ai-mode #pp-thumb-strip     { opacity: .4; pointer-events: none; }
 </style>
 
 <script>
