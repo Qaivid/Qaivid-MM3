@@ -265,8 +265,14 @@
                     <span class="ref-edit-hint">{% if not l.ref_url %}Generate ▶{% else %}Edit ↓{% endif %}</span>
                 </div>
                 <div class="ref-card-foot">
-                    <span class="ref-card-name">{{ l.name }}</span>
-                    <span class="ref-card-meta">{{ l.entity_type }}</span>
+                    <span class="ref-card-name">{{ l.name | replace('_', ' ') | title }}</span>
+                    <span class="ref-card-meta">
+                        {%- if l.entity_type == 'materializer_v2' %}Location
+                        {%- elif l.entity_type == 'creative_brief_scene' %}Scene
+                        {%- elif l.entity_type == 'named_place' %}Named Place
+                        {%- else %}{{ l.entity_type | replace('_', ' ') | title }}
+                        {%- endif %}
+                    </span>
                 </div>
             </div>
 
@@ -274,11 +280,10 @@
             <div class="ref-edit-panel" id="panel-loc-{{ l.id }}" {% if l.ref_url %}hidden{% endif %}>
                 <div class="ref-edit-inner">
                     <div class="ref-edit-meta-row">
-                        <strong>{{ l.name }}</strong>
+                        <strong>{{ l.name | replace('_', ' ') | title }}</strong>
                         <span>
                             {% if l.geography %}{{ l.geography }}{% endif %}
                             {% if l.time_period %} · {{ l.time_period }}{% endif %}
-                            {% if l.architecture_style %} · {{ l.architecture_style }}{% endif %}
                         </span>
                     </div>
                     {% if l.ref_error %}

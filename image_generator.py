@@ -45,16 +45,19 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 
 # ── OpenAI GPT Image 2.0 mode constants ──────────────────────────────────────
 # GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-1.
-# Three quality tiers (native 1920×1080 landscape — no outpainting needed):
+# Three quality tiers (landscape 1536×1024 — widest supported format):
 #   gpt_low    — $0.01/image  — fast testing
 #   gpt_medium — $0.04/image  — recommended
 #   gpt_high   — $0.16/image  — highest fidelity
 # Portrait (character refs): 1024×1536.
+# Supported sizes: 1024x1024, 1024x1536, 1536x1024, auto. 1920x1080 is NOT supported.
 # Supports image-to-image and multi-image references — face identity +
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
 OPENAI_IMAGE_MODEL = "gpt-image-1"
-OPENAI_SIZE_LANDSCAPE = "1920x1080"
+# gpt-image-1 supported sizes: 1024x1024, 1024x1536, 1536x1024, auto.
+# 1536x1024 is the widest landscape format (3:2). 1920x1080 is NOT supported.
+OPENAI_SIZE_LANDSCAPE = "1536x1024"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 
@@ -396,6 +399,11 @@ def ai_build_ref_prompts(
         f"\n{_vibe_avoid_str}"
         if _vibe_ref_direction else ""
     )
+    _vibe_loc_direction_block = (
+        f"\nPRODUCTION VIBE for location plates: {_vibe_ref_direction}"
+        f"\n{_vibe_avoid_str}"
+        if _vibe_ref_direction else ""
+    )
     _vibe_loc_avoid_block = (
         f"\nVIBE AVOID: {_vibe_avoid_str}" if _vibe_avoid_str else ""
     )
@@ -435,6 +443,7 @@ RULE 3 — USE WORLD DNA FOR MOOD AND TEXTURE: If world DNA, environment_type, k
 RULE 4 — EACH LOCATION IS ITS OWN SPACE: A bedroom looks like a bedroom. A street looks like a street. A studio looks like a studio. The location NAME defines the space type — do not override it with the world DNA's default landscape. A Punjabi cultural world can have a bedroom, a roadside stall, a bus station, a rooftop — these are not all havelis or mustard fields. Render each location as its actual space, decorated with the cultural world's colours, textures, and props.
 RULE 5 — CINEMATIC BEAUTY ALWAYS: You are creating music video reference images, not documentary photography. Every location MUST be the beautiful, elevated, cinematic version of that place — rich lighting, considered composition, visually stunning. NEVER generate dirty, dilapidated, unglamorous, or poverty-stricken imagery. Even a humble scene must look like a prestige film still.
 RULE 6 — CULTURAL VOCABULARY ENRICHES, DOES NOT DICTATE ARCHITECTURE: Use culturally specific visual elements as surface detail and atmosphere. For a Punjabi world: warm golden-hour light, terracotta and mustard colour tones, hand-embroidered textiles as props, phulkari patterns on fabric, carved wooden details, warm dust in the air. Do NOT paint every location as a mustard flower field or a haveli courtyard — those are ONE specific setting type. Use the cultural palette to dress the actual space, not to replace it.
+RULE 7 — HONOUR THE PRODUCTION VIBE: The production vibe is the primary aesthetic filter for ALL location plates. It overrides generic cinematic language. If the vibe is "high-fashion glamour with dramatic studio lighting", every location — whether indoor, outdoor, natural, or urban — must be lit and composed to reflect that vibe. A humble room becomes dramatically lit for a fashion campaign. A natural landscape becomes a bold, saturated, aspirational backdrop. Never let cultural authenticity produce a look that contradicts the production vibe.{_vibe_loc_direction_block}
 
 End every location prompt with: "Empty scene, no people, no figures, wide establishing shot, cinematic realism, music video production design quality, beautiful elevated version of this place, geographically and culturally authentic."{_vibe_loc_avoid_block}
 

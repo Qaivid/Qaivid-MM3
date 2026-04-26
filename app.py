@@ -1387,7 +1387,10 @@ def project_detail(project_id: str):
 
     if stage == "references_review":
         characters = _get_characters(project_id)
-        locations = _get_locations(project_id)
+        locations = [
+            l for l in _get_locations(project_id)
+            if l.get("entity_type") != "world_dna"
+        ]
         looks_by_char = _get_character_looks(project_id)
         for c in characters:
             c["ref_url"] = _asset_url(c.get("ref_image_url"))
