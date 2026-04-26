@@ -2398,15 +2398,12 @@ def _stage_narrative_job(project_id: str) -> None:
         )
 
         # ── Write narrative_packet to brain + legacy column ──────────────────
+        # narrative_packet column is guaranteed by ensure_schema() at startup.
         with _db() as conn:
             brain = ProjectBrain.load(project_id, conn)
             brain.write("narrative_packet", narrative_packet)
             brain.save(conn)
             with conn.cursor() as cur:
-                cur.execute(
-                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
-                    "narrative_packet JSONB;"
-                )
                 cur.execute(
                     "UPDATE projects SET narrative_packet=%s, updated_at=NOW() "
                     "WHERE id=%s",
@@ -2569,126 +2566,119 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                     {"stage": "brief",
                      "label": "Building timeline from creative brief…"},
                     stage="running_brief")
-        try:
-            with _db() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT audio_data, lyrics_timed, input_packet, text, genre "
-                    "FROM projects WHERE id=%s",
-                    (project_id,),
-                )
-                _tl_row = cur.fetchone() or {}
-            _tl_audio    = dict(_tl_row.get("audio_data") or {})
-            _tl_audio.pop("_pre_analysis", None)
-            _tl_lyrics   = list(_tl_row.get("lyrics_timed") or [])
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_data, lyrics_timed, input_packet, text, genre "
+                "FROM projects WHERE id=%s",
+                (project_id,),
+            )
+            _tl_row = cur.fetchone() or {}
+        _tl_audio    = dict(_tl_row.get("audio_data") or {})
+        _tl_audio.pop("_pre_analysis", None)
+        _tl_lyrics   = list(_tl_row.get("lyrics_timed") or [])
 
-            # Back-fill lyric timestamps if missing (mirrors pre-V2 Stage-2 logic)
-            _tl_dur = float(_tl_audio.get("duration_seconds") or 0)
-            if _tl_dur > 0 and not _tl_lyrics:
-                _tl_lines = [_l.strip() for _l in (_tl_row.get("text") or "").splitlines() if _l.strip()]
-                if _tl_lines:
-                    _tl_step = _tl_dur / len(_tl_lines)
-                    _tl_lyrics = [
-                        {"text": _tl_lines[_ti], "start": round(_ti * _tl_step, 3),
-                         "end": round((_ti + 1) * _tl_step, 3)}
-                        for _ti in range(len(_tl_lines))
-                    ]
-
-            # Re-load brain to get the latest emotional_mode_packet, storyboard_packet,
-            # and input_structure (all may have been updated since function start).
-            with _db() as conn:
-                _tl_brain = ProjectBrain.load(project_id, conn)
-            _tl_emp      = _tl_brain.read("emotional_mode_packet") or {}
-            _tl_input    = _tl_brain.read("input_structure")       or brain_input or {}
-            _tl_narr     = _tl_brain.read("narrative_packet")       or narrative_packet or {}
-            _tl_style    = _tl_brain.read("style_packet")           or style_profile or {}
-
-            # Enrich emotional_mode_packet with deterministic pacing profile
-            _tl_primary_mode = (_tl_emp.get("primary_mode") or "").strip()
-            if _tl_primary_mode:
-                try:
-                    from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
-                    _tl_content_type = (_tl_row.get("genre") or "song") if (_tl_row.get("genre") or "song") in ("song", "poem") else "song"
-                    _tl_det_pacing = _get_det_pacing(_tl_content_type, _tl_primary_mode)
-                    _tl_pp = dict(_tl_emp.get("pacing_profile") or {})
-                    _tl_pp.update({
-                        k: _tl_det_pacing[k]
-                        for k in ("preferred_avg_duration", "long_shot_ratio",
-                                  "medium_shot_ratio", "short_shot_ratio",
-                                  "min_shot_duration", "max_shot_duration")
-                        if k in _tl_det_pacing
-                    })
-                    _tl_emp = dict(_tl_emp)
-                    _tl_emp["pacing_profile"] = _tl_pp
-                    logger.info(
-                        "_stage_brief_job: enriched pacing_profile for project=%s mode=%s "
-                        "preferred_avg=%.1fs",
-                        project_id, _tl_primary_mode,
-                        _tl_pp.get("preferred_avg_duration", 0),
-                    )
-                except Exception:
-                    logger.debug(
-                        "_stage_brief_job: deterministic pacing merge failed (non-fatal) "
-                        "for project=%s", project_id,
-                    )
-
-            # Build input_structure.units from lyrics if not already present
-            if _tl_lyrics and not _tl_input.get("units"):
-                _tl_input = dict(_tl_input)
-                _tl_input["units"] = [
-                    {**_lu, "unit_index": _li}
-                    for _li, _lu in enumerate(_tl_lyrics)
+        # Back-fill lyric timestamps if missing (mirrors pre-V2 Stage-2 logic)
+        _tl_dur = float(_tl_audio.get("duration_seconds") or 0)
+        if _tl_dur > 0 and not _tl_lyrics:
+            _tl_lines = [_l.strip() for _l in (_tl_row.get("text") or "").splitlines() if _l.strip()]
+            if _tl_lines:
+                _tl_step = _tl_dur / len(_tl_lines)
+                _tl_lyrics = [
+                    {"text": _tl_lines[_ti], "start": round(_ti * _tl_step, 3),
+                     "end": round((_ti + 1) * _tl_step, 3)}
+                    for _ti in range(len(_tl_lines))
                 ]
 
-            from timeline_builder_v2 import build_timeline_from_brief
-            styled_timeline = build_timeline_from_brief(
-                creative_briefs      = creative_brief_packet,
-                input_structure      = _tl_input,
-                emotional_mode_packet= _tl_emp,
-                style_packet         = _tl_style,
-                narrative_packet     = _tl_narr,
-                audio_data           = _tl_audio,
-            )
-            logger.info(
-                "_stage_brief_job: V2 timeline built: %d shots for project=%s",
-                len(styled_timeline), project_id,
-            )
+        # Re-load brain to get the latest emotional_mode_packet, storyboard_packet,
+        # and input_structure (all may have been updated since function start).
+        with _db() as conn:
+            _tl_brain = ProjectBrain.load(project_id, conn)
+        _tl_emp      = _tl_brain.read("emotional_mode_packet") or {}
+        _tl_input    = _tl_brain.read("input_structure")       or brain_input or {}
+        _tl_narr     = _tl_brain.read("narrative_packet")       or narrative_packet or {}
+        _tl_style    = _tl_brain.read("style_packet")           or style_profile or {}
 
-            # Seed shot rows (used by materializer / refs / stills)
-            shot_indices = [s.get("shot_index") or s.get("timeline_index")
-                            for s in styled_timeline]
-            _seed_shot_rows(project_id, shot_indices)
-
-            # Write styled_timeline to projects table
-            with _db() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE projects SET styled_timeline=%s, updated_at=NOW() WHERE id=%s",
-                    (Json(styled_timeline), project_id),
-                )
-                conn.commit()
-
-            # Mirror styled_timeline into brain.storyboard_packet for legacy readers
+        # Enrich emotional_mode_packet with deterministic pacing profile
+        _tl_primary_mode = (_tl_emp.get("primary_mode") or "").strip()
+        if _tl_primary_mode:
             try:
-                with _db() as conn:
-                    _tl_brain = ProjectBrain.load(project_id, conn)
-                    _existing_sp = dict(_tl_brain.read("storyboard_packet") or {})
-                    _existing_sp["styled_timeline"] = styled_timeline
-                    _existing_sp["shot_count"]      = len(styled_timeline)
-                    _existing_sp["total_duration"]  = round(
-                        sum(s.get("duration", 0) for s in styled_timeline), 2
-                    )
-                    _tl_brain.write("storyboard_packet", _existing_sp)
-                    _tl_brain.save(conn)
-                    conn.commit()
+                from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
+                _tl_content_type = (_tl_row.get("genre") or "song") if (_tl_row.get("genre") or "song") in ("song", "poem") else "song"
+                _tl_det_pacing = _get_det_pacing(_tl_content_type, _tl_primary_mode)
+                _tl_pp = dict(_tl_emp.get("pacing_profile") or {})
+                _tl_pp.update({
+                    k: _tl_det_pacing[k]
+                    for k in ("preferred_avg_duration", "long_shot_ratio",
+                              "medium_shot_ratio", "short_shot_ratio",
+                              "min_shot_duration", "max_shot_duration")
+                    if k in _tl_det_pacing
+                })
+                _tl_emp = dict(_tl_emp)
+                _tl_emp["pacing_profile"] = _tl_pp
+                logger.info(
+                    "_stage_brief_job: enriched pacing_profile for project=%s mode=%s "
+                    "preferred_avg=%.1fs",
+                    project_id, _tl_primary_mode,
+                    _tl_pp.get("preferred_avg_duration", 0),
+                )
             except Exception:
-                logger.exception(
-                    "_stage_brief_job: failed to mirror styled_timeline to brain for project=%s "
-                    "(non-fatal)", project_id,
+                logger.debug(
+                    "_stage_brief_job: deterministic pacing merge failed (non-fatal) "
+                    "for project=%s", project_id,
                 )
 
+        # Build input_structure.units from lyrics if not already present
+        if _tl_lyrics and not _tl_input.get("units"):
+            _tl_input = dict(_tl_input)
+            _tl_input["units"] = [
+                {**_lu, "unit_index": _li}
+                for _li, _lu in enumerate(_tl_lyrics)
+            ]
+
+        from timeline_builder_v2 import build_timeline_from_brief
+        styled_timeline = build_timeline_from_brief(
+            creative_briefs      = creative_brief_packet,
+            input_structure      = _tl_input,
+            emotional_mode_packet= _tl_emp,
+            style_packet         = _tl_style,
+            narrative_packet     = _tl_narr,
+            audio_data           = _tl_audio,
+        )
+        logger.info(
+            "_stage_brief_job: V2 timeline built: %d shots for project=%s",
+            len(styled_timeline), project_id,
+        )
+
+        # Seed shot rows (used by materializer / refs / stills)
+        shot_indices = [s.get("shot_index") or s.get("timeline_index")
+                        for s in styled_timeline]
+        _seed_shot_rows(project_id, shot_indices)
+
+        # Write styled_timeline to projects table
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET styled_timeline=%s, updated_at=NOW() WHERE id=%s",
+                (Json(styled_timeline), project_id),
+            )
+            conn.commit()
+
+        # Mirror styled_timeline into brain.storyboard_packet for legacy readers
+        try:
+            with _db() as conn:
+                _tl_brain = ProjectBrain.load(project_id, conn)
+                _existing_sp = dict(_tl_brain.read("storyboard_packet") or {})
+                _existing_sp["styled_timeline"] = styled_timeline
+                _existing_sp["shot_count"]      = len(styled_timeline)
+                _existing_sp["total_duration"]  = round(
+                    sum(s.get("duration", 0) for s in styled_timeline), 2
+                )
+                _tl_brain.write("storyboard_packet", _existing_sp)
+                _tl_brain.save(conn)
+                conn.commit()
         except Exception:
             logger.exception(
-                "_stage_brief_job: V2 timeline builder failed for project=%s (non-fatal — "
-                "styled_timeline may be empty until next brief run)", project_id,
+                "_stage_brief_job: failed to mirror styled_timeline to brain for project=%s "
+                "(non-fatal)", project_id,
             )
 
         _set_status(project_id, "awaiting_review",

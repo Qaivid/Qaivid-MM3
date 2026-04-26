@@ -359,37 +359,80 @@ def build_timeline_from_brief(
     n_units  = len(units)
     n_scenes = len(scenes)
 
-    # Build section → scene mapping from creative_briefs.source_section
-    # and input_structure.sections so we can assign each unit to a scene.
+    # ── Assign lyric units to scenes (section-key first, positional fallback) ─
+    # Build section_id → scene index map
     _section_to_scene_idx: Dict[str, int] = {}
-    for s_idx, scene in enumerate(scenes):
-        sec_id = str(scene.get("source_section") or "").strip()
-        if sec_id:
-            _section_to_scene_idx[sec_id.lower()] = s_idx
+    for _s_idx, _sc in enumerate(scenes):
+        _sec_id = str(_sc.get("source_section") or "").strip().lower()
+        if _sec_id:
+            _section_to_scene_idx[_sec_id] = _s_idx
 
-    def _scene_for_unit(unit: Dict[str, Any], unit_pos: int) -> Dict[str, Any]:
-        sec_id = str(unit.get("section_id") or "").strip().lower()
-        if sec_id and sec_id in _section_to_scene_idx:
-            return scenes[_section_to_scene_idx[sec_id]]
-        # Fallback: positional mapping
-        scene_idx = min(n_scenes - 1, int(unit_pos * n_scenes / max(n_units, 1)))
-        return scenes[scene_idx]
+    # Assign each unit to its scene
+    unit_scene_idxs: List[int] = []
+    for _ui, _unit in enumerate(units):
+        _sec = str(_unit.get("section_id") or "").strip().lower()
+        if _sec and _sec in _section_to_scene_idx:
+            unit_scene_idxs.append(_section_to_scene_idx[_sec])
+        else:
+            # Positional mapping — proportional by unit position
+            unit_scene_idxs.append(
+                min(n_scenes - 1, int(_ui * n_scenes / max(n_units, 1)))
+            )
 
-    # ── Build raw shots ────────────────────────────────────────────────────
+    # Group units by scene — preserving order within each scene
+    scene_units_map: Dict[int, List[int]] = {i: [] for i in range(n_scenes)}
+    for _ui, _si in enumerate(unit_scene_idxs):
+        scene_units_map[_si].append(_ui)
+
+    # ── Determine shots per scene (~1 shot per 2–3 lyric units, min 1) ───
+    # Compute target units-per-shot from pref_avg and avg unit duration.
+    _avg_unit_dur = (audio_duration / max(n_units, 1)) if audio_duration > 0 else pref_avg
+    _target_ups   = max(1, round(pref_avg / max(_avg_unit_dur, 0.5)))   # units per shot
+
+    # Build flat list of (scene, unit_group) pairs — each pair → one shot
+    shot_plan: List[tuple] = []  # each entry is (scene_dict, list_of_unit_dicts)
+    for _sc_i, scene in enumerate(scenes):
+        _u_idxs = scene_units_map.get(_sc_i, [])
+        if not _u_idxs:
+            # Scene has no units (short/empty section) — give it one shot
+            shot_plan.append((scene, [{}]))
+            continue
+        # Chunk unit indices into groups of ~_target_ups
+        _shots_this_scene = max(1, round(len(_u_idxs) / _target_ups))
+        _chunk_size = max(1, len(_u_idxs) // _shots_this_scene)
+        _remainder  = len(_u_idxs) % _shots_this_scene
+        _pos = 0
+        for _gi in range(_shots_this_scene):
+            _extra = 1 if _gi < _remainder else 0
+            _grp_idxs = _u_idxs[_pos: _pos + _chunk_size + _extra]
+            _pos += _chunk_size + _extra
+            if not _grp_idxs:
+                continue
+            shot_plan.append((scene, [units[_k] for _k in _grp_idxs]))
+
+    logger.info(
+        "TimelineBuilderV2: planned %d shots from %d scenes "
+        "(units=%d, units_per_shot=~%d)",
+        len(shot_plan), n_scenes, n_units, _target_ups,
+    )
+
+    # ── Build raw shots from plan ──────────────────────────────────────────
     raw_shots: List[Dict[str, Any]] = []
     current_ts = 0.0
     prev_mode: Optional[str] = None
     any_lyric_anchor = False
 
-    for i, unit in enumerate(units):
-        scene = _scene_for_unit(unit, i)
+    for shot_i, (scene, unit_group) in enumerate(shot_plan):
+        # Use first unit in group for lyric anchor + representative lyric text
+        first_unit = unit_group[0] if unit_group else {}
+        last_unit  = unit_group[-1] if unit_group else {}
 
-        # Timing — use lyric anchor when timestamps are real
+        # Timing — use lyric anchor when first unit has real timestamps
         lyric_start: Optional[float] = None
         lyric_end:   Optional[float] = None
         try:
-            _ls = float(unit.get("start") or 0)
-            _le = float(unit.get("end")   or 0)
+            _ls = float(first_unit.get("start") or 0)
+            _le = float(last_unit.get("end")    or last_unit.get("start") or 0)
             if _le > _ls:
                 lyric_start = _ls
                 lyric_end   = _le
@@ -398,63 +441,72 @@ def build_timeline_from_brief(
 
         if lyric_start is not None:
             raw_snap = round(round(lyric_start / beat_dur) * beat_dur, 3)
-            if i == 0:
-                current_ts = 0.0
-            else:
-                current_ts = max(raw_snap, raw_shots[-1]["start_time"] if raw_shots else 0.0)
+            current_ts = 0.0 if shot_i == 0 else max(raw_snap, raw_shots[-1]["start_time"] if raw_shots else 0.0)
             any_lyric_anchor = True
 
-        # Intensity
-        ei_str = str(scene.get("emotional_intensity") or "medium").lower()
-        shot_intensity = _INTENSITY_MAP.get(ei_str, 0.6)
+        # Audio intensity — average across the unit group
+        _curve_idxs = [
+            unit_scene_idxs.index(shot_i) if shot_i < n_units else 0
+        ]  # simplified; pull from first unit's position in flat unit list
+        _flat_idx = unit_scene_idxs.index(
+            min(n_scenes - 1, shot_i * n_scenes // max(len(shot_plan), 1))
+        ) if unit_scene_idxs else 0
         audio_int = (
-            intensity_curve[i] if i < len(intensity_curve)
+            intensity_curve[_flat_idx] if _flat_idx < len(intensity_curve)
             else (intensity_curve[-1] if intensity_curve else _DEFAULT_INTENSITY)
         )
+
+        ei_str = str(scene.get("emotional_intensity") or "medium").lower()
+        shot_intensity = _INTENSITY_MAP.get(ei_str, 0.6)
         blended_intensity = max(0.0, min(1.0, shot_intensity * 0.6 + audio_int * 0.4))
 
-        # Expression mode — brief wins, narrative_packet.presence_strategy fills gaps
-        sf = str(scene.get("subject_focus") or "character").lower()
-        cp = (str(scene.get("character_presence") or "").strip().lower()
-              or _narr_presence or "continuous")
+        # Brief intent fields — first-class on the shot entry
+        _subject_focus      = str(scene.get("subject_focus")      or "character").strip()
+        _character_presence = (str(scene.get("character_presence") or "").strip()
+                               or _narr_presence or "continuous")
+        _environment_type   = str(scene.get("environment_type")   or "").strip()
+        _key_elements       = list(scene.get("key_elements")       or [])
+        _emotional_state    = str(scene.get("emotional_state")     or "").strip()
+        _lighting_condition = str(scene.get("lighting_condition")  or "").strip()
+        _movement_type      = str(scene.get("movement_type")       or "").strip()
+        _motion_density     = str(scene.get("motion_density")      or "").strip()
+
+        # Expression mode — brief wins, narrative fills gaps
+        sf   = _subject_focus.lower()
+        cp   = _character_presence.lower()
         mode = _SUBJECT_TO_MODE.get(sf, "environment")
-        # character + intermittent/minimal presence → body shot rather than face
         if sf == "character" and cp in ("intermittent", "minimal"):
             mode = "body"
-        # narrative motion_philosophy overrides to environment on fully static passages
         if narr_motion_philosophy == "static" and mode not in ("face", "body"):
             mode = "environment"
 
-        # Duration — narrative motion_philosophy scales base duration
-        # dynamic: slightly shorter shots (×0.8); static: slightly longer (×1.25)
+        # Duration — scale by narrative motion_philosophy
         raw_dur = _calculate_base_duration(blended_intensity, beat_dur, mode)
         if narr_motion_philosophy == "dynamic":
-            raw_dur = raw_dur * 0.80
+            raw_dur *= 0.80
         elif narr_motion_philosophy == "static":
-            raw_dur = raw_dur * 1.25
-        snap_dur  = _snap_to_beat(raw_dur, beat_dur)
-        duration  = _clamp_duration(snap_dur, min_dur, max_dur)
+            raw_dur *= 1.25
+        snap_dur = _snap_to_beat(raw_dur, beat_dur)
+        duration = _clamp_duration(snap_dur, min_dur, max_dur)
 
-        # Overwrite duration with lyric gap when anchored (gap pass done below)
-        # For now just set the beat-formula duration — gap pass fixes it.
-
-        motion_idx = i % 4
         motion_scale = (
             _MOTION_SCALE.get(mode) or _MOTION_SCALE["environment"]
-        )[motion_idx % len(_MOTION_SCALE.get(mode) or _MOTION_SCALE["environment"])]
+        )[shot_i % len(_MOTION_SCALE.get(mode) or _MOTION_SCALE["environment"])]
 
-        transition = _derive_transition(i, prev_mode, mode, blended_intensity)
+        transition = _derive_transition(shot_i, prev_mode, mode, blended_intensity)
         beat_start = round(current_ts / beat_dur)
         bar_index  = int(current_ts // bar_dur) + 1
 
-        lyric_text = str(unit.get("text") or "").strip()
+        lyric_text    = " / ".join(
+            str(u.get("text") or "").strip() for u in unit_group if u.get("text")
+        )
         visual_prompt = _compose_visual_prompt(scene, lyric_text)
         framing_dir   = _compose_framing_directive(scene, mode)
 
         raw_shots.append({
-            "timeline_index":           i + 1,
-            "shot_index":               i + 1,
-            "shot_id":                  f"shot_{i + 1}",
+            "timeline_index":           shot_i + 1,
+            "shot_index":               shot_i + 1,
+            "shot_id":                  f"shot_{shot_i + 1}",
             "start_time":               (
                 int(current_ts) if float(current_ts).is_integer()
                 else round(current_ts, 3)
@@ -479,13 +531,22 @@ def build_timeline_from_brief(
             "reference_image":          None,
             "fidelity_lock":            0.72,
             "character_consistency_id": None,
+            # ── First-class brief intent fields ────────────────────────────
+            "subject_focus":            _subject_focus,
+            "character_presence":       _character_presence,
+            "environment_type":         _environment_type,
+            "key_elements":             _key_elements,
+            "emotional_state":          _emotional_state,
+            "lighting_condition":       _lighting_condition,
+            "movement_type":            _movement_type,
+            "motion_density":           _motion_density,
+            # ── Structured sub-dicts ────────────────────────────────────────
             "camera_profile":           _build_camera_profile(
-                                            scene.get("movement_type") or narr_motion_philosophy,
-                                            scene.get("motion_density"),
+                                            _movement_type or narr_motion_philosophy,
+                                            _motion_density,
                                         ),
             "environment_profile": {
-                "environment_type":   str(scene.get("environment_type") or "").strip(),
-                # Brief-level timeline_mode wins; narrative timeline_strategy fills gaps.
+                "environment_type":   _environment_type,
                 "timeline_mode":      (str(scene.get("timeline_mode") or "").strip()
                                        or _default_timeline_mode),
             },
@@ -511,6 +572,8 @@ def build_timeline_from_brief(
             # V2-specific: trace which brief scene drove this shot
             "_v2_scene_id":             str(scene.get("scene_id") or ""),
             "_v2_chosen_direction":     str(scene.get("chosen_direction") or ""),
+            # Lyric unit coverage (for downstream editors)
+            "_v2_lyric_units_count":    len(unit_group),
         })
 
         prev_mode = mode
