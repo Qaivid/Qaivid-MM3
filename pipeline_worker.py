@@ -1171,6 +1171,9 @@ def _render_character_plate(project_id: str, character_id: int,
             _set_entity_ref(project_id, "character", character_id,
                             status="ready", file_path=url, prompt=used_prompt,
                             source="generated", error=None)
+            # Base plate is now ready — kick look plates that were parked
+            # as waiting_for_base_plate so they get face-locked generation.
+            generate_pending_look_plates(project_id)
         except Exception as exc:
             logger.exception("Character plate failed for id=%s", character_id)
             _set_entity_ref(project_id, "character", character_id,
@@ -3924,6 +3927,10 @@ def set_entity_uploaded_plate(project_id: str, kind: str, entity_id: int,
     _set_entity_ref(project_id, kind, entity_id,
                     status="ready", source="uploaded",
                     file_path=file_url, error=None)
+    # Character base plate now ready — kick look plates that were parked
+    # as waiting_for_base_plate so they get face-locked generation.
+    if kind == "character":
+        generate_pending_look_plates(project_id)
 
 
 def regenerate_look_plate(project_id: str, look_id: int,

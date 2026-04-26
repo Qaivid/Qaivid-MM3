@@ -377,7 +377,7 @@ def generate_look_plates(project_id: str,
               FROM character_looks cl
               JOIN characters c ON c.id = cl.character_id
              WHERE cl.project_id = %s
-               AND cl.ref_status IN ('pending', 'failed')
+               AND cl.ref_status IN ('pending', 'failed', 'waiting_for_base_plate')
             """,
             (project_id,),
         )
@@ -453,53 +453,55 @@ def generate_look_plates(project_id: str,
             from image_generator import _fal_accessible_url
             PULID_MODEL = "fal-ai/flux-pulid"
 
+            # ── Guard: require base plate for face-locked generation ─────────
+            # Look plates without a base identity plate would show a random
+            # face (not the actual character), breaking continuity in stills.
+            # Instead of generating a low-quality fallback, park the row in
+            # waiting_for_base_plate so it will be retried automatically the
+            # moment the director generates/uploads the character's base plate.
+            if not has_base:
+                logger.info(
+                    "generate_look_plates: no ready base plate for character_id=%s "
+                    "— look=%s parked as waiting_for_base_plate (will retry after base)",
+                    row.get("character_id"), look_id,
+                )
+                with _db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE character_looks "
+                        "   SET ref_status='waiting_for_base_plate', "
+                        "       ref_error='Waiting for character base plate to be generated or uploaded.' "
+                        " WHERE id=%s",
+                        (look_id,),
+                    )
+                    conn.commit()
+                continue  # finally: _release(key) still runs
+
             if _resolve_ref_mode() == "cheap":
-                if has_base:
-                    # img2img from the base plate keeps the face; wardrobe text
-                    # in the prompt steers the outfit change.
-                    from image_generator import _openai_edit
-                    img_bytes = _openai_edit(prompt[:4000], base_url,
-                                             size=OPENAI_SIZE_PORTRAIT)
-                else:
-                    img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_PORTRAIT)
+                # img2img from the base plate keeps the face; wardrobe text
+                # in the prompt steers the outfit change.
+                from image_generator import _openai_edit
+                img_bytes = _openai_edit(prompt[:4000], base_url,
+                                         size=OPENAI_SIZE_PORTRAIT)
                 r2_key = _new_ref_key(
                     project_id, f"look_{look_id}_{safe_name}_{safe_cluster}", ext="png"
                 )
                 url = _save_bytes_to_r2(img_bytes, r2_key)
             else:
-                if has_base:
-                    # PuLID: injects identity embeddings from the base plate into
-                    # the diffusion process — proper face transfer, not pixel copy.
-                    fal_base_url = _fal_accessible_url(base_url)
-                    result = _run_fal(PULID_MODEL, {
-                        "prompt": prompt[:1800],
-                        "reference_image_url": fal_base_url,
-                        "image_size": "portrait_4_3",
-                        "num_inference_steps": 20,
-                        "guidance_scale": 4.0,
-                        "id_weight": 1.0,
-                        "true_cfg": 1.0,
-                        "num_images": 1,
-                        "enable_safety_checker": False,
-                    })
-                    logger.info("generate_look_plates: used PuLID face-lock for look=%s", look_id)
-                else:
-                    # No base plate yet — fall back to plain text-to-image.
-                    # This look plate will be visually inconsistent but won't block
-                    # the pipeline; the director can regenerate after uploading a photo.
-                    logger.warning(
-                        "generate_look_plates: no ready base plate for character_id=%s "
-                        "— look=%s generated without face-lock (text-to-image fallback)",
-                        row.get("character_id"), look_id,
-                    )
-                    result = _run_fal(REF_MODEL, {
-                        "prompt": prompt[:1800],
-                        "image_size": "portrait_4_3",
-                        "num_inference_steps": 8,
-                        "num_images": 1,
-                        "seed": random.randint(1, 2**32 - 1),
-                        "enable_safety_checker": False,
-                    })
+                # PuLID: injects identity embeddings from the base plate into
+                # the diffusion process — proper face transfer, not pixel copy.
+                fal_base_url = _fal_accessible_url(base_url)
+                result = _run_fal(PULID_MODEL, {
+                    "prompt": prompt[:1800],
+                    "reference_image_url": fal_base_url,
+                    "image_size": "portrait_4_3",
+                    "num_inference_steps": 20,
+                    "guidance_scale": 4.0,
+                    "id_weight": 1.0,
+                    "true_cfg": 1.0,
+                    "num_images": 1,
+                    "enable_safety_checker": False,
+                })
+                logger.info("generate_look_plates: used PuLID face-lock for look=%s", look_id)
                 fal_url = _extract_image_url(result)
                 r2_key  = _new_ref_key(
                     project_id, f"look_{look_id}_{safe_name}_{safe_cluster}"

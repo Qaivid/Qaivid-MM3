@@ -53,6 +53,7 @@ from pipeline_worker import (
     regenerate_entity_plate,
     regenerate_look_plate,
     set_look_uploaded_plate,
+    generate_pending_look_plates,
     retry_all_failed_refs,
     retry_all_failed_shots,
     retry_ref,
@@ -3243,6 +3244,26 @@ def references_upload_look(project_id: str, look_id: int):
         flash("Please choose an image to upload.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     set_look_uploaded_plate(project_id, look_id, file_url)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/references/looks/retry-all", methods=["POST"])
+@login_required
+def references_retry_all_looks(project_id: str):
+    """Re-queue all waiting/failed look plates for generation.
+
+    Called from the references review page when the director wants to kick
+    look plate generation after uploading or generating a character base plate.
+    Only available during references_review or stills_control stages.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if project.get("stage") not in ("references_review", "stills_control"):
+        flash("Look plates can only be regenerated during the references or stills review steps.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    generate_pending_look_plates(project_id)
+    flash("Look plate generation queued for all waiting looks.", "info")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
