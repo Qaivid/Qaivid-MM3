@@ -33,7 +33,6 @@ from audio_processor import AudioProcessor
 from input_processor import InputProcessor
 from narrative_engine import generate_narrative_intelligence
 from project_brain import ProjectBrain
-from legacy.production_orchestrator import ProductionOrchestrator
 from asset_export_module import AssetExportModule
 from image_generator import (
     ImageGenerationError,
@@ -2002,13 +2001,9 @@ def _stage0_job(project_id: str, audio_path: Optional[Path], text: str, genre: s
 
         # Persist audio data + transcript + input_packet (+ timed lyrics if available)
         # Also write Stage 0 and Stage 1-Input namespaces into the Project Brain.
+        # NOTE: lyrics_timed and input_packet columns are guaranteed by ensure_schema()
+        # at startup — ALTER TABLE is not repeated here.
         with _db() as conn, conn.cursor() as cur:
-            cur.execute(
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS lyrics_timed JSONB;"
-            )
-            cur.execute(
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_packet JSONB;"
-            )
             cur.execute(
                 "UPDATE projects SET audio_data=%s, transcript=%s, text=%s, "
                 "lyrics_timed=%s, input_packet=%s, updated_at=NOW() WHERE id=%s",
@@ -2221,9 +2216,9 @@ def _stage1_job(project_id: str) -> None:
         _set_status(project_id, "running",
                     {"stage": "context", "label": "Running 5W Context Audit…"}, stage="running_1")
 
-        orchestrator = ProductionOrchestrator(api_key)
+        from unified_context_engine_master import UnifiedContextEngine as _UCE
         context_packet = _run_async(
-            orchestrator.run_context_only(
+            _UCE(api_key).generate(
                 text=text,
                 genre=genre,
                 pre_analysis=pre_analysis,
@@ -2828,6 +2823,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             narrative_packet=narrative_packet,
             style_profile=style_profile,
             project_settings=project_settings,
+            emotional_mode_packet=brain_emotional or {},
         ))
         v2_scenes = list(v2_scenes or [])
 

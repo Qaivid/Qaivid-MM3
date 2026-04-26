@@ -233,6 +233,26 @@ def build_timeline_from_brief(
             "timeline_mode": "present",
         }]
 
+    # ── Narrative packet — extract director-level decisions ────────────────
+    _np = narrative_packet or {}
+    narr_motion_philosophy = str(_np.get("motion_philosophy") or "mixed").strip().lower()
+    narr_presence_strategy = str(_np.get("presence_strategy") or "").strip().lower()
+    narr_timeline_strategy = str(_np.get("timeline_strategy") or "").strip().lower()
+
+    # If narrative dictates a global timeline strategy, shots without their own
+    # timeline_mode will default to this.  Brief-level timeline_mode wins.
+    _default_timeline_mode = narr_timeline_strategy if narr_timeline_strategy else "present"
+
+    # Presence strategy from narrative layer (overrides brief character_presence
+    # only when brief leaves it empty/absent).
+    _narr_presence: Optional[str] = narr_presence_strategy or None
+
+    logger.info(
+        "TimelineBuilderV2: narrative motion_philosophy=%s presence=%s timeline=%s",
+        narr_motion_philosophy, narr_presence_strategy or "(brief-level)",
+        _default_timeline_mode,
+    )
+
     # ── Audio + pacing parameters ──────────────────────────────────────────
     _ad = audio_data or {}
     try:
@@ -393,16 +413,25 @@ def build_timeline_from_brief(
         )
         blended_intensity = max(0.0, min(1.0, shot_intensity * 0.6 + audio_int * 0.4))
 
-        # Expression mode
-        sf  = str(scene.get("subject_focus") or "character").lower()
-        cp  = str(scene.get("character_presence") or "continuous").lower()
+        # Expression mode — brief wins, narrative_packet.presence_strategy fills gaps
+        sf = str(scene.get("subject_focus") or "character").lower()
+        cp = (str(scene.get("character_presence") or "").strip().lower()
+              or _narr_presence or "continuous")
         mode = _SUBJECT_TO_MODE.get(sf, "environment")
         # character + intermittent/minimal presence → body shot rather than face
         if sf == "character" and cp in ("intermittent", "minimal"):
             mode = "body"
+        # narrative motion_philosophy overrides to environment on fully static passages
+        if narr_motion_philosophy == "static" and mode not in ("face", "body"):
+            mode = "environment"
 
-        # Duration
-        raw_dur   = _calculate_base_duration(blended_intensity, beat_dur, mode)
+        # Duration — narrative motion_philosophy scales base duration
+        # dynamic: slightly shorter shots (×0.8); static: slightly longer (×1.25)
+        raw_dur = _calculate_base_duration(blended_intensity, beat_dur, mode)
+        if narr_motion_philosophy == "dynamic":
+            raw_dur = raw_dur * 0.80
+        elif narr_motion_philosophy == "static":
+            raw_dur = raw_dur * 1.25
         snap_dur  = _snap_to_beat(raw_dur, beat_dur)
         duration  = _clamp_duration(snap_dur, min_dur, max_dur)
 
@@ -451,12 +480,14 @@ def build_timeline_from_brief(
             "fidelity_lock":            0.72,
             "character_consistency_id": None,
             "camera_profile":           _build_camera_profile(
-                                            scene.get("movement_type"),
+                                            scene.get("movement_type") or narr_motion_philosophy,
                                             scene.get("motion_density"),
                                         ),
             "environment_profile": {
                 "environment_type":   str(scene.get("environment_type") or "").strip(),
-                "timeline_mode":      str(scene.get("timeline_mode") or "present").strip(),
+                # Brief-level timeline_mode wins; narrative timeline_strategy fills gaps.
+                "timeline_mode":      (str(scene.get("timeline_mode") or "").strip()
+                                       or _default_timeline_mode),
             },
             "continuity_anchor": {
                 "motifs":    list(scene.get("motif_usage") or []),
