@@ -350,8 +350,10 @@ RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZER
 RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: Every prompt MUST begin with: "{geo_anchor}".
 RULE 3 — USE WORLD DNA: If world DNA, environment_type, key_textures, or palette_anchor are provided, embed them. They define the visual identity of this world.
 RULE 4 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: Each location type looks completely different — render each one from your own knowledge of what that specific space and architectural style look and feel like in this part of the world.
+RULE 5 — CINEMATIC BEAUTY ALWAYS: You are creating music video reference images, not documentary photography. Every location MUST be the beautiful, elevated, cinematic version of that place — rich lighting, considered composition, visually stunning. NEVER generate dirty, dilapidated, unglamorous, or poverty-stricken imagery. Even a humble village scene must look like a prestige film still.
+RULE 6 — GEOGRAPHIC SPECIFICITY: If the world is set in Punjab (India/Pakistan), draw on specific Punjabi visual vocabulary: golden wheat fields, mustard flower fields, ancient havelis with carved wooden doors, brick gurdwaras, canal-side ghats, dense banyan trees, hand-painted walls, colourful phulkari textiles, terracotta pots, bullock carts, kachcha roads with warm dust. Do not use generic "rural South Asia" — be specific to Punjab.
 
-End every location prompt with: "Empty scene, no people, no figures, establishing wide-angle, photorealistic, cinematic, geographically authentic."
+End every location prompt with: "Empty scene, no people, no figures, wide establishing shot, cinematic realism, music video production design quality, beautiful elevated version of this place, geographically and culturally authentic."
 
 {locs_block}
 
@@ -513,11 +515,12 @@ CHARACTER_REF_HINT = (
 )
 
 ENV_REF_HINT = (
-    "cinematic realism location — the beautiful elevated version of this real place, "
+    "cinematic realism location — the beautiful, elevated, prestige version of this real place, "
     "golden hour or soft dramatic overcast light, rich warm color grade, "
-    "prestige film establishing shot, wide cinematic framing, "
-    "no people in frame, geographically and architecturally specific, "
-    "music video production design quality, visually stunning yet authentic"
+    "wide cinematic establishing shot, no people in frame, "
+    "music video production design quality, visually stunning and cinematically composed, "
+    "never dirty or dilapidated — always the most beautiful interpretation of this environment, "
+    "geographically and culturally specific, film still quality"
 )
 
 

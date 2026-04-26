@@ -2598,6 +2598,28 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         _tl_narr     = _tl_brain.read("narrative_packet")       or narrative_packet or {}
         _tl_style    = _tl_brain.read("style_packet")           or style_profile or {}
 
+        # Merge lyrics_timed timestamps into existing input_structure.units by index.
+        # InputProcessor builds structural units (with section_id, text, unit_index) but
+        # the start/end timestamps live in lyrics_timed — merge them so the timeline
+        # builder can anchor shots to real lyric timestamps instead of normalising.
+        if _tl_lyrics and _tl_input.get("units"):
+            _merged_units = []
+            for _li, _lu in enumerate(list(_tl_input["units"])):
+                _lu = dict(_lu)
+                if _li < len(_tl_lyrics):
+                    _lyr = _tl_lyrics[_li]
+                    if not _lu.get("start") and _lyr.get("start") is not None:
+                        _lu["start"] = _lyr["start"]
+                    if not _lu.get("end") and _lyr.get("end") is not None:
+                        _lu["end"] = _lyr["end"]
+                _merged_units.append(_lu)
+            _tl_input = dict(_tl_input)
+            _tl_input["units"] = _merged_units
+            logger.info(
+                "_stage_brief_job: merged lyrics_timed timestamps into %d units for project=%s",
+                len(_merged_units), project_id,
+            )
+
         # Enrich emotional_mode_packet with deterministic pacing profile
         _tl_primary_mode = (_tl_emp.get("primary_mode") or "").strip()
         if _tl_primary_mode:
