@@ -189,8 +189,12 @@ def ai_build_ref_prompts(
         story_lines.append(f"Geography: {wa['geography']}")
     if wa.get("era"):
         story_lines.append(f"Era: {wa['era']}")
-    if wa.get("architecture_style"):
-        story_lines.append(f"Setting type: {wa['architecture_style']}")
+    # architecture_style is intentionally NOT added to the global story_lines
+    # because it is a world-level DNA string (e.g. "haveli, kotha, courtyard")
+    # that, if broadcast here, gets applied identically to every location prompt
+    # — causing every scene to look like the same architectural type regardless
+    # of its actual spatial identity.  The per-location _loc_summary block
+    # already carries brain['architecture'] for locations that need it.
     if wa.get("characteristic_setting"):
         story_lines.append(f"Spatial character: {wa['characteristic_setting']}")
     if _v("core_theme", "emotional_core"):
@@ -405,11 +409,11 @@ Only fill fields you actually used in the prompt — leave as empty string if no
 LOCATIONS — write an EMPTY SCENE prompt for each
 
 RULE 1 — ZERO PEOPLE: The scene must contain ZERO people, ZERO characters, ZERO human figures.
-RULE 2 — GEOGRAPHIC ANCHOR REQUIRED: Every prompt MUST begin with: "{geo_anchor}".
-RULE 3 — USE WORLD DNA: If world DNA, environment_type, key_textures, or palette_anchor are provided, embed them. They define the visual identity of this world.
-RULE 4 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: Each location type looks completely different — render each one from your own knowledge of what that specific space and architectural style look and feel like in this part of the world.
-RULE 5 — CINEMATIC BEAUTY ALWAYS: You are creating music video reference images, not documentary photography. Every location MUST be the beautiful, elevated, cinematic version of that place — rich lighting, considered composition, visually stunning. NEVER generate dirty, dilapidated, unglamorous, or poverty-stricken imagery. Even a humble village scene must look like a prestige film still.
-RULE 6 — GEOGRAPHIC SPECIFICITY: If the world is set in Punjab (India/Pakistan), draw on specific Punjabi visual vocabulary: golden wheat fields, mustard flower fields, ancient havelis with carved wooden doors, brick gurdwaras, canal-side ghats, dense banyan trees, hand-painted walls, colourful phulkari textiles, terracotta pots, bullock carts, kachcha roads with warm dust. Do not use generic "rural South Asia" — be specific to Punjab.
+RULE 2 — GEOGRAPHIC ANCHOR: Root every prompt in the cultural and geographic world of this project. Use the world DNA and geography as a flavour, colour, and light reference — not as a substitute for the location's own spatial identity.
+RULE 3 — USE WORLD DNA FOR MOOD AND TEXTURE: If world DNA, environment_type, key_textures, or palette_anchor are provided, use them to define the light quality, colour temperature, surface texture, and atmospheric feel. They enrich the location — they do not replace what that location actually IS.
+RULE 4 — EACH LOCATION IS ITS OWN SPACE: A bedroom looks like a bedroom. A street looks like a street. A studio looks like a studio. The location NAME defines the space type — do not override it with the world DNA's default landscape. A Punjabi cultural world can have a bedroom, a roadside stall, a bus station, a rooftop — these are not all havelis or mustard fields. Render each location as its actual space, decorated with the cultural world's colours, textures, and props.
+RULE 5 — CINEMATIC BEAUTY ALWAYS: You are creating music video reference images, not documentary photography. Every location MUST be the beautiful, elevated, cinematic version of that place — rich lighting, considered composition, visually stunning. NEVER generate dirty, dilapidated, unglamorous, or poverty-stricken imagery. Even a humble scene must look like a prestige film still.
+RULE 6 — CULTURAL VOCABULARY ENRICHES, DOES NOT DICTATE ARCHITECTURE: Use culturally specific visual elements as surface detail and atmosphere. For a Punjabi world: warm golden-hour light, terracotta and mustard colour tones, hand-embroidered textiles as props, phulkari patterns on fabric, carved wooden details, warm dust in the air. Do NOT paint every location as a mustard flower field or a haveli courtyard — those are ONE specific setting type. Use the cultural palette to dress the actual space, not to replace it.
 
 End every location prompt with: "Empty scene, no people, no figures, wide establishing shot, cinematic realism, music video production design quality, beautiful elevated version of this place, geographically and culturally authentic."{_vibe_loc_avoid_block}
 
