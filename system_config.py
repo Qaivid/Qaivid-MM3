@@ -32,7 +32,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("quality", "standard", "gpt_low", "gpt_medium", "gpt_high")
+VALID_MODES = ("quality", "standard", "cheap", "gpt_low", "gpt_medium", "gpt_high")
 # Legacy aliases — normalised at read time
 # cheap → gpt_low  (old gpt-image-1.5 "low" path, now GPT Image 2.0 low)
 # sdxl_face → standard  (ip-adapter-face-id-plus removed from fal.ai)
