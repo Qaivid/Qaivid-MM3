@@ -100,18 +100,32 @@ def _build_system_prompt() -> str:
         "Your role is to define IDENTITY RULES and WORLD ANCHORS — not exact visuals.\n\n"
         "CORE PRINCIPLE: define what makes a character recognizable and a world believable, "
         "while preserving creative variation across scenes.\n\n"
+        "CULTURAL SPECIFICITY IS MANDATORY:\n"
+        "- The identity_seed must be SPECIFIC to the song's actual cultural world — never generic.\n"
+        "  BAD: 'A young South Asian woman navigating complex emotions.' (could be any country, any song)\n"
+        "  GOOD: 'A young Punjabi woman carrying the birha of her culture — raised near mustard fields\n"
+        "         and clay-walled courtyards, hiding a devastated heart behind everyday composure.'\n"
+        "- Use the Location DNA, language, and cultural context to derive the character's world.\n"
+        "  A Punjabi song → Punjabi birha tradition, Punjab landscape, Punjabi emotional register.\n"
+        "  A Lagos Afrobeats song → Lagos streets, Yoruba cultural codes, that specific energy.\n"
+        "  Do NOT fall back to country-level or continent-level labels when specific culture is known.\n"
+        "- physical_range must reference the actual cultural-geographic appearance of the people in that world.\n"
+        "- location world descriptions must use specific cultural architecture, textures and light —\n"
+        "  not generic 'warm cozy space' filler.\n\n"
         "WHAT YOU MUST NOT DO:\n"
         "- Do NOT define exact face details\n"
         "- Do NOT define exact outfits\n"
         "- Do NOT define exact props\n"
         "- Do NOT define scene compositions or camera directions\n"
         "- Do NOT generate image prompts\n"
-        "- Do NOT collapse variation — keep multiple visual realizations possible\n\n"
+        "- Do NOT collapse variation — keep multiple visual realizations possible\n"
+        "- Do NOT write generic descriptions that could fit any song — every field must be\n"
+        "  derivable ONLY from this specific song's cultural and emotional world\n\n"
         "WHAT YOU MUST DO:\n"
-        "- Define identity_seed: the non-negotiable core of who each character is\n"
-        "- Define physical_range: broad parameters, NOT a face description\n"
-        "- Define wardrobe_logic: rules and cultural constraints, NOT a specific outfit\n"
-        "- Define location world anchors: architecture, texture, color range, lighting tendency\n"
+        "- identity_seed: one or two sentences — the culturally-grounded non-negotiable core of who this person IS\n"
+        "- physical_range: broad parameters anchored in the specific cultural-geographic appearance of this world\n"
+        "- wardrobe_logic: clothing rules derived from this specific cultural tradition, NOT generic 'soft fabrics'\n"
+        "- location world anchors: specific architecture, textures, color range and lighting true to this cultural world\n"
         "- Define what can vary vs. what must remain stable across scenes\n\n"
         "Respond ONLY with valid JSON matching the provided schema. No prose."
     )
@@ -143,12 +157,33 @@ def _build_user_prompt(
 
     # ── Context: cultural grounding ──
     location_dna = context_packet.get("location_dna") or ""
+    song_language = context_packet.get("language") or ""
+    core_theme = context_packet.get("core_theme") or ""
+    emotional_arc = context_packet.get("emotional_arc") or {}
     speaker = context_packet.get("speaker") or {}
     addressee = context_packet.get("addressee") or {}
     world_assumptions = context_packet.get("world_assumptions") or {}
     must_preserve = context_packet.get("must_preserve") or []
     creative_freedom = context_packet.get("creative_freedom") or {}
     motif_map = context_packet.get("motif_map") or {}
+
+    # Pull unique cultural meanings already extracted by the Context Engine.
+    # These are the specific cultural anchors the LLM derived from the actual
+    # lyrics — they must feed directly into the identity_seed and location world
+    # descriptions instead of being re-discovered (and genericised) from scratch.
+    raw_line_meanings = context_packet.get("line_meanings") or []
+    cultural_highlights: list[str] = []
+    _seen_cultural: set[str] = set()
+    for _lm in raw_line_meanings:
+        if not isinstance(_lm, dict):
+            continue
+        for _key in ("cultural_meaning", "implied_meaning"):
+            _val = str(_lm.get(_key) or "").strip()
+            if _val and _val.lower() not in _seen_cultural:
+                _seen_cultural.add(_val.lower())
+                cultural_highlights.append(_val)
+        if len(cultural_highlights) >= 12:
+            break
 
     # ── Narrative: light presence signals ──
     presence_strategy = narrative_packet.get("presence_strategy") or ""
@@ -173,9 +208,20 @@ def _build_user_prompt(
     else:
         sections.append("(no brief scenes available — rely on context/narrative)")
 
-    sections.append("=== CULTURAL CONTEXT ===")
+    sections.append("=== SONG IDENTITY (already extracted by the Context Engine — USE THESE, do not re-derive) ===")
+    if song_language:
+        sections.append(f"Song language: {song_language}")
     if location_dna:
-        sections.append(f"Location DNA: {location_dna}")
+        sections.append(f"Cultural world (Location DNA): {location_dna}")
+    if core_theme:
+        sections.append(f"Core theme: {core_theme}")
+    if emotional_arc and isinstance(emotional_arc, dict):
+        arc_str = " → ".join(
+            str(v) for k, v in emotional_arc.items()
+            if v and k in ("opening", "development", "climax", "resolution")
+        )
+        if arc_str:
+            sections.append(f"Emotional arc: {arc_str}")
     if world_assumptions:
         sections.append(f"World assumptions: {json.dumps(world_assumptions)}")
     if speaker:
@@ -187,6 +233,14 @@ def _build_user_prompt(
     # character based on scene character_presence and character_identity_hint.
     if addressee:
         sections.append(f"Addressee (second person referenced in song): {json.dumps(addressee)}")
+    # Cultural meanings already extracted line-by-line by the Context Engine.
+    # These are ground truth from the actual lyrics — the identity_seed and
+    # location descriptions MUST be grounded in these specific anchors.
+    if cultural_highlights:
+        sections.append(
+            "Cultural and implied meanings extracted from the lyrics:\n"
+            + "\n".join(f"  - {h}" for h in cultural_highlights)
+        )
     if must_preserve:
         sections.append(f"Must preserve: {must_preserve}")
     if creative_freedom:
