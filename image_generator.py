@@ -126,7 +126,12 @@ def ai_build_ref_prompts(
     # (handled in shot_prompt_composer / motion_render_prompt_builder).
     _vibe_label         = (sp.get("vibe_label")                or "").strip()
     _vibe_ref_direction = (sp.get("vibe_reference_direction")  or "").strip()
-    _vibe_avoid_list    = sp.get("vibe_avoid") or []
+    _raw_avoid          = sp.get("vibe_avoid") or []
+    _vibe_avoid_list    = (
+        [str(a) for a in _raw_avoid]
+        if isinstance(_raw_avoid, list)
+        else ([str(_raw_avoid)] if _raw_avoid else [])
+    )
     _vibe_avoid_str     = (
         "NEVER include: " + ", ".join(_vibe_avoid_list) + "."
         if _vibe_avoid_list else ""
