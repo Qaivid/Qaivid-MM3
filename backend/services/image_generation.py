@@ -53,10 +53,10 @@ async def _generate_openai(
         raise ValueError("OpenAI API key not configured.")
 
     client = AsyncOpenAI(api_key=api_key)
-    model = "gpt-image-1" if provider == "gpt_image_1" else "dall-e-3"
+    model = "gpt-image-1.5" if provider == "gpt_image_1" else "dall-e-3"
 
-    # GPT Image 1 returns base64; DALL-E 3 returns URL by default
-    if model == "gpt-image-1":
+    # GPT Image 1.5 returns base64; DALL-E 3 returns URL by default
+    if model == "gpt-image-1.5":
         response = await client.images.generate(
             model=model,
             prompt=prompt,

@@ -6,7 +6,7 @@ Three image generation modes, two independent slots:
   * ``image_mode_shot`` — per-shot stills
 
 Shot mode values:
-  * ``cheap``    — gpt-image-1 low ($0.009–$0.013), img2img with char+env refs.
+  * ``cheap``    — gpt-image-1.5 low ($0.009–$0.013), img2img with char+env refs.
                    Good for fast prompt testing with face retention via img2img.
   * ``standard`` — FAL FLUX/schnell (~$0.003–0.005), no face-lock.
                    Cinematic-quality stills, same engine as reference plates.
@@ -21,7 +21,7 @@ Shot mode values:
   (fal-ai/ip-adapter-face-id-plus was removed from fal.ai).
 
 Ref mode values:
-  * ``cheap``   — gpt-image-1 low ($0.009–$0.013)
+  * ``cheap``   — gpt-image-1.5 low ($0.009–$0.013)
   * ``quality`` — FAL FLUX/schnell (~$0.003)  ← recommended
 
 A short in-process cache prevents hammering the DB on every render step.
