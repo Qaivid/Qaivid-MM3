@@ -336,6 +336,11 @@ If a character has no physical data, write a culturally-authentic anonymous port
 for someone from that cultural world.
 End every character prompt with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
 
+IMPORTANT: For every character, also return their physical fields as structured data in
+"character_fields" so downstream stages can stay consistent with the same appearance.
+Fields: gender, ethnicity, complexion, wardrobe, grooming.
+Only fill fields you actually used in the prompt — leave as empty string if not applicable.
+
 {chars_block}
 
 ───────────────────────────────
@@ -354,7 +359,16 @@ End every location prompt with: "Empty scene, no people, no figures, establishin
 Return ONLY valid JSON, no markdown, no explanation:
 {{
   "characters": {{"<id as string>": "<portrait prompt>"}},
-  "locations":  {{"<id as string>": "<scene prompt>"}}
+  "locations":  {{"<id as string>": "<scene prompt>"}},
+  "character_fields": {{
+    "<id as string>": {{
+      "gender": "<value or empty string>",
+      "ethnicity": "<value or empty string>",
+      "complexion": "<value or empty string>",
+      "wardrobe": "<value or empty string>",
+      "grooming": "<value or empty string>"
+    }}
+  }}
 }}"""
 
     try:
@@ -372,13 +386,14 @@ Return ONLY valid JSON, no markdown, no explanation:
         import json as _json
         raw = response.choices[0].message.content or "{}"
         result = _json.loads(raw)
-        chars_prompts = {str(k): v for k, v in (result.get("characters") or {}).items()}
-        locs_prompts  = {str(k): v for k, v in (result.get("locations")  or {}).items()}
+        chars_prompts  = {str(k): v for k, v in (result.get("characters")      or {}).items()}
+        locs_prompts   = {str(k): v for k, v in (result.get("locations")       or {}).items()}
+        char_fields    = {str(k): v for k, v in (result.get("character_fields") or {}).items()}
         logger.info(
-            "ai_build_ref_prompts: got %d char + %d loc prompts (materializer_packet=%s)",
-            len(chars_prompts), len(locs_prompts), bool(mp),
+            "ai_build_ref_prompts: got %d char + %d loc prompts, %d field sets (materializer_packet=%s)",
+            len(chars_prompts), len(locs_prompts), len(char_fields), bool(mp),
         )
-        return {"characters": chars_prompts, "locations": locs_prompts}
+        return {"characters": chars_prompts, "locations": locs_prompts, "character_fields": char_fields}
     except Exception as exc:
         logger.warning("ai_build_ref_prompts failed (%s) — falling back to templates", exc)
         return {}

@@ -3278,8 +3278,9 @@ def _stage_refs_job(project_id: str,
             logger.exception("AI ref-prompt generation failed — using templates")
             ai_prompts = {}
 
-        char_prompts = ai_prompts.get("characters", {})
-        loc_prompts  = ai_prompts.get("locations",  {})
+        char_prompts  = ai_prompts.get("characters",      {})
+        loc_prompts   = ai_prompts.get("locations",       {})
+        char_fields   = ai_prompts.get("character_fields", {})
 
         # Save AI-generated prompts to DB so they are visible and editable on
         # the references_review page. Plates are NOT auto-generated here — the
@@ -3292,6 +3293,31 @@ def _stage_refs_job(project_id: str,
             if ai_prompt:
                 _set_entity_ref(project_id, "character", c["id"],
                                 status="pending", prompt=ai_prompt)
+
+            # Back-fill physical appearance fields that the AI invented while
+            # writing the prompt.  Only write fields that are currently empty
+            # in the DB so we never overwrite data the user has already set.
+            fields = char_fields.get(str(c["id"])) or {}
+            if fields and isinstance(fields, dict):
+                updates = {
+                    k: str(fields[k]).strip()
+                    for k in ("gender", "ethnicity", "complexion", "wardrobe", "grooming")
+                    if fields.get(k) and not (c.get(k) or "").strip()
+                }
+                if updates:
+                    set_clause = ", ".join(f"{k}=%s" for k in updates)
+                    vals = list(updates.values()) + [c["id"], project_id]
+                    with _db() as conn, conn.cursor() as cur:
+                        cur.execute(
+                            f"UPDATE characters SET {set_clause} "
+                            "WHERE id=%s AND project_id=%s",
+                            vals,
+                        )
+                    logger.info(
+                        "Refs stage: back-filled fields %s for character id=%s project=%s",
+                        list(updates.keys()), c["id"], project_id,
+                    )
+
         for l in locs:
             if l.get("ref_status") == "ready":
                 continue
