@@ -687,7 +687,12 @@ def _render_video(project_id: str, shot: dict) -> None:
         cinematic_style = ((_sp.get("cinematic") or {}).get("look") or "").strip() or None
         lighting_logic  = (str(_sp.get("lighting_logic") or "")).strip() or None
         vibe_shot_dir   = (str(_sp.get("vibe_shot_direction") or "")).strip() or ""
-        vibe_avoid_vid  = _sp.get("vibe_avoid") or []
+        _raw_vav = _sp.get("vibe_avoid") or []
+        vibe_avoid_vid  = (
+            [str(a) for a in _raw_vav]
+            if isinstance(_raw_vav, list)
+            else ([str(_raw_vav)] if _raw_vav else [])
+        )
 
         # narrative_packet — motion philosophy
         _np = _vbrain.read("narrative_packet") or {}
@@ -1065,7 +1070,12 @@ def _render_shot(project_id: str, shot: dict,
             # Vibe preset directions for shot-level stills
             _ssp = _shot_brain.read("style_packet") or {}
             shot_vibe_shot_dir  = (str(_ssp.get("vibe_shot_direction") or "")).strip()
-            shot_vibe_avoid     = _ssp.get("vibe_avoid") or []
+            _raw_sav = _ssp.get("vibe_avoid") or []
+            shot_vibe_avoid = (
+                [str(a) for a in _raw_sav]
+                if isinstance(_raw_sav, list)
+                else ([str(_raw_sav)] if _raw_sav else [])
+            )
         except Exception:
             logger.debug(
                 "_render_shot: brain load failed for project=%s shot=%s (non-fatal)",
@@ -3970,7 +3980,12 @@ def composed_prompts_for_project(project_id: str) -> dict:
             _emotional_mode_modifier_str = str(_emp.get("cinematic_modifier") or "").strip()
         _map_ssp = _brain.read("style_packet") or {}
         _map_vibe_shot_dir = (str(_map_ssp.get("vibe_shot_direction") or "")).strip()
-        _map_vibe_avoid    = _map_ssp.get("vibe_avoid") or []
+        _raw_mav = _map_ssp.get("vibe_avoid") or []
+        _map_vibe_avoid = (
+            [str(a) for a in _raw_mav]
+            if isinstance(_raw_mav, list)
+            else ([str(_raw_mav)] if _raw_mav else [])
+        )
     except Exception:
         pass
 
@@ -4135,12 +4150,23 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
             cine_prefix = ""
 
     _preview_mode_modifier = ""
+    _preview_vibe_shot_dir: str = ""
+    _preview_vibe_avoid: list = []
     try:
         with _db() as _pm_conn:
             _pm_brain = ProjectBrain.load(project_id, _pm_conn)
         if _pm_brain.is_populated("emotional_mode_packet"):
             _pm_emp = _pm_brain.read("emotional_mode_packet") or {}
             _preview_mode_modifier = str(_pm_emp.get("cinematic_modifier") or "").strip()
+        # Vibe preset directions — ensures preview prompt matches render prompt
+        _pm_ssp = _pm_brain.read("style_packet") or {}
+        _preview_vibe_shot_dir = (str(_pm_ssp.get("vibe_shot_direction") or "")).strip()
+        _raw_avoid = _pm_ssp.get("vibe_avoid") or []
+        _preview_vibe_avoid = (
+            [str(a) for a in _raw_avoid]
+            if isinstance(_raw_avoid, list)
+            else ([str(_raw_avoid)] if _raw_avoid else [])
+        )
     except Exception:
         pass
 
@@ -4152,6 +4178,8 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
         has_environment_ref=bool(env_url),
         cine_prefix=cine_prefix,
         emotional_mode_modifier=_preview_mode_modifier,
+        vibe_shot_direction=_preview_vibe_shot_dir,
+        vibe_avoid=_preview_vibe_avoid,
     )
     return prompt
 
