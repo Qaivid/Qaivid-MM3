@@ -81,10 +81,7 @@ class StyleProfileEngine:
             resolved = self._resolve_suggestions(suggestions_raw, mode_constraints=mode_constraints)
             return [self._apply_mode_merge(s, emotional_mode_packet) for s in resolved]
         except Exception:
-            logger.exception("StyleProfileEngine.suggest failed — returning mode-constrained defaults")
-            # Run fallback through the same avoid/incompatible post-filter as normal suggestions
-            # so mode constraints (avoid/incompatible) hold even on model failure.
-            # Use a raw-format dict so _resolve_suggestions can apply replacements.
+            logger.exception("StyleProfileEngine.suggest failed — returning safe default")
             synthetic_raw = {
                 "suggestions": [{
                     "production_style_id": "split_narrative_performance",
@@ -405,18 +402,21 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         return resolved
 
     def _apply_mode_merge(self, profile: Dict[str, Any], emp: Dict[str, Any]) -> Dict[str, Any]:
-        """Blend emotional_mode_packet's style_modifier_injection into the resolved style profile.
+        """Merge behavioural injection keys from the emotional mode into the style profile.
 
-        The profile already has a storyboard_modifiers block from the registry.
-        We overlay the mode's style_modifier_injection dict on top so mode-specific
-        defaults win while allowing registry values to remain where the mode doesn't
-        specify anything.
+        Only the whitelisted behavioural keys — movement and atmosphere_note — are
+        merged. Visual/environmental keys such as lighting are explicitly excluded so
+        that the user's chosen cinematic style and vibe preset retain full authority
+        over visual appearance.
         """
+        _BEHAVIOURAL_KEYS = {"movement", "atmosphere_note"}
+
         if not emp:
             return profile
 
         injection = emp.get("style_modifier_injection") or {}
-        if not injection:
+        behavioural = {k: v for k, v in injection.items() if k in _BEHAVIOURAL_KEYS}
+        if not behavioural:
             return profile
 
         import copy
@@ -424,13 +424,10 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
 
         sb = profile.get("storyboard_modifiers")
         if isinstance(sb, dict):
-            # Mode injection OVERRIDES registry values for specified keys.
-            # The emotional mode's aesthetic is the locked truth — it must win
-            # over whatever the cinematic style registry provides.
-            for k, v in injection.items():
+            for k, v in behavioural.items():
                 sb[k] = v
         else:
-            profile["storyboard_modifiers"] = dict(injection)
+            profile["storyboard_modifiers"] = dict(behavioural)
 
         profile.setdefault("emotional_mode", {
             "mode_id":    emp.get("primary_mode") or emp.get("mode_id") or "",
@@ -485,17 +482,20 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
 
         profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
 
-        # Inject behavioural modifiers from the mode packet (movement + atmosphere_note only).
+        # Inject behavioural modifiers — whitelist to movement + atmosphere_note only.
+        # Visual keys such as lighting are never injected; those belong to the vibe/cinematic style.
+        _BEHAVIOURAL_KEYS = {"movement", "atmosphere_note"}
         injection = emp.get("style_modifier_injection") or {}
-        if injection:
+        behavioural = {k: v for k, v in injection.items() if k in _BEHAVIOURAL_KEYS}
+        if behavioural:
             import copy as _copy
             profile = _copy.deepcopy(profile)
             sb = profile.get("storyboard_modifiers")
             if isinstance(sb, dict):
-                for k, v in injection.items():
+                for k, v in behavioural.items():
                     sb[k] = v
             else:
-                profile["storyboard_modifiers"] = dict(injection)
+                profile["storyboard_modifiers"] = dict(behavioural)
 
         # Tag profile with mode metadata for downstream stage awareness.
         if emp.get("primary_mode"):
