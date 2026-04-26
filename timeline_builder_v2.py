@@ -566,6 +566,10 @@ def build_timeline_from_brief(
             "variety_cap_reclassified": False,
             "lyric_start_seconds":      lyric_start,
             "lyric_end_seconds":        lyric_end,
+            # First-class timeline decisions (top-level, per task spec)
+            "chosen_direction":         str(scene.get("chosen_direction") or ""),
+            "timeline_mode":            (str(scene.get("timeline_mode") or "").strip()
+                                         or _default_timeline_mode),
             # V2-specific: trace which brief scene drove this shot
             "_v2_scene_id":             str(scene.get("scene_id") or ""),
             "_v2_chosen_direction":     str(scene.get("chosen_direction") or ""),
@@ -633,6 +637,8 @@ def build_timeline_from_brief(
         "subject_focus", "character_presence", "environment_type",
         "key_elements", "emotional_state", "lighting_condition",
         "movement_type", "motion_density",
+        # Top-level timeline decisions
+        "chosen_direction", "timeline_mode",
     )
     raw_by_idx = {r.get("shot_index"): r for r in raw_shots}
     for styled in styled_timeline:
