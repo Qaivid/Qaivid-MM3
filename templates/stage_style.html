@@ -26,6 +26,7 @@
             <input type="hidden" name="production_style_id" id="prod-id-input" value="{{ suggestions[0].production.id if suggestions else 'split_narrative_performance' }}">
             <input type="hidden" name="cinematic_style_id" id="cin-id-input" value="{{ suggestions[0].cinematic.id if suggestions else 'cinematic_natural' }}">
             <input type="hidden" name="vibe_preset_id" id="vibe-preset-id-input" value="">
+            <input type="hidden" name="custom_vibe_json" id="custom-vibe-json-input" value="">
 
             {# ── Quick Start — Vibe Presets ──────────────────────────────── #}
             {% if all_vibe_presets %}
@@ -83,6 +84,52 @@
                 </div>
             </div>
             {% endif %}
+
+            {# ── Describe Your Own Vibe ──────────────────────────────────── #}
+            <div class="custom-vibe-section" id="custom-vibe-section">
+                <h3 class="custom-vibe-title">Describe Your Own Vibe</h3>
+                <p class="custom-vibe-sub">Type a visual direction in plain language — the AI will build a full cinematic vibe package from it, enriched by your song's cultural context.</p>
+                <textarea
+                    id="custom-vibe-description"
+                    class="custom-vibe-textarea"
+                    maxlength="800"
+                    placeholder="e.g. cinematic Punjabi wedding, golden hour fields, Bollywood-meets-folk, warm and celebratory"
+                    rows="3"
+                >{{ existing_custom_vibe.description if existing_custom_vibe else '' }}</textarea>
+                <div class="custom-vibe-actions">
+                    <button type="button" id="custom-vibe-generate-btn"
+                            class="btn-custom-vibe-generate"
+                            onclick="generateCustomVibe()">
+                        Generate Vibe
+                    </button>
+                    <span id="custom-vibe-spinner" class="custom-vibe-spinner" style="display:none">Generating…</span>
+                </div>
+                <div id="custom-vibe-error" class="custom-vibe-error" style="display:none"></div>
+
+                {# Result confirmation card #}
+                <div id="custom-vibe-result" class="custom-vibe-result"
+                     style="display:{{ 'block' if existing_custom_vibe else 'none' }}">
+                    <div class="cvr-header">
+                        <span class="cvr-badge">Custom Vibe</span>
+                        <span id="cvr-label" class="cvr-label">{{ ('Custom: ' ~ existing_custom_vibe.label) if existing_custom_vibe else '' }}</span>
+                    </div>
+                    <p id="cvr-tagline" class="cvr-tagline">{{ existing_custom_vibe.tagline if existing_custom_vibe else '' }}</p>
+                    <div class="cvr-footer">
+                        <span id="cvr-prod-badge" class="style-badge style-badge--prod">
+                            {{ existing_custom_vibe.production_style_id if existing_custom_vibe else '' }}
+                        </span>
+                        <span id="cvr-cin-badge" class="style-badge style-badge--cin">
+                            {{ existing_custom_vibe.cinematic_style_id if existing_custom_vibe else '' }}
+                        </span>
+                        <button type="button" class="btn-cvr-apply" onclick="applyCustomVibe()">Use This Vibe ✓</button>
+                    </div>
+                </div>
+                {% if existing_custom_vibe %}
+                <p class="custom-vibe-applied-note" id="custom-vibe-applied-note">
+                    Custom vibe already applied — clicking "Use This Vibe" or submitting the form will use it.
+                </p>
+                {% endif %}
+            </div>
 
             {# ── Manual Override ─────────────────────────────────────────── #}
             <div class="style-manual-section">
@@ -235,6 +282,131 @@
 .style-select-label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted, #aaa); }
 .style-select { background: var(--surface-2, #1a1a2e); border: 1px solid var(--border, #444); color: var(--text, #e5e5e5); border-radius: 6px; padding: .6rem .75rem; font-size: .9rem; }
 
+/* ── Custom Vibe section ─────────────────────────────────────────────── */
+.custom-vibe-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border, #333);
+    border-radius: 12px;
+}
+.custom-vibe-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: .25rem;
+}
+.custom-vibe-sub {
+    font-size: .85rem;
+    color: var(--text-muted, #aaa);
+    margin-bottom: 1rem;
+}
+.custom-vibe-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--surface-2, #1a1a2e);
+    border: 1px solid var(--border, #444);
+    color: var(--text, #e5e5e5);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    font-size: .9rem;
+    line-height: 1.5;
+    resize: vertical;
+    font-family: inherit;
+    margin-bottom: .75rem;
+}
+.custom-vibe-textarea:focus {
+    outline: none;
+    border-color: var(--accent, #6c63ff);
+}
+.custom-vibe-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: .75rem;
+}
+.btn-custom-vibe-generate {
+    background: linear-gradient(135deg, #6c63ff, #a855f7);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: .55rem 1.25rem;
+    font-size: .88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+}
+.btn-custom-vibe-generate:hover { opacity: .88; }
+.btn-custom-vibe-generate:disabled { opacity: .5; cursor: not-allowed; }
+.custom-vibe-spinner {
+    font-size: .85rem;
+    color: var(--text-muted, #aaa);
+    animation: cvs-pulse 1s ease-in-out infinite;
+}
+@keyframes cvs-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.custom-vibe-error {
+    color: #ff6b6b;
+    font-size: .85rem;
+    margin-bottom: .5rem;
+}
+.custom-vibe-result {
+    margin-top: 1rem;
+    border: 2px solid rgba(255,177,66,.4);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    background: rgba(255,177,66,.05);
+}
+.cvr-header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: .5rem;
+}
+.cvr-badge {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    background: rgba(255,177,66,.2);
+    color: #ffb142;
+    padding: .2rem .55rem;
+    border-radius: 4px;
+}
+.cvr-label {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--text, #e5e5e5);
+}
+.cvr-tagline {
+    font-size: .85rem;
+    color: var(--text-muted, #aaa);
+    margin-bottom: .75rem;
+    line-height: 1.45;
+}
+.cvr-footer {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+}
+.btn-cvr-apply {
+    margin-left: auto;
+    background: #ffb142;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 6px;
+    padding: .4rem 1rem;
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .15s;
+}
+.btn-cvr-apply:hover { opacity: .85; }
+.custom-vibe-applied-note {
+    font-size: .78rem;
+    color: #ffb142;
+    margin-top: .5rem;
+}
+
 /* ── Repick banner ───────────────────────────────────────────────────── */
 .repick-banner {
     margin-top: 1rem;
@@ -255,12 +427,27 @@
 </style>
 
 <script>
+// ── Custom vibe state ─────────────────────────────────────────────────
+let _customVibeData = null;  // holds the last generated vibe dict
+
+{% if existing_custom_vibe %}
+// Pre-load existing custom vibe so submitting the form keeps it
+_customVibeData = {{ existing_custom_vibe | tojson }};
+document.getElementById('custom-vibe-json-input').value = JSON.stringify(_customVibeData);
+{% endif %}
+
 function _syncHiddenInputs(prodId, cinId, vibeId) {
-    document.getElementById('prod-id-input').value       = prodId;
-    document.getElementById('cin-id-input').value        = cinId;
+    document.getElementById('prod-id-input').value        = prodId;
+    document.getElementById('cin-id-input').value         = cinId;
     document.getElementById('vibe-preset-id-input').value = vibeId || '';
-    document.getElementById('manual-prod').value         = prodId;
-    document.getElementById('manual-cin').value          = cinId;
+    document.getElementById('manual-prod').value          = prodId;
+    document.getElementById('manual-cin').value           = cinId;
+    // Clear custom vibe when a preset or suggestion is chosen
+    document.getElementById('custom-vibe-json-input').value = '';
+    _customVibeData = null;
+    document.querySelectorAll('.custom-vibe-result').forEach(el => el.style.display = 'none');
+    const note = document.getElementById('custom-vibe-applied-note');
+    if (note) note.style.display = 'none';
 }
 
 function selectVibe(el) {
@@ -280,9 +467,11 @@ function selectSuggestion(el) {
 function applyManual() {
     const prodId = document.getElementById('manual-prod').value;
     const cinId  = document.getElementById('manual-cin').value;
-    document.getElementById('prod-id-input').value        = prodId;
-    document.getElementById('cin-id-input').value         = cinId;
-    document.getElementById('vibe-preset-id-input').value = '';
+    document.getElementById('prod-id-input').value         = prodId;
+    document.getElementById('cin-id-input').value          = cinId;
+    document.getElementById('vibe-preset-id-input').value  = '';
+    document.getElementById('custom-vibe-json-input').value = '';
+    _customVibeData = null;
     document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
     document.querySelectorAll('.style-card').forEach(c => {
         if (c.dataset.prodId === prodId && c.dataset.cinId === cinId) {
@@ -291,6 +480,86 @@ function applyManual() {
             c.classList.remove('style-card--selected');
         }
     });
+    document.getElementById('custom-vibe-result').style.display = 'none';
+    const note = document.getElementById('custom-vibe-applied-note');
+    if (note) note.style.display = 'none';
+}
+
+// ── Custom vibe generation ────────────────────────────────────────────
+async function generateCustomVibe() {
+    const description = document.getElementById('custom-vibe-description').value.trim();
+    if (!description) {
+        showCVError('Please enter a description first.');
+        return;
+    }
+    const btn     = document.getElementById('custom-vibe-generate-btn');
+    const spinner = document.getElementById('custom-vibe-spinner');
+    const errEl   = document.getElementById('custom-vibe-error');
+    const resultEl = document.getElementById('custom-vibe-result');
+
+    btn.disabled  = true;
+    spinner.style.display = 'inline';
+    errEl.style.display   = 'none';
+    resultEl.style.display = 'none';
+
+    try {
+        const resp = await fetch(
+            '{{ url_for("generate_custom_vibe", project_id=project.id) }}',
+            {
+                method:  'POST',
+                headers: {'Content-Type': 'application/json',
+                          'X-CSRFToken': document.querySelector('[name=csrf_token]').value},
+                body:    JSON.stringify({description}),
+            }
+        );
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            showCVError(data.error || 'Generation failed — please try again.');
+            return;
+        }
+        _customVibeData = data.vibe;
+        _showCustomVibeResult(_customVibeData);
+    } catch (e) {
+        showCVError('Network error — please check your connection and try again.');
+    } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+    }
+}
+
+function _showCustomVibeResult(vibe) {
+    const label   = 'Custom: ' + vibe.label;
+    const tagline = vibe.tagline || '';
+    document.getElementById('cvr-label').textContent    = label;
+    document.getElementById('cvr-tagline').textContent  = tagline;
+    document.getElementById('cvr-prod-badge').textContent = vibe.production_style_id || '';
+    document.getElementById('cvr-cin-badge').textContent  = vibe.cinematic_style_id  || '';
+    document.getElementById('custom-vibe-result').style.display = 'block';
+}
+
+function applyCustomVibe() {
+    if (!_customVibeData) return;
+    // Store the full vibe JSON in the hidden form field
+    document.getElementById('custom-vibe-json-input').value = JSON.stringify(_customVibeData);
+    // Update the prod/cin hidden inputs so mode constraints fire correctly on submit
+    document.getElementById('prod-id-input').value         = _customVibeData.production_style_id || '';
+    document.getElementById('cin-id-input').value          = _customVibeData.cinematic_style_id  || '';
+    document.getElementById('vibe-preset-id-input').value  = '';
+    // Deselect all preset + suggestion cards
+    document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
+    document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
+    // Visual confirmation
+    const btn = document.querySelector('.btn-cvr-apply');
+    btn.textContent = 'Vibe locked in ✓';
+    btn.style.background = '#00c878';
+    const note = document.getElementById('custom-vibe-applied-note');
+    if (note) { note.style.display = 'block'; note.textContent = 'Custom vibe selected — submit the form to apply it.'; }
+}
+
+function showCVError(msg) {
+    const el = document.getElementById('custom-vibe-error');
+    el.textContent   = msg;
+    el.style.display = 'block';
 }
 </script>
 {% endblock %}

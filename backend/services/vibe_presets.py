@@ -169,3 +169,84 @@ def list_vibe_presets_for_ui() -> List[Dict[str, Any]]:
         }
         for v in VIBE_PRESETS.values()
     ]
+
+
+# ── Valid style IDs (must match style_profile_registry.py) ────────────────────
+_VALID_PRODUCTION_IDS = {
+    "narrative", "performance", "split_narrative_performance",
+    "conceptual_abstract", "single_location", "documentary_candid",
+}
+_VALID_CINEMATIC_IDS = {
+    "cinematic_natural", "noir_dramatic", "vibrant_bold", "soft_poetic",
+    "vintage_grain", "monochrome", "arthouse_minimalist",
+    "surrealist_dream", "cinematic_realism",
+}
+_REQUIRED_TEXT_FIELDS = (
+    "label", "tagline", "brief_direction",
+    "storyboard_direction", "reference_direction", "shot_direction",
+)
+
+_CUSTOM_VIBE_SYSTEM_PROMPT = """\
+You are a cinematography director and music video vibe designer.
+The user will give you:
+  1. A plain-language description of the visual vibe they want.
+  2. The song's cultural context (geography, genre, mood, era).
+
+Return ONLY a valid JSON object (no markdown, no commentary) with these fields:
+{
+  "label":                 "Short 3-5 word vibe name (title case)",
+  "tagline":               "One evocative sentence capturing the look and feel",
+  "production_style_id":   "<one of: narrative | performance | split_narrative_performance | conceptual_abstract | single_location | documentary_candid>",
+  "cinematic_style_id":    "<one of: cinematic_natural | noir_dramatic | vibrant_bold | soft_poetic | vintage_grain | monochrome | arthouse_minimalist | surrealist_dream | cinematic_realism>",
+  "brief_direction":       "2-4 sentence creative brief direction. Be specific about wardrobe, settings, era, atmosphere.",
+  "storyboard_direction":  "2-3 sentences on shot composition ratio, camera movement, pacing.",
+  "reference_direction":   "1-2 sentences on lighting, depth, colour, reference plate style.",
+  "shot_direction":        "1-2 sentences on colour grade, texture, lighting mood.",
+  "avoid":                 ["array", "of", "short", "avoid phrases", "2-6 items"]
+}
+
+Enrich from the song's cultural context so the vibe is culturally grounded, not generic.
+"""
+
+
+def build_custom_vibe(description: str, llm_response: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and normalise an LLM-generated vibe definition.
+
+    Raises ``ValueError`` with a human-readable message if the LLM response is
+    missing required fields or contains unknown style IDs.  Valid responses are
+    normalised into a dict shaped like a standard preset (with an added
+    ``description`` key holding the original user text).
+    """
+    # Coerce avoid to list
+    avoid = llm_response.get("avoid", [])
+    if isinstance(avoid, str):
+        avoid = [a.strip() for a in avoid.split(",") if a.strip()]
+    if not isinstance(avoid, list):
+        avoid = []
+
+    # Validate text fields
+    missing = [f for f in _REQUIRED_TEXT_FIELDS if not str(llm_response.get(f) or "").strip()]
+    if missing:
+        raise ValueError(f"LLM response missing required fields: {', '.join(missing)}")
+
+    prod_id = str(llm_response.get("production_style_id") or "").strip()
+    cin_id  = str(llm_response.get("cinematic_style_id") or "").strip()
+
+    if prod_id not in _VALID_PRODUCTION_IDS:
+        prod_id = "split_narrative_performance"
+    if cin_id not in _VALID_CINEMATIC_IDS:
+        cin_id = "cinematic_natural"
+
+    return {
+        "id":                    "custom",
+        "label":                 str(llm_response["label"]).strip(),
+        "tagline":               str(llm_response["tagline"]).strip(),
+        "production_style_id":   prod_id,
+        "cinematic_style_id":    cin_id,
+        "brief_direction":       str(llm_response["brief_direction"]).strip(),
+        "storyboard_direction":  str(llm_response["storyboard_direction"]).strip(),
+        "reference_direction":   str(llm_response["reference_direction"]).strip(),
+        "shot_direction":        str(llm_response["shot_direction"]).strip(),
+        "avoid":                 [str(a).strip() for a in avoid if str(a).strip()],
+        "description":           description.strip(),
+    }

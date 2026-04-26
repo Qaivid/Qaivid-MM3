@@ -8,10 +8,20 @@
    href="{{ url_for('project_detail', project_id=project.id, at='style_review') }}"
    title="View or change the Style Profile">
     <span class="spb-label">Style Profile</span>
-    <span class="spb-pill spb-pill--prod">{{ sp.production.label }}</span>
-    <span class="spb-pill spb-pill--cin">{{ sp.cinematic.label }}</span>
+    {% if sp.custom_vibe %}
+        <span class="spb-pill spb-pill--custom">Custom: {{ sp.custom_vibe.label }}</span>
+    {% elif sp.vibe_label %}
+        <span class="spb-pill spb-pill--vibe">{{ sp.vibe_label }}</span>
+    {% else %}
+        <span class="spb-pill spb-pill--prod">{{ sp.production.label }}</span>
+        <span class="spb-pill spb-pill--cin">{{ sp.cinematic.label }}</span>
+    {% endif %}
     <span class="spb-edit">change ›</span>
 </a>
+<style>
+.spb-pill--vibe   { background: rgba(255,177,66,.2); color: #ffb142; }
+.spb-pill--custom { background: rgba(168,85,247,.2); color: #c084fc; }
+</style>
 <style>
 .style-profile-badge {
     display: inline-flex;

@@ -1263,12 +1263,24 @@ def project_detail(project_id: str):
     if stage == "style_review":
         from style_profile_registry import StyleProfileRegistry
         from backend.services.vibe_presets import list_vibe_presets_for_ui
+        # Load any existing custom vibe so the textarea can be pre-populated
+        _existing_custom_vibe = None
+        try:
+            with db() as _sc:
+                _sb = ProjectBrain.load(project_id, _sc)
+            _sp = _sb.read("style_packet") if _sb.is_populated("style_packet") else {}
+            _existing_custom_vibe = (_sp or {}).get("custom_vibe")
+        except Exception:
+            pass
+        if not _existing_custom_vibe:
+            _existing_custom_vibe = (project.get("style_profile") or {}).get("custom_vibe")
         return render_template(
             "stage_style.html",
             project=project,
             all_production_styles=StyleProfileRegistry.all_production_styles(),
             all_cinematic_styles=StyleProfileRegistry.all_cinematic_styles(),
             all_vibe_presets=list_vibe_presets_for_ui(),
+            existing_custom_vibe=_existing_custom_vibe,
         )
 
     if stage == "context_review":
@@ -1732,6 +1744,97 @@ def advance_stage_1(project_id: str):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
+@app.route("/project/<project_id>/generate-custom-vibe", methods=["POST"])
+@login_required
+def generate_custom_vibe(project_id: str):
+    """Generate a custom vibe definition from a plain-text description.
+
+    Reads the project's context_packet for cultural enrichment, calls the LLM
+    with a structured prompt, and returns a normalised vibe definition JSON.
+    The client can then include the JSON in the style form submission.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    description = str(data.get("description") or "").strip()
+    if not description:
+        return jsonify({"error": "Description is required"}), 400
+    if len(description) > 800:
+        return jsonify({"error": "Description must be 800 characters or fewer"}), 400
+
+    # Read cultural context from project for enrichment
+    context_packet: dict = {}
+    try:
+        with db() as conn:
+            _brain = ProjectBrain.load(project_id, conn)
+        if _brain.is_populated("context_packet"):
+            context_packet = _brain.read("context_packet") or {}
+    except Exception:
+        app.logger.debug(
+            "generate_custom_vibe: could not read context_packet from brain "
+            "for project=%s (non-fatal)", project_id,
+        )
+    if not context_packet:
+        context_packet = dict(project.get("context_packet") or {})
+
+    geo      = context_packet.get("geography") or context_packet.get("location_dna") or ""
+    genre    = context_packet.get("genre") or ""
+    mood     = context_packet.get("mood") or context_packet.get("emotional_tone") or ""
+    era      = context_packet.get("era") or ""
+    language = context_packet.get("language") or ""
+
+    context_lines = [
+        f"Geography/setting: {geo}" if geo else "",
+        f"Genre: {genre}" if genre else "",
+        f"Mood/emotional tone: {mood}" if mood else "",
+        f"Era: {era}" if era else "",
+        f"Language/culture: {language}" if language else "",
+    ]
+    context_str = "\n".join(l for l in context_lines if l) or "No additional cultural context available."
+
+    user_message = (
+        f"User vibe description:\n{description}\n\n"
+        f"Song cultural context:\n{context_str}"
+    )
+
+    try:
+        from openai import OpenAI
+        from backend.services.vibe_presets import (
+            _CUSTOM_VIBE_SYSTEM_PROMPT, build_custom_vibe,
+        )
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _CUSTOM_VIBE_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_message},
+            ],
+            temperature=0.7,
+            max_tokens=900,
+        )
+        raw_text = response.choices[0].message.content or ""
+        # Strip potential markdown code fences
+        raw_text = raw_text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+            raw_text = raw_text.strip()
+
+        import json as _json
+        llm_data = _json.loads(raw_text)
+        vibe = build_custom_vibe(description, llm_data)
+        return jsonify({"vibe": vibe})
+
+    except Exception as exc:
+        app.logger.exception(
+            "generate_custom_vibe: LLM call failed for project=%s", project_id,
+        )
+        return jsonify({"error": f"Could not generate vibe: {exc}"}), 500
+
+
 @app.route("/project/<project_id>/advance/style", methods=["POST"])
 @login_required
 def advance_stage_style(project_id: str):
@@ -1753,6 +1856,7 @@ def advance_stage_style(project_id: str):
     prod_id = request.form.get("production_style_id") or ""
     cin_id = request.form.get("cinematic_style_id") or ""
     vibe_preset_id = request.form.get("vibe_preset_id") or ""
+    custom_vibe_json = request.form.get("custom_vibe_json") or ""
 
     from style_profile_registry import StyleProfileRegistry
 
@@ -1804,6 +1908,41 @@ def advance_stage_style(project_id: str):
             app.logger.warning(
                 "advance_stage_style: could not load vibe preset %s for project=%s (non-fatal)",
                 vibe_preset_id, project_id,
+            )
+
+    # Custom vibe: user generated their own vibe via the text description path.
+    # custom_vibe_json (hidden form field) carries the full validated vibe dict
+    # returned by /generate-custom-vibe.  It takes precedence over preset if
+    # both are somehow present.
+    if custom_vibe_json:
+        try:
+            import json as _json
+            from backend.services.vibe_presets import build_custom_vibe
+            _cv_raw = _json.loads(custom_vibe_json)
+            description_text = str(_cv_raw.get("description") or "")
+            _cv = build_custom_vibe(description_text, _cv_raw)
+            # Override production/cinematic style from the custom vibe
+            prod_id_cv = _cv.get("production_style_id") or prod_id
+            cin_id_cv  = _cv.get("cinematic_style_id")  or cin_id
+            style_profile = StyleProfileEngine.apply_mode_constraints_to_selection(
+                prod_id_cv, cin_id_cv, _emp_for_style, vibe_selected=True,
+            )
+            style_profile["vibe_preset_id"]              = "custom"
+            style_profile["vibe_label"]                  = f"Custom: {_cv['label']}"
+            style_profile["vibe_brief_direction"]        = _cv.get("brief_direction", "")
+            style_profile["vibe_storyboard_direction"]   = _cv.get("storyboard_direction", "")
+            style_profile["vibe_reference_direction"]    = _cv.get("reference_direction", "")
+            style_profile["vibe_shot_direction"]         = _cv.get("shot_direction", "")
+            style_profile["vibe_avoid"]                  = _cv.get("avoid", [])
+            style_profile["custom_vibe"]                 = _cv
+            app.logger.info(
+                "advance_stage_style: applied custom vibe '%s' for project=%s",
+                _cv.get("label"), project_id,
+            )
+        except Exception:
+            app.logger.warning(
+                "advance_stage_style: could not parse custom_vibe_json for project=%s "
+                "(non-fatal — falling back to selected style)", project_id,
             )
 
     # ── Persist the chosen style: legacy column + Project Brain (Stage 4) ──
