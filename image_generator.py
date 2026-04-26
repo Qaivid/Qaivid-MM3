@@ -44,7 +44,7 @@ SHOT_MODEL_ENV_I2I = "fal-ai/flux/dev/image-to-image"
 STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell for all shot types
 
 # ── OpenAI GPT Image 2.0 mode constants ──────────────────────────────────────
-# GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-2.
+# GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-1.
 # Three quality tiers (native 1920×1080 landscape — no outpainting needed):
 #   gpt_low    — $0.01/image  — fast testing
 #   gpt_medium — $0.04/image  — recommended
@@ -53,7 +53,7 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 # Supports image-to-image and multi-image references — face identity +
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
-OPENAI_IMAGE_MODEL = "gpt-image-2"
+OPENAI_IMAGE_MODEL = "gpt-image-1"
 OPENAI_SIZE_LANDSCAPE = "1920x1080"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
@@ -473,7 +473,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-2 returned no image data.")
+        raise ImageGenerationError("gpt-image-1 returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -541,7 +541,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         image_arg = ("reference.png", io.BytesIO(img_bytes), "image/png")
     else:
         images = []
-        for i, url in enumerate(valid_urls[:3]):  # gpt-image-2 cap: 3 refs
+        for i, url in enumerate(valid_urls[:3]):  # gpt-image-1 cap: 3 refs
             img_bytes = _download_image_bytes(url)
             images.append((f"ref_{i}.png", io.BytesIO(img_bytes), "image/png"))
         image_arg = images
@@ -556,7 +556,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     )
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-2 edit returned no image data.")
+        raise ImageGenerationError("gpt-image-1 edit returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -1096,7 +1096,7 @@ def generate_shot_still(
         if has_char_ref and has_env:
             # Multi-image edit: pass character plate (face identity) +
             # environment plate (scene atmosphere) simultaneously.
-            # gpt-image-2 conditions on both in a single generation call.
+            # gpt-image-1 conditions on both in a single generation call.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
