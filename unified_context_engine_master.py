@@ -15,17 +15,30 @@ logger = logging.getLogger(__name__)
 
 class CulturePackRegistry:
     """
-    Deterministic enrichment layer.
+    Deterministic cultural context layer.
 
     Purpose:
-    - infer likely cultural pack from trigger words
-    - inject metaphor hints
-    - provide world defaults
-    - provide appearance defaults
-    - provide visual restrictions and misinterpretation guards
+    - infer the likely cultural tradition from trigger words
+    - provide what key symbols/words MEAN in this tradition (metaphors)
+    - provide minimal world-level cultural facts (geography, heritage label)
+    - provide meaning guards — what semantic fidelity must be preserved
+
+    This registry describes cultural MEANING only.
+    Visual building (architecture, colours, props, layouts) is handled
+    by the image generator and shot prompt composer.
     """
 
     PACKS: Dict[str, Dict[str, Any]] = {
+        # ── What each pack contains ───────────────────────────────────────────
+        # triggers      — words/phrases that signal this cultural world
+        # metaphors     — what key symbols/words MEAN in this tradition (meaning layer only)
+        # world_defaults — minimal cultural world facts: geography and heritage label
+        # meaning_guards — what the meaning analysis must preserve or avoid collapsing;
+        #                  purely about semantic fidelity, NOT visual building rules.
+        #
+        # Visual building (how things look, what architecture, what colours) is the
+        # job of the image generator and shot prompt composer — NOT this registry.
+        # ─────────────────────────────────────────────────────────────────────
         "punjabi_rural_lament": {
             "triggers": [
                 "pind", "vehra", "charpai", "phulkari", "poh", "chetar", "vaisakh",
@@ -40,14 +53,11 @@ class CulturePackRegistry:
                 "geography": "Punjab region, South Asia",
                 "cultural_dna": "Punjabi rural lament",
             },
-            "visual_restrictions": [
-                "Avoid generic Western suburban visuals.",
-                "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
-            ],
-            "common_misinterpretations": [
-                "Do not treat agrarian or seasonal references as generic decoration.",
-                "Do not flatten feminine domestic imagery into random rustic props.",
-                "Do not substitute a generic rural Indian village aesthetic — Punjab has its own distinct cultural world; let the story and location name guide the specific visual.",
+            "meaning_guards": [
+                "Do not treat agrarian or seasonal references as generic decoration — they carry specific emotional weight in Punjabi lament.",
+                "Do not flatten feminine domestic imagery (charkha, phulkari, trinjan) into random rustic props — each carries a precise cultural meaning.",
+                "Punjab has its own distinct cultural identity — do not collapse it into a generic 'rural South Asian' meaning template.",
+                "The speaker in this tradition is South Asian Punjabi — do not assign a non-South Asian cultural identity without clear textual basis.",
             ],
         },
         "punjabi_diaspora_memory": {
@@ -62,12 +72,10 @@ class CulturePackRegistry:
                 "geography": "diaspora split between homeland and abroad",
                 "cultural_dna": "Punjabi diaspora memory",
             },
-            "visual_restrictions": [
-                "Do not erase the tension between homeland memory and present migration reality.",
-                "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
-            ],
-            "common_misinterpretations": [
-                "Do not make diaspora purely glamorous or purely urban without emotional contrast.",
+            "meaning_guards": [
+                "Do not make the diaspora experience purely glamorous or purely sorrowful — the emotional tension between both worlds is the core of the meaning.",
+                "Do not erase the pull between homeland memory and present migration reality — both must coexist in the meaning.",
+                "The speaker is South Asian Punjabi living in diaspora — do not assign a non-South Asian cultural identity without clear textual basis.",
             ],
         },
         "urdu_philosophical_ghazal": {
@@ -83,12 +91,10 @@ class CulturePackRegistry:
                 "cultural_dna": "Urdu philosophical ghazal",
                 "geography": "Urdu cultural sphere (North India / Pakistan)",
             },
-            "visual_restrictions": [
-                "Do not literalize abstract ghazal language into crude plot imagery.",
-                "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
-            ],
-            "common_misinterpretations": [
-                "Do not assume every romantic image is a literal relationship scene.",
+            "meaning_guards": [
+                "Do not assume every romantic image is a literal relationship scene — ghazal addresses are often metaphysical or divine.",
+                "Do not literalize abstract ghazal language into plot narrative — preserve the symbolic and philosophical register.",
+                "The speaker and tradition are rooted in the Urdu literary sphere — do not assign a non-South Asian cultural identity without clear textual basis.",
             ],
         },
         "devotional_qawwali": {
@@ -97,31 +103,25 @@ class CulturePackRegistry:
             ],
             "metaphors": {
                 "wine": "spiritual ecstasy, mystical absorption",
-                "beloved": "divine beloved or sacred focus, not always romantic human figure",
+                "beloved": "divine beloved or sacred focus, not always a romantic human figure",
                 "door": "sacred threshold, longing for nearness, devotional seeking",
             },
             "world_defaults": {
                 "cultural_dna": "devotional qawwali",
                 "geography": "South Asian devotional space (dargah, shrine, gathering)",
             },
-            "visual_restrictions": [
-                "Avoid trivializing devotional intensity into nightclub or pop-romance imagery.",
-                "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
-            ],
-            "common_misinterpretations": [
-                "Do not force human romance interpretation onto devotional address.",
+            "meaning_guards": [
+                "Do not force a human romance interpretation onto devotional address — the beloved may be divine or the murshid.",
+                "Do not trivialize devotional intensity into entertainment meaning — the spiritual register must be preserved at the meaning level.",
+                "The devotional tradition is South Asian — do not assign a non-South Asian cultural identity without clear textual basis.",
             ],
         },
         "universal": {
             "triggers": [],
             "metaphors": {},
             "world_defaults": {},
-            "visual_restrictions": [
-                "Do not impose any single culture's visual language unless the text demands it.",
-                "Render characters, locations, and props faithful to the language and geography of the submitted content.",
-            ],
-            "common_misinterpretations": [
-                "Do not default to South Asian, Western, or East Asian aesthetics without textual justification.",
+            "meaning_guards": [
+                "Do not assume the cultural world from the language alone — derive it from the text's own content and references.",
             ],
         },
     }
@@ -1599,9 +1599,9 @@ REQUIREMENTS:
         if not isinstance(data.get("cultural_constraints"), list):
             data["cultural_constraints"] = []
         cc = [str(x).strip() for x in data["cultural_constraints"] if str(x).strip()]
-        # Pull culture-pack misinterpretation guards in — they are meaning-level
-        # cultural rules, not visual ones.
-        cc.extend(str(x).strip() for x in (culture_pack.get("common_misinterpretations") or []) if str(x).strip())
+        # Pull culture-pack meaning guards in — purely semantic fidelity rules,
+        # not visual building rules (visual building is the image generator's job).
+        cc.extend(str(x).strip() for x in (culture_pack.get("meaning_guards") or []) if str(x).strip())
         if not cc:
             cc = ["Stay culturally faithful to the literary tradition of the source language."]
         data["cultural_constraints"] = self._dedupe(cc)

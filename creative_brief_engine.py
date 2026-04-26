@@ -384,8 +384,10 @@ def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
 
     if pack and isinstance(pack, dict):
         world_defaults = pack.get("world_defaults") or {}
-        restrictions: List[str] = list(pack.get("visual_restrictions") or [])
-        misinterps: List[str] = list(pack.get("common_misinterpretations") or [])
+        # meaning_guards are semantic fidelity rules — what the meaning layer
+        # must preserve.  visual_restrictions has been removed from the registry
+        # entirely: visual building is the image generator's responsibility.
+        meaning_guards: List[str] = list(pack.get("meaning_guards") or [])
 
         geography = str(world_defaults.get("geography") or "").strip()
         cultural_dna = str(world_defaults.get("cultural_dna") or "").strip()
@@ -394,12 +396,9 @@ def _build_cultural_grounding(context_packet: Dict[str, Any]) -> str:
         if geography or cultural_dna:
             ctx = " — ".join(filter(None, [geography, cultural_dna]))
             parts.append(f"Cultural world: {ctx}")
-        if restrictions:
-            parts.append("Visual guidance:\n"
-                         + "\n".join(f"  - {r}" for r in restrictions))
-        if misinterps:
-            parts.append("Common misinterpretations to avoid:\n"
-                         + "\n".join(f"  - {m}" for m in misinterps))
+        if meaning_guards:
+            parts.append("Meaning guards (semantic fidelity — not visual rules):\n"
+                         + "\n".join(f"  - {m}" for m in meaning_guards))
         if parts:
             return "\n\n".join(parts)
 
