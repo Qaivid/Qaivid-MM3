@@ -66,15 +66,15 @@ _MATERIALIZER_SCHEMA = {
     "location_profile": {
         "locations": [
             {
-                "location_id": "<string — stable id slug derived from the world, e.g. 'primary_world', 'memory_space', 'urban_setting'>",
-                "world": "<describe the world concretely using the song's actual cultural and geographic context — NOT a generic placeholder>",
-                "architecture_style": "<architecture style true to this song's world and cultural geography>",
-                "structural_elements": ["<architectural and spatial elements that define this world>", "<derived from cultural context>"],
-                "textures": ["<material textures true to this world>", "<derived from geography and era>"],
+                "location_id": "<string — stable id slug derived from the space type, e.g. 'intimate_indoor_space', 'natural_setting', 'crossroads', 'rooftop'>",
+                "world": "<name the SPATIAL CLASS of this location (what type of space it IS) and root it in the cultural world's texture and light. E.g. 'an intimate indoor living space in the Punjab cultural world' or 'an open natural landscape in South Asian geography' — NOT a specific architectural form like 'clay-walled courtyard'. Each location must describe a DIFFERENT spatial class.>",
+                "architecture_style": "<for BUILT spaces only: the structural TYPE (e.g. 'small domestic interior', 'open-air crossroads', 'rooftop terrace', 'roadside stall') — NOT the culture-wide architecture archetype. For natural outdoor spaces: the landscape class (e.g. 'open field', 'riverside', 'tree line'). NEVER apply the same architecture description to all locations.>",
+                "structural_elements": ["<spatial elements true to THIS specific location type>", "<derived from the scene's environment_type, not from the cultural world at large>"],
+                "textures": ["<material textures true to this world and this specific space type>", "<derived from geography, era, and the emotional register of this specific location>"],
                 "environment_density": "<empty | sparse | moderate | busy>",
                 "color_palette": ["<colors anchored in the actual world's light, materials, and emotional register>"],
                 "lighting_tendency": "<lighting quality true to this world's geography, time of day, and emotional tone>",
-                "environment_rules": ["<what belongs in this world>", "<what is visually forbidden or anachronistic>"]
+                "environment_rules": ["<what belongs in this specific space type>", "<what is visually inconsistent with this location's spatial class or cultural world>"]
             }
         ]
     },
@@ -101,17 +101,19 @@ def _build_system_prompt() -> str:
         "CORE PRINCIPLE: define what makes a character recognizable and a world believable, "
         "while preserving creative variation across scenes.\n\n"
         "CULTURAL SPECIFICITY IS MANDATORY:\n"
-        "- The identity_seed must be SPECIFIC to the song's actual cultural world — never generic.\n"
+        "- The identity_seed must be SPECIFIC to the song's actual cultural and emotional world — never generic.\n"
         "  BAD: 'A young South Asian woman navigating complex emotions.' (could be any country, any song)\n"
-        "  GOOD: 'A young Punjabi woman carrying the birha of her culture — raised near mustard fields\n"
-        "         and clay-walled courtyards, hiding a devastated heart behind everyday composure.'\n"
-        "- Use the Location DNA, language, and cultural context to derive the character's world.\n"
-        "  A Punjabi song → Punjabi birha tradition, Punjab landscape, Punjabi emotional register.\n"
+        "  GOOD: 'A young Punjabi woman carrying the birha of her culture — steeped in the longing tradition\n"
+        "         of her people, hiding a devastated heart behind everyday composure.'\n"
+        "  Note: identity_seed describes who the CHARACTER IS — their emotional identity, cultural register,\n"
+        "  and world-view. It is NOT a description of the landscape or architecture they live in.\n"
+        "- Use the Location DNA, language, and cultural context to derive the character's identity.\n"
+        "  A Punjabi song → Punjabi birha tradition, Punjabi emotional register, Punjabi cultural codes.\n"
         "  A Lagos Afrobeats song → Lagos streets, Yoruba cultural codes, that specific energy.\n"
         "  Do NOT fall back to country-level or continent-level labels when specific culture is known.\n"
         "- physical_range must reference the actual cultural-geographic appearance of the people in that world.\n"
-        "- location world descriptions must use specific cultural architecture, textures and light —\n"
-        "  not generic 'warm cozy space' filler.\n\n"
+        "- location world descriptions must name the SPATIAL CLASS of each space and enrich it with\n"
+        "  cultural texture, palette, and light — NOT collapse all locations into one architecture type.\n\n"
         "WHAT YOU MUST NOT DO:\n"
         "- Do NOT define exact face details\n"
         "- Do NOT define exact outfits\n"
@@ -120,12 +122,19 @@ def _build_system_prompt() -> str:
         "- Do NOT generate image prompts\n"
         "- Do NOT collapse variation — keep multiple visual realizations possible\n"
         "- Do NOT write generic descriptions that could fit any song — every field must be\n"
-        "  derivable ONLY from this specific song's cultural and emotional world\n\n"
+        "  derivable ONLY from this specific song's cultural and emotional world\n"
+        "- Do NOT apply the same architecture style to every location — an indoor room, a crossroads,\n"
+        "  and a natural setting are THREE DIFFERENT spatial classes; each needs its own description\n\n"
         "WHAT YOU MUST DO:\n"
         "- identity_seed: one or two sentences — the culturally-grounded non-negotiable core of who this person IS\n"
         "- physical_range: broad parameters anchored in the specific cultural-geographic appearance of this world\n"
         "- wardrobe_logic: clothing rules derived from this specific cultural tradition, NOT generic 'soft fabrics'\n"
-        "- location world anchors: specific architecture, textures, color range and lighting true to this cultural world\n"
+        "- location world anchors: identify the SPATIAL CLASS of each location (what type of space it IS)\n"
+        "  then layer in cultural texture, colour vocabulary, and light quality specific to the song's world.\n"
+        "  Example: 'an intimate indoor living space in the Punjab cultural world — warm terracotta palette,\n"
+        "  hand-woven textiles, soft diffused natural light' NOT 'clay-walled haveli courtyard with mustard fields'.\n"
+        "- architecture_style: for built spaces, describe the TYPE of structure (small room, rooftop terrace,\n"
+        "  open crossroads, roadside space) — NOT the cultural architecture archetype applied to every space.\n"
         "- Define what can vary vs. what must remain stable across scenes\n\n"
         "Respond ONLY with valid JSON matching the provided schema. No prose."
     )
@@ -281,9 +290,17 @@ def _build_user_prompt(
         "- Include ALL characters who APPEAR ON SCREEN (including in memory/flashback scenes).\n"
         "  If the addressee is a person who would appear visually (even in brief flashbacks),\n"
         "  include them as a second character entry.\n"
-        "- Include ONLY locations that fit the song's actual cultural world (Location DNA above).\n"
-        "  Do NOT add urban/industrial/modern settings unless the brief explicitly calls for them.\n"
-        "- Derive locations from scene environment_type fields in the brief above.\n"
+        "- Derive locations from the scene environment_type fields in the brief above.\n"
+        "  Each distinct environment_type in the brief should become its own location entry.\n"
+        "- Each location MUST have a DIFFERENT spatial class (indoor vs outdoor, domestic vs street,\n"
+        "  natural landscape vs built space). Do NOT describe all locations using the same architectural\n"
+        "  form or landscape type — even within one cultural world, scenes happen in different space types.\n"
+        "- The cultural world (Location DNA) sets the TEXTURE, PALETTE, and LIGHT of every space.\n"
+        "  It does NOT dictate that every space looks like the same iconic location type.\n"
+        "  A Punjabi song can include an indoor room, a crossroads, a natural landscape, a roadside space —\n"
+        "  each looks DIFFERENT from the others while sharing the cultural colour and light vocabulary.\n"
+        "- Do NOT restrict locations to only one setting type. Modern, urban, or transitional spaces are\n"
+        "  valid if the creative brief's environment_types indicate them.\n"
         "- You may output MULTIPLE characters and MULTIPLE locations — the schema shows one\n"
         "  example each; repeat the object pattern for each additional entry."
     )

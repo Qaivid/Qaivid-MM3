@@ -275,20 +275,41 @@ def ai_build_ref_prompts(
             props = raw_vd[len(loc_name):].lstrip(";., ").strip() \
                     if (loc_name and raw_vd.lower().startswith(loc_name.lower())) \
                     else raw_vd
-            if props and "clay roof" not in props.lower() and "plaster" not in props.lower():
+            _vd_lower = props.lower()
+            _vd_arch_blocked = any(
+                term in _vd_lower for term in
+                ("clay roof", "plaster", "clay wall", "mud wall", "thatched", "haveli", "courtyard")
+            )
+            if props and not _vd_arch_blocked:
                 parts.append(f"Props:{props}")
 
         # Brain world DNA — location_profile identity rules
+        # Field names must match the materializer schema: world, architecture_style,
+        # textures (list), color_palette (list), lighting_tendency, environment_density.
         if brain.get("world"):
-            parts.append(f"World DNA: {brain['world']}")
-        if brain.get("environment_type"):
-            parts.append(f"Environment type: {brain['environment_type']}")
-        if brain.get("key_textures"):
-            parts.append(f"Key textures: {brain['key_textures']}")
-        if brain.get("palette_anchor"):
-            parts.append(f"Palette anchor: {brain['palette_anchor']}")
-        if brain.get("architecture"):
-            parts.append(f"Architecture: {brain['architecture']}")
+            parts.append(f"Spatial class: {brain['world']}")
+        # architecture_style — describes structural type of this specific space
+        _arch = brain.get("architecture_style") or brain.get("architecture") or ""
+        if _arch:
+            parts.append(f"Space type: {_arch}")
+        # textures — material surface vocabulary for this location
+        _textures = brain.get("textures") or brain.get("key_textures") or []
+        if isinstance(_textures, list) and _textures:
+            parts.append(f"Textures: {', '.join(str(t) for t in _textures[:4])}")
+        elif isinstance(_textures, str) and _textures:
+            parts.append(f"Textures: {_textures}")
+        # color_palette — colour vocabulary for this location
+        _palette = brain.get("color_palette") or brain.get("palette_anchor") or []
+        if isinstance(_palette, list) and _palette:
+            parts.append(f"Palette: {', '.join(str(c) for c in _palette[:4])}")
+        elif isinstance(_palette, str) and _palette:
+            parts.append(f"Palette: {_palette}")
+        # lighting_tendency — lighting quality for this space
+        if brain.get("lighting_tendency"):
+            parts.append(f"Lighting: {brain['lighting_tendency']}")
+        # environment_density — empty | sparse | moderate | busy
+        if brain.get("environment_density"):
+            parts.append(f"Density: {brain['environment_density']}")
 
         return " | ".join(parts)
 
