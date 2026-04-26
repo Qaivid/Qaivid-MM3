@@ -591,6 +591,8 @@ def _render_video(project_id: str, shot: dict) -> None:
     lighting_logic:         Optional[str]       = None
     motion_philosophy:      str                 = "mixed"
     emotional_mode_id_video: str               = ""
+    vibe_shot_dir:          str                 = ""
+    vibe_avoid_vid:         list                = []
     character_db_id:        Optional[int]       = None
     location_db_id:         Optional[int]       = None
     character_semantic_id:  Optional[str]       = None
@@ -680,10 +682,12 @@ def _render_video(project_id: str, shot: dict) -> None:
             if _matched_ref:
                 char_ref_url = _matched_ref.get("ref_image_url") or None
 
-        # style_packet — cinematic look + lighting
+        # style_packet — cinematic look + lighting + vibe directions
         _sp             = _vbrain.read("style_packet") or {}
         cinematic_style = ((_sp.get("cinematic") or {}).get("look") or "").strip() or None
         lighting_logic  = (str(_sp.get("lighting_logic") or "")).strip() or None
+        vibe_shot_dir   = (str(_sp.get("vibe_shot_direction") or "")).strip() or ""
+        vibe_avoid_vid  = _sp.get("vibe_avoid") or []
 
         # narrative_packet — motion philosophy
         _np = _vbrain.read("narrative_packet") or {}
@@ -712,6 +716,8 @@ def _render_video(project_id: str, shot: dict) -> None:
             lighting_logic=lighting_logic,
             continuity_rules=continuity_rules,
             emotional_mode_id=emotional_mode_id_video,
+            vibe_shot_direction=vibe_shot_dir,
+            vibe_avoid=vibe_avoid_vid,
         )
 
         # If brain prompt is empty, fall back to shot dict or stored DB value.

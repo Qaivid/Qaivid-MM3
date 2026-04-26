@@ -1778,10 +1778,30 @@ def advance_stage_style(project_id: str):
         prod_id, cin_id, _emp_for_style,
         vibe_selected=bool(vibe_preset_id),
     )
-    # Persist the vibe preset ID inside style_profile so every downstream stage
-    # (brief, storyboard, references, shots) can read it without a separate column.
+    # Persist the vibe preset ID AND all direction fields inside style_profile
+    # so every downstream stage (brief, storyboard, references, shots, video)
+    # can inject the correct visual direction without re-fetching.
     if vibe_preset_id:
         style_profile["vibe_preset_id"] = vibe_preset_id
+        try:
+            from backend.services.vibe_presets import get_vibe_preset as _get_vp
+            _vp = _get_vp(vibe_preset_id)
+            if _vp:
+                style_profile["vibe_label"]                = _vp.get("label", "")
+                style_profile["vibe_brief_direction"]      = _vp.get("brief_direction", "")
+                style_profile["vibe_storyboard_direction"] = _vp.get("storyboard_direction", "")
+                style_profile["vibe_reference_direction"]  = _vp.get("reference_direction", "")
+                style_profile["vibe_shot_direction"]       = _vp.get("shot_direction", "")
+                style_profile["vibe_avoid"]                = _vp.get("avoid", [])
+                app.logger.info(
+                    "advance_stage_style: merged vibe directions for preset=%s project=%s",
+                    vibe_preset_id, project_id,
+                )
+        except Exception:
+            app.logger.warning(
+                "advance_stage_style: could not load vibe preset %s for project=%s (non-fatal)",
+                vibe_preset_id, project_id,
+            )
 
     # ── Persist the chosen style: legacy column + Project Brain (Stage 4) ──
     # The brain.style_packet namespace is owned by Stage 4 — writing the

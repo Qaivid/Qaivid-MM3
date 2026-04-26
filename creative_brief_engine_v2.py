@@ -212,6 +212,19 @@ def _format_style(style_profile: Dict[str, Any]) -> str:
         "realism_level":    (style_profile or {}).get("realism_level"),
         "tone_keywords":    (style_profile or {}).get("tone_keywords"),
     }
+    # Vibe preset direction — present only when user chose a vibe preset.
+    # Gives the brief LLM the cultural/production vocabulary it needs to
+    # select scene directions that match the chosen vibe (e.g. "Premium
+    # Punjabi filmmaking with golden-hour mustard fields" vs "Bollywood
+    # glamour with jewel tones and hero entrances").
+    sp = style_profile or {}
+    if sp.get("vibe_label"):
+        payload["vibe_preset"] = sp["vibe_label"]
+    if sp.get("vibe_brief_direction"):
+        payload["vibe_direction"] = sp["vibe_brief_direction"]
+    if sp.get("vibe_avoid"):
+        avoid = sp["vibe_avoid"]
+        payload["vibe_avoid"] = avoid if isinstance(avoid, list) else [avoid]
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 

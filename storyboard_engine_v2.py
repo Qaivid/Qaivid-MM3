@@ -228,6 +228,17 @@ def _format_style_light(style_profile: Dict[str, Any]) -> str:
         "preset":           (style_profile or {}).get("preset"),
         "tone_keywords":    (style_profile or {}).get("tone_keywords"),
     }
+    # Vibe preset direction — only present when a vibe preset was chosen.
+    # Informs the storyboard LLM about the specific shot-composition, framing-
+    # ratio, and visual energy rules for this production identity.
+    sp = style_profile or {}
+    if sp.get("vibe_label"):
+        payload["vibe_preset"] = sp["vibe_label"]
+    if sp.get("vibe_storyboard_direction"):
+        payload["vibe_storyboard_direction"] = sp["vibe_storyboard_direction"]
+    if sp.get("vibe_avoid"):
+        avoid = sp["vibe_avoid"]
+        payload["vibe_avoid"] = avoid if isinstance(avoid, list) else [avoid]
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 

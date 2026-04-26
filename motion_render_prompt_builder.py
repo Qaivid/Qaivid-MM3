@@ -237,6 +237,8 @@ def build_video_clip_prompt(
     continuity_rules: Optional[List[str]] = None,
     max_chars: int = _MODEL_MAX_CHARS,
     emotional_mode_id: str = "",
+    vibe_shot_direction: str = "",
+    vibe_avoid: Optional[List[str]] = None,
 ) -> str:
     """Build a brain-aware WAN 2.6 Flash video prompt for a single shot.
 
@@ -266,6 +268,11 @@ def build_video_clip_prompt(
         clause = clause.strip()
         if clause and _fits(clause):
             chosen.append(clause)
+
+    # 0. Vibe shot direction — injected first so it carries maximum weight.
+    # This is the cultural/aesthetic identity of the entire production.
+    if vibe_shot_direction:
+        _add(vibe_shot_direction.strip())
 
     # 1. Subject / identity
     subject = (identity_seed or shot.get("subject") or shot.get("action") or "").strip()

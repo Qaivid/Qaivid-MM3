@@ -118,6 +118,16 @@ def ai_build_ref_prompts(
     sp  = style_profile  or {}
     cin = sp.get("cinematic") or {}
     wa  = cp.get("world_assumptions") or {}
+
+    # ── Vibe preset direction fields (only present when a vibe was selected) ──
+    _vibe_label         = (sp.get("vibe_label")                or "").strip()
+    _vibe_ref_direction = (sp.get("vibe_reference_direction")  or "").strip()
+    _vibe_shot_dir      = (sp.get("vibe_shot_direction")       or "").strip()
+    _vibe_avoid_list    = sp.get("vibe_avoid") or []
+    _vibe_avoid_str     = (
+        "NEVER include: " + ", ".join(_vibe_avoid_list) + "."
+        if _vibe_avoid_list else ""
+    )
     if not isinstance(wa, dict):
         wa = {}
 
@@ -294,8 +304,24 @@ def ai_build_ref_prompts(
     _char_hint      = cin.get("character_plate_hint", CHARACTER_REF_HINT)
     _loc_hint       = cin.get("location_plate_hint",  ENV_REF_HINT)
     _img_suffix     = cin.get("image_generation_suffix", "")
-    _style_note     = (
+
+    # If a vibe preset was selected, its reference_direction overrides the
+    # generic hint so the character and location prompts reflect the specific
+    # cultural/visual identity of this production (e.g., premium Punjabi
+    # filmmaking vs Desi Blockbuster glamour vs Qawwali devotional).
+    if _vibe_ref_direction:
+        _char_hint = _vibe_ref_direction
+        _loc_hint  = _vibe_ref_direction
+
+    _style_note = (
         f"CINEMATIC STYLE: {_style_label}. " if _style_label else ""
+    )
+    _vibe_style_note = (
+        f"PRODUCTION VIBE: {_vibe_label} — {_vibe_ref_direction} "
+        if (_vibe_label and _vibe_ref_direction) else ""
+    )
+    _vibe_avoid_note = (
+        f"GLOBAL AVOID: {_vibe_avoid_str} " if _vibe_avoid_str else ""
     )
 
     system_msg = (
@@ -311,12 +337,26 @@ def ai_build_ref_prompts(
         "AI image models require EXPLICIT country and region names to generate geographically correct images — "
         "local architectural terms alone are NOT sufficient. "
         f"{_style_note}"
+        f"{_vibe_style_note}"
+        f"{_vibe_avoid_note}"
         f"CHARACTER PORTRAIT AESTHETIC: {_char_hint} "
         f"LOCATION AESTHETIC: {_loc_hint}"
         + (f" Always end prompts with: {_img_suffix}" if _img_suffix else "")
     )
 
     extra_blocks = "\n\n".join(filter(None, [motif_block, global_rules_block]))
+
+    # Vibe-specific blocks injected into the user message only when a preset
+    # was selected.  Empty strings produce no visible change for non-preset runs.
+    _vibe_char_block = (
+        f"\nPRODUCTION VIBE for character portraits: {_vibe_ref_direction}"
+        f"\n{_vibe_avoid_str}"
+        if _vibe_ref_direction else ""
+    )
+    _vibe_loc_avoid_block = (
+        f"\nVIBE AVOID: {_vibe_avoid_str}" if _vibe_avoid_str else ""
+    )
+
     user_msg = f"""Write reference asset image prompts for characters and locations in a music video project.
 These prompts produce visual ANCHORS — simple, isolated, single-concept images.
 They must NOT include scene composition, camera action, or narrative context.
@@ -333,7 +373,7 @@ Use the identity_seed, archetype, and emotional_baseline as the authoritative id
 If cultural_markers are provided, embed them visually.
 Honour all continuity_rules absolutely — they define what must stay consistent across all images.
 If a character has no physical data, write a culturally-authentic anonymous portrait
-for someone from that cultural world.
+for someone from that cultural world.{_vibe_char_block}
 End every character prompt with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
 
 IMPORTANT: For every character, also return their physical fields as structured data in
@@ -353,7 +393,7 @@ RULE 4 — TRUST YOUR OWN KNOWLEDGE OF THIS WORLD: Each location type looks comp
 RULE 5 — CINEMATIC BEAUTY ALWAYS: You are creating music video reference images, not documentary photography. Every location MUST be the beautiful, elevated, cinematic version of that place — rich lighting, considered composition, visually stunning. NEVER generate dirty, dilapidated, unglamorous, or poverty-stricken imagery. Even a humble village scene must look like a prestige film still.
 RULE 6 — GEOGRAPHIC SPECIFICITY: If the world is set in Punjab (India/Pakistan), draw on specific Punjabi visual vocabulary: golden wheat fields, mustard flower fields, ancient havelis with carved wooden doors, brick gurdwaras, canal-side ghats, dense banyan trees, hand-painted walls, colourful phulkari textiles, terracotta pots, bullock carts, kachcha roads with warm dust. Do not use generic "rural South Asia" — be specific to Punjab.
 
-End every location prompt with: "Empty scene, no people, no figures, wide establishing shot, cinematic realism, music video production design quality, beautiful elevated version of this place, geographically and culturally authentic."
+End every location prompt with: "Empty scene, no people, no figures, wide establishing shot, cinematic realism, music video production design quality, beautiful elevated version of this place, geographically and culturally authentic."{_vibe_loc_avoid_block}
 
 {locs_block}
 
