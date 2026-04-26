@@ -144,6 +144,7 @@ def _build_user_prompt(
     # ── Context: cultural grounding ──
     location_dna = context_packet.get("location_dna") or ""
     speaker = context_packet.get("speaker") or {}
+    addressee = context_packet.get("addressee") or {}
     world_assumptions = context_packet.get("world_assumptions") or {}
     must_preserve = context_packet.get("must_preserve") or []
     creative_freedom = context_packet.get("creative_freedom") or {}
@@ -179,6 +180,13 @@ def _build_user_prompt(
         sections.append(f"World assumptions: {json.dumps(world_assumptions)}")
     if speaker:
         sections.append(f"Primary speaker: {json.dumps(speaker)}")
+    # Include the addressee so the LLM knows about the second person.
+    # In music videos for heartbreak/longing songs, the addressee (the absent
+    # beloved) often appears in flashback/memory scenes even when narratively
+    # "absent".  The LLM should decide whether to include them as a visual
+    # character based on scene character_presence and character_identity_hint.
+    if addressee:
+        sections.append(f"Addressee (second person referenced in song): {json.dumps(addressee)}")
     if must_preserve:
         sections.append(f"Must preserve: {must_preserve}")
     if creative_freedom:
@@ -214,8 +222,16 @@ def _build_user_prompt(
     sections.append("=== OUTPUT SCHEMA ===")
     sections.append(
         "Fill in the following JSON completely. Use the scene data above to "
-        "derive character identities and locations. Do NOT leave fields empty. "
-        "Include ALL characters mentioned across scenes and ALL distinct environments."
+        "derive character identities and locations. Do NOT leave fields empty.\n"
+        "Rules:\n"
+        "- Include ALL characters who APPEAR ON SCREEN (including in memory/flashback scenes).\n"
+        "  If the addressee is a person who would appear visually (even in brief flashbacks),\n"
+        "  include them as a second character entry.\n"
+        "- Include ONLY locations that fit the song's actual cultural world (Location DNA above).\n"
+        "  Do NOT add urban/industrial/modern settings unless the brief explicitly calls for them.\n"
+        "- Derive locations from scene environment_type fields in the brief above.\n"
+        "- You may output MULTIPLE characters and MULTIPLE locations — the schema shows one\n"
+        "  example each; repeat the object pattern for each additional entry."
     )
     sections.append(json.dumps(schema, indent=2))
 
@@ -231,7 +247,7 @@ async def _call_llm(user_prompt: str) -> dict:
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=0.65,
-        max_tokens=2500,
+        max_tokens=4000,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": _build_system_prompt()},

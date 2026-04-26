@@ -3075,36 +3075,138 @@ def _stage_materializer_job(project_id: str) -> None:
                 project_id,
             )
 
+        # ── Sync ALL Brain v2 locations to DB ────────────────────────────
+        # The legacy location_materializer only writes the world_dna row from
+        # context_packet.  The LLM materializer_packet may contain several
+        # richer location entries; we persist each one here so the Reference
+        # Engine can generate a plate for every location the LLM defined.
+        try:
+            _brain_loc_profile = dict((mat_packet.get("location_profile") or {}))
+            _brain_locs = list((_brain_loc_profile.get("locations") or []))
+            _brain_char_profile = dict((mat_packet.get("character_profile") or {}))
+            _brain_chars = list((_brain_char_profile.get("characters") or []))
+            with _db() as conn, conn.cursor() as _bsync_cur:
+                # ── Locations ──
+                for _bloc in _brain_locs:
+                    if not isinstance(_bloc, dict):
+                        continue
+                    _bloc_id = str(_bloc.get("location_id") or "").strip()
+                    if not _bloc_id:
+                        continue
+                    _bloc_world = str(_bloc.get("world") or _bloc_id)
+                    _bloc_arch = str(_bloc.get("architecture_style") or "")
+                    _bloc_lighting = str(_bloc.get("lighting_tendency") or "")
+                    _bloc_density = str(_bloc.get("environment_density") or "")
+                    _bloc_palette = ", ".join(str(x) for x in (_bloc.get("color_palette") or []))[:200]
+                    _bloc_textures = ", ".join(str(x) for x in (_bloc.get("textures") or []))[:200]
+                    _bloc_vis = "; ".join(filter(None, [_bloc_density and f"density:{_bloc_density}", _bloc_textures]))[:300]
+                    from psycopg.types.json import Json as _Json
+                    _bsync_cur.execute(
+                        """
+                        INSERT INTO locations
+                            (project_id, name, description, entity_type,
+                             architecture_style, visual_details, mood, metadata)
+                        VALUES (%s, %s, %s, 'materializer_v2', %s, %s, %s, %s)
+                        ON CONFLICT (project_id, name) DO UPDATE
+                            SET description        = COALESCE(locations.description,        EXCLUDED.description),
+                                architecture_style = COALESCE(locations.architecture_style, EXCLUDED.architecture_style),
+                                visual_details     = COALESCE(locations.visual_details,     EXCLUDED.visual_details)
+                        RETURNING id
+                        """,
+                        (project_id, _bloc_id, _bloc_world, _bloc_arch,
+                         _bloc_vis, _bloc_palette, _Json(_bloc)),
+                    )
+                    _bloc_db_id = (_bsync_cur.fetchone() or {}).get("id")
+                    if _bloc_db_id:
+                        _bloc["db_id"] = _bloc_db_id
+
+                # ── Characters: back-fill physical fields from Brain data ──
+                for _bchar in _brain_chars:
+                    if not isinstance(_bchar, dict):
+                        continue
+                    _bchar_id = str(_bchar.get("character_id") or "").strip()
+                    if not _bchar_id:
+                        continue
+                    # physical_range encodes ethnicity/build/appearance for the
+                    # Reference Engine; wardrobe_logic + styling_logic are stored
+                    # in appearance and grooming columns respectively.
+                    _bchar_appearance = str(_bchar.get("physical_range") or "")
+                    _bchar_wardrobe = str(_bchar.get("wardrobe_logic") or "")
+                    _bchar_grooming = str(_bchar.get("styling_logic") or "")
+                    _bchar_emotional = str(_bchar.get("emotional_baseline") or "")
+                    # Back-fill only NULL columns so user edits survive re-runs.
+                    _bsync_cur.execute(
+                        """
+                        UPDATE characters
+                        SET appearance      = COALESCE(appearance,      NULLIF(%s, '')),
+                            wardrobe        = COALESCE(wardrobe,        NULLIF(%s, '')),
+                            grooming        = COALESCE(grooming,        NULLIF(%s, '')),
+                            emotional_notes = COALESCE(emotional_notes, NULLIF(%s, ''))
+                        WHERE project_id = %s
+                          AND entity_type = 'speaker'
+                          AND (appearance IS NULL OR wardrobe IS NULL OR grooming IS NULL)
+                        RETURNING id
+                        """,
+                        (_bchar_appearance, _bchar_wardrobe, _bchar_grooming, _bchar_emotional,
+                         project_id),
+                    )
+                    _bchar_row = _bsync_cur.fetchone()
+                    if _bchar_row:
+                        _bchar["db_id"] = _bchar_row["id"]
+
+                conn.commit()
+            logger.info(
+                "_stage_materializer_job: synced %d brain locs + %d chars to DB for project=%s",
+                len(_brain_locs), len(_brain_chars), project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage_materializer_job: brain→DB entity sync failed (non-fatal) for project=%s",
+                project_id,
+            )
+
         # ── Enrich brain with DB integer IDs ─────────────────────────────
         # After DB rows are created, read their integer PKs and store them
         # directly in the materializer_packet entries (brain.character_profile
         # characters[i].db_id / location_profile.locations[i].db_id).
         # This gives _link_shots_to_entities exact IDs without any guessing.
         try:
+            _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
+            _ep_cb = (_ep.get("character_profile") or {}).get("characters") or []
+            _ep_lb = (_ep.get("location_profile")  or {}).get("locations")  or []
+
+            # Use db_ids already set by the brain→DB sync above when available.
+            # Fall back to entity_type-based positional matching for any that
+            # were set by the legacy materializer before the sync ran.
             with _db() as conn, conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, entity_type FROM characters WHERE project_id=%s ORDER BY id",
+                    "SELECT id, name, entity_type FROM characters WHERE project_id=%s ORDER BY id",
                     (project_id,),
                 )
                 _enriched_chars = cur.fetchall() or []
                 cur.execute(
-                    "SELECT id, entity_type FROM locations WHERE project_id=%s ORDER BY id",
+                    "SELECT id, name, entity_type FROM locations WHERE project_id=%s ORDER BY id",
                     (project_id,),
                 )
                 _enriched_locs = cur.fetchall() or []
 
-            _ep = dict(_mat_brain.read("materializer_packet") or mat_packet)
-            _ep_cb = (_ep.get("character_profile") or {}).get("characters") or []
-            _ep_lb = (_ep.get("location_profile")  or {}).get("locations")  or []
+            # Build name→id lookup for locations
+            _loc_name_to_id = {r["name"]: r["id"] for r in _enriched_locs}
             _db_spk = [c for c in _enriched_chars if c["entity_type"] == "speaker"]
-            _db_wdn = [l for l in _enriched_locs  if l["entity_type"] == "world_dna"]
 
             for _i, _bch in enumerate(_ep_cb):
-                if isinstance(_bch, dict) and _i < len(_db_spk):
+                if not isinstance(_bch, dict):
+                    continue
+                if not _bch.get("db_id") and _i < len(_db_spk):
                     _bch["db_id"] = _db_spk[_i]["id"]
-            for _i, _bloc in enumerate(_ep_lb):
-                if isinstance(_bloc, dict) and _i < len(_db_wdn):
-                    _bloc["db_id"] = _db_wdn[_i]["id"]
+
+            for _bloc in _ep_lb:
+                if not isinstance(_bloc, dict):
+                    continue
+                if not _bloc.get("db_id"):
+                    _bloc_name = str(_bloc.get("location_id") or "")
+                    if _bloc_name in _loc_name_to_id:
+                        _bloc["db_id"] = _loc_name_to_id[_bloc_name]
 
             _mat_brain.write("materializer_packet", _ep)
             _mat_brain.write("character_profile", _ep.get("character_profile") or {})
