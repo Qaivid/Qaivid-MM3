@@ -1,28 +1,24 @@
 """Lightweight key/value settings backed by the existing PostgreSQL database.
 
-Three image generation modes, two independent slots:
+Two independent image-generation slots:
 
   * ``image_mode_ref``  — character / location reference plates
   * ``image_mode_shot`` — per-shot stills
 
-Shot mode values:
-  * ``cheap``    — gpt-image-1.5 low ($0.009–$0.013), img2img with char+env refs.
-                   Good for fast prompt testing with face retention via img2img.
+GPT Image 2.0 tiers (native 1920×1080 landscape):
+  * ``gpt_low``    — $0.01/image  — fast testing
+  * ``gpt_medium`` — $0.04/image  — recommended
+  * ``gpt_high``   — $0.16/image  — highest fidelity
+
+FAL tiers:
   * ``standard`` — FAL FLUX/schnell (~$0.003–0.005), no face-lock.
-                   Cinematic-quality stills, same engine as reference plates.
-                   Best for nature, landscape, abstract, or wide/drone shots
-                   where character face consistency is less critical.
+                   Cinematic-quality stills. Best for landscape/nature/abstract.
   * ``quality``  — FAL FLUX/dev + PuLID (~$0.025–0.05), true hard face-lock.
-                   Identity embeddings injected from the character plate —
-                   same face across every shot. Required for character-driven
-                   narrative music videos.
+                   Required for character-driven narrative music videos.
 
-  Deprecated alias: ``sdxl_face`` → normalised to ``standard``
-  (fal-ai/ip-adapter-face-id-plus was removed from fal.ai).
-
-Ref mode values:
-  * ``cheap``   — gpt-image-1.5 low ($0.009–$0.013)
-  * ``quality`` — FAL FLUX/schnell (~$0.003)  ← recommended
+Legacy aliases:
+  * ``cheap``    → ``gpt_low``    (gpt-image-1.5 low; now routes to GPT Image 2.0 low)
+  * ``sdxl_face``→ ``standard``   (ip-adapter removed from fal.ai)
 
 A short in-process cache prevents hammering the DB on every render step.
 """
@@ -36,9 +32,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("quality", "standard", "cheap")
-# sdxl_face is a legacy alias — normalised to standard at read time
-_LEGACY_ALIASES = {"sdxl_face": "standard"}
+VALID_MODES = ("quality", "standard", "gpt_low", "gpt_medium", "gpt_high")
+# Legacy aliases — normalised at read time
+# cheap → gpt_low  (old gpt-image-1.5 "low" path, now GPT Image 2.0 low)
+# sdxl_face → standard  (ip-adapter-face-id-plus removed from fal.ai)
+_LEGACY_ALIASES = {"sdxl_face": "standard", "cheap": "gpt_low"}
 DEFAULT_MODE = "quality"
 
 KEY_REF = "image_mode_ref"

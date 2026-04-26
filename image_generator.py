@@ -43,23 +43,23 @@ SHOT_MODEL_ENV_I2I = "fal-ai/flux/dev/image-to-image"
 # Deprecated alias sdxl_face → standard (ip-adapter-face-id-plus was removed).
 STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell for all shot types
 
-# ── OpenAI gpt-image-1.5 cheap-mode constants ────────────────────────────────
-# Cheap mode routes ALL generation (refs + stills) through gpt-image-1.5 at
-# "low" quality. Cost: $0.009–$0.013/image (1024×1024 → 1536×1024)
-# vs ~$0.025–0.05 for FAL flux-pulid quality mode.
-# Labelled "GPT Image 1.5 · Low" in the admin UI.
-# gpt-image-1.5 supports image-to-image and multi-image references —
-# face identity + scene atmosphere preserved in a single edit call.
-# Sizes: 1024x1536 (portrait) for character refs, 1536x1024 for everything
-# else (landscape, nearest to 16:9 that gpt-image-1.5 supports).
-OPENAI_IMAGE_MODEL = "gpt-image-1.5"
-OPENAI_CHEAP_QUALITY = "low"
-OPENAI_SIZE_LANDSCAPE = "1536x1024"
+# ── OpenAI GPT Image 2.0 mode constants ──────────────────────────────────────
+# GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-2.
+# Three quality tiers (native 1920×1080 landscape — no outpainting needed):
+#   gpt_low    — $0.01/image  — fast testing
+#   gpt_medium — $0.04/image  — recommended
+#   gpt_high   — $0.16/image  — highest fidelity
+# Portrait (character refs): 1024×1536.
+# Supports image-to-image and multi-image references — face identity +
+# scene atmosphere preserved in a single edit call.
+# Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
+OPENAI_IMAGE_MODEL = "gpt-image-2"
+OPENAI_SIZE_LANDSCAPE = "1920x1080"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 
 def _resolve_ref_mode() -> str:
-    """Returns 'cheap' or 'quality' for reference plates."""
+    """Returns the current image mode for reference plates."""
     try:
         from system_config import get_image_modes
         return get_image_modes().get("ref", "quality")
@@ -68,12 +68,22 @@ def _resolve_ref_mode() -> str:
 
 
 def _resolve_shot_mode() -> str:
-    """Returns 'cheap' or 'quality' for per-shot stills."""
+    """Returns the current image mode for per-shot stills."""
     try:
         from system_config import get_image_modes
         return get_image_modes().get("shot", "quality")
     except Exception:
         return "quality"
+
+
+def _is_gpt_mode(mode: str) -> bool:
+    """True for any GPT Image 2.0 tier (or legacy cheap alias)."""
+    return mode in ("cheap", "gpt_low", "gpt_medium", "gpt_high")
+
+
+def _resolve_openai_quality(mode: str) -> str:
+    """Map image mode → OpenAI quality string (low | medium | high)."""
+    return {"gpt_high": "high", "gpt_medium": "medium"}.get(mode, "low")
 
 
 # ── OpenAI image helpers ──────────────────────────────────────────────────────
@@ -450,8 +460,8 @@ Return ONLY valid JSON, no markdown, no explanation:
 
 
 def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
-                     quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Text-to-image via gpt-image-1.5. Returns raw PNG bytes."""
+                     quality: str = "low") -> bytes:
+    """Text-to-image via GPT Image 2.0. Returns raw PNG bytes."""
     client = _openai_client()
     response = client.images.generate(
         model=OPENAI_IMAGE_MODEL,
@@ -463,7 +473,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1.5 returned no image data.")
+        raise ImageGenerationError("gpt-image-2 returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -497,17 +507,17 @@ def _download_image_bytes(url: str) -> bytes:
 
 
 def _openai_edit(prompt: str, ref_url: str, size: str = OPENAI_SIZE_LANDSCAPE,
-                 quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Image-to-image edit via gpt-image-1.5 (single reference).
+                 quality: str = "low") -> bytes:
+    """Image-to-image edit via GPT Image 2.0 (single reference).
     Downloads ref from R2/URL, passes to the edits endpoint, returns raw PNG bytes."""
     return _openai_edit_multi(prompt, [ref_url], size=size, quality=quality)
 
 
 def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LANDSCAPE,
-                       quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Multi-image-to-image edit via gpt-image-1.5.
+                       quality: str = "low") -> bytes:
+    """Multi-image-to-image edit via GPT Image 2.0.
 
-    gpt-image-1.5 accepts multiple image references simultaneously — it uses
+    GPT Image 2.0 accepts multiple image references simultaneously — it uses
     all supplied images to condition the output, preserving:
       * face identity (from character plate)
       * scene atmosphere / lighting (from environment plate)
@@ -531,7 +541,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         image_arg = ("reference.png", io.BytesIO(img_bytes), "image/png")
     else:
         images = []
-        for i, url in enumerate(valid_urls[:3]):  # gpt-image-1.5 cap: 3 refs
+        for i, url in enumerate(valid_urls[:3]):  # gpt-image-2 cap: 3 refs
             img_bytes = _download_image_bytes(url)
             images.append((f"ref_{i}.png", io.BytesIO(img_bytes), "image/png"))
         image_arg = images
@@ -546,7 +556,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     )
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1.5 edit returned no image data.")
+        raise ImageGenerationError("gpt-image-2 edit returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -707,10 +717,12 @@ def generate_character_ref(speaker: dict, location_dna: str, project_id: str) ->
         f"Identity context: {identity}. Emotional tone: {emotion}. "
         f"{CHARACTER_REF_HINT}."
     )
-    logger.info("Generating character ref for project=%s mode=%s", project_id, _resolve_ref_mode())
+    ref_mode = _resolve_ref_mode()
+    logger.info("Generating character ref for project=%s mode=%s", project_id, ref_mode)
 
-    if _resolve_ref_mode() == "cheap":
-        img_bytes = _openai_generate(prompt, size=OPENAI_SIZE_PORTRAIT)
+    if _is_gpt_mode(ref_mode):
+        img_bytes = _openai_generate(prompt, size=OPENAI_SIZE_PORTRAIT,
+                                     quality=_resolve_openai_quality(ref_mode))
         r2_key = _new_ref_key(project_id, "character", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key)
 
@@ -805,11 +817,13 @@ def generate_character_plate(character: dict, project_id: str,
     if not prompt:
         raise ImageGenerationError("Empty character plate prompt.")
     safe = "".join(ch if ch.isalnum() else "_" for ch in (character.get("name") or "char"))[:32]
+    ref_mode = _resolve_ref_mode()
     logger.info("Generating character plate for project=%s name=%s mode=%s",
-                project_id, character.get("name"), _resolve_ref_mode())
+                project_id, character.get("name"), ref_mode)
 
-    if _resolve_ref_mode() == "cheap":
-        img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_PORTRAIT)
+    if _is_gpt_mode(ref_mode):
+        img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_PORTRAIT,
+                                     quality=_resolve_openai_quality(ref_mode))
         r2_key = _new_ref_key(project_id, f"char_{character.get('id','x')}_{safe}", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key), prompt
 
@@ -924,11 +938,13 @@ def generate_location_plate(location: dict, project_id: str,
     if not prompt:
         raise ImageGenerationError("Empty location plate prompt.")
     safe = "".join(ch if ch.isalnum() else "_" for ch in (location.get("name") or "loc"))[:32]
+    ref_mode = _resolve_ref_mode()
     logger.info("Generating location plate for project=%s name=%s mode=%s",
-                project_id, location.get("name"), _resolve_ref_mode())
+                project_id, location.get("name"), ref_mode)
 
-    if _resolve_ref_mode() == "cheap":
-        img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_LANDSCAPE)
+    if _is_gpt_mode(ref_mode):
+        img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_LANDSCAPE,
+                                     quality=_resolve_openai_quality(ref_mode))
         r2_key = _new_ref_key(project_id, f"loc_{location.get('id','x')}_{safe}", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key), prompt
 
@@ -958,10 +974,15 @@ def generate_environment_ref(location_dna: str, motifs: list, project_id: str) -
         f"Establishing environment reference plate for setting: {location}. "
         f"{motif_part} {ENV_REF_HINT}."
     )
-    logger.info("Generating env ref for project=%s mode=%s", project_id, _resolve_ref_mode())
+    ref_mode = _resolve_ref_mode()
+    logger.info("Generating env ref for project=%s mode=%s", project_id, ref_mode)
 
-    if _resolve_ref_mode() == "cheap":
-        img_bytes = _openai_generate(prompt, size=OPENAI_SIZE_LANDSCAPE)
+    if _is_gpt_mode(ref_mode):
+        img_bytes = _openai_generate(
+            prompt,
+            size=OPENAI_SIZE_LANDSCAPE,
+            quality=_resolve_openai_quality(ref_mode),
+        )
         r2_key = _new_ref_key(project_id, "environment", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key)
 
@@ -1066,26 +1087,40 @@ def generate_shot_still(
     logger.info("Rendering shot %s mode=%s char_ref=%s env_ref=%s",
                 shot_idx, shot_mode, has_char_ref, has_env)
 
-    # ── Cheap mode: gpt-image-1.5 low quality ($0.009–$0.013/image) ───────────
-    # gpt-image-1.5 img2img: character ref preserves face identity, env ref
-    # grounds the scene atmosphere. Multi-image edit passes both simultaneously.
-    if shot_mode == "cheap":
+    # ── GPT Image 2.0 mode: low / medium / high quality ───────────────────────
+    # img2img: character ref preserves face identity, env ref grounds the scene
+    # atmosphere. Multi-image edit passes both references simultaneously.
+    if _is_gpt_mode(shot_mode):
+        gpt_quality = _resolve_openai_quality(shot_mode)
         r2_key = _new_shot_key(project_id, shot_idx, ext="png")
         if has_char_ref and has_env:
             # Multi-image edit: pass character plate (face identity) +
             # environment plate (scene atmosphere) simultaneously.
-            # gpt-image-1.5 conditions on both in a single generation call.
+            # gpt-image-2 conditions on both in a single generation call.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
                 size=OPENAI_SIZE_LANDSCAPE,
+                quality=gpt_quality,
             )
         elif has_char_ref:
-            img_bytes = _openai_edit(prompt, character_ref_url, size=OPENAI_SIZE_LANDSCAPE)
+            img_bytes = _openai_edit(
+                prompt, character_ref_url,
+                size=OPENAI_SIZE_LANDSCAPE,
+                quality=gpt_quality,
+            )
         elif has_env:
-            img_bytes = _openai_edit(prompt, environment_ref_url, size=OPENAI_SIZE_LANDSCAPE)
+            img_bytes = _openai_edit(
+                prompt, environment_ref_url,
+                size=OPENAI_SIZE_LANDSCAPE,
+                quality=gpt_quality,
+            )
         else:
-            img_bytes = _openai_generate(prompt, size=OPENAI_SIZE_LANDSCAPE)
+            img_bytes = _openai_generate(
+                prompt,
+                size=OPENAI_SIZE_LANDSCAPE,
+                quality=gpt_quality,
+            )
         return _save_bytes_to_r2(img_bytes, r2_key)
 
     # ── Standard mode: FLUX Schnell (~$0.003–0.005/image) ────────────────────
