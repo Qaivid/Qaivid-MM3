@@ -3903,6 +3903,72 @@ def set_entity_uploaded_plate(project_id: str, kind: str, entity_id: int,
                     file_path=file_url, error=None)
 
 
+def regenerate_look_plate(project_id: str, look_id: int,
+                           location_dna: str = "Universal",
+                           prompt_override: Optional[str] = None) -> None:
+    """Re-render a single character_looks plate in the background.
+
+    Resets the row to 'pending' (with optional prompt override) then submits
+    generate_look_plates() to _SHOT_EXECUTOR so the caller returns immediately.
+    """
+    with _db() as conn, conn.cursor() as cur:
+        if prompt_override:
+            cur.execute(
+                "UPDATE character_looks SET ref_status='pending', ref_error=NULL, "
+                "ref_prompt=%s WHERE id=%s AND project_id=%s",
+                (prompt_override, look_id, project_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE character_looks SET ref_status='pending', ref_error=NULL "
+                "WHERE id=%s AND project_id=%s",
+                (look_id, project_id),
+            )
+        conn.commit()
+
+    def _gen():
+        try:
+            from wardrobe_engine import generate_look_plates
+            generate_look_plates(project_id, location_dna, None)
+        except Exception:
+            logger.exception("regenerate_look_plate: failed for look=%s project=%s",
+                             look_id, project_id)
+
+    _SHOT_EXECUTOR.submit(_gen)
+
+
+def set_look_uploaded_plate(project_id: str, look_id: int, file_url: str) -> None:
+    """Mark a character_looks row as user-uploaded and set status to ready."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE character_looks SET ref_status='ready', ref_image_url=%s, "
+            "ref_error=NULL WHERE id=%s AND project_id=%s",
+            (file_url, look_id, project_id),
+        )
+        conn.commit()
+
+
+def generate_pending_look_plates(project_id: str) -> None:
+    """Kick generation of all pending look plates in a background thread.
+
+    Called after references_approve so look plates start generating while the
+    user reviews stills prompts on the stills_control page.
+    """
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT context_packet FROM projects WHERE id=%s", (project_id,))
+        row = cur.fetchone()
+    location_dna = ((row or {}).get("context_packet") or {}).get("location_dna") or "Universal"
+
+    def _gen():
+        try:
+            from wardrobe_engine import generate_look_plates
+            generate_look_plates(project_id, location_dna, None)
+        except Exception:
+            logger.exception("generate_pending_look_plates: failed for project=%s", project_id)
+
+    _SHOT_EXECUTOR.submit(_gen)
+
+
 # ── Stills Control helpers (Task: per-shot generation gate) ──────────────────
 
 def _project_cine_context(project_id: str, upto_idx: Optional[int] = None

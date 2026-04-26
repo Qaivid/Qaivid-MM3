@@ -369,7 +369,7 @@ def generate_look_plates(project_id: str,
         cur.execute(
             """
             SELECT cl.id, cl.cluster_id, cl.cluster_label, cl.wardrobe_text,
-                   cl.character_id,
+                   cl.character_id, cl.ref_prompt AS stored_prompt,
                    c.name, c.gender, c.ethnicity, c.complexion, c.appearance,
                    c.age_range, c.cultural_notes,
                    c.ref_image_url  AS base_plate_url,
@@ -400,40 +400,46 @@ def generate_look_plates(project_id: str,
             continue
 
         try:
-            # Mark as rendering
+            # Build prompt: use stored prompt if user edited it, otherwise
+            # derive from character identity + scene-specific outfit.
+            stored_prompt = (row.get("stored_prompt") or "").strip()
+            if stored_prompt:
+                prompt = stored_prompt
+            else:
+                age        = (row["age_range"] or "").strip()
+                gender     = (row["gender"] or "").strip()
+                ethnicity  = (row["ethnicity"] or "").strip()
+                complexion = (row["complexion"] or "").strip()
+                appearance = (row["appearance"] or "").strip()
+                cultural   = (row["cultural_notes"] or "").strip()
+
+                descriptors = [d for d in [age, gender, ethnicity, complexion]
+                               if d and d.lower() not in {"unclear", "unknown", "any"}]
+                descriptor_str = ", ".join(descriptors) if descriptors else "adult"
+
+                region = f" Consistent with {location_dna}." if location_dna and location_dna.lower() != "universal" else ""
+                outfit_clause = f"Wearing: {wardrobe_text}." if wardrobe_text else ""
+                appearance_clause = f"Appearance: {appearance}." if appearance else ""
+                cultural_clause = f"Cultural context: {cultural}." if cultural else ""
+
+                prompt = (
+                    f"Identity plate of {char_name} — a single {descriptor_str} character "
+                    f"in '{label}' scene.{region} "
+                    f"{outfit_clause} {appearance_clause} {cultural_clause} "
+                    f"{CHARACTER_REF_HINT}."
+                ).strip()
+
+                if style_suffix:
+                    prompt = f"{prompt} {style_suffix}".strip()
+
+            # Mark as rendering and persist the prompt (so UI can display it)
             with _db() as conn, conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE character_looks SET ref_status='rendering', ref_error=NULL "
-                    "WHERE id=%s", (look_id,)
+                    "UPDATE character_looks SET ref_status='rendering', ref_error=NULL, "
+                    "ref_prompt=%s WHERE id=%s",
+                    (prompt, look_id),
                 )
                 conn.commit()
-
-            # Build prompt: character identity + scene-specific outfit
-            age        = (row["age_range"] or "").strip()
-            gender     = (row["gender"] or "").strip()
-            ethnicity  = (row["ethnicity"] or "").strip()
-            complexion = (row["complexion"] or "").strip()
-            appearance = (row["appearance"] or "").strip()
-            cultural   = (row["cultural_notes"] or "").strip()
-
-            descriptors = [d for d in [age, gender, ethnicity, complexion]
-                           if d and d.lower() not in {"unclear", "unknown", "any"}]
-            descriptor_str = ", ".join(descriptors) if descriptors else "adult"
-
-            region = f" Consistent with {location_dna}." if location_dna and location_dna.lower() != "universal" else ""
-            outfit_clause = f"Wearing: {wardrobe_text}." if wardrobe_text else ""
-            appearance_clause = f"Appearance: {appearance}." if appearance else ""
-            cultural_clause = f"Cultural context: {cultural}." if cultural else ""
-
-            prompt = (
-                f"Identity plate of {char_name} — a single {descriptor_str} character "
-                f"in '{label}' scene.{region} "
-                f"{outfit_clause} {appearance_clause} {cultural_clause} "
-                f"{CHARACTER_REF_HINT}."
-            ).strip()
-
-            if style_suffix:
-                prompt = f"{prompt} {style_suffix}".strip()
 
             safe_name    = "".join(ch if ch.isalnum() else "_" for ch in char_name)[:20]
             safe_cluster = "".join(ch if ch.isalnum() else "_" for ch in cluster_id)[:30]

@@ -185,22 +185,44 @@
                             <div class="ref-look-ph">
                                 <span class="ref-look-ph-name">{{ lk.cluster_label or lk.cluster_id }}</span>
                                 <span class="ref-spill ref-spill--{{ lk.ref_status }} ref-spill--sm">
-                                    {% if lk.ref_status == 'ready' %}✓{% elif lk.ref_status == 'failed' %}⚠{% else %}–{% endif %}
+                                    {% if lk.ref_status == 'ready' %}✓{% elif lk.ref_status == 'failed' %}⚠{% elif lk.ref_status == 'rendering' %}…{% else %}–{% endif %}
                                     {{ lk.ref_status|title }}
                                 </span>
                             </div>
                             {% if lk.wardrobe_text %}
                             <div class="ref-look-wardrobe">{{ lk.wardrobe_text[:200] }}</div>
                             {% endif %}
-                            {% if lk.ref_prompt %}
-                            <details class="ref-look-prompt-wrap">
-                                <summary>Prompt used</summary>
-                                <div class="ref-look-prompt-text">{{ lk.ref_prompt }}</div>
-                            </details>
+                            {% if lk.ref_url %}
+                            <img src="{{ lk.ref_url }}" alt="{{ lk.cluster_label or lk.cluster_id }}"
+                                 class="ref-look-img" loading="lazy">
                             {% endif %}
                             {% if lk.ref_error %}
                             <div class="ref-edit-error">{{ lk.ref_error[:140] }}</div>
                             {% endif %}
+                            {# Generate / Regenerate form #}
+                            <form method="post"
+                                  action="{{ url_for('references_regenerate_look', project_id=project.id, look_id=lk.id) }}"
+                                  class="ref-prompt-form ref-look-gen-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <textarea name="prompt" rows="2" class="ref-prompt-ta"
+                                          placeholder="Edit prompt before generating…">{{ lk.ref_prompt or '' }}</textarea>
+                                <button type="submit" class="btn-secondary ref-gen-btn">
+                                    {% if lk.ref_status == 'rendering' %}⏳ Rendering…
+                                    {% elif lk.ref_url %}↺ Regenerate look
+                                    {% else %}▶ Generate look{% endif %}
+                                </button>
+                            </form>
+                            {# Upload form #}
+                            <form method="post" enctype="multipart/form-data"
+                                  action="{{ url_for('references_upload_look', project_id=project.id, look_id=lk.id) }}"
+                                  class="ref-upload-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="file" name="plate" accept="image/*"
+                                       id="plate-look-{{ lk.id }}" class="ref-file-input"
+                                       onchange="refAutoUpload(this)">
+                                <label for="plate-look-{{ lk.id }}" class="ref-upload-label">↑ Upload look photo</label>
+                                <span class="ref-upload-status" style="display:none;">Uploading…</span>
+                            </form>
                         </div>
                         {% endfor %}
                     </div>
@@ -555,6 +577,12 @@
 .ref-look-wardrobe { font-size: 11px; color: #667; font-style: italic; line-height: 1.5; }
 .ref-look-prompt-wrap summary { cursor: pointer; font-size: 11px; color: #9aa6b2; }
 .ref-look-prompt-text { font-size: 11px; color: #aab2bd; margin-top: 4px; line-height: 1.5; }
+.ref-look-img {
+    width: 100%; border-radius: 6px;
+    object-fit: cover; max-height: 180px; display: block;
+}
+.ref-look-gen-form { gap: 6px; }
+.ref-look-gen-form .ref-prompt-ta { font-size: 11px; rows: 2; }
 </style>
 <script>
 const _PID  = {{ project.id | tojson }};

@@ -51,6 +51,9 @@ from pipeline_worker import (
     kick_ai_postprod,
     kick_quick_video,
     regenerate_entity_plate,
+    regenerate_look_plate,
+    set_look_uploaded_plate,
+    generate_pending_look_plates,
     retry_all_failed_refs,
     retry_all_failed_shots,
     retry_ref,
@@ -3178,6 +3181,60 @@ def references_approve(project_id: str):
             flash("This step has already been completed or is not ready yet.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
 
+    # Base plates are approved — kick look plate generation in the background.
+    # Look plates require the base character plate for face-locking, so we can
+    # only generate them AFTER the user has approved all base plates here.
+    # Generation runs while the user reviews stills prompts on the next page.
+    try:
+        generate_pending_look_plates(project_id)
+    except Exception:
+        logger.exception("references_approve: failed to kick look plate generation "
+                         "for project=%s", project_id)
+
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/references/regenerate/look/<int:look_id>",
+           methods=["POST"])
+@login_required
+def references_regenerate_look(project_id: str, look_id: int):
+    """Regenerate a single character look plate (optionally with a custom prompt)."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if project.get("stage") not in ("references_review", "stills_control"):
+        flash("Look plates can only be edited during the references or stills review steps.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    cp = project.get("context_packet") or {}
+    location_dna = (cp.get("location_dna") or "Universal")
+    prompt_override = (request.form.get("prompt") or "").strip() or None
+    regenerate_look_plate(project_id, look_id,
+                          location_dna=location_dna,
+                          prompt_override=prompt_override)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/references/upload/look/<int:look_id>",
+           methods=["POST"])
+@login_required
+def references_upload_look(project_id: str, look_id: int):
+    """Upload a custom plate for a single character look."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    if project.get("stage") not in ("references_review", "stills_control"):
+        flash("Look plates can only be edited during the references or stills review steps.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    try:
+        file_url = _save_upload_to_r2(project_id, request.files.get("plate"),
+                                      "refs", f"look_{look_id}")
+    except UploadValidationError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    if not file_url:
+        flash("Please choose an image to upload.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    set_look_uploaded_plate(project_id, look_id, file_url)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
