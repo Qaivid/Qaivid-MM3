@@ -546,6 +546,11 @@ def compose_image_prompt(
             if emotional_mode_modifier and cine_prefix
             else emotional_mode_modifier or cine_prefix
         )
+        # Also prepend vibe shot direction on user-edited shots so the
+        # production vibe identity still applies even when the user typed
+        # their own description.
+        if vibe_shot_direction and vibe_shot_direction.strip():
+            body = vibe_shot_direction.strip().rstrip(".") + ". " + body
         prompt = _attach_envelope(
             body, effective_cine, has_character_ref, has_environment_ref,
             identity_seed=identity_seed,
@@ -556,6 +561,9 @@ def compose_image_prompt(
         _avoid_ov = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
         if _avoid_ov:
             _neg_ov = _neg_ov.rstrip(", ") + ", " + ", ".join(_avoid_ov)
+            # Also append to positive prompt so cheap/standard modes (no
+            # negative-prompt field) still honour the vibe avoid list.
+            prompt = prompt.rstrip(". ") + " Avoid: " + ", ".join(_avoid_ov) + "."
         return prompt, _neg_ov
 
     parts: list[str] = []
@@ -653,6 +661,10 @@ def compose_image_prompt(
     _avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
     if _avoid_items:
         neg = neg.rstrip(", ") + ", " + ", ".join(_avoid_items)
+        # Also append to positive prompt so cheap/standard render modes
+        # (which send no negative_prompt field to the model) still enforce
+        # the vibe avoid list.
+        prompt = prompt.rstrip(". ") + " Avoid: " + ", ".join(_avoid_items) + "."
     return prompt, neg
 
 
