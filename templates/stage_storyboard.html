@@ -83,12 +83,15 @@
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
                 Storyboard is where every scene fans out into <strong>possible realizations</strong>.
-                The next stage — the Creative Brief — locks ONE realization per scene.
+                The next stage — the Creative Brief — locks ONE realization per scene and
+                builds the timed shot list.
                 Below: <strong>{{ sb_scenes|length }} scene{{ '' if sb_scenes|length == 1 else 's' }}</strong>
-                of possibilities, then the underlying
+                of possibilities.{% if tl %}
+                The underlying shot list contains
                 <strong>{{ tl|length }} shot{{ '' if tl|length == 1 else 's' }}</strong>
                 ({{ "%.1f"|format(sm.total_duration or 0) }}s,
-                preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>).
+                preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>)
+                produced by the Creative Brief stage.{% endif %}
             </p>
         </div>
 
@@ -145,7 +148,7 @@
 
         <div class="sb-poss-header">
             <h2>Underlying Shot List</h2>
-            <span class="muted">— supporting detail; per-shot edits remain available.</span>
+            <span class="muted">— the timed shot list is built after the Creative Brief is approved.</span>
         </div>
 
         {# Task #69 — group shots by Creative Brief scene (if locked) so the
@@ -159,6 +162,15 @@
         {% set _ns = namespace(current_scene=None) %}
 
         <div class="sb-cards">
+            {% if not tl %}
+            <div class="sb-poss-empty" style="padding:2rem 1rem; text-align:center; color:var(--muted,#aaa);">
+                <p>No shots yet — the timed shot list is built by the V2 Timeline Builder
+                   once you approve the <strong>Creative Brief</strong>.</p>
+                <p style="font-size:.8rem; margin-top:.5rem;">
+                    Approve or regenerate the Creative Brief to produce the shot list.
+                </p>
+            </div>
+            {% else %}
             {% for shot in tl %}
             {% set idx = shot.shot_index or shot.timeline_index %}
             {% set cam = shot.camera_profile or {} %}
@@ -350,6 +362,7 @@
                 </details>
             </article>
             {% endfor %}
+            {% endif %}
         </div>
 
         <div class="stage-actions">

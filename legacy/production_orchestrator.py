@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from unified_context_engine_master import UnifiedContextEngine
-from visual_storyboard_engine import VisualStoryboardEngine
-from rhythmic_assembly_engine import RhythmicAssemblyEngine
+from legacy.visual_storyboard_engine import VisualStoryboardEngine
+from legacy.rhythmic_assembly_engine import RhythmicAssemblyEngine
 from style_grading_engine import StyleGradingEngine
 
 logger = logging.getLogger(__name__)

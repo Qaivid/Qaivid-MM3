@@ -7,14 +7,18 @@ A web-based SaaS that turns lyrics, poems, scripts, and stories into beat-synced
 - **Backend**: Flask (`app.py`) running on port 5000
 - **Database**: Replit PostgreSQL via `psycopg` (connection via `DATABASE_URL`)
 - **Frontend**: Server-rendered Jinja2 templates + plain CSS (no build step)
-- **Core pipeline engines**:
+- **V2 pipeline engines** (active — Task #163):
   - `audio_processor.py` - extracts BPM, beats, segments, energy from audio
   - `unified_context_engine_master.py` - GPT-4o context extraction (theme, speaker, location)
-  - `visual_storyboard_engine.py` - generates visual prompts per beat; MM3.1 adds cinematic beat enrichment via `_attach_optional_cinematic_layers()`
-  - `rhythmic_assembly_engine.py` - assembles a beat-synced timeline; normalizes shot durations to match `audio_data.duration_seconds` (Task #104 fix — ensures timeline covers full audio, not just lyric-line subset)
+  - `storyboard_engine_v2.py` - pure intent layer: produces scenes + valid_realizations (POSSIBILITIES)
+  - `creative_brief_engine_v2.py` - locks ONE realization per scene (SELECTION)
+  - `timeline_builder_v2.py` - converts locked brief + audio timing → styled_timeline; runs StyleGradingEngine with full style_profile (Task #163, fixes audit #3)
   - `style_grading_engine.py` - applies cinematic style profiles; passes through MM3.1 fields
   - `asset_export_module.py` - exports JSON for downstream tooling
-  - `production_orchestrator.py` - coordinates all engines end-to-end (context→storyboard→timeline)
+- **V1 engines (quarantined — legacy/ directory, Task #163)**:
+  - `legacy/production_orchestrator.py` - still used for `run_context_only()` in context stage; `run_to_timeline()` no longer called
+  - `legacy/visual_storyboard_engine.py` - retired; V2 uses storyboard_engine_v2 instead
+  - `legacy/rhythmic_assembly_engine.py` - retired; V2 timeline_builder_v2 handles BPM timing
 - **MM3.1 Cinematic Beat Engine** (all fail-safe, loaded optionally inside VSE):
   - `cinematic_beat_engine.py` - emotion → behaviour → beat objects (fixes "static portrait" problem)
   - `behaviour_mapper.py` - emotion label → concrete physical behaviour library

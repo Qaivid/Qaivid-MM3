@@ -33,7 +33,7 @@ from audio_processor import AudioProcessor
 from input_processor import InputProcessor
 from narrative_engine import generate_narrative_intelligence
 from project_brain import ProjectBrain
-from production_orchestrator import ProductionOrchestrator
+from legacy.production_orchestrator import ProductionOrchestrator
 from asset_export_module import AssetExportModule
 from image_generator import (
     ImageGenerationError,
@@ -2565,6 +2565,137 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             )
             conn.commit()
 
+        # ── V2 Timeline Builder — build styled_timeline from the locked brief ──
+        # This replaces V1 VisualStoryboardEngine + RhythmicAssemblyEngine +
+        # StyleGradingEngine (which ran in _stage2_job under the old pipeline).
+        # Now that the brief is locked, the Timeline Builder converts each
+        # scene brief into a timed, style-graded shot list (styled_timeline).
+        _set_status(project_id, "running",
+                    {"stage": "brief",
+                     "label": "Building timeline from creative brief…"},
+                    stage="running_brief")
+        try:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT audio_data, lyrics_timed, input_packet, text, genre "
+                    "FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                _tl_row = cur.fetchone() or {}
+            _tl_audio    = dict(_tl_row.get("audio_data") or {})
+            _tl_audio.pop("_pre_analysis", None)
+            _tl_lyrics   = list(_tl_row.get("lyrics_timed") or [])
+
+            # Back-fill lyric timestamps if missing (mirrors pre-V2 Stage-2 logic)
+            _tl_dur = float(_tl_audio.get("duration_seconds") or 0)
+            if _tl_dur > 0 and not _tl_lyrics:
+                _tl_lines = [_l.strip() for _l in (_tl_row.get("text") or "").splitlines() if _l.strip()]
+                if _tl_lines:
+                    _tl_step = _tl_dur / len(_tl_lines)
+                    _tl_lyrics = [
+                        {"text": _tl_lines[_ti], "start": round(_ti * _tl_step, 3),
+                         "end": round((_ti + 1) * _tl_step, 3)}
+                        for _ti in range(len(_tl_lines))
+                    ]
+
+            # Re-load brain to get the latest emotional_mode_packet, storyboard_packet,
+            # and input_structure (all may have been updated since function start).
+            with _db() as conn:
+                _tl_brain = ProjectBrain.load(project_id, conn)
+            _tl_emp      = _tl_brain.read("emotional_mode_packet") or {}
+            _tl_input    = _tl_brain.read("input_structure")       or brain_input or {}
+            _tl_narr     = _tl_brain.read("narrative_packet")       or narrative_packet or {}
+            _tl_style    = _tl_brain.read("style_packet")           or style_profile or {}
+
+            # Enrich emotional_mode_packet with deterministic pacing profile
+            _tl_primary_mode = (_tl_emp.get("primary_mode") or "").strip()
+            if _tl_primary_mode:
+                try:
+                    from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
+                    _tl_content_type = (_tl_row.get("genre") or "song") if (_tl_row.get("genre") or "song") in ("song", "poem") else "song"
+                    _tl_det_pacing = _get_det_pacing(_tl_content_type, _tl_primary_mode)
+                    _tl_pp = dict(_tl_emp.get("pacing_profile") or {})
+                    _tl_pp.update({
+                        k: _tl_det_pacing[k]
+                        for k in ("preferred_avg_duration", "long_shot_ratio",
+                                  "medium_shot_ratio", "short_shot_ratio",
+                                  "min_shot_duration", "max_shot_duration")
+                        if k in _tl_det_pacing
+                    })
+                    _tl_emp = dict(_tl_emp)
+                    _tl_emp["pacing_profile"] = _tl_pp
+                    logger.info(
+                        "_stage_brief_job: enriched pacing_profile for project=%s mode=%s "
+                        "preferred_avg=%.1fs",
+                        project_id, _tl_primary_mode,
+                        _tl_pp.get("preferred_avg_duration", 0),
+                    )
+                except Exception:
+                    logger.debug(
+                        "_stage_brief_job: deterministic pacing merge failed (non-fatal) "
+                        "for project=%s", project_id,
+                    )
+
+            # Build input_structure.units from lyrics if not already present
+            if _tl_lyrics and not _tl_input.get("units"):
+                _tl_input = dict(_tl_input)
+                _tl_input["units"] = [
+                    {**_lu, "unit_index": _li}
+                    for _li, _lu in enumerate(_tl_lyrics)
+                ]
+
+            from timeline_builder_v2 import build_timeline_from_brief
+            styled_timeline = build_timeline_from_brief(
+                creative_briefs      = creative_brief_packet,
+                input_structure      = _tl_input,
+                emotional_mode_packet= _tl_emp,
+                style_packet         = _tl_style,
+                narrative_packet     = _tl_narr,
+                audio_data           = _tl_audio,
+            )
+            logger.info(
+                "_stage_brief_job: V2 timeline built: %d shots for project=%s",
+                len(styled_timeline), project_id,
+            )
+
+            # Seed shot rows (used by materializer / refs / stills)
+            shot_indices = [s.get("shot_index") or s.get("timeline_index")
+                            for s in styled_timeline]
+            _seed_shot_rows(project_id, shot_indices)
+
+            # Write styled_timeline to projects table
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE projects SET styled_timeline=%s, updated_at=NOW() WHERE id=%s",
+                    (Json(styled_timeline), project_id),
+                )
+                conn.commit()
+
+            # Mirror styled_timeline into brain.storyboard_packet for legacy readers
+            try:
+                with _db() as conn:
+                    _tl_brain = ProjectBrain.load(project_id, conn)
+                    _existing_sp = dict(_tl_brain.read("storyboard_packet") or {})
+                    _existing_sp["styled_timeline"] = styled_timeline
+                    _existing_sp["shot_count"]      = len(styled_timeline)
+                    _existing_sp["total_duration"]  = round(
+                        sum(s.get("duration", 0) for s in styled_timeline), 2
+                    )
+                    _tl_brain.write("storyboard_packet", _existing_sp)
+                    _tl_brain.save(conn)
+                    conn.commit()
+            except Exception:
+                logger.exception(
+                    "_stage_brief_job: failed to mirror styled_timeline to brain for project=%s "
+                    "(non-fatal)", project_id,
+                )
+
+        except Exception:
+            logger.exception(
+                "_stage_brief_job: V2 timeline builder failed for project=%s (non-fatal — "
+                "styled_timeline may be empty until next brief run)", project_id,
+            )
+
         _set_status(project_id, "awaiting_review",
                     {"stage": "brief",
                      "label": (f"Creative Brief ready ({len(scene_briefs)} scenes "
@@ -2581,7 +2712,12 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
 
 
 def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
-    """Storyboard (Stage 5) — VisualStoryboard → RhythmicAssembly → StyleGrading.
+    """Storyboard (Stage 5) — V2 intent layer only.
+
+    Runs StoryboardEngineV2 to produce scenes + valid_realizations.
+    Does NOT produce styled_timeline — that is built by the V2 Timeline
+    Builder (timeline_builder_v2.py) in _stage_brief_job after the Creative
+    Brief is locked.
 
     Reads from Project Brain (per master spec):
       • context_packet   (Stage 2)
@@ -2679,311 +2815,28 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         _set_status(project_id, "running",
                     {"stage": "storyboard", "label": "Building visual storyboard…"}, stage="running_2")
 
-        # ── Storyboard Engine v2 (master spec — pure intent layer) ─────────
-        # Produces scenes with valid_realizations from brain inputs. Output
-        # is written to brain.storyboard_packet.scenes alongside the legacy
-        # locked timeline below — downstream stages (assembly/refs/stills/
-        # videos) still consume the legacy timeline until they're migrated.
-        #
-        # Run v2 in a background thread so its LLM latency overlaps with the
-        # legacy orchestrator's work. v2 failure NEVER blocks legacy: the
-        # holder dict captures success or fallback, and the join below is
-        # bounded so a hung v2 thread cannot stall this stage.
-        import threading
-        _v2_holder: dict = {"scenes": [], "used_fallback": False, "ok": False}
 
-        def _run_v2() -> None:
-            try:
-                from storyboard_engine_v2 import generate_storyboard_v2
-                scenes, used_fallback = _run_async(generate_storyboard_v2(
-                    api_key=api_key,
-                    input_structure=input_structure,
-                    context_packet=context_packet,
-                    narrative_packet=narrative_packet,
-                    style_profile=style_profile,
-                    project_settings=project_settings,
-                    emotional_mode_packet=brain_emotional or {},
-                ))
-                _v2_holder["scenes"]        = scenes
-                _v2_holder["used_fallback"] = used_fallback
-                _v2_holder["ok"]            = True
-            except Exception:
-                logger.exception(
-                    "[StoryboardV2] thread failed for project=%s — "
-                    "intent layer will be empty in brain.",
-                    project_id,
-                )
-
-        _v2_thread = threading.Thread(
-            target=_run_v2,
-            name=f"storyboard-v2-{project_id}",
-            daemon=True,
-        )
-        _v2_thread.start()
-
-        orchestrator = ProductionOrchestrator(api_key)
-
-        # Run storyboard + assembly + style using the orchestrator's staged methods.
-        # MM3.1 Cinematic Beat Engine integration point:
-        #   ProductionOrchestrator.run_to_timeline()
-        #     → VisualStoryboardEngine.build_storyboard()
-        #       → _attach_optional_cinematic_layers()
-        #           → CinematicBeatEngine.generate_beats()      [emotion→behaviour]
-        #           → BehaviourMapper + ShotEventBuilder        [behaviour→events]
-        #           → GenericShotValidator.validate_sequence()  [mark+rewrite weak shots]
-        #           → ShotVarietyEngine.assign_shot_types()     [enforce target distribution]
-        #           → _enforce_variety_caps() post-pass         [hard caps face≤25%, body≤35%]
-        # Task #105 — ensure timed_lyrics always carries valid timestamps before
-        # passing to the orchestrator.  Two fallback cases:
-        # (a) timed_lyrics is empty/None (Whisper was skipped, or pre-#105 project):
-        #     derive lyric lines from the stored transcript text and distribute
-        #     them evenly over audio_data duration_seconds.
-        # (b) timed_lyrics is non-empty but all have start==end==0 (Gemini-only
-        #     transcription, Whisper segments failed): fill timestamps evenly.
-        _audio_dur = float(audio_data_blob.get("duration_seconds") or 0)
-        if _audio_dur > 0:
-            if not timed_lyrics:
-                _lines = [l.strip() for l in text.splitlines() if l.strip()]
-                if _lines:
-                    _n = len(_lines)
-                    _step = _audio_dur / _n
-                    timed_lyrics = [
-                        {
-                            "text": _lines[_i],
-                            "start": round(_i * _step, 3),
-                            "end": round((_i + 1) * _step, 3),
-                        }
-                        for _i in range(_n)
-                    ]
-                    logger.info(
-                        "Stage 2: no lyrics_timed in DB; approximated timestamps "
-                        "for %d transcript lines (%.1fs / %d = %.2fs each)",
-                        _n, _audio_dur, _n, _step,
-                    )
-                    # Persist so the Context Engine review page can show them.
-                    try:
-                        with _db() as _conn, _conn.cursor() as _cur:
-                            _cur.execute(
-                                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
-                                "lyrics_timed JSONB;"
-                            )
-                            _cur.execute(
-                                "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
-                                (Json(timed_lyrics), project_id),
-                            )
-                            _conn.commit()
-                    except Exception as _e:
-                        logger.warning(
-                            "Stage 2: could not persist fallback lyrics_timed (%s)", _e
-                        )
-            else:
-                def _safe_float(v: object) -> float:
-                    try:
-                        return float(v or 0)
-                    except (TypeError, ValueError):
-                        return 0.0
-                has_real_ts = any(
-                    _safe_float(t.get("end")) > _safe_float(t.get("start"))
-                    for t in timed_lyrics
-                )
-                if not has_real_ts:
-                    _n = len(timed_lyrics)
-                    _step = _audio_dur / _n
-                    for _i, _t in enumerate(timed_lyrics):
-                        _t["start"] = round(_i * _step, 3)
-                        _t["end"] = round((_i + 1) * _step, 3)
-                    logger.info(
-                        "Stage 2: timed_lyrics had no real timestamps; "
-                        "distributed %d lines evenly (%.1fs / %d = %.2fs each)",
-                        _n, _audio_dur, _n, _step,
-                    )
-                    try:
-                        with _db() as _conn2, _conn2.cursor() as _cur2:
-                            _cur2.execute(
-                                "UPDATE projects SET lyrics_timed=%s WHERE id=%s",
-                                (Json(timed_lyrics), project_id),
-                            )
-                            _conn2.commit()
-                    except Exception as _e:
-                        logger.warning(
-                            "Stage 2: could not persist repaired lyrics_timed (%s)", _e
-                        )
-
-        # Task #69 — pass the user-locked Creative Brief so the orchestrator
-        # splices it into its freshly-regenerated context_packet (otherwise
-        # director_note/central_metaphor would be lost when the storyboard
-        # rebuilds context from raw text).
-        #
-        # MM3.1 Stage-9: merge mode-aware pacing into emotional_mode_packet for
-        # downstream consumers (RhythmicAssemblyEngine, etc.).
-        _emp_for_timeline = dict(brain_emotional) if brain_emotional else {}
-        _primary_mode = _emp_for_timeline.get("primary_mode") or ""
-        if not _primary_mode:
-            # Stage 2b should have written this before Stage 3.  Log so ops can spot
-            # missing Brain writes without failing the render.
-            logger.warning(
-                "Stage-9: emotional_mode_packet.primary_mode absent for project=%s — "
-                "pacing/mode overrides skipped.  Check Stage 2b completed.",
-                project_id,
-            )
-        if _primary_mode:
-            try:
-                from backend.services.deterministic_rules import get_pacing_profile as _get_det_pacing
-                # genre (DB column) == content_type key in PACING_PROFILES.
-                # Only "song"/"poem" have distinct profiles; others fall back to "song".
-                _content_type = genre if genre in ("song", "poem") else "song"
-                _det_pacing = _get_det_pacing(_content_type, _primary_mode)
-                # Merge deterministic shot-plan hints into the pacing_profile sub-dict
-                # (additive; beat-duration clamps already set by emotional_mode_engine).
-                _existing_pp = dict(_emp_for_timeline.get("pacing_profile") or {})
-                _existing_pp.update({
-                    k: _det_pacing[k]
-                    for k in ("preferred_avg_duration", "long_shot_ratio",
-                              "medium_shot_ratio", "short_shot_ratio",
-                              "min_shot_duration", "max_shot_duration")
-                    if k in _det_pacing
-                })
-                _emp_for_timeline["pacing_profile"] = _existing_pp
-                logger.info(
-                    "_stage_brief_job: enriched pacing_profile for project=%s mode=%s "
-                    "preferred_avg=%.1fs long_ratio=%.2f short_ratio=%.2f "
-                    "beat_min=%.2f beat_max=%.2f",
-                    project_id, _primary_mode,
-                    _existing_pp.get("preferred_avg_duration", 0),
-                    _existing_pp.get("long_shot_ratio", 0),
-                    _existing_pp.get("short_shot_ratio", 0),
-                    _existing_pp.get("min_beat_duration", 0),
-                    _existing_pp.get("max_beat_duration", 0),
-                )
-            except Exception:
-                logger.debug(
-                    "_stage_brief_job: deterministic pacing merge failed for project=%s (non-fatal)",
-                    project_id,
-                )
-        pre_result = _run_async(orchestrator.run_to_timeline(
-            text=text, genre=genre,
-            audio_analytics=audio_data_blob,
+        # ── Storyboard Engine v2 — pure intent layer ───────────────────────
+        # Produces scenes with valid_realizations from brain inputs.
+        # styled_timeline is NOT produced here; the V2 Timeline Builder builds
+        # it after the Creative Brief is locked (see _stage_brief_job).
+        from storyboard_engine_v2 import generate_storyboard_v2
+        v2_scenes, v2_used_fallback = _run_async(generate_storyboard_v2(
+            api_key=api_key,
+            input_structure=input_structure,
+            context_packet=context_packet,
+            narrative_packet=narrative_packet,
             style_profile=style_profile,
-            # Brief runs AFTER storyboard now (master spec) — never pass it.
-            creative_brief=None,
-            timed_lyrics=timed_lyrics or None,
-            emotional_mode_packet=_emp_for_timeline,
+            project_settings=project_settings,
         ))
-        raw_storyboard = pre_result.get("storyboard") or []
-        raw_timeline = pre_result.get("timeline") or []
+        v2_scenes = list(v2_scenes or [])
 
-        # MM3.1 beat-engine verification — log how many shots received beat enrichment.
-        # Shots without cinematic_beat fall back to legacy emotion-only prompting.
-        _n_beats = sum(1 for s in raw_timeline if s.get("cinematic_beat"))
-        _n_variety = sum(1 for s in raw_timeline if s.get("shot_type"))
-        if _n_beats or _n_variety:
-            logger.info(
-                "[MM3.1] project=%s storyboard=%d shots | beats=%d variety=%d",
-                project_id, len(raw_timeline), _n_beats, _n_variety,
-            )
-        else:
-            logger.warning(
-                "[MM3.1] project=%s: no cinematic beats or shot_types found — "
-                "running in legacy mode (cinematic_beat_engine modules may be missing)",
-                project_id,
-            )
-
-        _set_status(project_id, "running",
-                    {"stage": "storyboard", "label": "Applying style grading…"}, stage="running_2")
-
-        from style_grading_engine import StyleGradingEngine
-        style_engine = StyleGradingEngine()
-        styled_timeline = style_engine.apply_style(
-            timeline=raw_timeline,
-            style_profile={"preset": style_preset},
+        logger.info(
+            "[StoryboardV2] project=%s scenes=%d fallback=%s",
+            project_id, len(v2_scenes), v2_used_fallback,
         )
 
-        # The StyleGradingEngine rebuilds each shot from a strict whitelist
-        # and silently drops the rhythmic-sync fields the assembly engine
-        # produced. Merge them back so beat/bar/audio_intensity survive into
-        # the final styled_timeline that downstream stages + the UI consume.
-        _RHYTHM_FIELDS = (
-            "start_beat", "bar_index", "audio_intensity", "raw_shot_intensity",
-        )
-        raw_by_idx = {r.get("shot_index"): r for r in raw_timeline}
-        for styled in styled_timeline:
-            src = raw_by_idx.get(styled.get("shot_index"))
-            if not src:
-                continue
-            for k in _RHYTHM_FIELDS:
-                if k in src and styled.get(k) is None:
-                    styled[k] = src[k]
-
-        # Entity materialization (characters / locations / motifs) has moved to
-        # the start of _stage_refs_job — it now runs AFTER the Creative Brief
-        # is locked so it can read brain.creative_briefs for richer identity
-        # anchors. Shot rows are seeded here so the UI can show progress, but
-        # entity linking (_link_shots_to_entities) also happens in refs once
-        # the entity rows exist.
-        shot_indices = [s.get("shot_index") or s.get("timeline_index") for s in styled_timeline]
-        _seed_shot_rows(project_id, shot_indices)
-
-        # Export JSON
-        from asset_export_module import AssetExportModule
-        exporter = AssetExportModule(name or "Qaivid_Project")
-        export_json = exporter.export_to_json(styled_timeline)
-        r2_key = f"projects/{project_id}/exports/{project_id}.json"
-        try:
-            export_url = r2_storage.upload_bytes(
-                export_json.encode(), r2_key, content_type="application/json"
-            )
-        except Exception:
-            export_url = r2_key
-
-        with _db() as conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE projects
-                   SET context_packet=%s, summary=%s, styled_timeline=%s, export_path=%s, updated_at=NOW()
-                 WHERE id=%s
-                """,
-                (
-                    Json(context_packet),
-                    Json({"storyboard_shot_count": len(raw_storyboard),
-                          "styled_timeline_shot_count": len(styled_timeline),
-                          "total_duration": round(sum(x.get("duration", 0) for x in raw_timeline), 2),
-                          "style_preset": style_preset}),
-                    Json(styled_timeline),
-                    export_url,
-                    project_id,
-                ),
-            )
-            conn.commit()
-
-        # ── Join v2 thread (bounded) before writing brain ──────────────────
-        # Bounded join so a hung LLM call cannot stall the stage. If v2 is
-        # still running after the timeout we proceed with empty intent —
-        # downstream is unaffected because it consumes the legacy timeline.
-        _v2_thread.join(timeout=120)
-        if _v2_thread.is_alive():
-            logger.warning(
-                "[StoryboardV2] join timed out for project=%s — proceeding "
-                "without intent layer; thread will finish in background.",
-                project_id,
-            )
-        v2_scenes        = list(_v2_holder.get("scenes") or [])
-        v2_used_fallback = bool(_v2_holder.get("used_fallback"))
-        if _v2_holder.get("ok"):
-            logger.info(
-                "[StoryboardV2] project=%s scenes=%d fallback=%s",
-                project_id, len(v2_scenes), v2_used_fallback,
-            )
-
-        # ── Write storyboard_packet to brain (Stage 6 namespace) ───────────
-        # schema_version 2 layout:
-        #   scenes              — v2 intent layer (purpose, valid_realizations…)
-        #   used_fallback_v2    — true if v2 LLM call fell back to defaults
-        # Legacy-bridge keys (kept until downstream stages migrate to scenes):
-        #   raw_storyboard, styled_timeline, shot_count, total_duration,
-        #   style_preset
-        # Per-shot inline edits during storyboard_review stay in the legacy
-        # styled_timeline column; the final approved snapshot is mirrored back
-        # at advance_stage_3.
+        # ── Write storyboard_packet to brain (Stage 5 namespace) ───────────
         try:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
@@ -2991,19 +2844,14 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                     "schema_version":   2,
                     "scenes":           v2_scenes,
                     "used_fallback_v2": v2_used_fallback,
-                    "raw_storyboard":   raw_storyboard,
-                    "styled_timeline":  styled_timeline,
-                    "shot_count":       len(styled_timeline),
-                    "total_duration":   round(sum(x.get("duration", 0) for x in raw_timeline), 2),
                     "style_preset":     style_preset,
                 })
                 brain.save(conn)
                 conn.commit()
             logger.info(
                 "ProjectBrain: wrote storyboard_packet v2 for project=%s "
-                "(intent: %d scenes, legacy: %d shots / %d raw, preset=%s)",
-                project_id, len(v2_scenes), len(styled_timeline),
-                len(raw_storyboard), style_preset,
+                "(%d scenes, preset=%s)",
+                project_id, len(v2_scenes), style_preset,
             )
         except Exception:
             logger.exception(
@@ -3012,7 +2860,9 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             )
 
         _set_status(project_id, "awaiting_review",
-                    {"stage": "storyboard", "label": f"Storyboard ready — {len(styled_timeline)} shots. Review and continue."},
+                    {"stage": "storyboard",
+                     "label": (f"Storyboard ready — {len(v2_scenes)} scenes of possibilities. "
+                               "Review and continue to Creative Brief.")},
                     stage="storyboard_review")
 
     except Exception as exc:
@@ -3020,6 +2870,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         _set_status(project_id, "failed",
                     {"stage": "error", "label": "Stage 2 failed."},
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
 
 
 def _stage_materializer_job(project_id: str) -> None:
