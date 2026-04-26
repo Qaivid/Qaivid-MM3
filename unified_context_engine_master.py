@@ -40,12 +40,6 @@ class CulturePackRegistry:
                 "geography": "Punjab region, South Asia",
                 "cultural_dna": "Punjabi rural lament",
             },
-            "appearance_defaults": {
-                "ethnicity": "South Asian (Punjabi)",
-                "complexion": "warm wheatish to tan",
-                "wardrobe": "phulkari dupatta, salwar-kameez or kurta-pajama; turban for adult men where appropriate",
-                "grooming": "kohl-lined eyes, simple traditional jewelry, plaited or covered hair for women",
-            },
             "visual_restrictions": [
                 "Avoid generic Western suburban visuals.",
                 "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
@@ -68,12 +62,6 @@ class CulturePackRegistry:
                 "geography": "diaspora split between homeland and abroad",
                 "cultural_dna": "Punjabi diaspora memory",
             },
-            "appearance_defaults": {
-                "ethnicity": "South Asian (Punjabi)",
-                "complexion": "warm wheatish to tan",
-                "wardrobe": "contemporary mixed wardrobe; Punjabi cues in homeland scenes (dupatta, kurta), modern attire abroad",
-                "grooming": "contemporary; subtle traditional cues persist",
-            },
             "visual_restrictions": [
                 "Do not erase the tension between homeland memory and present migration reality.",
                 "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
@@ -94,12 +82,6 @@ class CulturePackRegistry:
             "world_defaults": {
                 "cultural_dna": "Urdu philosophical ghazal",
                 "geography": "Urdu cultural sphere (North India / Pakistan)",
-            },
-            "appearance_defaults": {
-                "ethnicity": "South Asian (Urdu cultural sphere)",
-                "complexion": "warm tones",
-                "wardrobe": "kurta-shalwar, sherwani, dupatta; subdued elegant cloth",
-                "grooming": "restrained classical elegance",
             },
             "visual_restrictions": [
                 "Do not literalize abstract ghazal language into crude plot imagery.",
@@ -122,12 +104,6 @@ class CulturePackRegistry:
                 "cultural_dna": "devotional qawwali",
                 "geography": "South Asian devotional space (dargah, shrine, gathering)",
             },
-            "appearance_defaults": {
-                "ethnicity": "South Asian",
-                "complexion": "warm tones",
-                "wardrobe": "kurta-shalwar, qawwal attire, prayer cap; modest devotional dress",
-                "grooming": "traditional, devotional restraint",
-            },
             "visual_restrictions": [
                 "Avoid trivializing devotional intensity into nightclub or pop-romance imagery.",
                 "Do not render speakers with East Asian, European, or African features unless the text explicitly demands it.",
@@ -140,12 +116,6 @@ class CulturePackRegistry:
             "triggers": [],
             "metaphors": {},
             "world_defaults": {},
-            "appearance_defaults": {
-                "ethnicity": "inferred from lyric content and language — do not default to any single culture",
-                "complexion": "inferred from cultural context",
-                "wardrobe": "culturally appropriate to the song's world; inferred from language and geography",
-                "grooming": "culturally appropriate; inferred from context",
-            },
             "visual_restrictions": [
                 "Do not impose any single culture's visual language unless the text demands it.",
                 "Render characters, locations, and props faithful to the language and geography of the submitted content.",

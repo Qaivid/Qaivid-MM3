@@ -339,13 +339,12 @@ def _system_prompt(cultural_grounding: str = "") -> str:
 _MARKER_GROUNDING: Dict[str, str] = {
     "punjab": (
         "Cultural world: Punjab region, South Asia — Punjabi folk tradition.\n\n"
-        "Character appearance: South Asian (Punjabi) — warm wheatish to tan complexion; "
-        "phulkari dupatta, salwar-kameez or kurta-pajama; turban for adult men where appropriate; "
-        "kohl-lined eyes and simple traditional jewelry for women.\n\n"
         "Visual guidance:\n"
         "  - Ground every location in the Punjabi cultural world, but let each location's "
         "name and the lyrics determine its specific appearance — a mustard field, a rooftop, "
         "a river bank, and a courtyard are all distinct spaces with different visual identities.\n"
+        "  - Character appearance is determined entirely by the Character Materializer — "
+        "do not prescribe complexion, wardrobe, or grooming here.\n"
         "  - Do not apply the same architectural template to every scene.\n"
         "  - Do not render speakers with East Asian, European, or African features "
         "unless the text explicitly demands it.\n"

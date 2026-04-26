@@ -55,31 +55,11 @@ def _derive_visual_subject(
     }
     age_str = age_map.get(age_range, "")
 
-    if "punjabi" in pack:
-        if gender == "female":
-            return (
-                f"South Asian woman {age_str}, wearing traditional Punjabi salwar kameez "
-                f"in muted jewel tones (deep blue or dark burgundy), white dupatta draped "
-                f"over her head, dark hair neatly pinned, delicate gold bangles on her wrists, "
-                f"dignified and composed bearing"
-            )
-        elif gender == "male":
-            return (
-                f"South Asian man {age_str}, wearing traditional Punjabi kurta pajama, "
-                f"strong dignified bearing"
-            )
-    elif any(x in pack for x in ["urdu", "desi", "south_asian", "hindi"]):
-        if gender == "female":
-            return f"South Asian woman {age_str}, wearing traditional attire, dignified"
-        elif gender == "male":
-            return f"South Asian man {age_str}, wearing traditional attire, dignified"
-
-    # Fallback — generic but gendered
-    if gender == "female":
-        return f"a woman {age_str}, traditional attire"
-    elif gender == "male":
-        return f"a man {age_str}, traditional attire"
-    return "a solitary figure in traditional attire"
+    # Cultural placement only — appearance is owned by the Character Materializer.
+    # Do not prescribe complexion, wardrobe, or grooming here.
+    gender_word = "woman" if gender == "female" else "man" if gender == "male" else "person"
+    age_clause = f" {age_str}" if age_str else ""
+    return f"a {gender_word}{age_clause}"
 
 
 def _translate_action_to_visual(
@@ -270,24 +250,11 @@ def build_reference_prompts(
         age_map = {"young": "early 20s", "middle": "mid-30s", "old": "50s", "elderly": "60s"}
         age_str = age_map.get(age_range, "30s")
 
-        if "punjabi" in pack:
-            if gender == "female":
-                appearance = (
-                    f"South Asian woman, {age_str}, traditional Punjabi salwar kameez in muted "
-                    f"jewel tones (deep blue or dark burgundy), white dupatta draped over head, "
-                    f"dark hair neatly pinned, delicate gold bangles on wrists, dignified composure, "
-                    f"emotionally restrained — grief carried internally, not on the surface"
-                )
-                wardrobe = "traditional Punjabi salwar kameez, white dupatta, gold bangles"
-            else:
-                appearance = (
-                    f"South Asian man, {age_str}, traditional Punjabi kurta pajama, strong "
-                    f"dignified bearing, handsome, emotionally present"
-                )
-                wardrobe = "traditional Punjabi kurta pajama"
-        else:
-            appearance = f"person, {age_str}, traditional attire, dignified"
-            wardrobe = "traditional attire"
+        # Cultural placement only — complexion, wardrobe, and grooming are
+        # owned by the Character Materializer. Do not prescribe them here.
+        gender_word = "woman" if gender == "female" else "man" if gender == "male" else "person"
+        appearance = f"{gender_word}, {age_str}" if age_str else gender_word
+        wardrobe = ""
 
         characters = [{
             "name": "The Speaker",
@@ -301,21 +268,13 @@ def build_reference_prompts(
         entity_chars = entity_map.get("characters", [])
         if len(entity_chars) > 1:
             addressee_gender = "male" if gender == "female" else "female"
-            if "punjabi" in pack:
-                addr_appearance = (
-                    f"South Asian {addressee_gender}, {age_str}, traditional or semi-formal Punjabi attire, "
-                    f"strong dignified presence, handsome, absent from the present but vivid in memory"
-                )
-                addr_wardrobe = "traditional Punjabi attire"
-            else:
-                addr_appearance = f"South Asian {addressee_gender}, {age_str}, dignified traditional attire"
-                addr_wardrobe = "traditional attire"
+            addr_appearance = f"{addressee_gender}, {age_str}" if age_str else addressee_gender
 
             characters.append({
                 "name": "The Beloved",
                 "role": "departed lover — seen in memory, not in present",
                 "physical_description": addr_appearance,
-                "wardrobe": addr_wardrobe,
+                "wardrobe": "",
                 "emotional_note": "idealized in memory, present only as feeling",
             })
 
@@ -351,20 +310,14 @@ def build_reference_prompts(
         narrative_mode = context_packet.get("narrative_mode", "symbolic")
 
         for loc_name in entity_locs[:3]:
-            if "punjabi" in pack:
-                loc_style = (
-                    "traditional Punjabi setting, warm amber and ochre tones, "
-                    "dignified and cinematic, not poverty tourism, emotionally charged atmosphere"
-                )
-            else:
-                loc_style = "traditional setting, cinematic, atmospheric"
+            loc_style = "cinematic, atmospheric, faithful to the song's cultural world"
 
             locations.append({
                 "name": loc_name.title(),
-                "description": f"A {loc_name} in a traditional Punjabi village setting.",
+                "description": f"A {loc_name} in the song's cultural world.",
                 "visual_details": loc_style,
-                "time_of_day": "golden hour",
-                "mood": context_packet.get("core_theme", "melancholic longing"),
+                "time_of_day": "as determined by song context",
+                "mood": context_packet.get("core_theme", "emotionally resonant"),
             })
 
     for loc in locations:
