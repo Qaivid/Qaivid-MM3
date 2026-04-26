@@ -1259,11 +1259,13 @@ def project_detail(project_id: str):
 
     if stage == "style_review":
         from style_profile_registry import StyleProfileRegistry
+        from backend.services.vibe_presets import list_vibe_presets_for_ui
         return render_template(
             "stage_style.html",
             project=project,
             all_production_styles=StyleProfileRegistry.all_production_styles(),
             all_cinematic_styles=StyleProfileRegistry.all_cinematic_styles(),
+            all_vibe_presets=list_vibe_presets_for_ui(),
         )
 
     if stage == "context_review":
@@ -1835,11 +1837,13 @@ def restyle_project(project_id: str):
     if not project.get("styled_timeline"):
         return redirect(url_for("project_detail", project_id=project_id))
     from style_profile_registry import StyleProfileRegistry
+    from backend.services.vibe_presets import list_vibe_presets_for_ui
     return render_template(
         "stage_style.html",
         project=project,
         all_production_styles=StyleProfileRegistry.all_production_styles(),
         all_cinematic_styles=StyleProfileRegistry.all_cinematic_styles(),
+        all_vibe_presets=list_vibe_presets_for_ui(),
         is_repick=True,
     )
 

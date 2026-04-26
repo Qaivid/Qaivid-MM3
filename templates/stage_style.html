@@ -10,7 +10,7 @@
         <div class="stage-header">
             <span class="stage-badge">Stage 4 — Style Profile</span>
             <h1>{{ project.name }}</h1>
-            <p class="stage-sub">Suggested visual directions based on the content. Select one to lock the cinematic DNA for this project — or use the manual picker below.</p>
+            <p class="stage-sub">Choose a visual direction to lock the cinematic DNA for this project.</p>
             {% if is_repick %}
             <div class="repick-banner">
                 <strong>You're changing your Style Profile.</strong>
@@ -26,38 +26,63 @@
             <input type="hidden" name="production_style_id" id="prod-id-input" value="{{ suggestions[0].production.id if suggestions else 'split_narrative_performance' }}">
             <input type="hidden" name="cinematic_style_id" id="cin-id-input" value="{{ suggestions[0].cinematic.id if suggestions else 'cinematic_natural' }}">
 
-            {% if suggestions %}
-            <div class="style-suggestions-grid">
-                {% for s in suggestions %}
-                <div class="style-card {% if loop.first %}style-card--selected{% endif %}"
-                     data-prod-id="{{ s.production.id }}"
-                     data-cin-id="{{ s.cinematic.id }}"
-                     onclick="selectSuggestion(this)">
-                    <div class="style-card-header">
-                        <span class="style-badge style-badge--prod">{{ s.production.label }}</span>
-                        <span class="style-badge style-badge--cin">{{ s.cinematic.label }}</span>
-                        {% if loop.first %}
-                        <span class="style-badge style-badge--ai">Top Pick</span>
-                        {% endif %}
+            {# ── Quick Start — Vibe Presets ──────────────────────────────── #}
+            {% if all_vibe_presets %}
+            <div class="vibe-section">
+                <h3 class="vibe-section-title">Quick Start — Vibe Presets</h3>
+                <p class="vibe-section-sub">Pick a full visual package in one click. Each preset sets both Production and Cinematic style.</p>
+                <div class="vibe-presets-grid">
+                    {% for vp in all_vibe_presets %}
+                    <div class="vibe-card"
+                         data-prod-id="{{ vp.production_style_id }}"
+                         data-cin-id="{{ vp.cinematic_style_id }}"
+                         onclick="selectVibe(this)">
+                        <div class="vibe-card-label">{{ vp.label }}</div>
+                        <div class="vibe-card-tagline">{{ vp.tagline }}</div>
                     </div>
-                    <p class="style-justification">{{ s.justification or s.cinematic.description[:180] }}</p>
-                    <div class="style-dims">
-                        <div class="style-dim">
-                            <span class="style-dim-label">Production</span>
-                            <span class="style-dim-val">{{ s.production.label }}</span>
-                            <span class="style-dim-desc">{{ s.production.description[:100] }}…</span>
-                        </div>
-                        <div class="style-dim">
-                            <span class="style-dim-label">Cinematic</span>
-                            <span class="style-dim-val">{{ s.cinematic.label }}</span>
-                            <span class="style-dim-desc">{{ s.cinematic.description[:100] }}…</span>
-                        </div>
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             </div>
             {% endif %}
 
+            {# ── AI Suggestions ──────────────────────────────────────────── #}
+            {% if suggestions %}
+            <div class="style-section">
+                <h3 class="style-section-title">AI Suggestions</h3>
+                <p class="style-section-sub">Suggested directions based on your song's content and emotional register.</p>
+                <div class="style-suggestions-grid">
+                    {% for s in suggestions %}
+                    <div class="style-card {% if loop.first %}style-card--selected{% endif %}"
+                         data-prod-id="{{ s.production.id }}"
+                         data-cin-id="{{ s.cinematic.id }}"
+                         onclick="selectSuggestion(this)">
+                        <div class="style-card-header">
+                            <span class="style-badge style-badge--prod">{{ s.production.label }}</span>
+                            <span class="style-badge style-badge--cin">{{ s.cinematic.label }}</span>
+                            {% if loop.first %}
+                            <span class="style-badge style-badge--ai">Top Pick</span>
+                            {% endif %}
+                        </div>
+                        <p class="style-justification">{{ s.justification or s.cinematic.description[:180] }}</p>
+                        <div class="style-dims">
+                            <div class="style-dim">
+                                <span class="style-dim-label">Production</span>
+                                <span class="style-dim-val">{{ s.production.label }}</span>
+                                <span class="style-dim-desc">{{ s.production.description[:100] }}…</span>
+                            </div>
+                            <div class="style-dim">
+                                <span class="style-dim-label">Cinematic</span>
+                                <span class="style-dim-val">{{ s.cinematic.label }}</span>
+                                <span class="style-dim-desc">{{ s.cinematic.description[:100] }}…</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# ── Manual Override ─────────────────────────────────────────── #}
             <div class="style-manual-section">
                 <h3 class="style-manual-title">Manual Override</h3>
                 <p class="style-manual-sub">Pick any Production + Cinematic combination from the full registry.</p>
@@ -95,6 +120,59 @@
 </div>
 
 <style>
+/* ── Vibe Presets ────────────────────────────────────────────────────── */
+.vibe-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border, #333);
+}
+.vibe-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: .25rem;
+}
+.vibe-section-sub {
+    font-size: .85rem;
+    color: var(--text-muted, #aaa);
+    margin-bottom: 1rem;
+}
+.vibe-presets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: .75rem;
+}
+.vibe-card {
+    background: var(--surface-2, #1a1a2e);
+    border: 2px solid var(--border, #333);
+    border-radius: 10px;
+    padding: .9rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+}
+.vibe-card:hover {
+    border-color: var(--accent, #6c63ff);
+}
+.vibe-card--selected {
+    border-color: #ffb142;
+    box-shadow: 0 0 0 3px rgba(255,177,66,.2);
+}
+.vibe-card-label {
+    font-size: .88rem;
+    font-weight: 700;
+    color: var(--text, #e5e5e5);
+    margin-bottom: .35rem;
+}
+.vibe-card-tagline {
+    font-size: .75rem;
+    color: var(--text-muted, #999);
+    line-height: 1.4;
+}
+
+/* ── AI Suggestions ──────────────────────────────────────────────────── */
+.style-section { margin-bottom: 2rem; }
+.style-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .25rem; }
+.style-section-sub { font-size: .85rem; color: var(--text-muted, #aaa); margin-bottom: 1rem; }
+
 .style-suggestions-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -145,6 +223,7 @@
 .style-dim-val { font-size: .9rem; font-weight: 600; color: var(--text, #e5e5e5); display: block; margin-bottom: .2rem; }
 .style-dim-desc { font-size: .78rem; color: var(--text-muted, #999); }
 
+/* ── Manual Override ─────────────────────────────────────────────────── */
 .style-manual-section { margin-top: 2rem; border-top: 1px solid var(--border, #333); padding-top: 1.5rem; }
 .style-manual-title { font-size: 1rem; font-weight: 600; margin-bottom: .25rem; }
 .style-manual-sub { font-size: .85rem; color: var(--text-muted, #aaa); margin-bottom: 1rem; }
@@ -154,6 +233,7 @@
 .style-select-label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted, #aaa); }
 .style-select { background: var(--surface-2, #1a1a2e); border: 1px solid var(--border, #444); color: var(--text, #e5e5e5); border-radius: 6px; padding: .6rem .75rem; font-size: .9rem; }
 
+/* ── Repick banner ───────────────────────────────────────────────────── */
 .repick-banner {
     margin-top: 1rem;
     padding: .85rem 1rem;
@@ -173,13 +253,25 @@
 </style>
 
 <script>
+function _syncHiddenInputs(prodId, cinId) {
+    document.getElementById('prod-id-input').value = prodId;
+    document.getElementById('cin-id-input').value  = cinId;
+    document.getElementById('manual-prod').value   = prodId;
+    document.getElementById('manual-cin').value    = cinId;
+}
+
+function selectVibe(el) {
+    document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
+    el.classList.add('vibe-card--selected');
+    document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
+    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId);
+}
+
 function selectSuggestion(el) {
     document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
     el.classList.add('style-card--selected');
-    document.getElementById('prod-id-input').value = el.dataset.prodId;
-    document.getElementById('cin-id-input').value  = el.dataset.cinId;
-    document.getElementById('manual-prod').value = el.dataset.prodId;
-    document.getElementById('manual-cin').value  = el.dataset.cinId;
+    document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
+    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId);
 }
 
 function applyManual() {
@@ -187,7 +279,7 @@ function applyManual() {
     const cinId  = document.getElementById('manual-cin').value;
     document.getElementById('prod-id-input').value = prodId;
     document.getElementById('cin-id-input').value  = cinId;
-    // Deselect any AI suggestion card that no longer matches
+    document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
     document.querySelectorAll('.style-card').forEach(c => {
         if (c.dataset.prodId === prodId && c.dataset.cinId === cinId) {
             c.classList.add('style-card--selected');
