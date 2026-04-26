@@ -25,6 +25,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="production_style_id" id="prod-id-input" value="{{ suggestions[0].production.id if suggestions else 'split_narrative_performance' }}">
             <input type="hidden" name="cinematic_style_id" id="cin-id-input" value="{{ suggestions[0].cinematic.id if suggestions else 'cinematic_natural' }}">
+            <input type="hidden" name="vibe_preset_id" id="vibe-preset-id-input" value="">
 
             {# ── Quick Start — Vibe Presets ──────────────────────────────── #}
             {% if all_vibe_presets %}
@@ -36,6 +37,7 @@
                     <div class="vibe-card"
                          data-prod-id="{{ vp.production_style_id }}"
                          data-cin-id="{{ vp.cinematic_style_id }}"
+                         data-vibe-id="{{ vp.id }}"
                          onclick="selectVibe(this)">
                         <div class="vibe-card-label">{{ vp.label }}</div>
                         <div class="vibe-card-tagline">{{ vp.tagline }}</div>
@@ -253,32 +255,34 @@
 </style>
 
 <script>
-function _syncHiddenInputs(prodId, cinId) {
-    document.getElementById('prod-id-input').value = prodId;
-    document.getElementById('cin-id-input').value  = cinId;
-    document.getElementById('manual-prod').value   = prodId;
-    document.getElementById('manual-cin').value    = cinId;
+function _syncHiddenInputs(prodId, cinId, vibeId) {
+    document.getElementById('prod-id-input').value       = prodId;
+    document.getElementById('cin-id-input').value        = cinId;
+    document.getElementById('vibe-preset-id-input').value = vibeId || '';
+    document.getElementById('manual-prod').value         = prodId;
+    document.getElementById('manual-cin').value          = cinId;
 }
 
 function selectVibe(el) {
     document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
     el.classList.add('vibe-card--selected');
     document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
-    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId);
+    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId, el.dataset.vibeId);
 }
 
 function selectSuggestion(el) {
     document.querySelectorAll('.style-card').forEach(c => c.classList.remove('style-card--selected'));
     el.classList.add('style-card--selected');
     document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
-    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId);
+    _syncHiddenInputs(el.dataset.prodId, el.dataset.cinId, '');
 }
 
 function applyManual() {
     const prodId = document.getElementById('manual-prod').value;
     const cinId  = document.getElementById('manual-cin').value;
-    document.getElementById('prod-id-input').value = prodId;
-    document.getElementById('cin-id-input').value  = cinId;
+    document.getElementById('prod-id-input').value        = prodId;
+    document.getElementById('cin-id-input').value         = cinId;
+    document.getElementById('vibe-preset-id-input').value = '';
     document.querySelectorAll('.vibe-card').forEach(c => c.classList.remove('vibe-card--selected'));
     document.querySelectorAll('.style-card').forEach(c => {
         if (c.dataset.prodId === prodId && c.dataset.cinId === cinId) {

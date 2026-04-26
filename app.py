@@ -1749,6 +1749,7 @@ def advance_stage_style(project_id: str):
 
     prod_id = request.form.get("production_style_id") or ""
     cin_id = request.form.get("cinematic_style_id") or ""
+    vibe_preset_id = request.form.get("vibe_preset_id") or ""
 
     from style_profile_registry import StyleProfileRegistry
 
@@ -1756,10 +1757,10 @@ def advance_stage_style(project_id: str):
     # Load emotional_mode_packet from Brain (written by Stage 2b) and run the
     # user's selection through apply_mode_constraints_to_selection() so that:
     #   1. Avoided production styles are replaced with mode-preferred ones.
-    #   2. Incompatible or non-compatible cinematic styles are replaced/nudged.
-    #   3. style_modifier_injection is merged (override) into storyboard_modifiers.
-    # This ensures the canonical Brain style_packet is always mode-consistent,
-    # regardless of what the user selected.
+    #   2. Hard-incompatible cinematic styles are replaced.
+    #   3. When a vibe was explicitly chosen, the soft compatible-nudge is skipped
+    #      so the vibe's cinematic style is preserved (only hard blocks apply).
+    #   4. style_modifier_injection is merged (override) into storyboard_modifiers.
     _emp_for_style = {}
     try:
         with db() as _style_brain_conn:
@@ -1774,8 +1775,13 @@ def advance_stage_style(project_id: str):
 
     from style_profile_engine import StyleProfileEngine
     style_profile = StyleProfileEngine.apply_mode_constraints_to_selection(
-        prod_id, cin_id, _emp_for_style
+        prod_id, cin_id, _emp_for_style,
+        vibe_selected=bool(vibe_preset_id),
     )
+    # Persist the vibe preset ID inside style_profile so every downstream stage
+    # (brief, storyboard, references, shots) can read it without a separate column.
+    if vibe_preset_id:
+        style_profile["vibe_preset_id"] = vibe_preset_id
 
     # ── Persist the chosen style: legacy column + Project Brain (Stage 4) ──
     # The brain.style_packet namespace is owned by Stage 4 — writing the

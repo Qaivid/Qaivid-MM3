@@ -523,6 +523,7 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         production_style_id: str,
         cinematic_style_id: str,
         emotional_mode_packet: Optional[Dict[str, Any]] = None,
+        vibe_selected: bool = False,
     ) -> Dict[str, Any]:
         """Apply emotional mode constraints to a user-selected style pair and return
         a fully merged, mode-constrained style_packet.
@@ -533,9 +534,15 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
 
         Steps:
           1. Replace disallowed production style ID with a mode-preferred one.
-          2. Replace incompatible (or non-compatible) cinematic style ID.
+          2. Replace incompatible cinematic style ID (hard block — always applies).
+             If vibe_selected=True, the compatible-nudge step is skipped — the user's
+             explicit vibe choice is respected as long as it is not hard-incompatible.
           3. Build the profile from the (possibly corrected) IDs.
           4. Apply style_modifier_injection from the mode packet (override semantics).
+
+        vibe_selected: set True when the user chose a named vibe preset. Skips the
+            soft compatible-nudge so the vibe's cinematic style is preserved unless
+            it is explicitly hard-incompatible with the emotional mode.
         """
         emp = emotional_mode_packet or {}
 
@@ -560,7 +567,7 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
                 )
                 prod_id = replacement
 
-        # Replace incompatible or non-compatible cinematic style.
+        # Hard-incompatible cinematic block — always applied regardless of vibe_selected.
         if cin_id in incompat_cin:
             all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
             replacement = next(
@@ -570,10 +577,12 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             if replacement:
                 logger.info(
                     "StyleProfileEngine.apply_mode_constraints: "
-                    "replaced incompatible cinematic %r → %r", cin_id, replacement,
+                    "replaced hard-incompatible cinematic %r → %r", cin_id, replacement,
                 )
                 cin_id = replacement
-        elif compatible_cin and cin_id not in compatible_cin:
+        elif not vibe_selected and compatible_cin and cin_id not in compatible_cin:
+            # Soft compatible-nudge — only applied when no explicit vibe was chosen.
+            # When a vibe is selected, the user's cinematic choice is respected.
             preferred_cin = next(
                 (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
                 None,
@@ -581,7 +590,7 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             if preferred_cin:
                 logger.info(
                     "StyleProfileEngine.apply_mode_constraints: "
-                    "nudged cinematic %r → %r (prefer compatible)", cin_id, preferred_cin,
+                    "nudged cinematic %r → %r (prefer compatible, no vibe selected)", cin_id, preferred_cin,
                 )
                 cin_id = preferred_cin
 
