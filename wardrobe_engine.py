@@ -602,6 +602,65 @@ def _pick_main_character(characters: list[dict]) -> Optional[dict]:
     return max(characters, key=_score)
 
 
+def _wardrobe_word_jaccard(a: str, b: str) -> float:
+    """Jaccard similarity of word-token sets (case-insensitive, 0..1)."""
+    set_a = set(a.lower().split())
+    set_b = set(b.lower().split())
+    if not set_a or not set_b:
+        return 0.0
+    return len(set_a & set_b) / len(set_a | set_b)
+
+
+def _collapse_look_clusters(
+    clusters: dict[str, dict],
+    cluster_wardrobes: dict[str, str],
+    similarity_threshold: float = 0.80,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Merge clusters whose wardrobe descriptions are materially equivalent.
+
+    Prevents forcing directors to review multiple identical-looking plates
+    when the narrative only needs one outfit.  Two wardrobes are considered
+    equivalent when their word-set Jaccard similarity exceeds
+    `similarity_threshold` (default 0.80 = 80 % shared vocabulary).
+
+    Returns:
+        collapsed_wardrobes  — {cluster_id: wardrobe_text} with merged entries
+                               removed (only canonical keys remain)
+        collapse_remap       — {dropped_key: canonical_key} so shot assignment
+                               can redirect dropped clusters to their canonical
+    """
+    keys = list(cluster_wardrobes.keys())
+    if len(keys) <= 1:
+        return dict(cluster_wardrobes), {}
+
+    # Prefer keeping the cluster with the most shots as the canonical entry
+    keys_by_shots = sorted(
+        keys,
+        key=lambda k: clusters.get(k, {}).get("n_shots", 0),
+        reverse=True,
+    )
+
+    canonical_of: dict[str, str] = {}    # key → canonical key
+    canonical_wardrobe: dict[str, str] = {}  # canonical_key → wardrobe text
+
+    for key in keys_by_shots:
+        wardrobe = cluster_wardrobes[key]
+        merged = False
+        for canon_key, canon_text in canonical_wardrobe.items():
+            if _wardrobe_word_jaccard(wardrobe, canon_text) >= similarity_threshold:
+                canonical_of[key] = canon_key
+                merged = True
+                break
+        if not merged:
+            canonical_of[key] = key
+            canonical_wardrobe[key] = wardrobe
+
+    collapse_remap = {k: v for k, v in canonical_of.items() if k != v}
+    collapsed_wardrobes = {k: v for k, v in cluster_wardrobes.items()
+                           if k not in collapse_remap}
+    return collapsed_wardrobes, collapse_remap
+
+
 def _save_wardrobe_contexts(project_id: str, conn,
                              shot_wardrobe: dict[int, str],
                              shot_clusters: dict[int, str] | None = None) -> None:
@@ -750,13 +809,30 @@ def diversify_wardrobe(project_id: str) -> int:
                            character.get("name"), project_id)
             continue
 
+        # ── Collapse materially equivalent looks ─────────────────────────────
+        # If the LLM returns two or more wardrobes that are nearly identical
+        # (≥80 % shared word vocabulary), merge them into a single look so the
+        # director isn't forced to approve and generate multiple identical plates.
+        cluster_wardrobes, collapse_remap = _collapse_look_clusters(
+            clusters, cluster_wardrobes
+        )
+        if collapse_remap:
+            cluster_remap.update(collapse_remap)
+            # Remove collapsed cluster metadata so _seed_look_rows only sees
+            # the canonical looks
+            clusters = {k: clusters[k] for k in cluster_wardrobes}
+            logger.info(
+                "wardrobe_engine: char=%s — collapsed %d equivalent looks → %d unique looks",
+                character.get("name"), len(collapse_remap), len(cluster_wardrobes),
+            )
+
         # Map each of this character's shots to a cluster wardrobe
         for shot in char_shots:
             idx = shot.get("shot_index") or shot.get("timeline_index")
             if idx is None:
                 continue
             ckey = _cluster_key(shot, shot_location_ids)
-            # Apply remap for dropped clusters
+            # Apply remap for both capped-out and collapsed clusters
             ckey = cluster_remap.get(ckey, ckey)
             wardrobe = cluster_wardrobes.get(ckey)
             if wardrobe:
