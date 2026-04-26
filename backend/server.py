@@ -446,7 +446,7 @@ async def _auto_generate_brief(project_id: str, ctx: dict, project: dict, api_ke
     so the Production Pipeline always has a visual cast ready.
     """
     try:
-        vibe_preset = project.get("settings", {}).get("vibe_preset", "")
+        vibe_preset = project.get("style_profile", {}).get("vibe_preset_id", "")
         brief = await generate_creative_brief(project_id, ctx, project, vibe_preset or None, api_key=api_key)
         await db.creative_briefs.delete_many({"project_id": project_id})
         await db.creative_briefs.insert_one({**brief})
@@ -759,7 +759,7 @@ async def build_project_prompts(project_id: str, request: Request, model_target:
 
     # Load creative brief and vibe preset for inheritance
     brief = await db.creative_briefs.find_one({"project_id": project_id}, {"_id": 0})
-    vibe_id = project.get("settings", {}).get("vibe_preset", "")
+    vibe_id = project.get("style_profile", {}).get("vibe_preset_id", "")
     vibe = get_vibe_preset(vibe_id) if vibe_id else None
 
     prompts = build_all_prompts(

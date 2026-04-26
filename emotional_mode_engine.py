@@ -20,13 +20,18 @@ Brain namespace written: emotional_mode_packet
     pacing_profile:       dict  — effective blended pacing values
     shot_intensity_biases:dict  — blended variety-target fractions
     camera_movement_profile: dict
-    cinematic_modifier:   str   — prepended to shot prompts
-    style_modifier_injection: dict
-    production_affinity:  dict  — preferred / avoid production style ids
-    incompatible_cinematic_styles: list[str]
+    cinematic_modifier:   str   — prepended to shot prompts as flavour text only
+    style_modifier_injection: dict — movement + atmosphere_note only (no lighting)
     classifier_method:    str   — "llm" | "keyword_fallback"
     raw_scores:           dict  — per-mode float score from classifier
   }
+
+NOTE: Emotional mode governs only the BEHAVIOURAL register of the scene —
+pacing, camera movement, shot intensity, and acting energy. It does NOT
+control which cinematic or production style is used. Style selection is
+entirely the user's choice and is never overridden by mode constraints.
+A sad person can stand in a sunlit field; a celebration can happen in a
+dim room. Location, visual aesthetic, and environment are not mode-owned.
 """
 from __future__ import annotations
 
@@ -77,16 +82,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "soft radiant light on faces"
         ),
         "style_modifier_injection": {
-            "lighting": "warm golden hour or candlelight, soft edge-lit faces",
             "movement": "slow drift or barely perceptible float — tenderness in every frame",
             "atmosphere_note": "warmth of closeness, the world narrowed to two people",
         },
-        "production_affinity": {
-            "preferred": ["split_narrative_performance", "narrative", "single_location"],
-            "avoid":     ["conceptual_abstract", "documentary_candid"],
-        },
-        "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
-        "compatible_cinematic_styles":   ["soft_poetic", "cinematic_natural", "arthouse_minimalist"],
     },
 
     "sad_loss": {
@@ -124,16 +122,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "muted palette — the quiet after the fall"
         ),
         "style_modifier_injection": {
-            "lighting": "soft overcast, lifted shadows, no harsh light — the colour of absence",
             "movement": "barely perceptible — held-breath quality, stillness is the emotion",
             "atmosphere_note": "weight of loss, quiet grief, the air before a tear falls",
         },
-        "production_affinity": {
-            "preferred": ["narrative", "single_location", "split_narrative_performance"],
-            "avoid":     ["performance"],
-        },
-        "incompatible_cinematic_styles": ["vibrant_bold"],
-        "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "monochrome"],
     },
 
     "nostalgic": {
@@ -171,16 +162,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "Super-8 or vintage film grain — time slipping through fingers"
         ),
         "style_modifier_injection": {
-            "lighting": "warm amber or faded afternoon gold, slight halation on highlights",
             "movement": "gentle drift or slow pull-back — the camera remembering",
             "atmosphere_note": "haze of memory, warmth of what was, bittersweet distance",
         },
-        "production_affinity": {
-            "preferred": ["narrative", "documentary_candid", "split_narrative_performance"],
-            "avoid":     [],
-        },
-        "incompatible_cinematic_styles": ["vibrant_bold", "noir_dramatic"],
-        "compatible_cinematic_styles":   ["vintage_grain", "soft_poetic", "arthouse_minimalist"],
     },
 
     "hopeful": {
@@ -218,16 +202,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "wide skies and expanding space — possibility made visible"
         ),
         "style_modifier_injection": {
-            "lighting": "soft morning light, bright skies, lifted shadows — the world opening up",
             "movement": "slow rise or gentle forward drift — optimism as motion",
             "atmosphere_note": "possibility and forward momentum, breath before a new beginning",
         },
-        "production_affinity": {
-            "preferred": ["split_narrative_performance", "narrative", "performance"],
-            "avoid":     ["conceptual_abstract"],
-        },
-        "incompatible_cinematic_styles": ["noir_dramatic", "monochrome", "surrealist_dream"],
-        "compatible_cinematic_styles":   ["cinematic_natural", "soft_poetic", "cinematic_realism"],
     },
 
     "angry_intense": {
@@ -265,16 +242,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "high contrast — the body as weapon and statement"
         ),
         "style_modifier_injection": {
-            "lighting": "hard dramatic light, deep shadows, high-contrast — heat and pressure",
             "movement": "aggressive push-in or fast pan — urgency as motion language",
             "atmosphere_note": "tension at breaking point, controlled explosion of feeling",
         },
-        "production_affinity": {
-            "preferred": ["performance", "split_narrative_performance", "conceptual_abstract"],
-            "avoid":     ["single_location", "documentary_candid"],
-        },
-        "incompatible_cinematic_styles": ["soft_poetic", "arthouse_minimalist", "vintage_grain"],
-        "compatible_cinematic_styles":   ["noir_dramatic", "cinematic_realism", "cinematic_natural"],
     },
 
     "spiritual_reflective": {
@@ -312,16 +282,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "devotional light — the space between words and the divine"
         ),
         "style_modifier_injection": {
-            "lighting": "soft devotional light, incense-haze atmosphere, candles or dappled sacred light",
             "movement": "near-static — breath of the camera, reverence in every frame",
             "atmosphere_note": "spiritual gravity, the weight of something larger than the self",
         },
-        "production_affinity": {
-            "preferred": ["conceptual_abstract", "single_location", "narrative"],
-            "avoid":     ["performance"],
-        },
-        "incompatible_cinematic_styles": ["vibrant_bold", "cinematic_realism"],
-        "compatible_cinematic_styles":   ["arthouse_minimalist", "soft_poetic", "surrealist_dream"],
     },
 
     "energetic_celebration": {
@@ -359,16 +322,9 @@ _MODE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "movement and rhythm — life at full volume"
         ),
         "style_modifier_injection": {
-            "lighting": "bright saturated colour, dynamic light — celebratory excess",
             "movement": "active pans, fast orbit, energy in every camera decision",
             "atmosphere_note": "pure joy and release, the body surrendering to the beat",
         },
-        "production_affinity": {
-            "preferred": ["performance", "split_narrative_performance", "conceptual_abstract"],
-            "avoid":     ["single_location", "narrative"],
-        },
-        "incompatible_cinematic_styles": ["arthouse_minimalist", "monochrome", "noir_dramatic"],
-        "compatible_cinematic_styles":   ["vibrant_bold", "cinematic_natural", "cinematic_realism"],
     },
 }
 
@@ -610,9 +566,6 @@ def build_emotional_mode_packet(
         "camera_movement_profile":    pm["camera_movement_profile"],
         "cinematic_modifier":         pm["cinematic_modifier"],
         "style_modifier_injection":   pm["style_modifier_injection"],
-        "production_affinity":        pm["production_affinity"],
-        "incompatible_cinematic_styles": pm["incompatible_cinematic_styles"],
-        "compatible_cinematic_styles":   pm.get("compatible_cinematic_styles") or [],
         "classifier_method":          classifier_method,
         "raw_scores":                 {m: round(s, 4) for m, s in raw_scores.items()},
         "reasoning":                  reasoning,

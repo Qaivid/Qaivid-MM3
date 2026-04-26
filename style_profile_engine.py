@@ -100,16 +100,16 @@ class StyleProfileEngine:
             return [fallback]
 
     def _extract_mode_constraints(self, emp: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract filtering constraints from an emotional_mode_packet (or empty dict)."""
+        """Extract informational mode context from an emotional_mode_packet.
+
+        This is NOT used to block or filter style choices — it provides the LLM
+        with emotional register context so suggestions are creatively coherent.
+        """
         if not emp:
             return {}
         return {
-            "mode_label":             emp.get("mode_label", ""),
-            "cinematic_modifier":     emp.get("cinematic_modifier", ""),
-            "preferred_production":   (emp.get("production_affinity") or {}).get("preferred") or [],
-            "avoid_production":       (emp.get("production_affinity") or {}).get("avoid") or [],
-            "incompatible_cinematic": emp.get("incompatible_cinematic_styles") or [],
-            "compatible_cinematic":   emp.get("compatible_cinematic_styles") or [],
+            "mode_label":         emp.get("mode_label", ""),
+            "cinematic_modifier": emp.get("cinematic_modifier", ""),
         }
 
     def _build_system_prompt(self, mode_constraints: Optional[Dict[str, Any]] = None) -> str:
@@ -117,20 +117,13 @@ class StyleProfileEngine:
 
         mode_section = ""
         if mode_constraints and mode_constraints.get("mode_label"):
-            preferred   = mode_constraints.get("preferred_production") or []
-            avoid       = mode_constraints.get("avoid_production") or []
-            incompat    = mode_constraints.get("incompatible_cinematic") or []
-            compatible  = mode_constraints.get("compatible_cinematic") or []
-            modifier    = mode_constraints.get("cinematic_modifier") or ""
+            modifier = mode_constraints.get("cinematic_modifier") or ""
             mode_section = f"""
-EMOTIONAL MODE CONSTRAINTS (locked by Stage 2b — MUST be respected):
+EMOTIONAL REGISTER (informational — choose styles that serve this feeling, not bound by it):
   Emotional mode:  {mode_constraints['mode_label']}
   Aesthetic feel:  {modifier}
-  Production style — MUST choose from: {', '.join(preferred) if preferred else '(any)'}
-  Production style — MUST NOT use:    {', '.join(avoid) if avoid else '(none)'}
-  Cinematic style  — PREFER from:     {', '.join(compatible) if compatible else '(any)'}
-  Cinematic style  — MUST NOT use:    {', '.join(incompat) if incompat else '(none)'}
-These constraints are absolute. Violating them means ignoring the locked emotional truth.
+Note: You may suggest any valid style combination. A sad song can use vibrant_bold if
+the director's concept calls for it. Emotional mode shapes energy, not visual rules.
 """.strip()
 
         return f"""
@@ -325,18 +318,12 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         lines = [f"  Mode:             {label}"]
         if modifier:
             lines.append(f"  Cinematic feel:   {modifier}")
-        prod_aff = emp.get("production_affinity") or {}
-        if prod_aff.get("preferred"):
-            lines.append(f"  Preferred prod:   {', '.join(prod_aff['preferred'])}")
-        if prod_aff.get("avoid"):
-            lines.append(f"  Avoid prod:       {', '.join(prod_aff['avoid'])}")
-        compat = emp.get("compatible_cinematic_styles") or []
-        if compat:
-            lines.append(f"  Prefer cinematic: {', '.join(compat)}")
-        incompat = emp.get("incompatible_cinematic_styles") or []
-        if incompat:
-            lines.append(f"  Avoid cinematic:  {', '.join(incompat)}")
-        return "\nEMOTIONAL MODE (locked by Stage 2b — style must serve this register):\n" + "\n".join(lines) + "\n"
+        injection = emp.get("style_modifier_injection") or {}
+        if injection.get("movement"):
+            lines.append(f"  Camera energy:    {injection['movement']}")
+        if injection.get("atmosphere_note"):
+            lines.append(f"  Atmosphere:       {injection['atmosphere_note']}")
+        return "\nEMOTIONAL MODE (governs pacing and camera behaviour — not visual style):\n" + "\n".join(lines) + "\n"
 
     async def _call_model(self, system_prompt: str, user_prompt: str) -> str:
         response = await self.client.chat.completions.create(
@@ -369,14 +356,14 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         raw: Dict[str, Any],
         mode_constraints: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
+        """Resolve LLM-returned style suggestions into full profile dicts.
+
+        The emotional mode is NOT used to filter or replace any style IDs.
+        Mode governs pacing and behaviour — not visual style choices.
+        """
         raw_suggestions = raw.get("suggestions") or []
         if not isinstance(raw_suggestions, list):
             raw_suggestions = []
-
-        avoid_prod      = set((mode_constraints or {}).get("avoid_production") or [])
-        incompat_cin    = set((mode_constraints or {}).get("incompatible_cinematic") or [])
-        preferred_prod  = list((mode_constraints or {}).get("preferred_production") or [])
-        compatible_cin  = list((mode_constraints or {}).get("compatible_cinematic") or [])
 
         resolved = []
         for item in raw_suggestions[:3]:
@@ -385,51 +372,6 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             prod_id = str(item.get("production_style_id") or "").strip()
             cin_id = str(item.get("cinematic_style_id") or "").strip()
             justification = str(item.get("justification") or "").strip()
-
-            # Post-filter: replace disallowed production style with preferred
-            if prod_id in avoid_prod:
-                replacement = next(
-                    (p for p in preferred_prod if p not in avoid_prod and StyleProfileRegistry.get_production_style(p)),
-                    None,
-                )
-                if replacement:
-                    logger.info(
-                        "StyleProfileEngine: replaced disallowed production style %r → %r (mode constraint)",
-                        prod_id, replacement,
-                    )
-                    prod_id = replacement
-
-            # Post-filter: replace incompatible cinematic style.
-            # Prefer a mode-compatible style first; fall back to any valid non-incompatible style.
-            if cin_id in incompat_cin:
-                all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
-                replacement = next(
-                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
-                    None,
-                ) or next((c for c in all_cin if c not in incompat_cin), None)
-                if replacement:
-                    logger.info(
-                        "StyleProfileEngine: replaced incompatible cinematic style %r → %r (mode constraint, compatible=%s)",
-                        cin_id, replacement, bool(replacement in compatible_cin),
-                    )
-                    cin_id = replacement
-
-            # Post-filter: if a compatible_cinematic_styles list exists and the selected
-            # style is not in it (but is also not blocked), prefer the first compatible
-            # style so mode-positive aesthetics are actively enforced, not just used for
-            # replacement.
-            elif compatible_cin and cin_id not in compatible_cin:
-                preferred_cin = next(
-                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
-                    None,
-                )
-                if preferred_cin:
-                    logger.info(
-                        "StyleProfileEngine: nudged cinematic style %r → %r "
-                        "(not in compatible list for mode, preferring compatible)",
-                        cin_id, preferred_cin,
-                    )
-                    cin_id = preferred_cin
 
             prod = StyleProfileRegistry.get_production_style(prod_id)
             cin = StyleProfileRegistry.get_cinematic_style(cin_id)
@@ -445,32 +387,20 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             profile["justification"] = justification
             resolved.append(profile)
 
-        # Helper: produce a mode-consistent default using the same compatible-nudge logic
-        # so all fallback appends are also constrained by mode.
-        def _mode_default() -> Dict[str, Any]:
-            def_cin_id = "cinematic_natural"
-            if compatible_cin:
-                first_compatible = next(
-                    (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
-                    None,
-                )
-                if first_compatible:
-                    def_cin_id = first_compatible
-            def_prod_id = (preferred_prod[0]
-                           if preferred_prod and preferred_prod[0] not in avoid_prod
-                              and StyleProfileRegistry.get_production_style(preferred_prod[0])
-                           else "split_narrative_performance")
-            profile = StyleProfileRegistry.build_style_profile(def_prod_id, def_cin_id)
+        def _default() -> Dict[str, Any]:
+            profile = StyleProfileRegistry.build_style_profile(
+                "split_narrative_performance", "cinematic_natural"
+            )
             profile["justification"] = (
-                "Mode-consistent fallback — registry default adjusted for emotional constraints."
+                "Default versatile style — suitable for most song types."
             )
             return profile
 
         if not resolved:
-            resolved.append(_mode_default())
+            resolved.append(_default())
 
         if len(resolved) < 2:
-            resolved.append(_mode_default())
+            resolved.append(_default())
 
         return resolved
 
@@ -525,86 +455,37 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
         emotional_mode_packet: Optional[Dict[str, Any]] = None,
         vibe_selected: bool = False,
     ) -> Dict[str, Any]:
-        """Apply emotional mode constraints to a user-selected style pair and return
-        a fully merged, mode-constrained style_packet.
+        """Build a fully merged style_packet from the user's chosen style IDs.
 
-        Used at style selection persistence time (advance_stage_style) so the
-        canonical Brain style_packet always has mode modifiers injected and
-        incompatible/avoided style IDs replaced — regardless of user selection.
+        The emotional mode is NOT used to block or replace any style ID.
+        Mode governs only the behavioural register (pacing, camera movement,
+        acting energy) — never the visual aesthetic. A sad song can use
+        vibrant_bold; a celebration can use arthouse_minimalist.
 
         Steps:
-          1. Replace disallowed production style ID with a mode-preferred one.
-          2. Replace incompatible cinematic style ID (hard block — always applies).
-             If vibe_selected=True, the compatible-nudge step is skipped — the user's
-             explicit vibe choice is respected as long as it is not hard-incompatible.
-          3. Build the profile from the (possibly corrected) IDs.
-          4. Apply style_modifier_injection from the mode packet (override semantics).
+          1. Validate IDs; fall back to safe defaults if unknown.
+          2. Build the profile from the IDs exactly as given.
+          3. Inject movement + atmosphere_note from the mode packet so
+             downstream stages understand the emotional energy — without
+             overriding any visual/lighting choices.
 
-        vibe_selected: set True when the user chose a named vibe preset. Skips the
-            soft compatible-nudge so the vibe's cinematic style is preserved unless
-            it is explicitly hard-incompatible with the emotional mode.
+        vibe_selected param is kept for API compatibility but no longer
+        changes behaviour — there is no constraint to skip.
         """
         emp = emotional_mode_packet or {}
-
-        avoid_prod      = set((emp.get("production_affinity") or {}).get("avoid") or [])
-        preferred_prod  = list((emp.get("production_affinity") or {}).get("preferred") or [])
-        incompat_cin    = set(emp.get("incompatible_cinematic_styles") or [])
-        compatible_cin  = list(emp.get("compatible_cinematic_styles") or [])
 
         prod_id = production_style_id or "split_narrative_performance"
         cin_id  = cinematic_style_id  or "cinematic_natural"
 
-        # Replace disallowed production style.
-        if prod_id in avoid_prod:
-            replacement = next(
-                (p for p in preferred_prod if p not in avoid_prod and StyleProfileRegistry.get_production_style(p)),
-                None,
-            )
-            if replacement:
-                logger.info(
-                    "StyleProfileEngine.apply_mode_constraints: "
-                    "replaced avoided production %r → %r", prod_id, replacement,
-                )
-                prod_id = replacement
-
-        # Hard-incompatible cinematic block — always applied regardless of vibe_selected.
-        if cin_id in incompat_cin:
-            all_cin = [c["id"] for c in StyleProfileRegistry.all_cinematic_styles()]
-            replacement = next(
-                (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
-                None,
-            ) or next((c for c in all_cin if c not in incompat_cin), None)
-            if replacement:
-                logger.info(
-                    "StyleProfileEngine.apply_mode_constraints: "
-                    "replaced hard-incompatible cinematic %r → %r", cin_id, replacement,
-                )
-                cin_id = replacement
-        elif not vibe_selected and compatible_cin and cin_id not in compatible_cin:
-            # Soft compatible-nudge — only applied when no explicit vibe was chosen.
-            # When a vibe is selected, the user's cinematic choice is respected.
-            preferred_cin = next(
-                (c for c in compatible_cin if c not in incompat_cin and StyleProfileRegistry.get_cinematic_style(c)),
-                None,
-            )
-            if preferred_cin:
-                logger.info(
-                    "StyleProfileEngine.apply_mode_constraints: "
-                    "nudged cinematic %r → %r (prefer compatible, no vibe selected)", cin_id, preferred_cin,
-                )
-                cin_id = preferred_cin
-
         # Validate IDs; fall back if unknown.
-        prod = StyleProfileRegistry.get_production_style(prod_id)
-        cin  = StyleProfileRegistry.get_cinematic_style(cin_id)
-        if not prod:
+        if not StyleProfileRegistry.get_production_style(prod_id):
             prod_id = "split_narrative_performance"
-        if not cin:
+        if not StyleProfileRegistry.get_cinematic_style(cin_id):
             cin_id = "cinematic_natural"
 
         profile = StyleProfileRegistry.build_style_profile(prod_id, cin_id)
 
-        # Apply mode style modifier injection (override semantics).
+        # Inject behavioural modifiers from the mode packet (movement + atmosphere_note only).
         injection = emp.get("style_modifier_injection") or {}
         if injection:
             import copy as _copy
@@ -616,13 +497,12 @@ speaker, emotional register, and storytelling strategy. Reference these in your 
             else:
                 profile["storyboard_modifiers"] = dict(injection)
 
-        # Tag profile with mode metadata so consumers can verify constraints were applied.
+        # Tag profile with mode metadata for downstream stage awareness.
         if emp.get("primary_mode"):
             profile["emotional_mode"] = {
                 "mode_id":    emp.get("primary_mode", ""),
                 "mode_label": emp.get("mode_label", ""),
                 "weight":     emp.get("primary_weight", 1.0),
-                "constrained": True,
             }
 
         return profile
