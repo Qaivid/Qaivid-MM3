@@ -43,16 +43,16 @@ SHOT_MODEL_ENV_I2I = "fal-ai/flux/dev/image-to-image"
 # Deprecated alias sdxl_face → standard (ip-adapter-face-id-plus was removed).
 STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell for all shot types
 
-# ── OpenAI gpt-image-1 cheap-mode constants ──────────────────────────────────
-# Cheap mode routes ALL generation (refs + stills) through gpt-image-1 at
+# ── OpenAI gpt-image-1.5 cheap-mode constants ────────────────────────────────
+# Cheap mode routes ALL generation (refs + stills) through gpt-image-1.5 at
 # "low" quality. Cost: $0.009–$0.013/image (1024×1024 → 1536×1024)
 # vs ~$0.025–0.05 for FAL flux-pulid quality mode.
-# Labelled "GPT Image 1 · Low" in the admin UI.
-# gpt-image-1 supports image-to-image and multi-image references —
+# Labelled "GPT Image 1.5 · Low" in the admin UI.
+# gpt-image-1.5 supports image-to-image and multi-image references —
 # face identity + scene atmosphere preserved in a single edit call.
 # Sizes: 1024x1536 (portrait) for character refs, 1536x1024 for everything
-# else (landscape, nearest to 16:9 that gpt-image-1 supports).
-OPENAI_IMAGE_MODEL = "gpt-image-1"
+# else (landscape, nearest to 16:9 that gpt-image-1.5 supports).
+OPENAI_IMAGE_MODEL = "gpt-image-1.5"
 OPENAI_CHEAP_QUALITY = "low"
 OPENAI_SIZE_LANDSCAPE = "1536x1024"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
@@ -401,7 +401,7 @@ Return ONLY valid JSON, no markdown, no explanation:
 
 def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
                      quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Text-to-image via gpt-image-1. Returns raw PNG bytes."""
+    """Text-to-image via gpt-image-1.5. Returns raw PNG bytes."""
     client = _openai_client()
     response = client.images.generate(
         model=OPENAI_IMAGE_MODEL,
@@ -413,7 +413,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1 returned no image data.")
+        raise ImageGenerationError("gpt-image-1.5 returned no image data.")
     return _b64.b64decode(b64)
 
 
