@@ -401,7 +401,7 @@ Return ONLY valid JSON, no markdown, no explanation:
 
 def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
                      quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Text-to-image via gpt-image-1.5. Returns raw PNG bytes."""
+    """Text-to-image via gpt-image-1. Returns raw PNG bytes."""
     client = _openai_client()
     response = client.images.generate(
         model=OPENAI_IMAGE_MODEL,
@@ -413,7 +413,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1.5 returned no image data.")
+        raise ImageGenerationError("gpt-image-1 returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -448,16 +448,16 @@ def _download_image_bytes(url: str) -> bytes:
 
 def _openai_edit(prompt: str, ref_url: str, size: str = OPENAI_SIZE_LANDSCAPE,
                  quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Image-to-image edit via gpt-image-1.5 (single reference).
+    """Image-to-image edit via gpt-image-1 (single reference).
     Downloads ref from R2/URL, passes to the edits endpoint, returns raw PNG bytes."""
     return _openai_edit_multi(prompt, [ref_url], size=size, quality=quality)
 
 
 def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LANDSCAPE,
                        quality: str = OPENAI_CHEAP_QUALITY) -> bytes:
-    """Multi-image-to-image edit via gpt-image-1.5.
+    """Multi-image-to-image edit via gpt-image-1.
 
-    gpt-image-1.5 accepts multiple image references simultaneously — it uses
+    gpt-image-1 accepts multiple image references simultaneously — it uses
     all supplied images to condition the output, preserving:
       * face identity (from character plate)
       * scene atmosphere / lighting (from environment plate)
@@ -496,7 +496,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     )
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1.5 edit returned no image data.")
+        raise ImageGenerationError("gpt-image-1 edit returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -1011,15 +1011,15 @@ def generate_shot_still(
     logger.info("Rendering shot %s mode=%s char_ref=%s env_ref=%s",
                 shot_idx, shot_mode, has_char_ref, has_env)
 
-    # ── Cheap mode: gpt-image-1.5 low quality ($0.009–$0.013/image) ───────────
-    # gpt-image-1.5 img2img: character ref preserves face identity, env ref
+    # ── Cheap mode: gpt-image-1 low quality ($0.009–$0.013/image) ─────────────
+    # gpt-image-1 img2img: character ref preserves face identity, env ref
     # grounds the scene atmosphere. Multi-image edit passes both simultaneously.
     if shot_mode == "cheap":
         r2_key = _new_shot_key(project_id, shot_idx, ext="png")
         if has_char_ref and has_env:
             # Multi-image edit: pass character plate (face identity) +
             # environment plate (scene atmosphere) simultaneously.
-            # gpt-image-1.5 conditions on both in a single generation call.
+            # gpt-image-1 conditions on both in a single generation call.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
