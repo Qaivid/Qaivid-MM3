@@ -319,5 +319,13 @@ def build_video_clip_prompt(
         if rule:
             _add(rule)
 
+    # 9. Vibe avoid — compact negative clause appended only when budget allows.
+    # WAN 2.6 does not support a separate negative prompt field; the avoid list
+    # must live in the positive prompt as an explicit "avoid:" directive.
+    _avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
+    if _avoid_items:
+        _avoid_clause = "avoid: " + ", ".join(_avoid_items[:4])  # cap at 4 terms
+        _add(_avoid_clause)
+
     prompt = ", ".join(chosen)
     return prompt.strip()

@@ -508,6 +508,8 @@ def compose_image_prompt(
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
     emotional_mode_modifier: str = "",
+    vibe_shot_direction: str = "",
+    vibe_avoid: Optional[list] = None,
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
@@ -550,7 +552,11 @@ def compose_image_prompt(
             archetype=archetype,
             continuity_rules=char_rules or None,
         )
-        return prompt, _build_negative(shot, location)
+        _neg_ov = _build_negative(shot, location)
+        _avoid_ov = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
+        if _avoid_ov:
+            _neg_ov = _neg_ov.rstrip(", ") + ", " + ", ".join(_avoid_ov)
+        return prompt, _neg_ov
 
     parts: list[str] = []
 
@@ -629,13 +635,25 @@ def compose_image_prompt(
     if emotional_mode_modifier and emotional_mode_modifier.strip():
         body = emotional_mode_modifier.strip().rstrip(".") + ". " + body
 
+    # Prepend vibe shot direction so the production identity leads every
+    # still prompt (e.g. "Premium Punjabi filmmaking, golden-hour warmth").
+    # Applied AFTER emotional modifier so mood remains the very first word.
+    if vibe_shot_direction and vibe_shot_direction.strip():
+        body = vibe_shot_direction.strip().rstrip(".") + ". " + body
+
     prompt = _attach_envelope(
         body, cine_prefix, has_character_ref, has_environment_ref,
         identity_seed=identity_seed,
         archetype=archetype,
         continuity_rules=char_rules or None,
     )
-    return prompt, _build_negative(shot, location)
+
+    # Build negative prompt and append vibe avoid terms when present.
+    neg = _build_negative(shot, location)
+    _avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
+    if _avoid_items:
+        neg = neg.rstrip(", ") + ", " + ", ".join(_avoid_items)
+    return prompt, neg
 
 
 def _attach_envelope(

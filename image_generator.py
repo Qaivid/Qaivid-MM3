@@ -120,9 +120,12 @@ def ai_build_ref_prompts(
     wa  = cp.get("world_assumptions") or {}
 
     # ── Vibe preset direction fields (only present when a vibe was selected) ──
+    # NOTE: ai_build_ref_prompts builds CHARACTER and LOCATION reference images
+    # (not per-shot stills).  Only vibe_reference_direction and vibe_avoid are
+    # relevant here; vibe_shot_direction is for per-shot stills and video clips
+    # (handled in shot_prompt_composer / motion_render_prompt_builder).
     _vibe_label         = (sp.get("vibe_label")                or "").strip()
     _vibe_ref_direction = (sp.get("vibe_reference_direction")  or "").strip()
-    _vibe_shot_dir      = (sp.get("vibe_shot_direction")       or "").strip()
     _vibe_avoid_list    = sp.get("vibe_avoid") or []
     _vibe_avoid_str     = (
         "NEVER include: " + ", ".join(_vibe_avoid_list) + "."
@@ -982,6 +985,8 @@ def generate_shot_still(
     brain_char: Optional[dict] = None,
     brain_loc: Optional[dict] = None,
     emotional_mode_modifier: str = "",
+    vibe_shot_direction: str = "",
+    vibe_avoid: Optional[list] = None,
 ) -> str:
     """Generate a per-shot still and store it in R2.
 
@@ -1039,6 +1044,8 @@ def generate_shot_still(
         brain_char=brain_char,
         brain_loc=brain_loc,
         emotional_mode_modifier=emotional_mode_modifier,
+        vibe_shot_direction=vibe_shot_direction,
+        vibe_avoid=vibe_avoid,
     )
 
     if not prompt.strip():

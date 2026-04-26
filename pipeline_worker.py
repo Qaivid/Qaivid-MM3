@@ -1039,6 +1039,8 @@ def _render_shot(project_id: str, shot: dict,
         brain_char: Optional[dict] = None
         brain_loc:  Optional[dict] = None
         shot_emotional_modifier: str = ""
+        shot_vibe_shot_dir: str = ""
+        shot_vibe_avoid: list = []
         try:
             with _db() as conn:
                 _shot_brain = ProjectBrain.load(project_id, conn)
@@ -1060,6 +1062,10 @@ def _render_shot(project_id: str, shot: dict,
             # Emotional mode modifier for prompt composition
             _emp = _shot_brain.read("emotional_mode_packet") or {}
             shot_emotional_modifier = (_emp.get("cinematic_modifier") or "").strip()
+            # Vibe preset directions for shot-level stills
+            _ssp = _shot_brain.read("style_packet") or {}
+            shot_vibe_shot_dir  = (str(_ssp.get("vibe_shot_direction") or "")).strip()
+            shot_vibe_avoid     = _ssp.get("vibe_avoid") or []
         except Exception:
             logger.debug(
                 "_render_shot: brain load failed for project=%s shot=%s (non-fatal)",
@@ -1089,6 +1095,8 @@ def _render_shot(project_id: str, shot: dict,
                 brain_char=brain_char,
                 brain_loc=brain_loc,
                 emotional_mode_modifier=shot_emotional_modifier,
+                vibe_shot_direction=shot_vibe_shot_dir,
+                vibe_avoid=shot_vibe_avoid,
             )
             _update_shot(project_id, idx, "ready", file_path=url)
         except Exception as exc:
@@ -3952,12 +3960,17 @@ def composed_prompts_for_project(project_id: str) -> dict:
     sp = row.get("style_profile") or {}
 
     _emotional_mode_modifier_str = ""
+    _map_vibe_shot_dir: str = ""
+    _map_vibe_avoid: list = []
     try:
         with _db() as _brain_conn:
             _brain = ProjectBrain.load(project_id, _brain_conn)
         if _brain.is_populated("emotional_mode_packet"):
             _emp = _brain.read("emotional_mode_packet") or {}
             _emotional_mode_modifier_str = str(_emp.get("cinematic_modifier") or "").strip()
+        _map_ssp = _brain.read("style_packet") or {}
+        _map_vibe_shot_dir = (str(_map_ssp.get("vibe_shot_direction") or "")).strip()
+        _map_vibe_avoid    = _map_ssp.get("vibe_avoid") or []
     except Exception:
         pass
 
@@ -4069,6 +4082,8 @@ def composed_prompts_for_project(project_id: str) -> dict:
                 has_environment_ref=bool(env_url),
                 cine_prefix=cine_prefix,
                 emotional_mode_modifier=_emotional_mode_modifier_str,
+                vibe_shot_direction=_map_vibe_shot_dir,
+                vibe_avoid=_map_vibe_avoid,
             )
             out[idx] = prompt
         except Exception:
