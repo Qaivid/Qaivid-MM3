@@ -53,7 +53,6 @@ from pipeline_worker import (
     regenerate_entity_plate,
     regenerate_look_plate,
     set_look_uploaded_plate,
-    generate_pending_look_plates,
     retry_all_failed_refs,
     retry_all_failed_shots,
     retry_ref,

@@ -3128,6 +3128,25 @@ def _stage_materializer_job(project_id: str) -> None:
             project_id, _chars_n, _locs_n,
         )
 
+        # ── Look planning (immediately after characters + shot↔entity links) ──
+        # Seed character_looks rows now so look clusters are ready before the
+        # director reaches the References review page.  This is the earliest
+        # safe point — character DB rows and shot_assets.character_id are both
+        # populated by this stage.  Look *plates* (images) are generated later
+        # in _stage_refs_job once base character plates exist.
+        try:
+            from wardrobe_engine import diversify_wardrobe
+            _n_wardrobe = diversify_wardrobe(project_id)
+            logger.info(
+                "_stage_materializer_job: look planning updated %d shots for project=%s",
+                _n_wardrobe, project_id,
+            )
+        except Exception:
+            logger.exception(
+                "_stage_materializer_job: look planning failed (non-fatal) for project=%s",
+                project_id,
+            )
+
         _set_status(
             project_id, "awaiting_review",
             {"stage": "materializer",
@@ -3311,35 +3330,23 @@ def _stage_refs_job(project_id: str,
                 _set_entity_ref(project_id, "location", l["id"],
                                 status="pending", prompt=ai_prompt)
 
-        # ── Wardrobe diversification + look plate generation ─────────────
-        # Run the wardrobe engine here (before references_review) so the
-        # director can see all looks — base plates AND per-scene styled
-        # look clusters linked to shots so the stills stage knows which
-        # wardrobe look to reference per shot.
-        #
-        # Look plates are kicked in a background thread immediately after
-        # diversify_wardrobe() seeds the rows.  At this point the base
-        # character plates are not yet generated (user hasn't uploaded them),
-        # so the first-pass look plates use a text-to-image fallback without
-        # face-locking.  Once the user generates/uploads a base plate they can
-        # regenerate individual look plates to get the face-locked version.
+        # ── Look plate generation ─────────────────────────────────────────
+        # Generate look plates for any character_looks rows that were seeded
+        # during the Materializer stage (diversify_wardrobe runs there, right
+        # after characters and shot↔entity links are created).  At this point
+        # base character plates are available so the images can be face-locked.
         try:
-            from wardrobe_engine import diversify_wardrobe, generate_look_plates
-            n_wardrobe = diversify_wardrobe(project_id)
-            logger.info("Refs stage: wardrobe engine updated %d shots for project=%s",
-                        n_wardrobe, project_id)
-            if n_wardrobe > 0:
-                # Kick look plate generation now so images are ready for review
-                def _kick_look_gen(pid=project_id, ldna=location_dna,
-                                    ssfx=style_image_suffix):
-                    try:
-                        generate_look_plates(pid, ldna, ssfx)
-                    except Exception:
-                        logger.exception("Refs stage: look plate generation failed "
-                                         "(non-fatal) for project=%s", pid)
-                _SHOT_EXECUTOR.submit(_kick_look_gen)
+            from wardrobe_engine import generate_look_plates
+            def _kick_look_gen(pid=project_id, ldna=location_dna,
+                               ssfx=style_image_suffix):
+                try:
+                    generate_look_plates(pid, ldna, ssfx)
+                except Exception:
+                    logger.exception("Refs stage: look plate generation failed "
+                                     "(non-fatal) for project=%s", pid)
+            _SHOT_EXECUTOR.submit(_kick_look_gen)
         except Exception:
-            logger.exception("Refs stage: wardrobe diversification failed "
+            logger.exception("Refs stage: look plate generation submission failed "
                              "(non-fatal) for project=%s", project_id)
 
         # ── Write reference_assets_packet to brain (Stage 8) ────────────────

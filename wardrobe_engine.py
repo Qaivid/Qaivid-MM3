@@ -537,8 +537,15 @@ def generate_look_plates(project_id: str,
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-def _load_project_data(project_id: str, conn) -> tuple[list[dict], list[dict], list[dict], dict, dict]:
-    """Returns (styled_timeline, characters, locations, shot_location_ids, world_assumptions)."""
+def _load_project_data(project_id: str, conn) -> tuple[
+    list[dict], list[dict], list[dict], dict, dict, dict[int, Optional[int]]
+]:
+    """Returns (styled_timeline, characters, locations, shot_location_ids,
+    world_assumptions, shot_character_ids).
+
+    shot_character_ids maps shot_index → character.id (integer FK), populated
+    by _link_shots_to_entities in the Materializer stage before refs run.
+    """
     with conn.cursor() as cur:
         cur.execute("SELECT styled_timeline, context_packet FROM projects WHERE id=%s", (project_id,))
         row = cur.fetchone() or {}
@@ -569,14 +576,20 @@ def _load_project_data(project_id: str, conn) -> tuple[list[dict], list[dict], l
         locations = list(cur.fetchall() or [])
 
         cur.execute(
-            "SELECT shot_index, location_id FROM shot_assets "
+            "SELECT shot_index, location_id, character_id FROM shot_assets "
             " WHERE project_id=%s",
             (project_id,),
         )
+        sa_rows = cur.fetchall() or []
         shot_location_ids: dict[int, Optional[int]] = {
-            r["shot_index"]: r.get("location_id") for r in (cur.fetchall() or [])
+            r["shot_index"]: r.get("location_id") for r in sa_rows
         }
-    return styled_timeline, characters, locations, shot_location_ids, world_assumptions
+        shot_character_ids: dict[int, Optional[int]] = {
+            r["shot_index"]: r.get("character_id")
+            for r in sa_rows
+            if r.get("character_id") is not None
+        }
+    return styled_timeline, characters, locations, shot_location_ids, world_assumptions, shot_character_ids
 
 
 def _pick_main_character(characters: list[dict]) -> Optional[dict]:
@@ -624,8 +637,9 @@ def diversify_wardrobe(project_id: str) -> int:
     """
     from pipeline_worker import _db
     with _db() as conn:
-        styled_timeline, characters, locations, shot_location_ids, world_assumptions = \
-            _load_project_data(project_id, conn)
+        (styled_timeline, characters, locations,
+         shot_location_ids, world_assumptions,
+         shot_character_ids) = _load_project_data(project_id, conn)
 
     if not styled_timeline:
         logger.warning("wardrobe_engine: no styled_timeline for project=%s", project_id)
@@ -640,34 +654,9 @@ def diversify_wardrobe(project_id: str) -> int:
         logger.info("wardrobe_engine: no character shots for project=%s", project_id)
         return 0
 
-    main_char = _pick_main_character(characters)
-    if not main_char:
+    if not characters:
         logger.warning("wardrobe_engine: no character found for project=%s", project_id)
         return 0
-
-    # Build scene clusters
-    clusters = _build_cluster_descriptions(character_shots, shot_location_ids, locations)
-    logger.info("wardrobe_engine: %d scene clusters for project=%s: %s",
-                len(clusters), project_id, list(clusters.keys()))
-
-    # ── Cap to 1-3 looks (VidMuse parity) ────────────────────────────────────
-    # Real filmmaking budgets support 2-3 distinct wardrobe changes per video.
-    # More than 3 looks creates continuity confusion; fewer is fine when the
-    # narrative doesn't justify variety.  We keep the top N clusters by shot
-    # count (most screen time) and remap the dropped clusters to the most
-    # popular cluster so no shot is left without a wardrobe assignment.
-    MAX_LOOKS: int = 3
-    cluster_remap: dict[str, str] = {}  # dropped_key → kept_key
-    if len(clusters) > MAX_LOOKS:
-        sorted_keys = sorted(clusters, key=lambda k: clusters[k]["n_shots"], reverse=True)
-        kept_keys   = sorted_keys[:MAX_LOOKS]
-        dropped_keys = sorted_keys[MAX_LOOKS:]
-        fallback_key = kept_keys[0]
-        cluster_remap = {k: fallback_key for k in dropped_keys}
-        clusters = {k: clusters[k] for k in kept_keys}
-        logger.info("wardrobe_engine: capped %d clusters → %d looks for project=%s "
-                    "(dropped: %s)", len(sorted_keys), MAX_LOOKS, project_id,
-                    list(cluster_remap.keys()))
 
     if world_assumptions:
         logger.info("wardrobe_engine: cultural anchor — geography=%s era=%s social=%s",
@@ -678,38 +667,115 @@ def diversify_wardrobe(project_id: str) -> int:
         logger.warning("wardrobe_engine: no world_assumptions found for project=%s "
                        "— LLM will derive from character/location data only", project_id)
 
-    cluster_wardrobes = _call_llm(main_char, clusters, world_assumptions=world_assumptions)
-    logger.info("wardrobe_engine: LLM returned %d cluster wardrobes", len(cluster_wardrobes))
+    # ── Per-character look planning ───────────────────────────────────────────
+    # Build the set of characters that actually have face/body shots assigned
+    # (via shot_assets.character_id, set by _link_shots_to_entities).  When no
+    # per-shot character assignments exist (old projects or pre-materializer
+    # path), fall back to processing all character shots under the main char.
+    char_by_id: dict[int, dict] = {c["id"]: c for c in characters}
+    # Set of shot indices that are face/body shots (efficient O(n) lookup below)
+    character_shot_index_set: set[int] = {
+        (s.get("shot_index") or s.get("timeline_index"))
+        for s in character_shots
+        if (s.get("shot_index") or s.get("timeline_index")) is not None
+    }
+    chars_with_shots: set[int] = {
+        cid for idx, cid in shot_character_ids.items()
+        if idx in character_shot_index_set
+    }
+    if not chars_with_shots:
+        # Fallback: assign all character shots to the most-detailed character
+        main_char = _pick_main_character(characters)
+        if main_char:
+            chars_with_shots = {main_char["id"]}
+            # Treat every face/body shot as belonging to main_char
+            for s in character_shots:
+                idx = s.get("shot_index") or s.get("timeline_index")
+                if idx is not None:
+                    shot_character_ids[idx] = main_char["id"]
+        else:
+            return 0
 
-    if not cluster_wardrobes:
-        logger.warning("wardrobe_engine: LLM returned empty result for project=%s", project_id)
-        return 0
+    # ── Cap constant ─────────────────────────────────────────────────────────
+    # Real filmmaking: 2-3 distinct wardrobe changes per video.  More than 3
+    # creates continuity confusion.  Fewer is fine when narrative doesn't
+    # justify variety.
+    MAX_LOOKS: int = 3
 
-    # Map each shot to its cluster wardrobe + track cluster_id per shot.
-    # Apply cluster_remap so shots in dropped clusters fall back to their
-    # nearest kept cluster (the most shot-heavy one).
+    total_shot_updates: int = 0
     shot_wardrobe: dict[int, str] = {}
     shot_clusters: dict[int, str] = {}
-    for shot in character_shots:
-        idx = shot.get("shot_index") or shot.get("timeline_index")
-        if idx is None:
+
+    for char_id in sorted(chars_with_shots):
+        character = char_by_id.get(char_id)
+        if not character:
             continue
-        ckey = _cluster_key(shot, shot_location_ids)
-        # Remap dropped clusters to nearest kept cluster
-        ckey = cluster_remap.get(ckey, ckey)
-        wardrobe = cluster_wardrobes.get(ckey)
-        if wardrobe:
-            shot_wardrobe[idx] = wardrobe
-            shot_clusters[idx] = ckey
-        else:
-            logger.debug("wardrobe_engine: no wardrobe for cluster=%s shot=%s", ckey, idx)
 
-    with _db() as conn:
-        _save_wardrobe_contexts(project_id, conn, shot_wardrobe, shot_clusters)
-        # Seed character_looks rows (one per kept cluster) so the reference
-        # engine can generate styled look plates for each scene outfit.
-        _seed_look_rows(project_id, conn, main_char["id"], clusters, cluster_wardrobes)
+        # Shots that belong to this character
+        char_shot_indices = {
+            idx for idx, cid in shot_character_ids.items() if cid == char_id
+        }
+        char_shots = [
+            s for s in character_shots
+            if (s.get("shot_index") or s.get("timeline_index")) in char_shot_indices
+        ]
+        if not char_shots:
+            continue
 
-    logger.info("wardrobe_engine: updated %d shots + seeded %d look rows for project=%s",
-                len(shot_wardrobe), len(cluster_wardrobes), project_id)
-    return len(shot_wardrobe)
+        # Build scene clusters for this character's shots
+        clusters = _build_cluster_descriptions(char_shots, shot_location_ids, locations)
+        logger.info("wardrobe_engine: char=%s(%d) — %d scene clusters for project=%s: %s",
+                    character.get("name"), char_id, len(clusters),
+                    project_id, list(clusters.keys()))
+
+        # Cap to MAX_LOOKS — keep top N by shot count, remap dropped clusters
+        cluster_remap: dict[str, str] = {}
+        if len(clusters) > MAX_LOOKS:
+            sorted_keys = sorted(clusters, key=lambda k: clusters[k]["n_shots"], reverse=True)
+            kept_keys    = sorted_keys[:MAX_LOOKS]
+            dropped_keys = sorted_keys[MAX_LOOKS:]
+            fallback_key = kept_keys[0]
+            cluster_remap = {k: fallback_key for k in dropped_keys}
+            clusters = {k: clusters[k] for k in kept_keys}
+            logger.info("wardrobe_engine: char=%s — capped %d clusters → %d looks "
+                        "(dropped: %s)", character.get("name"),
+                        len(sorted_keys), MAX_LOOKS, list(cluster_remap.keys()))
+
+        cluster_wardrobes = _call_llm(character, clusters, world_assumptions=world_assumptions)
+        logger.info("wardrobe_engine: char=%s — LLM returned %d cluster wardrobes",
+                    character.get("name"), len(cluster_wardrobes))
+
+        if not cluster_wardrobes:
+            logger.warning("wardrobe_engine: LLM returned empty result for char=%s project=%s",
+                           character.get("name"), project_id)
+            continue
+
+        # Map each of this character's shots to a cluster wardrobe
+        for shot in char_shots:
+            idx = shot.get("shot_index") or shot.get("timeline_index")
+            if idx is None:
+                continue
+            ckey = _cluster_key(shot, shot_location_ids)
+            # Apply remap for dropped clusters
+            ckey = cluster_remap.get(ckey, ckey)
+            wardrobe = cluster_wardrobes.get(ckey)
+            if wardrobe:
+                shot_wardrobe[idx] = wardrobe
+                shot_clusters[idx] = ckey
+                total_shot_updates += 1
+            else:
+                logger.debug("wardrobe_engine: no wardrobe for char=%s cluster=%s shot=%s",
+                             character.get("name"), ckey, idx)
+
+        with _db() as conn:
+            # Seed character_looks rows (one per kept cluster) for this character
+            _seed_look_rows(project_id, conn, char_id, clusters, cluster_wardrobes)
+
+    # Write wardrobe_context + look_cluster_id to shot_assets in one pass
+    if shot_wardrobe:
+        with _db() as conn:
+            _save_wardrobe_contexts(project_id, conn, shot_wardrobe, shot_clusters)
+
+    logger.info("wardrobe_engine: updated %d shots + seeded looks for %d character(s) "
+                "in project=%s", total_shot_updates, len(chars_with_shots), project_id)
+    return total_shot_updates
