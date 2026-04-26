@@ -389,13 +389,15 @@ def build_timeline_from_brief(
     _avg_unit_dur = (audio_duration / max(n_units, 1)) if audio_duration > 0 else pref_avg
     _target_ups   = max(1, round(pref_avg / max(_avg_unit_dur, 0.5)))   # units per shot
 
-    # Build flat list of (scene, unit_group) pairs — each pair → one shot
-    shot_plan: List[tuple] = []  # each entry is (scene_dict, list_of_unit_dicts)
+    # Build flat list of (scene, unit_group, first_flat_unit_idx) triples — each → one shot
+    # first_flat_unit_idx is the flat index into `units` for the group's first unit;
+    # used to look up audio intensity from intensity_curve without ValueError.
+    shot_plan: List[tuple] = []
     for _sc_i, scene in enumerate(scenes):
         _u_idxs = scene_units_map.get(_sc_i, [])
         if not _u_idxs:
             # Scene has no units (short/empty section) — give it one shot
-            shot_plan.append((scene, [{}]))
+            shot_plan.append((scene, [{}], 0))
             continue
         # Chunk unit indices into groups of ~_target_ups
         _shots_this_scene = max(1, round(len(_u_idxs) / _target_ups))
@@ -408,7 +410,7 @@ def build_timeline_from_brief(
             _pos += _chunk_size + _extra
             if not _grp_idxs:
                 continue
-            shot_plan.append((scene, [units[_k] for _k in _grp_idxs]))
+            shot_plan.append((scene, [units[_k] for _k in _grp_idxs], _grp_idxs[0]))
 
     logger.info(
         "TimelineBuilderV2: planned %d shots from %d scenes "
@@ -422,7 +424,7 @@ def build_timeline_from_brief(
     prev_mode: Optional[str] = None
     any_lyric_anchor = False
 
-    for shot_i, (scene, unit_group) in enumerate(shot_plan):
+    for shot_i, (scene, unit_group, first_flat_unit_idx) in enumerate(shot_plan):
         # Use first unit in group for lyric anchor + representative lyric text
         first_unit = unit_group[0] if unit_group else {}
         last_unit  = unit_group[-1] if unit_group else {}
@@ -444,15 +446,10 @@ def build_timeline_from_brief(
             current_ts = 0.0 if shot_i == 0 else max(raw_snap, raw_shots[-1]["start_time"] if raw_shots else 0.0)
             any_lyric_anchor = True
 
-        # Audio intensity — average across the unit group
-        _curve_idxs = [
-            unit_scene_idxs.index(shot_i) if shot_i < n_units else 0
-        ]  # simplified; pull from first unit's position in flat unit list
-        _flat_idx = unit_scene_idxs.index(
-            min(n_scenes - 1, shot_i * n_scenes // max(len(shot_plan), 1))
-        ) if unit_scene_idxs else 0
+        # Audio intensity — look up by first unit's flat index in the units list
+        # (never use shot_i or scene_idx to index intensity_curve — they have different lengths)
         audio_int = (
-            intensity_curve[_flat_idx] if _flat_idx < len(intensity_curve)
+            intensity_curve[first_flat_unit_idx] if first_flat_unit_idx < len(intensity_curve)
             else (intensity_curve[-1] if intensity_curve else _DEFAULT_INTENSITY)
         )
 
@@ -625,18 +622,27 @@ def build_timeline_from_brief(
     # ── Style grading pass ─────────────────────────────────────────────────
     styled_timeline = _apply_style_grading(raw_shots, style_packet)
 
-    # ── Merge rhythm fields back (StyleGradingEngine strips them) ─────────
-    _RHYTHM_FIELDS = (
+    # ── Merge rhythm + brief-intent fields back (StyleGradingEngine strips them)
+    _PASSTHROUGH_FIELDS = (
+        # Rhythm / timing
         "start_beat", "bar_index", "audio_intensity", "raw_shot_intensity",
-        "_v2_scene_id", "_v2_chosen_direction",
+        "lyric_start_seconds", "lyric_end_seconds",
+        # V2 tracing
+        "_v2_scene_id", "_v2_chosen_direction", "_v2_lyric_units_count",
+        # First-class brief intent — required by task spec
+        "subject_focus", "character_presence", "environment_type",
+        "key_elements", "emotional_state", "lighting_condition",
+        "movement_type", "motion_density",
     )
     raw_by_idx = {r.get("shot_index"): r for r in raw_shots}
     for styled in styled_timeline:
         src = raw_by_idx.get(styled.get("shot_index"))
         if not src:
             continue
-        for k in _RHYTHM_FIELDS:
-            if k in src and styled.get(k) is None:
+        for k in _PASSTHROUGH_FIELDS:
+            # Always overwrite from raw for list fields (key_elements); use
+            # raw value when styled doesn't have the key or has None.
+            if k in src and (k not in styled or styled[k] is None):
                 styled[k] = src[k]
 
     return styled_timeline
