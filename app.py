@@ -1828,11 +1828,11 @@ def generate_custom_vibe(project_id: str):
         vibe = build_custom_vibe(description, llm_data)
         return jsonify({"vibe": vibe})
 
-    except Exception as exc:
+    except Exception:
         app.logger.exception(
             "generate_custom_vibe: LLM call failed for project=%s", project_id,
         )
-        return jsonify({"error": f"Could not generate vibe: {exc}"}), 500
+        return jsonify({"error": "Could not generate vibe — please try again."}), 500
 
 
 @app.route("/project/<project_id>/advance/style", methods=["POST"])
