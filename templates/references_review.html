@@ -4,12 +4,15 @@
 {% block content %}
 {% set ready_chars  = characters|selectattr('ref_status','equalto','ready')|list|length %}
 {% set ready_locs   = locations|selectattr('ref_status','equalto','ready')|list|length %}
-{% set total_ready  = ready_chars + ready_locs %}
-{% set total        = (characters|length) + (locations|length) %}
+{% set all_looks    = characters|map(attribute='looks')|sum(start=[]) %}
+{% set ready_looks  = all_looks|selectattr('ref_status','equalto','ready')|list|length %}
+{% set total_looks  = all_looks|list|length %}
+{% set total_ready  = ready_chars + ready_locs + ready_looks %}
+{% set total        = (characters|length) + (locations|length) + total_looks %}
 {% set pending_count = total - total_ready %}
 {% set failed_chars = characters|selectattr('ref_status','equalto','failed')|list|length %}
 {% set failed_locs  = locations|selectattr('ref_status','equalto','failed')|list|length %}
-{% set failed_looks = characters|map(attribute='looks')|sum(start=[])|selectattr('ref_status','equalto','failed')|list|length %}
+{% set failed_looks = all_looks|selectattr('ref_status','equalto','failed')|list|length %}
 {% set total_failed = failed_chars + failed_locs + failed_looks %}
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
@@ -33,6 +36,10 @@
                 {% endfor %}
                 {% for l in locations %}
                 <span class="ref-dot ref-dot--{{ l.ref_status }}" title="{{ l.name }} ({{ l.ref_status }})"></span>
+                {% endfor %}
+                {% for lk in all_looks %}
+                <span class="ref-dot ref-dot--{{ lk.ref_status }} ref-dot--look"
+                      title="Look: {{ lk.cluster_label or lk.cluster_id }} ({{ lk.ref_status }})"></span>
                 {% endfor %}
             </div>
             <span class="ref-progress-label">
@@ -353,6 +360,7 @@
 .ref-dot--pending  { background: #ffb142; }
 .ref-dot--failed   { background: #e05555; }
 .ref-dot--rendering{ background: #5599ff; animation: ref-pulse 1.2s ease-in-out infinite; }
+.ref-dot--look     { width: 7px; height: 7px; border-radius: 2px; opacity: .8; }
 .ref-progress-label { font-size: 13px; color: #c0c8d4; white-space: nowrap; }
 .ref-progress-pending { color: #ffb142; }
 @keyframes ref-pulse { 0%,100%{opacity:.4} 50%{opacity:1} }

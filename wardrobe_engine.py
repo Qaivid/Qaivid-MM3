@@ -650,6 +650,25 @@ def diversify_wardrobe(project_id: str) -> int:
     logger.info("wardrobe_engine: %d scene clusters for project=%s: %s",
                 len(clusters), project_id, list(clusters.keys()))
 
+    # ── Cap to 1-3 looks (VidMuse parity) ────────────────────────────────────
+    # Real filmmaking budgets support 2-3 distinct wardrobe changes per video.
+    # More than 3 looks creates continuity confusion; fewer is fine when the
+    # narrative doesn't justify variety.  We keep the top N clusters by shot
+    # count (most screen time) and remap the dropped clusters to the most
+    # popular cluster so no shot is left without a wardrobe assignment.
+    MAX_LOOKS: int = 3
+    cluster_remap: dict[str, str] = {}  # dropped_key → kept_key
+    if len(clusters) > MAX_LOOKS:
+        sorted_keys = sorted(clusters, key=lambda k: clusters[k]["n_shots"], reverse=True)
+        kept_keys   = sorted_keys[:MAX_LOOKS]
+        dropped_keys = sorted_keys[MAX_LOOKS:]
+        fallback_key = kept_keys[0]
+        cluster_remap = {k: fallback_key for k in dropped_keys}
+        clusters = {k: clusters[k] for k in kept_keys}
+        logger.info("wardrobe_engine: capped %d clusters → %d looks for project=%s "
+                    "(dropped: %s)", len(sorted_keys), MAX_LOOKS, project_id,
+                    list(cluster_remap.keys()))
+
     if world_assumptions:
         logger.info("wardrobe_engine: cultural anchor — geography=%s era=%s social=%s",
                     world_assumptions.get("geography"),
@@ -666,7 +685,9 @@ def diversify_wardrobe(project_id: str) -> int:
         logger.warning("wardrobe_engine: LLM returned empty result for project=%s", project_id)
         return 0
 
-    # Map each shot to its cluster wardrobe + track cluster_id per shot
+    # Map each shot to its cluster wardrobe + track cluster_id per shot.
+    # Apply cluster_remap so shots in dropped clusters fall back to their
+    # nearest kept cluster (the most shot-heavy one).
     shot_wardrobe: dict[int, str] = {}
     shot_clusters: dict[int, str] = {}
     for shot in character_shots:
@@ -674,6 +695,8 @@ def diversify_wardrobe(project_id: str) -> int:
         if idx is None:
             continue
         ckey = _cluster_key(shot, shot_location_ids)
+        # Remap dropped clusters to nearest kept cluster
+        ckey = cluster_remap.get(ckey, ckey)
         wardrobe = cluster_wardrobes.get(ckey)
         if wardrobe:
             shot_wardrobe[idx] = wardrobe
@@ -683,8 +706,8 @@ def diversify_wardrobe(project_id: str) -> int:
 
     with _db() as conn:
         _save_wardrobe_contexts(project_id, conn, shot_wardrobe, shot_clusters)
-        # Seed character_looks rows (one per cluster) so the reference engine
-        # can generate styled look plates for each scene outfit.
+        # Seed character_looks rows (one per kept cluster) so the reference
+        # engine can generate styled look plates for each scene outfit.
         _seed_look_rows(project_id, conn, main_char["id"], clusters, cluster_wardrobes)
 
     logger.info("wardrobe_engine: updated %d shots + seeded %d look rows for project=%s",

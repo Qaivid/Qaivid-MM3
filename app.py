@@ -3139,12 +3139,17 @@ def references_approve(project_id: str):
             "   AND NOT EXISTS ("
             "         SELECT 1 FROM locations "
             "          WHERE project_id=%s AND ref_status <> 'ready'"
+            "   )"
+            "   AND NOT EXISTS ("
+            "         SELECT 1 FROM character_looks "
+            "          WHERE project_id=%s AND ref_status NOT IN ('ready')"
             "   )",
             # SET status=%s, stage=%s — order matters! status is the
             # state-machine state ('awaiting_review'), stage is the step
             # name ('stills_control'). Swapping these breaks the
             # _stills_control_guard 403 check downstream.
-            ("awaiting_review", "stills_control", project_id, project_id, project_id),
+            ("awaiting_review", "stills_control",
+             project_id, project_id, project_id, project_id),
         )
         advanced = cur.rowcount == 1
         if advanced:
@@ -3171,25 +3176,29 @@ def references_approve(project_id: str):
                 (project_id,),
             )
             bad_locs = (cur.fetchone() or {}).get("n", 0) or 0
-        if bad_chars or bad_locs:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM character_looks "
+                " WHERE project_id=%s AND ref_status NOT IN ('ready')",
+                (project_id,),
+            )
+            bad_looks = (cur.fetchone() or {}).get("n", 0) or 0
+        total_bad = bad_chars + bad_locs + bad_looks
+        if total_bad:
+            parts = []
+            if bad_chars:
+                parts.append(f"{bad_chars} character plate(s)")
+            if bad_locs:
+                parts.append(f"{bad_locs} location plate(s)")
+            if bad_looks:
+                parts.append(f"{bad_looks} look plate(s)")
             flash(
-                f"{bad_chars + bad_locs} reference plate(s) are not ready yet. "
-                f"Regenerate or upload a replacement before continuing.",
+                f"{', '.join(parts)} not ready yet. "
+                f"Generate or upload each plate before continuing.",
                 "error",
             )
         else:
             flash("This step has already been completed or is not ready yet.", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-
-    # Base plates are approved — kick look plate generation in the background.
-    # Look plates require the base character plate for face-locking, so we can
-    # only generate them AFTER the user has approved all base plates here.
-    # Generation runs while the user reviews stills prompts on the next page.
-    try:
-        generate_pending_look_plates(project_id)
-    except Exception:
-        logger.exception("references_approve: failed to kick look plate generation "
-                         "for project=%s", project_id)
 
     return redirect(url_for("project_detail", project_id=project_id))
 

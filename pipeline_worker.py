@@ -3311,17 +3311,33 @@ def _stage_refs_job(project_id: str,
                 _set_entity_ref(project_id, "location", l["id"],
                                 status="pending", prompt=ai_prompt)
 
-        # ── Wardrobe diversification + styled look plates ─────────────────
+        # ── Wardrobe diversification + look plate generation ─────────────
         # Run the wardrobe engine here (before references_review) so the
         # director can see all looks — base plates AND per-scene styled
-        # look clusters to shots so the stills stage knows which wardrobe look
-        # to reference per shot. Look plate images are NOT generated here —
-        # they will be rendered on-demand when the user generates/uploads plates.
+        # look clusters linked to shots so the stills stage knows which
+        # wardrobe look to reference per shot.
+        #
+        # Look plates are kicked in a background thread immediately after
+        # diversify_wardrobe() seeds the rows.  At this point the base
+        # character plates are not yet generated (user hasn't uploaded them),
+        # so the first-pass look plates use a text-to-image fallback without
+        # face-locking.  Once the user generates/uploads a base plate they can
+        # regenerate individual look plates to get the face-locked version.
         try:
-            from wardrobe_engine import diversify_wardrobe
+            from wardrobe_engine import diversify_wardrobe, generate_look_plates
             n_wardrobe = diversify_wardrobe(project_id)
             logger.info("Refs stage: wardrobe engine updated %d shots for project=%s",
                         n_wardrobe, project_id)
+            if n_wardrobe > 0:
+                # Kick look plate generation now so images are ready for review
+                def _kick_look_gen(pid=project_id, ldna=location_dna,
+                                    ssfx=style_image_suffix):
+                    try:
+                        generate_look_plates(pid, ldna, ssfx)
+                    except Exception:
+                        logger.exception("Refs stage: look plate generation failed "
+                                         "(non-fatal) for project=%s", pid)
+                _SHOT_EXECUTOR.submit(_kick_look_gen)
         except Exception:
             logger.exception("Refs stage: wardrobe diversification failed "
                              "(non-fatal) for project=%s", project_id)
