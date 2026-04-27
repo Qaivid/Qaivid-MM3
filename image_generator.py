@@ -50,26 +50,24 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 #   gpt_medium — $0.04/image  — recommended
 #   gpt_high   — $0.16/image  — highest fidelity
 # Portrait (character refs): 1024×1536.
-# Supported sizes: 1024x1024, 1536x1024, 1024x1536, auto.
-# NOTE: 1920x1080 is NOT supported — 1080 is not divisible by 16.
 # Supports image-to-image and multi-image references — face identity +
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
 OPENAI_IMAGE_MODEL = "gpt-image-2"
-# gpt-image-2 landscape: 1536x864 (true 16:9, both dims divisible by 16).
+# gpt-image-2 landscape: 1920x1080 (native 16:9 cinematic widescreen).
 # Portrait: 1024x1536.
-# NOTE: 1920x1080 is rejected by the API — 1080 is not divisible by 16.
-# 1536x864 = 16:9 exactly (1536÷864 = 1.777…) and both dims pass the ÷16 check.
-OPENAI_SIZE_LANDSCAPE = "1536x864"
+# IMPORTANT: use direct HTTP (not openai SDK) — the SDK's client-side size
+# validation rejects 1920x1080 even though the API accepts it.
+OPENAI_SIZE_LANDSCAPE = "1920x1080"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 # ── OpenAI GPT Image 1.5 mode constants ──────────────────────────────────────
 # gpt_15_low mode — fallback for when gpt-image-2 business verification is pending.
 # gpt-image-1.5 supports img2img editing and does not require business verification.
-# Landscape: 1536x864 (16:9, divisible by 16). Portrait: 1024x1536.
+# Landscape: 1536x1024. Portrait: 1024x1536.
 # Cost: ~$0.013/image at low quality.
 OPENAI_IMAGE_MODEL_15 = "gpt-image-1.5"
-OPENAI_SIZE_LANDSCAPE_15 = "1536x864"
+OPENAI_SIZE_LANDSCAPE_15 = "1536x1024"
 
 
 def _resolve_ref_mode() -> str:
@@ -533,17 +531,37 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     """Text-to-image via OpenAI image API. Returns raw PNG bytes.
 
     Defaults to gpt-image-2. Pass model=OPENAI_IMAGE_MODEL_15 for gpt-image-1.5.
+
+    Uses direct HTTP (not the openai SDK) so that sizes like 1920x1080 are
+    accepted — the SDK's client-side allowlist rejects them even though the
+    API itself supports them.
     """
-    client = _openai_client()
-    response = client.images.generate(
-        model=model,
-        prompt=prompt[:4000],
-        size=size,
-        quality=quality,
-        n=1,
-    )
     import base64 as _b64
-    b64 = response.data[0].b64_json
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    payload: dict = {
+        "model": model,
+        "prompt": prompt[:4000],
+        "size": size,
+        "n": 1,
+        "output_format": "b64_json",
+    }
+    if quality:
+        payload["quality"] = quality
+    resp = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=120,
+    )
+    if not resp.ok:
+        raise ImageGenerationError(
+            f"{model} generate failed {resp.status_code}: {resp.text[:400]}"
+        )
+    data = resp.json()
+    b64 = (data.get("data") or [{}])[0].get("b64_json")
     if not b64:
         raise ImageGenerationError(f"{model} returned no image data.")
     return _b64.b64decode(b64)
@@ -600,6 +618,10 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     Passes up to 3 ref images as a list to the edits endpoint.
     Falls back to single-image edit if only one URL is supplied.
     Returns raw PNG bytes.
+
+    Uses direct HTTP (not the openai SDK) so that sizes like 1920x1080 are
+    accepted — the SDK's client-side allowlist rejects them even though the
+    API itself supports them.
     """
     import io
     import base64 as _b64
@@ -608,27 +630,36 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     if not valid_urls:
         raise ImageGenerationError("_openai_edit_multi called with no valid ref URLs.")
 
-    client = _openai_client()
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    headers = {"Authorization": f"Bearer {api_key}"}
 
-    if len(valid_urls) == 1:
-        img_bytes = _download_image_bytes(valid_urls[0])
-        image_arg = ("reference.png", io.BytesIO(img_bytes), "image/png")
-    else:
-        images = []
-        for i, url in enumerate(valid_urls[:3]):
-            img_bytes = _download_image_bytes(url)
-            images.append((f"ref_{i}.png", io.BytesIO(img_bytes), "image/png"))
-        image_arg = images
+    # Build multipart form fields
+    fields: list = [
+        ("model",           (None, model)),
+        ("prompt",          (None, prompt[:4000])),
+        ("size",            (None, size)),
+        ("n",               (None, "1")),
+        ("output_format",   (None, "b64_json")),
+    ]
+    if quality:
+        fields.append(("quality", (None, quality)))
 
-    response = client.images.edit(
-        model=model,
-        image=image_arg,
-        prompt=prompt[:4000],
-        size=size,
-        quality=quality,
-        n=1,
+    for i, url in enumerate(valid_urls[:3]):
+        img_bytes = _download_image_bytes(url)
+        fields.append(("image[]", (f"ref_{i}.png", io.BytesIO(img_bytes), "image/png")))
+
+    resp = requests.post(
+        "https://api.openai.com/v1/images/edits",
+        headers=headers,
+        files=fields,
+        timeout=180,
     )
-    b64 = response.data[0].b64_json
+    if not resp.ok:
+        raise ImageGenerationError(
+            f"{model} edit failed {resp.status_code}: {resp.text[:400]}"
+        )
+    data = resp.json()
+    b64 = (data.get("data") or [{}])[0].get("b64_json")
     if not b64:
         raise ImageGenerationError(f"{model} edit returned no image data.")
     return _b64.b64decode(b64)
