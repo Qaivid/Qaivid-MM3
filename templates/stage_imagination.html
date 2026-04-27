@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% set active_stage = 'imagination_review' %}
+{% block title %}{{ project.name }} — Director's Vision · Qaivid{% endblock %}
+{% block content %}
+{% set ip = imagination_packet or {} %}
+<div class="stage-wrap">
+    {% include '_stage_header.html' %}
+
+    <div class="stage-card">
+        <div class="stage-header">
+            <span class="stage-badge">Stage 4.5 — Director's Imagination Engine</span>
+            <h1>The Director's Vision</h1>
+            <p class="stage-sub">
+                The AI director has imagined the full visual world of this video — the concept,
+                recurring motifs, section flow, and specific shot ideas. This vision guides
+                the Storyboard and everything downstream.
+            </p>
+        </div>
+
+        {% if ip %}
+
+        <div class="imag-section">
+            <div class="imag-label">Visual Concept</div>
+            <div class="imag-concept">{{ ip.visual_concept or '—' }}</div>
+        </div>
+
+        <div class="imag-section">
+            <div class="imag-label">Visual Style</div>
+            <div class="imag-rule">{{ ip.visual_style or '—' }}</div>
+        </div>
+
+        {% if ip.motifs %}
+        <div class="imag-section">
+            <div class="imag-label">Recurring Motifs</div>
+            <div class="imag-motifs">
+                {% for m in ip.motifs %}
+                <div class="imag-motif-card">
+                    <div class="motif-name">{{ m.name or m.motif_id or 'Motif' }}</div>
+                    <div class="motif-recurrence">{{ m.recurrence or '' }}</div>
+                    <div class="motif-form">{{ m.visual_form or '' }}</div>
+                    {% if m.emotional_role %}
+                    <div class="motif-role">{{ m.emotional_role }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ip.section_flow %}
+        <div class="imag-section">
+            <div class="imag-label">Section Flow</div>
+            <div class="imag-flow">
+                {% for sf in ip.section_flow %}
+                <div class="flow-row">
+                    <div class="flow-label">{{ sf.section_label or '—' }}</div>
+                    <div class="flow-mood">{{ sf.mood or '' }}</div>
+                    <div class="flow-idea">{{ sf.visual_idea or '' }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ip.shot_ideas %}
+        <div class="imag-section">
+            <div class="imag-label">Director's Shot Ideas</div>
+            <div class="imag-shots">
+                {% for si in ip.shot_ideas %}
+                <div class="shot-idea">
+                    <span class="shot-bullet">◆</span>
+                    <span>{{ si }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="imag-section">
+            <div class="imag-label">Director's Notes to the Storyboard Team</div>
+            <div class="imag-rule">{{ ip.director_notes or '—' }}</div>
+        </div>
+
+        {% else %}
+        <p class="stage-sub">Director's vision is not available yet.</p>
+        {% endif %}
+
+        <form method="POST" action="/project/{{ project.id }}/advance/imagination" class="stage-actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">
+                Approve Vision — Build Storyboard →
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+.imag-section {
+    background: var(--bg-card, #1a1a2e);
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+}
+.imag-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--accent, #d4ff3a);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+.imag-concept {
+    font-size: 1.05rem;
+    color: var(--text, #e8e8f0);
+    line-height: 1.7;
+    font-style: italic;
+}
+.imag-rule {
+    font-size: 0.95rem;
+    color: var(--text, #e8e8f0);
+    line-height: 1.65;
+}
+
+/* Motifs */
+.imag-motifs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.9rem;
+}
+.imag-motif-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(212,255,58,0.15);
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+}
+.motif-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--accent, #d4ff3a);
+    margin-bottom: 0.2rem;
+}
+.motif-recurrence {
+    font-size: 0.72rem;
+    color: var(--muted, rgba(255,255,255,0.45));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+.motif-form {
+    font-size: 0.88rem;
+    color: var(--text, #e8e8f0);
+    line-height: 1.5;
+    margin-bottom: 0.4rem;
+}
+.motif-role {
+    font-size: 0.82rem;
+    color: var(--muted, rgba(255,255,255,0.55));
+    font-style: italic;
+    line-height: 1.4;
+}
+
+/* Section flow */
+.imag-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.flow-row {
+    display: grid;
+    grid-template-columns: 120px 180px 1fr;
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.65rem 0.75rem;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent, #d4ff3a);
+}
+.flow-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent, #d4ff3a);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.flow-mood {
+    font-size: 0.84rem;
+    color: var(--muted, rgba(255,255,255,0.6));
+    font-style: italic;
+}
+.flow-idea {
+    font-size: 0.9rem;
+    color: var(--text, #e8e8f0);
+    line-height: 1.5;
+}
+
+/* Shot ideas */
+.imag-shots {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.shot-idea {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    font-size: 0.92rem;
+    color: var(--text, #e8e8f0);
+    line-height: 1.55;
+}
+.shot-bullet {
+    color: var(--accent, #d4ff3a);
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+    font-size: 0.7rem;
+}
+
+@media (max-width: 700px) {
+    .flow-row {
+        grid-template-columns: 1fr;
+    }
+    .imag-motifs {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}

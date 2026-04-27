@@ -16,6 +16,7 @@ Namespaces (in pipeline order):
     context_packet     Stage 2  — Context Engine output (meaning, world, speaker…)
     emotional_mode_packet Stage 2b — Emotional Mode Engine (mode id, pacing, shot biases, style modifiers)
     narrative_packet   Stage 3  — Narrative Engine output (motifs, arc, story logic…)
+    imagination_packet Stage 4b — Director's Imagination Engine (visual concept, motifs, shot ideas)
     style_packet       Stage 4  — Style Engine output (visual language, palette…)
     storyboard_packet  Stage 5  — Storyboard intent (scenes + valid_realizations) — POSSIBILITIES
     creative_briefs    Stage 6  — Creative Brief — ONE locked direction per scene (SELECTION)
@@ -43,6 +44,7 @@ NAMESPACES: List[str] = [
     "context_packet",
     "emotional_mode_packet",
     "narrative_packet",
+    "imagination_packet",
     "style_packet",
     "storyboard_packet",
     "creative_briefs",
@@ -65,6 +67,7 @@ NAMESPACE_OWNERS: Dict[str, str] = {
     "context_packet":         "stage_2_context",
     "emotional_mode_packet":  "stage_2b_emotional_mode",
     "narrative_packet":       "stage_3_narrative",
+    "imagination_packet":     "stage_4b_imagination",
     "style_packet":           "stage_4_style",
     "storyboard_packet":      "stage_5_storyboard",
     "creative_briefs":        "stage_6_brief",

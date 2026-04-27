@@ -2450,6 +2450,81 @@ def _stage_narrative_job(project_id: str) -> None:
                     stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
 
 
+def _stage_imagination_job(project_id: str) -> None:
+    """Director's Imagination Engine (Stage 4.5) — imagines the full visual world
+    before the Storyboard runs. Reads narrative_packet + style_packet + context_packet
+    + emotional_mode_packet from brain, produces imagination_packet, parks at
+    imagination_review for user approval.
+    """
+    try:
+        from imagination_engine import generate_imagination_packet
+
+        # ── Load brain and read upstream packets ─────────────────────────────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+
+        context_packet       = brain.read("context_packet")       or {}
+        narrative_packet     = brain.read("narrative_packet")     or {}
+        style_packet         = brain.read("style_packet")         or {}
+        emotional_mode_packet = brain.read("emotional_mode_packet") or {}
+        input_structure      = brain.read("input_structure")      or {}
+
+        # Fallbacks for pre-brain projects
+        if not context_packet:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT context_packet, narrative_packet, style_profile FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+            if row:
+                context_packet   = dict(row.get("context_packet") or {})
+                if not narrative_packet:
+                    narrative_packet = dict(row.get("narrative_packet") or {})
+                if not style_packet:
+                    style_packet = dict(row.get("style_profile") or {})
+
+        _set_status(project_id, "running",
+                    {"stage": "imagination", "label": "Director is imagining the visual world…"},
+                    stage="running_imagination")
+
+        imagination_packet = _run_async(
+            generate_imagination_packet(
+                context_packet=context_packet,
+                narrative_packet=narrative_packet,
+                style_packet=style_packet,
+                emotional_mode_packet=emotional_mode_packet,
+                input_structure=input_structure,
+            )
+        )
+
+        # ── Write to brain ────────────────────────────────────────────────────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("imagination_packet", imagination_packet)
+            brain.save(conn)
+            conn.commit()
+
+        logger.info(
+            "ProjectBrain: wrote imagination_packet for project=%s "
+            "(%d motifs, %d shot_ideas, %d section_flow)",
+            project_id,
+            len(imagination_packet.get("motifs") or []),
+            len(imagination_packet.get("shot_ideas") or []),
+            len(imagination_packet.get("section_flow") or []),
+        )
+
+        _set_status(project_id, "awaiting_review",
+                    {"stage": "imagination", "label": "Director's vision ready. Review and continue."},
+                    stage="imagination_review")
+
+    except Exception as exc:
+        logger.exception("Stage imagination failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Imagination stage failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
 def _stage_brief_job(project_id: str, overrides: dict) -> None:
     """Creative Brief Engine v2 (Stage 6) — controlled selection + variation anchoring.
 
@@ -2477,12 +2552,13 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         try:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
-            brain_storyboard = brain.read("storyboard_packet") or {}
-            brain_narrative  = brain.read("narrative_packet")  or {}
-            brain_context    = brain.read("context_packet")    or {}
-            brain_style      = brain.read("style_packet")      or {}
-            brain_input      = brain.read("input_structure")   or {}
-            brain_settings   = brain.read("project_settings")  or {}
+            brain_storyboard    = brain.read("storyboard_packet") or {}
+            brain_narrative     = brain.read("narrative_packet")  or {}
+            brain_context       = brain.read("context_packet")    or {}
+            brain_style         = brain.read("style_packet")      or {}
+            brain_input         = brain.read("input_structure")   or {}
+            brain_settings      = brain.read("project_settings")  or {}
+            brain_imagination   = brain.read("imagination_packet") if brain.is_populated("imagination_packet") else {}
         except Exception:
             logger.exception(
                 "Stage brief v2: failed to load ProjectBrain for project=%s",
@@ -2494,6 +2570,7 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             brain_style      = {}
             brain_input      = {}
             brain_settings   = {}
+            brain_imagination = {}
 
         # Legacy column fallbacks for context/narrative/style only —
         # storyboard_packet must come from the brain (v2 intent layer).
@@ -2539,6 +2616,7 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
             style_profile=style_profile,
             input_structure=brain_input,
             project_settings=brain_settings,
+            imagination_packet=brain_imagination or {},
         ))
 
         # ── Write creative_briefs to brain (Stage 6 namespace) ──────────────
@@ -2773,12 +2851,13 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
         try:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
-            brain_context   = brain.read("context_packet") or {}
-            brain_narrative = brain.read("narrative_packet") or {}
-            brain_style     = brain.read("style_packet") or {}
-            brain_input     = brain.read("input_structure") or {}
-            brain_settings  = brain.read("project_settings") or {}
-            brain_emotional = brain.read("emotional_mode_packet") if brain.is_populated("emotional_mode_packet") else {}
+            brain_context      = brain.read("context_packet") or {}
+            brain_narrative    = brain.read("narrative_packet") or {}
+            brain_style        = brain.read("style_packet") or {}
+            brain_input        = brain.read("input_structure") or {}
+            brain_settings     = brain.read("project_settings") or {}
+            brain_emotional    = brain.read("emotional_mode_packet") if brain.is_populated("emotional_mode_packet") else {}
+            brain_imagination  = brain.read("imagination_packet") if brain.is_populated("imagination_packet") else {}
         except Exception:
             logger.exception(
                 "Stage storyboard: failed to load ProjectBrain for project=%s — "
@@ -2786,6 +2865,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             )
             brain_context, brain_narrative, brain_style = {}, {}, {}
             brain_input, brain_settings, brain_emotional = {}, {}, {}
+            brain_imagination = {}
 
         with _db() as conn, conn.cursor() as cur:
             cur.execute(
@@ -2863,6 +2943,7 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             style_profile=style_profile,
             project_settings=project_settings,
             emotional_mode_packet=brain_emotional or {},
+            imagination_packet=brain_imagination or {},
         ))
         v2_scenes = list(v2_scenes or [])
 
@@ -3857,6 +3938,11 @@ def kick_stage_1(project_id: str) -> None:
 def kick_stage_narrative(project_id: str) -> None:
     """Stage 3 — Narrative Intelligence. Reads context_packet from brain."""
     _EXECUTOR.submit(_stage_narrative_job, project_id)
+
+
+def kick_stage_imagination(project_id: str) -> None:
+    """Stage 4.5 — Director's Imagination Engine. Reads narrative+style+context from brain."""
+    _EXECUTOR.submit(_stage_imagination_job, project_id)
 
 
 def kick_stage_2b_emotional(project_id: str) -> None:

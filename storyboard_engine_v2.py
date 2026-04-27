@@ -97,7 +97,12 @@ def _system_prompt() -> str:
         "8. Repeated sections (chorus, refrain) MUST evolve visually — never\n"
         "   duplicate blindly. Use the repetition strategy from narrative.\n"
         "9. Style is a LIGHT influence (tone only). Style does NOT dictate scene\n"
-        "   content. Narrative + context dictate scene content.\n\n"
+        "   content. Narrative + context dictate scene content.\n"
+        "10. If a DIRECTOR'S IMAGINATION block is present in the user message:\n"
+        "    - The visual_concept is the PRIMARY creative mandate for the whole video.\n"
+        "    - Motifs listed there MUST be threaded through the valid_realizations.\n"
+        "    - Shot ideas are creative sparks — use them to inspire, not as instructions.\n"
+        "    - Director's notes contain constraints that override all defaults.\n\n"
         "FORBIDDEN:\n"
         "- Do NOT name exact locations, characters, props, camera shots, or prompts.\n"
         "- Do NOT pick a single realization.\n"
@@ -271,6 +276,7 @@ def _user_prompt(
     style_profile:   Dict[str, Any],
     project_settings: Dict[str, Any],
     emotional_mode_packet: Optional[Dict[str, Any]] = None,
+    imagination_packet: Optional[Dict[str, Any]] = None,
 ) -> str:
     # NARRATIVE INTELLIGENCE block (re-use the narrative_engine formatter)
     narrative_block = ""
@@ -280,6 +286,15 @@ def _user_prompt(
             narrative_block = format_for_prompt(narrative_packet) or ""
         except Exception:
             logger.exception("StoryboardV2: failed to format narrative_packet")
+
+    # DIRECTOR'S IMAGINATION block — primary creative directive
+    imagination_block = ""
+    if imagination_packet:
+        try:
+            from imagination_engine import format_imagination_for_prompt
+            imagination_block = format_imagination_for_prompt(imagination_packet) or ""
+        except Exception:
+            logger.exception("StoryboardV2: failed to format imagination_packet")
 
     sections  = input_structure.get("sections") or []
     n_sections = len(sections)
@@ -322,7 +337,8 @@ def _user_prompt(
     mode_block = _format_emotional_mode(emotional_mode_packet or {})
 
     return (
-        "INPUT STRUCTURE (Stage 1 — sections + repetition):\n"
+        ("\n\n" + imagination_block if imagination_block else "")
+        + "\n\nINPUT STRUCTURE (Stage 1 — sections + repetition):\n"
         + _format_input_structure(input_structure or {})
         + "\n\nCONTEXT PACKET (Stage 2 — locked meaning, world, speaker):\n"
         + _format_context(context_packet or {})
@@ -518,6 +534,7 @@ async def generate_storyboard_v2(
     style_profile:   Optional[Dict[str, Any]] = None,
     project_settings: Optional[Dict[str, Any]] = None,
     emotional_mode_packet: Optional[Dict[str, Any]] = None,
+    imagination_packet: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Generate the v2 storyboard intent layer.
 
@@ -542,6 +559,7 @@ async def generate_storyboard_v2(
                     style_profile,
                     project_settings,
                     emotional_mode_packet=emotional_mode_packet or {},
+                    imagination_packet=imagination_packet or {},
                 )},
             ],
         )

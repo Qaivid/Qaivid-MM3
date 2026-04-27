@@ -39,6 +39,7 @@ from pipeline_worker import (
     kick_stage_1,
     kick_stage_2b_emotional,
     kick_stage_narrative,
+    kick_stage_imagination,
     kick_stage_style,
     kick_stage_2,
     kick_stage_brief,
@@ -161,6 +162,7 @@ def _recover_stalled_jobs():
         "running_1":               kick_stage_1,
         "running_2b":              kick_stage_2b_emotional,
         "running_narrative":       kick_stage_narrative,
+        "running_imagination":     kick_stage_imagination,
         "running_style":           kick_stage_style,
         "running_brief":           kick_stage_brief,
         "running_2":               kick_stage_2,
@@ -633,6 +635,7 @@ STAGE_ORDER = [
     "context_review",
     "narrative_review",
     "style_review",
+    "imagination_review",
     "storyboard_review",
     "creative_brief_review",
     "materializer_review",
@@ -651,6 +654,7 @@ STAGE_LABELS = {
     "style_review": "Style Profile",
     "context_review": "Context Engine",
     "narrative_review": "Narrative Engine",
+    "imagination_review": "Director's Vision",
     "creative_brief_review": "Creative Brief",
     "storyboard_review": "Storyboard",
     "materializer_review": "Cast & World",
@@ -1340,6 +1344,19 @@ def project_detail(project_id: str):
     if stage == "narrative_review":
         return render_template("stage_narrative.html", project=project)
 
+    if stage == "imagination_review":
+        try:
+            with db() as _imgconn:
+                _imgbrain = ProjectBrain.load(project_id, _imgconn)
+            imagination_packet = dict(_imgbrain.read("imagination_packet") or {})
+        except Exception:
+            imagination_packet = {}
+        return render_template(
+            "stage_imagination.html",
+            project=project,
+            imagination_packet=imagination_packet,
+        )
+
     if stage == "creative_brief_review":
         return render_template("stage_creative_brief.html", project=project)
 
@@ -1980,16 +1997,7 @@ def advance_stage_style(project_id: str):
 
     # Carry forward user-confirmed context edits (speaker name, location, era)
     # so they survive into Brief regardless of repick vs first-time pick.
-    cp = dict(project.get("context_packet") or {})
-    _speaker = cp.get("speaker")
-    overrides = {
-        "speaker_name": (_speaker.get("name") if isinstance(_speaker, dict) else None),
-        "location":     cp.get("location_dna"),
-        "era":          cp.get("era"),
-        "style_preset": style_profile.get("preset") or "cinematic_natural",
-    }
-    name = project.get("name") or "Qaivid_Project"
-    kick_stage_2(project_id, name, overrides)
+    kick_stage_imagination(project_id)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -2129,6 +2137,52 @@ def advance_narrative(project_id: str):
             return redirect(url_for("project_detail", project_id=project_id))
 
     kick_stage_style(project_id)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/project/<project_id>/advance/imagination", methods=["POST"])
+@login_required
+def advance_imagination(project_id: str):
+    """User approved the Director's Vision — kick Storyboard Engine.
+
+    Pipeline order: Style → Imagination → Storyboard.
+    imagination_packet is already written to the brain by the Imagination Engine.
+    Approval here kicks kick_stage_2 (Storyboard) with the correct overrides.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET status=%s, stage=%s, error=NULL, updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='imagination_review' "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+
+    # Build overrides from context_packet (same pattern as advance_stage_style used to carry)
+    try:
+        with db() as conn:
+            _ibrain = ProjectBrain.load(project_id, conn)
+        _icp = _ibrain.read("context_packet") or {}
+        _isp = _ibrain.read("style_packet") or {}
+    except Exception:
+        _icp = {}
+        _isp = {}
+    _speaker = (_icp.get("speaker") or {}) if isinstance(_icp.get("speaker"), dict) else {}
+    overrides = {
+        "speaker_name": _speaker.get("name"),
+        "location":     _icp.get("location_dna"),
+        "era":          (_icp.get("world_assumptions") or {}).get("era"),
+        "style_preset": _isp.get("preset") or "cinematic_natural",
+    }
+    name = project.get("name") or "Qaivid_Project"
+    kick_stage_2(project_id, name, overrides)
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -2677,7 +2731,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
     #   Invalidated by anything at or before references_review (materializer
     #   re-runs at the start of each refs job, so stale data must be cleared).
     REDO_CLEARS_BRIEF        = {"audio_review", "context_review", "narrative_review",
-                                "style_review", "storyboard_review",
+                                "style_review", "imagination_review", "storyboard_review",
                                 "creative_brief_review"}
     REDO_CLEARS_MATERIALIZER = REDO_CLEARS_BRIEF | {"references_review"}
 
@@ -2895,6 +2949,31 @@ def rerun_from_stage(project_id: str, target_stage: str):
                 (project_id,)
             )
 
+        elif target_stage == "imagination_review":
+            # Imagination is Stage 4.5 — after style, before storyboard.
+            # Clears imagination_packet, storyboard, brief, and everything below.
+            # Style_profile and narrative_packet stay intact.
+            cp.pop("creative_brief", None)
+            cur.execute(
+                "UPDATE projects SET context_packet=%s,"
+                " styled_timeline=NULL, summary=NULL,"
+                " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
+                " stage='imagination_review', status='awaiting_review', error=NULL, updated_at=NOW()"
+                " WHERE id=%s",
+                (Json(cp), project_id),
+            )
+            cur.execute("DELETE FROM refs WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM shot_assets WHERE project_id=%s", (project_id,))
+            cur.execute("DELETE FROM video_assets WHERE project_id=%s", (project_id,))
+            cur.execute(
+                "UPDATE characters SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+            cur.execute(
+                "UPDATE locations SET ref_image_url=NULL, ref_status=NULL WHERE project_id=%s",
+                (project_id,)
+            )
+
         elif target_stage == "creative_brief_review":
             # Storyboard now runs BEFORE brief in the new canonical order.
             # styled_timeline and storyboard_packet are upstream inputs to the
@@ -3066,6 +3145,9 @@ def rerun_from_stage(project_id: str, target_stage: str):
             f"Pipeline reset to {label}. Pick your visual style and continue.",
             "info",
         )
+    elif target_stage == "imagination_review":
+        kick_stage_imagination(project_id)
+        flash(f"Re-running the Director's Vision. You'll land on {label} when ready.", "info")
     elif target_stage == "context_review":
         kick_stage_1(project_id)
         flash(f"Context Engine is re-running. You'll land on {label} when ready.", "info")

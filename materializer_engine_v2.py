@@ -147,6 +147,7 @@ def _build_user_prompt(
     style_packet: dict,
     project_settings: dict,
     schema: dict,
+    imagination_packet: Optional[dict] = None,
 ) -> str:
     # ── Creative Brief: the primary driver ──
     brief_scenes = list(brief_packet.get("scenes") or [])
@@ -281,6 +282,16 @@ def _build_user_prompt(
         sections.append(f"Variation preference: {variation_pref}")
     if output_constraints:
         sections.append(f"Output constraints: {output_constraints}")
+
+    if imagination_packet:
+        try:
+            from imagination_engine import format_imagination_for_prompt
+            _img_block = format_imagination_for_prompt(imagination_packet)
+            if _img_block:
+                sections.append("=== DIRECTOR'S IMAGINATION (Stage 4.5 — use visual concept + motifs to ground identity rules) ===")
+                sections.append(_img_block)
+        except Exception:
+            pass
 
     sections.append("=== OUTPUT SCHEMA ===")
     sections.append(
@@ -489,11 +500,15 @@ async def run_materializer(
     Returns the materializer_packet dict.
     """
     # ── Read all brain namespaces ──────────────────────────────────────────
-    brief_packet     = dict(brain.read("creative_briefs") or {})
-    context_packet   = dict(brain.read("context_packet") or {})
-    narrative_packet = dict(brain.read("narrative_packet") or {})
-    style_packet     = dict(brain.read("style_packet") or {})
-    project_settings = dict(brain.read("project_settings") or {})
+    brief_packet        = dict(brain.read("creative_briefs") or {})
+    context_packet      = dict(brain.read("context_packet") or {})
+    narrative_packet    = dict(brain.read("narrative_packet") or {})
+    style_packet        = dict(brain.read("style_packet") or {})
+    project_settings    = dict(brain.read("project_settings") or {})
+    try:
+        imagination_packet = dict(brain.read("imagination_packet") or {}) if brain.is_populated("imagination_packet") else {}
+    except Exception:
+        imagination_packet = {}
 
     # ── Call LLM for the rich identity bible ─────────────────────────────
     mat_packet: Optional[dict] = None
@@ -505,6 +520,7 @@ async def run_materializer(
             style_packet=style_packet,
             project_settings=project_settings,
             schema=_MATERIALIZER_SCHEMA,
+            imagination_packet=imagination_packet,
         )
         llm_result = await _call_llm(user_prompt)
         mat_packet = _validate_and_fix(llm_result)

@@ -126,6 +126,11 @@ def _system_prompt() -> str:
         "thing that must stay the same even if the LLM picks differently on "
         "a re-run (e.g. 'protagonist remains the same person', 'the river is "
         "always present as a motif').\n\n"
+        "7. If a DIRECTOR'S IMAGINATION block is present in the user message:\n"
+        "   - It is the PRIMARY creative directive for the whole video.\n"
+        "   - The visual_concept sets the overarching tone you must serve.\n"
+        "   - Listed motifs MUST appear in motif_usage across scenes.\n"
+        "   - Director's notes set constraints that override defaults.\n\n"
         "FORBIDDEN:\n"
         "- Do NOT define exact character appearance.\n"
         "- Do NOT define exact props — only general key_elements.\n"
@@ -243,15 +248,25 @@ def _format_input_structure_light(input_structure: Dict[str, Any]) -> str:
 
 
 def _user_prompt(
-    scenes:           List[Dict[str, Any]],
-    narrative_packet: Dict[str, Any],
-    context_packet:   Dict[str, Any],
-    style_profile:    Dict[str, Any],
-    input_structure:  Dict[str, Any],
-    project_settings: Dict[str, Any],
+    scenes:             List[Dict[str, Any]],
+    narrative_packet:   Dict[str, Any],
+    context_packet:     Dict[str, Any],
+    style_profile:      Dict[str, Any],
+    input_structure:    Dict[str, Any],
+    project_settings:   Dict[str, Any],
+    imagination_packet: Optional[Dict[str, Any]] = None,
 ) -> str:
+    imagination_block = ""
+    if imagination_packet:
+        try:
+            from imagination_engine import format_imagination_for_prompt
+            imagination_block = format_imagination_for_prompt(imagination_packet) or ""
+        except Exception:
+            logger.exception("BriefV2: failed to format imagination_packet")
+
     return (
-        "STORYBOARD SCENES (Stage 5 — possibilities, with valid_realizations):\n"
+        ("\n\n" + imagination_block if imagination_block else "")
+        + "\n\nSTORYBOARD SCENES (Stage 5 — possibilities, with valid_realizations):\n"
         + _format_scenes(scenes)
         + "\n\nNARRATIVE PACKET (Stage 3 — story logic to honor):\n"
         + _format_narrative(narrative_packet)
@@ -412,13 +427,14 @@ def _fallback(scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Public API
 # ────────────────────────────────────────────────────────────────────────
 async def generate_creative_brief_v2(
-    api_key:           str,
-    storyboard_scenes: List[Dict[str, Any]],
-    narrative_packet:  Dict[str, Any],
-    context_packet:    Dict[str, Any],
-    style_profile:     Optional[Dict[str, Any]] = None,
-    input_structure:   Optional[Dict[str, Any]] = None,
-    project_settings:  Optional[Dict[str, Any]] = None,
+    api_key:             str,
+    storyboard_scenes:   List[Dict[str, Any]],
+    narrative_packet:    Dict[str, Any],
+    context_packet:      Dict[str, Any],
+    style_profile:       Optional[Dict[str, Any]] = None,
+    input_structure:     Optional[Dict[str, Any]] = None,
+    project_settings:    Optional[Dict[str, Any]] = None,
+    imagination_packet:  Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Generate the v2 Creative Brief — one locked direction per storyboard scene.
 
@@ -448,6 +464,7 @@ async def generate_creative_brief_v2(
                     style_profile,
                     input_structure,
                     project_settings,
+                    imagination_packet=imagination_packet or {},
                 )},
             ],
         )
