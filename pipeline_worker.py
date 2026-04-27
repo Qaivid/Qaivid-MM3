@@ -1064,6 +1064,36 @@ def _render_shot(project_id: str, shot: dict,
                 brain_char = _bc_idx.get(character["id"])
             if location and isinstance(location.get("id"), int):
                 brain_loc = _bl_idx.get(location["id"])
+
+            # ── Gender/identity fallback for human-framed shots ──────────────
+            # When no character DB FK is linked (expression_mode may be
+            # "environment" while shot_type is still "close_up"), the subject
+            # phrase degrades to "a person" — giving the image model a random
+            # gender on every regeneration.  If the shot type is human-focused
+            # we inject the primary brain character as a description-only
+            # fallback so the prompt pins gender/ethnicity from identity_seed.
+            # The ref image routing is NOT changed here — this only affects the
+            # text prompt's "Subject:" line.
+            _human_shot_types = {
+                "close_up", "extreme_close_up", "head_shoulders",
+                "medium_shot", "full_body", "movement",
+            }
+            if brain_char is None and _bc_list:
+                _st = (shot.get("shot_type") or "").strip().lower()
+                if _st in _human_shot_types:
+                    _primary_bc = next(
+                        (b for b in _bc_list
+                         if isinstance(b, dict) and b.get("identity_seed")),
+                        None,
+                    )
+                    if _primary_bc:
+                        brain_char = _primary_bc
+                        logger.debug(
+                            "_render_shot: shot %s (shot_type=%s) has no character "
+                            "FK — using primary brain char '%s' as subject fallback",
+                            idx, _st, _primary_bc.get("archetype", "?"),
+                        )
+
             # Emotional mode modifier for prompt composition
             _emp = _shot_brain.read("emotional_mode_packet") or {}
             shot_emotional_modifier = (_emp.get("cinematic_modifier") or "").strip()
