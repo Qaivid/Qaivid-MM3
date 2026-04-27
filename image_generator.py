@@ -543,7 +543,8 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
         "prompt": prompt[:4000],
         "size": size,
         "n": 1,
-        "output_format": "b64_json",
+        "output_format": "png",
+        "response_format": "b64_json",
     }
     if quality:
         payload["quality"] = quality
@@ -561,10 +562,16 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
             f"{model} generate failed {resp.status_code}: {resp.text[:400]}"
         )
     data = resp.json()
-    b64 = (data.get("data") or [{}])[0].get("b64_json")
-    if not b64:
-        raise ImageGenerationError(f"{model} returned no image data.")
-    return _b64.b64decode(b64)
+    item = (data.get("data") or [{}])[0]
+    b64 = item.get("b64_json")
+    if b64:
+        return _b64.b64decode(b64)
+    url = item.get("url")
+    if url:
+        dl = requests.get(url, timeout=60)
+        dl.raise_for_status()
+        return dl.content
+    raise ImageGenerationError(f"{model} returned no image data.")
 
 
 def _download_image_bytes(url: str) -> bytes:
@@ -639,7 +646,8 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         ("prompt",          (None, prompt[:4000])),
         ("size",            (None, size)),
         ("n",               (None, "1")),
-        ("output_format",   (None, "b64_json")),
+        ("output_format",   (None, "png")),
+        ("response_format", (None, "b64_json")),
     ]
     if quality:
         fields.append(("quality", (None, quality)))
@@ -659,10 +667,16 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
             f"{model} edit failed {resp.status_code}: {resp.text[:400]}"
         )
     data = resp.json()
-    b64 = (data.get("data") or [{}])[0].get("b64_json")
-    if not b64:
-        raise ImageGenerationError(f"{model} edit returned no image data.")
-    return _b64.b64decode(b64)
+    item = (data.get("data") or [{}])[0]
+    b64 = item.get("b64_json")
+    if b64:
+        return _b64.b64decode(b64)
+    url = item.get("url")
+    if url:
+        dl = requests.get(url, timeout=60)
+        dl.raise_for_status()
+        return dl.content
+    raise ImageGenerationError(f"{model} edit returned no image data.")
 
 
 def _save_bytes_to_r2(img_bytes: bytes, r2_key: str) -> str:
