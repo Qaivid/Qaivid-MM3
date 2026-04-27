@@ -1449,10 +1449,19 @@ def project_detail(project_id: str):
             # see (NOT the legacy 4000-char styled_visual_prompt that was
             # seeded into shot_assets.prompt before the composer existed).
             if a.get("prompt_user_edited") and a.get("prompt"):
+                # User manually wrote/edited this prompt — show it verbatim.
+                p["prompt"] = a["prompt"]
+            elif a.get("prompt"):
+                # Frame 0 still prompt was derived by GPT-4.1 from the video
+                # prompt and stored here by _store_frame0_prompt.  Show it
+                # so the user sees exactly what gpt-image-2 will receive.
                 p["prompt"] = a["prompt"]
             else:
+                # No stored prompt yet — show the real-time composed preview
+                # so pending shots display something useful.
                 p["prompt"] = (preview_by_idx.get(a["shot_index"])
-                               or a.get("prompt") or p.get("prompt") or "")
+                               or p.get("prompt") or "")
+            p["motion_prompt"] = a.get("motion_prompt") or ""
             p["source"] = a.get("source")
             shots.append(p)
 

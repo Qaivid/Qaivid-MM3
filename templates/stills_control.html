@@ -368,6 +368,14 @@
   padding: 8px 12px; background: #0a0a14;
   border-left: 2px solid #2a2a40; border-radius: 0 6px 6px 0;
 }
+.sc-det-video-prompt {
+  padding: 10px 12px; background: #0a0e08;
+  border-left: 2px solid #3a5030; border-radius: 0 6px 6px 0;
+}
+.sc-det-video-prompt-text {
+  font-size: 11px; color: #7a9060; line-height: 1.55;
+  font-family: 'JetBrains Mono', monospace; white-space: pre-wrap;
+}
 .sc-det-err {
   font-size: 11px; color: #ff6b6b; background: rgba(255,107,107,.08);
   border: 1px solid rgba(255,107,107,.2); border-radius: 6px; padding: 6px 10px;
@@ -496,15 +504,16 @@
   const shotData = {};
   {% for shot in shots %}
   shotData[{{ shot.shot_index }}] = {
-    idx:       {{ shot.shot_index }},
-    status:    {{ shot.status | tojson }},
-    url:       {{ (shot.url or '') | tojson }},
-    prompt:    {{ (shot.prompt or '') | tojson }},
-    meaning:   {{ (shot.meaning or '') | tojson }},
-    error:     {{ (shot.error or '') | tojson }},
-    startTime: {{ (shot.start_time or 0) | tojson }},
-    duration:  {{ (shot.duration or 0) | tojson }},
-    source:    {{ (shot.source or '') | tojson }},
+    idx:          {{ shot.shot_index }},
+    status:       {{ shot.status | tojson }},
+    url:          {{ (shot.url or '') | tojson }},
+    prompt:       {{ (shot.prompt or '') | tojson }},
+    motionPrompt: {{ (shot.motion_prompt or '') | tojson }},
+    meaning:      {{ (shot.meaning or '') | tojson }},
+    error:        {{ (shot.error or '') | tojson }},
+    startTime:    {{ (shot.start_time or 0) | tojson }},
+    duration:     {{ (shot.duration or 0) | tojson }},
+    source:       {{ (shot.source or '') | tojson }},
   };
   {% endfor %}
 
@@ -577,8 +586,18 @@
           ? `<div class="sc-det-err" id="sc-err-${idx}">${escHtml(shot.error.slice(0, 200))}</div>`
           : `<div id="sc-err-${idx}" style="display:none;" class="sc-det-err"></div>`}
 
+        ${shot.motionPrompt ? `
+        <div class="sc-det-video-prompt">
+          <span class="sc-det-prompt-label" style="color:#7a8060;">
+            ▶ Video prompt (WAN 2.6 — source of truth)
+          </span>
+          <div class="sc-det-video-prompt-text">${escHtml(shot.motionPrompt)}</div>
+        </div>` : ''}
+
         <div>
-          <label class="sc-det-prompt-label">Prompt — edit before generating</label>
+          <label class="sc-det-prompt-label">
+            Frame 0 still prompt — derived from video prompt above, sent to gpt-image-2
+          </label>
           <textarea class="sc-det-prompt-ta" id="sc-prompt-${idx}"
                     rows="5" maxlength="4000"
                     onblur="scSavePrompt(${idx}, this.value)">${escHtml(shot.prompt || '')}</textarea>
