@@ -333,10 +333,33 @@ def _environment_clause(
     return _trim(raw, 350)
 
 
+_SHOT_TYPE_FRAMING: dict[str, str] = {
+    "close_up":          "extreme tight framing on face, eyes fill frame",
+    "extreme_close_up":  "ultra-tight framing, eyes and lips only, eyelashes visible",
+    "head_shoulders":    "head and shoulders framing, face clearly visible",
+    "medium_shot":       "medium 3/4 body framing, waist to head visible",
+    "full_body":         "full figure framing, head to toe",
+    "movement":          "full-body dynamic movement framing, fluid motion captured",
+    "wide_shot":         "wide establishing shot, full environment visible",
+    "drone":             "aerial overhead perspective, top-down cinematic view",
+    "insert":            "macro close-up of object or detail, shallow depth of field",
+    "memory_fragment":   "soft impressionistic framing, slightly defocused, dreamlike",
+}
+
+
 def _framing_clause(shot: dict) -> str:
+    shot_type = (shot.get("shot_type") or "").strip().lower()
+    st_phrase = _SHOT_TYPE_FRAMING.get(shot_type, "")
+
     fd = (shot.get("framing_directive") or "").strip()
+
+    if st_phrase and fd:
+        return _trim(f"{st_phrase}; {fd}", 160)
+    if st_phrase:
+        return st_phrase
     if fd:
         return _trim(fd, 140)
+
     cine = shot.get("cinematography") or {}
     if isinstance(cine, dict):
         lens = (cine.get("lens") or "").strip()

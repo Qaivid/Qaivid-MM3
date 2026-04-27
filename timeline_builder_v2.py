@@ -27,6 +27,8 @@ import logging
 import math
 from typing import Any, Dict, List, Optional
 
+from shot_variety_engine import ShotVarietyEngine
+
 logger = logging.getLogger(__name__)
 
 # ── Pacing defaults (mirrors RhythmicAssemblyEngine constants) ────────────────
@@ -623,6 +625,25 @@ def build_timeline_from_brief(
         len(raw_shots), len(scenes), any_lyric_anchor, audio_duration, bpm,
     )
 
+    # ── Shot Variety Engine — stamp each shot with its director-spec shot_type ─
+    try:
+        variety_engine = ShotVarietyEngine(emotional_mode_packet=emp)
+        raw_shots = variety_engine.apply_variety(raw_shots)
+        _dist: Dict[str, int] = {}
+        for _s in raw_shots:
+            _t = _s.get("shot_type") or "unknown"
+            _dist[_t] = _dist.get(_t, 0) + 1
+        logger.info(
+            "TimelineBuilderV2: shot variety applied (mode=%s) — %s",
+            emp.get("primary_mode") or "base",
+            ", ".join(f"{k}×{v}" for k, v in sorted(_dist.items())),
+        )
+    except Exception:
+        logger.exception(
+            "TimelineBuilderV2: ShotVarietyEngine failed (non-fatal) — "
+            "shot_type left as None for all shots."
+        )
+
     # ── Style grading pass ─────────────────────────────────────────────────
     styled_timeline = _apply_style_grading(raw_shots, style_packet)
 
@@ -639,6 +660,8 @@ def build_timeline_from_brief(
         "movement_type", "motion_density",
         # Top-level timeline decisions
         "chosen_direction", "timeline_mode",
+        # Shot Variety Engine — cinematic shot distribution
+        "shot_type", "variety_applied",
     )
     raw_by_idx = {r.get("shot_index"): r for r in raw_shots}
     for styled in styled_timeline:
