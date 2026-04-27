@@ -544,7 +544,6 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
         "size": size,
         "n": 1,
         "output_format": "png",
-        "response_format": "b64_json",
     }
     if quality:
         payload["quality"] = quality
@@ -566,9 +565,9 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     b64 = item.get("b64_json")
     if b64:
         return _b64.b64decode(b64)
-    url = item.get("url")
-    if url:
-        dl = requests.get(url, timeout=60)
+    img_url = item.get("url")
+    if img_url:
+        dl = requests.get(img_url, timeout=60)
         dl.raise_for_status()
         return dl.content
     raise ImageGenerationError(f"{model} returned no image data.")
@@ -647,7 +646,6 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         ("size",            (None, size)),
         ("n",               (None, "1")),
         ("output_format",   (None, "png")),
-        ("response_format", (None, "b64_json")),
     ]
     if quality:
         fields.append(("quality", (None, quality)))
