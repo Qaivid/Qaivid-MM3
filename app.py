@@ -3405,7 +3405,8 @@ def references_approve(project_id: str):
             bad_chars = (cur.fetchone() or {}).get("n", 0) or 0
             cur.execute(
                 "SELECT COUNT(*) AS n FROM locations "
-                " WHERE project_id=%s AND ref_status <> 'ready'",
+                " WHERE project_id=%s AND ref_status <> 'ready'"
+                "   AND (entity_type IS NULL OR entity_type <> 'world_dna')",
                 (project_id,),
             )
             bad_locs = (cur.fetchone() or {}).get("n", 0) or 0
