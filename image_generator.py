@@ -45,24 +45,24 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 
 # ── OpenAI GPT Image 2.0 mode constants ──────────────────────────────────────
 # GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-2.
-# Three quality tiers (landscape 1920×1080 — native cinematic widescreen):
+# Three quality tiers (landscape 1536×1024 — max landscape the API supports):
 #   gpt_low    — $0.01/image  — fast testing
 #   gpt_medium — $0.04/image  — recommended
 #   gpt_high   — $0.16/image  — highest fidelity
 # Portrait (character refs): 1024×1536.
-# gpt-image-2 supports 1920x1080 landscape natively.
+# OpenAI images API max landscape is 1536x1024 (3:2) — 1920x1080 is NOT supported.
 # Supports image-to-image and multi-image references — face identity +
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
 OPENAI_IMAGE_MODEL = "gpt-image-2"
-# gpt-image-2 supported landscape: 1920x1080 (native cinematic widescreen).
-OPENAI_SIZE_LANDSCAPE = "1920x1080"
+# OpenAI images API valid landscape sizes: 1536x1024 or auto.
+OPENAI_SIZE_LANDSCAPE = "1536x1024"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 # ── OpenAI GPT Image 1.5 mode constants ──────────────────────────────────────
 # gpt_15_low mode — fallback for when gpt-image-2 business verification is pending.
 # gpt-image-1.5 supports img2img editing and does not require business verification.
-# Max landscape: 1536x1024 (not 1920x1080). Portrait: 1024x1536.
+# Landscape: 1536x1024 (same API max as gpt-image-2). Portrait: 1024x1536.
 # Cost: ~$0.013/image at low quality.
 OPENAI_IMAGE_MODEL_15 = "gpt-image-1.5"
 OPENAI_SIZE_LANDSCAPE_15 = "1536x1024"
