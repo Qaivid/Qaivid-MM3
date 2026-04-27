@@ -1011,12 +1011,15 @@ def _resolve_user_edited_flag(project_id: str, shot_index) -> bool:
 
 
 def _derive_frame0_prompt(video_prompt: str, shot: dict) -> str:
-    """Call GPT-4o-mini to derive a still image prompt that IS Frame 0 of the video.
+    """Call GPT-4o to derive a still image prompt that IS Frame 0 of the video.
 
-    The video prompt is the source of truth.  The still image prompt is
-    derived from it — a frozen snapshot of the exact opening moment, before
-    any motion begins.  This guarantees tight coupling: WAN receives a video
-    prompt, and gpt-image-2 receives the Frame 0 of that same video.
+    Uses the exact user-validated prompt format:
+        "create a Frame 0 still image prompt for this scene: {video_prompt}"
+
+    The video prompt is the source of truth.  GPT-4o reads it and writes a
+    frozen-frame description of the opening moment — all visual detail, no
+    motion — which is then sent to gpt-image-2 alongside the character
+    reference image to guarantee continuity across all shots.
 
     Returns an empty string on any failure so the pipeline falls back to the
     normal programmatic prompt builder.
@@ -1033,54 +1036,71 @@ def _derive_frame0_prompt(video_prompt: str, shot: dict) -> str:
 
         _client = _OpenAI(api_key=_api_key)
 
-        _system = (
-            "You are a visual prompt engineer for AI image generation. "
-            "Your task: given a video clip prompt for the WAN 2.6 AI video model, "
-            "write the still image prompt for FRAME 0 — the exact frozen moment at "
-            "the very start of the video, before any motion or animation begins.\n\n"
-            "Rules:\n"
-            "1. Describe ONLY what is visible and static in the first frame.\n"
-            "2. Convert motion verbs into frozen starting positions "
-            "(e.g. 'walks forward' → 'standing, weight slightly forward, mid-step').\n"
-            "3. Keep ALL character details: appearance, wardrobe, hair, skin tone, "
-            "expression, body posture, eyeline.\n"
-            "4. Keep ALL environment details: setting, background elements, lighting "
-            "direction and quality, atmosphere, depth cues.\n"
-            "5. Keep ALL cinematic details: camera angle, focal length feel, "
-            "color grade, film stock or digital look.\n"
-            "6. Do NOT mention movement, animation, camera motion, or future action.\n"
-            "7. Write 120-180 words. Write ONLY the image prompt — no preamble, "
-            "no explanation, no labels."
-        )
-
-        _user = (
-            f"Video clip prompt:\n{video_prompt.strip()}\n\n"
-            "Write the Frame 0 still image prompt:"
+        # Exact prompt format validated by the user in manual ChatGPT tests.
+        _user_msg = (
+            f"create a Frame 0 still image prompt for this scene:\n\n"
+            f"{video_prompt.strip()}"
         )
 
         _resp = _client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": _system},
-                {"role": "user",   "content": _user},
+                {"role": "user", "content": _user_msg},
             ],
             temperature=0.3,
-            max_tokens=350,
+            max_tokens=400,
         )
         _derived = (_resp.choices[0].message.content or "").strip()
         if _derived:
-            logger.debug(
-                "_derive_frame0_prompt: derived %d-char still prompt from video prompt",
+            logger.info(
+                "_derive_frame0_prompt: GPT-4o derived %d-char Frame 0 prompt "
+                "for shot=%s: %s...",
                 len(_derived),
+                shot.get("shot_index") or shot.get("timeline_index"),
+                _derived[:80],
             )
         return _derived
     except Exception:
         logger.debug(
-            "_derive_frame0_prompt: GPT call failed (non-fatal); "
+            "_derive_frame0_prompt: GPT-4o call failed (non-fatal); "
             "pipeline will use programmatic prompt builder",
             exc_info=True,
         )
         return ""
+
+
+def _store_frame0_prompt(project_id: str, shot_index: int, frame0_prompt: str) -> None:
+    """Persist the GPT-derived Frame 0 prompt to shot_assets.prompt.
+
+    Only overwrites when the user has NOT manually edited the prompt
+    (prompt_user_edited IS FALSE / NULL).  This ensures the user's
+    manual edits are never overwritten by the auto-derivation.
+
+    The stored prompt is what the UI shows the user at the stills step,
+    and what gets sent to gpt-image-2 alongside the character reference image.
+    """
+    if not frame0_prompt or not frame0_prompt.strip():
+        return
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE shot_assets
+                   SET prompt      = %s,
+                       updated_at  = NOW()
+                 WHERE project_id  = %s
+                   AND shot_index  = %s
+                   AND (prompt_user_edited IS FALSE OR prompt_user_edited IS NULL)
+                """,
+                (frame0_prompt.strip(), project_id, shot_index),
+            )
+            conn.commit()
+    except Exception:
+        logger.debug(
+            "_store_frame0_prompt: DB write failed for project=%s shot=%s (non-fatal)",
+            project_id, shot_index,
+            exc_info=True,
+        )
 
 
 def _render_shot(project_id: str, shot: dict,
@@ -1272,15 +1292,24 @@ def _render_shot(project_id: str, shot: dict,
                 )
             elif computed_video_prompt:
                 # No user edit — derive the still prompt as Frame 0 of the video.
-                # This is the preferred path: video prompt is built first with all
-                # story/brain data, then GPT writes a Frame 0 still from it, so
-                # the still and the video are perfectly coupled by construction.
+                # GPT-4o reads the full video clip prompt and writes a static
+                # Frame 0 description using the exact format validated by the user:
+                #   "create a Frame 0 still image prompt for this scene: [video_prompt]"
+                # The derived prompt is then stored in shot_assets.prompt so the
+                # user can review and edit it in the UI before the still is sent
+                # to gpt-image-2 alongside the character reference image.
                 _frame0 = _derive_frame0_prompt(computed_video_prompt, shot)
                 if _frame0:
                     user_override = _frame0
-                    logger.debug(
-                        "_render_shot: shot=%s using GPT-derived Frame 0 still prompt "
-                        "(%d chars)", idx, len(_frame0),
+                    # Persist the Frame 0 prompt so the UI shows it to the user.
+                    # The reference image (character_ref_url) is already sent to
+                    # gpt-image-2 by generate_shot_still → _openai_edit, guaranteeing
+                    # face continuity across all shots.
+                    _store_frame0_prompt(project_id, idx, _frame0)
+                    logger.info(
+                        "_render_shot: shot=%s Frame 0 prompt stored (%d chars); "
+                        "char_ref=%s will be sent with it to gpt-image-2",
+                        idx, len(_frame0), bool(character_ref_url),
                     )
                 else:
                     logger.debug(
