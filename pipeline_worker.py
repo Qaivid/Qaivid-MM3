@@ -1043,7 +1043,7 @@ def _derive_frame0_prompt(video_prompt: str, shot: dict) -> str:
         )
 
         _resp = _client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1",
             messages=[
                 {"role": "user", "content": _user_msg},
             ],
@@ -1053,7 +1053,7 @@ def _derive_frame0_prompt(video_prompt: str, shot: dict) -> str:
         _derived = (_resp.choices[0].message.content or "").strip()
         if _derived:
             logger.info(
-                "_derive_frame0_prompt: GPT-4o derived %d-char Frame 0 prompt "
+                "_derive_frame0_prompt: GPT-4.1 derived %d-char Frame 0 prompt "
                 "for shot=%s: %s...",
                 len(_derived),
                 shot.get("shot_index") or shot.get("timeline_index"),
