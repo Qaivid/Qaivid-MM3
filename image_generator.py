@@ -54,11 +54,12 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
 OPENAI_IMAGE_MODEL = "gpt-image-2"
-# gpt-image-2 landscape: 1920x1080 (native 16:9 cinematic widescreen).
+# gpt-image-2 landscape: 1920x1088 (≈16:9, nearest height divisible by 16).
 # Portrait: 1024x1536.
+# NOTE: 1920x1080 is rejected by the API — 1080÷16=67.5. Use 1088 (68×16=1088).
 # IMPORTANT: use direct HTTP (not openai SDK) — the SDK's client-side size
-# validation rejects 1920x1080 even though the API accepts it.
-OPENAI_SIZE_LANDSCAPE = "1920x1080"
+# validation rejects non-standard sizes even if the API accepts them.
+OPENAI_SIZE_LANDSCAPE = "1920x1088"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 # ── OpenAI GPT Image 1.5 mode constants ──────────────────────────────────────
