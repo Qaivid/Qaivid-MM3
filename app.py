@@ -2734,6 +2734,8 @@ def rerun_from_stage(project_id: str, target_stage: str):
                                 "style_review", "imagination_review", "storyboard_review",
                                 "creative_brief_review"}
     REDO_CLEARS_MATERIALIZER = REDO_CLEARS_BRIEF | {"references_review"}
+    REDO_CLEARS_IMAGINATION  = {"imagination_review"}
+    REDO_CLEARS_STORYBOARD   = {"imagination_review", "storyboard_review"}
 
     _brain_writes: dict = {}
     if target_stage in REDO_CLEARS_BRIEF:
@@ -2742,6 +2744,10 @@ def rerun_from_stage(project_id: str, target_stage: str):
         _brain_writes["materializer_packet"] = {}
         _brain_writes["character_profile"] = {}
         _brain_writes["location_profile"] = {}
+    if target_stage in REDO_CLEARS_IMAGINATION:
+        _brain_writes["imagination_packet"] = {}
+    if target_stage in REDO_CLEARS_STORYBOARD:
+        _brain_writes["storyboard_packet"] = {}
 
     if _brain_writes:
         try:
