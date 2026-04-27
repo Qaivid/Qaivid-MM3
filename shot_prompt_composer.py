@@ -558,6 +558,17 @@ def compose_image_prompt(
     char_rules_raw   = bc.get("continuity_rules")  or []
     char_rules: list = char_rules_raw if isinstance(char_rules_raw, list) else [str(char_rules_raw)]
 
+    # Scene-specific wardrobe text for this shot's cluster (set by wardrobe_engine
+    # via shot_assets.wardrobe_context → character["wardrobe_override"]).
+    # Passed into _attach_envelope so the continuity cue tells the model exactly
+    # what the reference plate depicts — anchoring face AND outfit together.
+    look_wardrobe: str = ""
+    if character:
+        look_wardrobe = (
+            (character.get("wardrobe_override") or "")
+            or (character.get("wardrobe") or "")
+        ).strip()
+
     # ── 1. User override path ────────────────────────────────────────────────
     if user_override and user_override.strip():
         body = _clean_text(user_override)
@@ -579,6 +590,7 @@ def compose_image_prompt(
             identity_seed=identity_seed,
             archetype=archetype,
             continuity_rules=char_rules or None,
+            look_wardrobe=look_wardrobe,
         )
         _neg_ov = _build_negative(shot, location)
         _avoid_ov = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
@@ -677,6 +689,7 @@ def compose_image_prompt(
         identity_seed=identity_seed,
         archetype=archetype,
         continuity_rules=char_rules or None,
+        look_wardrobe=look_wardrobe,
     )
 
     # Build negative prompt and append vibe avoid terms when present.
@@ -699,12 +712,20 @@ def _attach_envelope(
     identity_seed: str = "",
     archetype: str = "",
     continuity_rules: Optional[list] = None,
+    look_wardrobe: str = "",
 ) -> str:
     """Attach cinematography prefix, continuity cues, and quality boosters.
 
     When brain identity data is supplied (identity_seed, archetype,
     continuity_rules), it is embedded in the continuity cue so the model
     stays anchored even when no reference image is available (FLUX mode).
+
+    look_wardrobe: the scene-specific wardrobe text for this shot's cluster
+        (from wardrobe_engine / shot_assets.wardrobe_context).  When supplied
+        alongside has_character_ref=True the prompt explicitly tells the model
+        what the reference image depicts so it matches both face AND outfit.
+        When has_character_ref=False it functions as a text-only soft lock for
+        the wardrobe even when no plate is available.
     """
     continuity_cues: list[str] = []
 
@@ -715,19 +736,40 @@ def _attach_envelope(
             if archetype:
                 anchor += f" ({archetype})"
             anchor += "."
+        # Face identity comes from the reference image.
+        # Outfit comes from the per-scene wardrobe text — this is always
+        # accurate regardless of whether the ref is a look plate or the
+        # base identity plate.
+        if look_wardrobe:
+            outfit_note = (
+                f" For this scene the character wears: {look_wardrobe}."
+                " Replicate this outfit exactly."
+            )
+        else:
+            outfit_note = (
+                " Clothing and jewelry should match the scene context"
+                " described in the prompt."
+            )
         continuity_cues.append(
             "Match the exact face, complexion, and skin tone of the character "
             "reference image — same identity across all shots."
-            + anchor +
-            " Clothing and jewelry should match the scene context described in the prompt."
+            + anchor
+            + outfit_note
         )
     elif identity_seed:
-        # No ref image (FLUX text-only path): text anchor is all we have.
+        # No ref image: text anchor is all we have.
         anchor = f"Character identity: {identity_seed}"
         if archetype:
             anchor += f" ({archetype})"
         anchor += ". Maintain this appearance consistently across all shots."
+        if look_wardrobe:
+            anchor += f" For this scene the character wears: {look_wardrobe}."
         continuity_cues.append(anchor)
+    elif look_wardrobe:
+        # Wardrobe-only soft lock when no identity seed either.
+        continuity_cues.append(
+            f"Character wears: {look_wardrobe}. Maintain this outfit consistently."
+        )
 
     if has_environment_ref:
         continuity_cues.append(
