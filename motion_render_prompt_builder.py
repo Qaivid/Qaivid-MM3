@@ -227,6 +227,15 @@ class MotionRenderPromptBuilder:
         return [self.build_prompt(e) for e in events]
 
 
+def _pick(shot: Dict, *keys: str) -> str:
+    """Return the first non-empty string value from shot for any of the given keys."""
+    for key in keys:
+        val = (shot.get(key) or "").strip()
+        if val:
+            return val
+    return ""
+
+
 def build_video_clip_prompt(
     shot: Dict,
     *,
@@ -242,18 +251,23 @@ def build_video_clip_prompt(
 ) -> str:
     """Build a brain-aware WAN 2.6 Flash video prompt for a single shot.
 
-    Constructs the prompt strictly from provided brain data — no invented
-    content.  Components (in priority order):
+    Reads timeline fields with full fallback coverage — the timeline builder
+    uses different key names across versions (e.g. chosen_direction vs action,
+    emotional_state vs emotional_micro_state, intensity vs emotional_intensity).
+    All known aliases are checked so no story data is silently dropped.
 
+    Components (in priority order):
+        0. Vibe shot direction (cultural/aesthetic identity)
         1. Subject / identity (identity_seed or shot subject)
-        2. Action (shot action field)
-        3. Environment (shot environment_interaction or location world)
-        4. Lighting (style_packet.lighting_logic)
-        5. Emotion (shot emotional_micro_state)
-        6. Cinematic style hint (style_packet.cinematic_style)
-        7. Motion instruction (spec motion mode scaled by emotional_intensity)
-        8. Continuity rule excerpt (first rule, if present)
-        9. Quality suffix (if budget allows)
+        2. Scene action / direction (chosen_direction → action → visual_prompt excerpt)
+        3. Environment (environment_interaction → environment_type → key_elements)
+        4. Lighting (style_packet.lighting_logic → shot lighting_style)
+        5. Emotion (emotional_micro_state → emotional_state → meaning)
+        6. Atmosphere / meaning (atmosphere_profile → meaning for story weight)
+        7. Cinematic style hint
+        8. Motion instruction (scaled to intensity + philosophy + mode)
+        9. Continuity rule excerpt
+       10. Quality suffix (if budget allows)
 
     The output is always <= max_chars and never truncated mid-sentence.
     """
@@ -269,48 +283,93 @@ def build_video_clip_prompt(
         if clause and _fits(clause):
             chosen.append(clause)
 
-    # 0. Vibe shot direction — injected first so it carries maximum weight.
-    # This is the cultural/aesthetic identity of the entire production.
+    # 0. Vibe shot direction — cultural/aesthetic identity of the production.
     if vibe_shot_direction:
         _add(vibe_shot_direction.strip())
 
-    # 1. Subject / identity
-    subject = (identity_seed or shot.get("subject") or shot.get("action") or "").strip()
+    # 1. Subject / identity — identity_seed is the authoritative physical anchor.
+    subject = (identity_seed or "").strip()
+    if not subject:
+        subject = _pick(shot, "subject", "character_name")
     if subject:
         _add(subject)
 
-    # 2. Action (if distinct from subject)
-    action = (shot.get("action") or "").strip()
+    # 2. Scene action / direction — what is HAPPENING in this shot.
+    # Timeline v2: chosen_direction / _v2_chosen_direction
+    # MM3.1+:      action / shot_event
+    # Fallback:    first 120 chars of visual_prompt (contains the scene sentence)
+    action = _pick(shot,
+                   "chosen_direction", "_v2_chosen_direction",
+                   "action", "shot_event")
+    if not action:
+        vp = (shot.get("visual_prompt") or "").strip()
+        if vp:
+            # Take only the first sentence — avoids lyric fragments / noise.
+            first = vp.split(".")[0].strip()
+            if len(first) > 20:
+                action = first[:120]
     if action and action != subject:
         _add(action)
 
-    # 3. Environment
-    env = (shot.get("environment_interaction") or shot.get("environment") or "").strip()
+    # 3. Environment — setting / physical space.
+    # Timeline v2: environment_type (str), key_elements (list)
+    # MM3.1+:      environment_interaction, environment
+    env = _pick(shot, "environment_interaction", "environment",
+                "environment_type")
+    if not env:
+        # Build from environment_profile dict
+        ep = shot.get("environment_profile") or {}
+        env = (ep.get("environment_type") or "").strip()
     if env:
         _add(env)
 
-    # 4. Lighting
-    if lighting_logic:
-        _add(lighting_logic.strip())
+    # Append up to 3 key visual elements as enrichment.
+    key_elems = shot.get("key_elements") or []
+    if isinstance(key_elems, list) and key_elems:
+        elems_str = ", ".join(str(e).strip() for e in key_elems[:3] if e)
+        if elems_str:
+            _add(elems_str)
 
-    # 5. Emotional micro-state
-    emotion = (shot.get("emotional_micro_state") or shot.get("emotional_shift") or "").strip()
+    # 4. Lighting — brain style_packet first, then shot-level field.
+    light = (lighting_logic or "").strip() or _pick(shot, "lighting_style", "lighting_condition")
+    if light:
+        _add(light)
+
+    # 5. Emotional state / micro-state.
+    # MM3.1+:      emotional_micro_state, emotional_shift
+    # Timeline v2: emotional_state, emotional_tone
+    emotion = _pick(shot,
+                    "emotional_micro_state", "emotional_shift",
+                    "emotional_state", "emotional_tone")
     if emotion:
         _add(emotion)
 
-    # 6. Cinematic style hint (brief)
-    if cinematic_style:
-        hint = cinematic_style.strip()
-        _add(hint)
+    # 6. Atmosphere / story meaning — gives WAN the narrative weight of the shot.
+    # Trimmed to 80 chars so it doesn't eat the whole budget.
+    meaning = _pick(shot, "atmosphere_profile", "meaning")
+    if meaning and len(meaning) > 80:
+        meaning = meaning[:80].rsplit(" ", 1)[0]
+    if meaning:
+        _add(meaning)
 
-    # 7. Motion instruction — scaled to emotional_intensity + motion_philosophy + mode
-    raw_intensity = shot.get("emotional_intensity") or "medium"
+    # 7. Cinematic style hint (brief).
+    if cinematic_style:
+        _add(cinematic_style.strip())
+
+    # 8. Motion instruction — scaled to emotional_intensity + motion_philosophy + mode.
+    # Timeline v2 uses "intensity" (float 0–1); MM3.1 uses "emotional_intensity".
+    raw_intensity = (
+        shot.get("emotional_intensity")
+        or shot.get("intensity")
+        or shot.get("audio_intensity")
+        or "medium"
+    )
     intensity_f = _intensity_float(raw_intensity)
     motion_clause = _motion_mode_for_intensity(intensity_f, motion_philosophy, emotional_mode_id)
     if motion_clause:
         _add(motion_clause)
 
-    # 8. First continuity rule (brief excerpt — strictly from brain)
+    # 9. First continuity rule (brief excerpt — strictly from brain).
     rules = continuity_rules or []
     if rules:
         rule = str(rules[0]).strip()
@@ -319,13 +378,16 @@ def build_video_clip_prompt(
         if rule:
             _add(rule)
 
-    # 9. Vibe avoid — compact negative clause appended only when budget allows.
-    # WAN 2.6 does not support a separate negative prompt field; the avoid list
-    # must live in the positive prompt as an explicit "avoid:" directive.
+    # 10. Vibe avoid — compact negative clause.
+    # WAN 2.6 has no negative prompt field; avoid terms go in the positive prompt.
     _avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
     if _avoid_items:
-        _avoid_clause = "avoid: " + ", ".join(_avoid_items[:4])  # cap at 4 terms
+        _avoid_clause = "avoid: " + ", ".join(_avoid_items[:4])
         _add(_avoid_clause)
+
+    # Quality suffix — appended last only if budget allows.
+    if _fits(_QUALITY_SUFFIX):
+        chosen.append(_QUALITY_SUFFIX)
 
     prompt = ", ".join(chosen)
     return prompt.strip()
