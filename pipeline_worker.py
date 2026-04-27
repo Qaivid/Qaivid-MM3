@@ -1112,6 +1112,75 @@ def _render_shot(project_id: str, shot: dict,
                 project_id, idx,
             )
 
+        # ── Video-ready start frame: compute video action + clip prompt ───
+        # The still image IS frame 0 of the video. We compute the video
+        # action (what WAN will animate) at stills time so:
+        #   1. The still prompt embeds a "static opening frame" directive
+        #      aligned with the video action — guaranteeing the still is
+        #      composed as a frame WAN can flow from naturally.
+        #   2. The computed video clip prompt is stored in shot_assets
+        #      immediately, so the video render stage uses a prompt that
+        #      was locked at the same moment as the still it describes.
+        shot_video_action: str = ""
+        try:
+            from motion_render_prompt_builder import build_video_clip_prompt as _bvcp
+
+            # Extract the scene action using the same fallback chain as
+            # build_video_clip_prompt so both prompts are sourced identically.
+            _se = shot.get("shot_event")
+            shot_video_action = (
+                shot.get("chosen_direction")
+                or shot.get("_v2_chosen_direction")
+                or shot.get("action")
+                or (_se if isinstance(_se, str) else "")
+                or ""
+            ).strip()
+
+            # Build the full brain-aware video clip prompt.
+            _identity_seed_v = (brain_char or {}).get("identity_seed") or None
+            _emp_vid = _shot_brain.read("emotional_mode_packet") if _shot_brain and _shot_brain.is_populated("emotional_mode_packet") else {}
+            _narrative_vid = _shot_brain.read("narrative_packet") if _shot_brain else {}
+            _style_vid = _shot_brain.read("style_packet") if _shot_brain else {}
+            _vibe_dir_vid = str((_style_vid or {}).get("vibe_shot_direction") or "").strip()
+            _vibe_av_vid = [str(a) for a in ((_style_vid or {}).get("vibe_avoid") or []) if a]
+            _lighting_vid = str((_style_vid or {}).get("lighting_logic") or "").strip() or None
+            _cine_vid = str(((_style_vid or {}).get("cinematic") or {}).get("look") or "").strip() or None
+            _motion_phi = str((_narrative_vid or {}).get("motion_philosophy") or "mixed").strip()
+            _emo_mode_id = str((_emp_vid or {}).get("primary_mode") or "").strip()
+
+            _continuity_vid: Optional[List[str]] = None
+            if _shot_brain:
+                _mp_vid = _shot_brain.read("materializer_packet") or {}
+                _cr_vid = _mp_vid.get("continuity_rules") or []
+                _continuity_vid = [str(r) for r in _cr_vid] if _cr_vid else None
+
+            computed_video_prompt = _bvcp(
+                shot,
+                motion_philosophy=_motion_phi,
+                identity_seed=_identity_seed_v,
+                cinematic_style=_cine_vid,
+                lighting_logic=_lighting_vid,
+                continuity_rules=_continuity_vid,
+                emotional_mode_id=_emo_mode_id,
+                vibe_shot_direction=_vibe_dir_vid,
+                vibe_avoid=_vibe_av_vid,
+            )
+            if computed_video_prompt:
+                # Lock the video prompt now — store it alongside the still
+                # so the video render stage uses the prompt that was paired
+                # with this exact still image at generation time.
+                _update_shot(project_id, idx, "rendering",
+                             motion_prompt=computed_video_prompt[:400])
+                logger.debug(
+                    "_render_shot: locked video prompt for shot=%s (%d chars): %s...",
+                    idx, len(computed_video_prompt), computed_video_prompt[:80],
+                )
+        except Exception:
+            logger.debug(
+                "_render_shot: video action / prompt computation failed for "
+                "project=%s shot=%s (non-fatal)", project_id, idx,
+            )
+
         # ── User-edited prompt override ──────────────────────────────────
         user_override = None
         try:
@@ -1137,6 +1206,7 @@ def _render_shot(project_id: str, shot: dict,
                 emotional_mode_modifier=shot_emotional_modifier,
                 vibe_shot_direction=shot_vibe_shot_dir,
                 vibe_avoid=shot_vibe_avoid,
+                video_action=shot_video_action,
             )
             _update_shot(project_id, idx, "ready", file_path=url)
         except Exception as exc:

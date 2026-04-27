@@ -386,7 +386,13 @@ def _meaning_sentence(shot: dict) -> str:
 
 
 def _shot_event_lead_sentence(shot: dict) -> str:
-    """Prefer a concrete event/action sentence over a generic mood sentence."""
+    """Prefer a concrete event/action sentence over a generic mood sentence.
+
+    Reads MM3.1 shot_event fields first, then falls back to top-level
+    timeline-v2 direction fields (chosen_direction, _v2_chosen_direction,
+    action) so the scene description always reaches the image model even
+    when no shot_event block exists.
+    """
     event = _event_payload(shot)
     action = _clean_text(event.get("action") or event.get("subject_action"))
     trigger = _clean_text(event.get("trigger") or event.get("trigger_event"))
@@ -404,9 +410,21 @@ def _shot_event_lead_sentence(shot: dict) -> str:
     elif contrast:
         parts.append(f"carrying the tension of {contrast.rstrip('.')}")
 
-    if not parts:
-        return ""
-    return _trim(", ".join(parts), 220)
+    if parts:
+        return _trim(", ".join(parts), 220)
+
+    # Fallback: timeline v2 stores the scene direction in top-level fields.
+    # chosen_direction is the primary scene description — use it as the lead.
+    direction = _clean_text(
+        shot.get("chosen_direction")
+        or shot.get("_v2_chosen_direction")
+        or shot.get("action")
+        or ""
+    )
+    if direction:
+        return _trim(direction, 160)
+
+    return ""
 
 
 def _object_interaction_clause(shot: dict) -> str:
@@ -533,6 +551,7 @@ def compose_image_prompt(
     emotional_mode_modifier: str = "",
     vibe_shot_direction: str = "",
     vibe_avoid: Optional[list] = None,
+    video_action: str = "",
 ) -> tuple[str, str]:
     """Compose a tight image prompt and matching negative prompt.
 
@@ -672,6 +691,14 @@ def compose_image_prompt(
 
     body = _inject_verb_fallback(body, shot)
     body = _inject_env_fallback(body, shot)
+
+    # Video-ready start frame anchor — when the caller supplies the video action
+    # (the scene motion that WAN will animate), append a compact directive so
+    # the image model knows this image IS frame 0 and must be composed as the
+    # frozen initial state before that motion begins.
+    if video_action and video_action.strip():
+        _va = _trim(video_action.strip(), 100)
+        body = body.rstrip(". ") + f". Static opening frame; video animates from this: {_va}."
 
     # Prepend emotional mode modifier so it primes the diffusion model's
     # interpretation before all other descriptors (mood-first prompting).

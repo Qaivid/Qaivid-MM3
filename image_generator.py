@@ -1139,6 +1139,7 @@ def generate_shot_still(
     emotional_mode_modifier: str = "",
     vibe_shot_direction: str = "",
     vibe_avoid: Optional[list] = None,
+    video_action: str = "",
 ) -> str:
     """Generate a per-shot still and store it in R2.
 
@@ -1214,6 +1215,7 @@ def generate_shot_still(
         emotional_mode_modifier=emotional_mode_modifier,
         vibe_shot_direction=vibe_shot_direction,
         vibe_avoid=vibe_avoid,
+        video_action=video_action,
     )
 
     if not prompt.strip():
