@@ -568,6 +568,29 @@
 .ref-upload-label.uploading { border-color: #333; color: #444; cursor: default; }
 .ref-upload-status { font-size: 11px; color: #9aa6b2; animation: ref-pulse 1.2s ease-in-out infinite; }
 
+/* ── Generating overlay on ref thumbnails ────────────────────────────── */
+.ref-card-thumb { position: relative; }
+.ref-gen-spinner-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 6px; border-radius: 8px;
+    pointer-events: none;
+}
+.ref-gen-spinner-ring {
+    width: 22px; height: 22px;
+    border: 2.5px solid rgba(212,255,58,0.25);
+    border-top-color: #d4ff3a;
+    border-radius: 50%;
+    animation: ref-spin 0.75s linear infinite;
+}
+.ref-gen-spinner-label {
+    font-size: 9px; color: #d4ff3a;
+    letter-spacing: .04em; white-space: nowrap;
+}
+@keyframes ref-spin { to { transform: rotate(360deg); } }
+
 /* ── Look sub-panels ─────────────────────────────────────────────────── */
 .ref-look-panels {
     border-top: 1px solid #1a1a28;
@@ -716,5 +739,30 @@ function refAutoUpload(input) {
     if (status) status.style.display = 'inline';
     form.submit();
 }
+
+/* ── Generate button: show spinner overlay on card thumbnail ─────────── */
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('form').forEach(function(form) {
+        const genBtn = form.querySelector('.ref-gen-btn');
+        if (!genBtn) return;
+        form.addEventListener('submit', function() {
+            // Find the nearest .ref-card-thumb (could be in a parent card or look panel)
+            const card = form.closest('.ref-card, .ref-look-panel');
+            if (!card) return;
+            const thumb = card.querySelector('.ref-card-thumb, .ref-look-th');
+            if (!thumb) return;
+            // Avoid double-adding
+            if (thumb.querySelector('.ref-gen-spinner-overlay')) return;
+            thumb.style.position = 'relative';
+            const overlay = document.createElement('div');
+            overlay.className = 'ref-gen-spinner-overlay';
+            overlay.innerHTML = '<div class="ref-gen-spinner-ring"></div><span class="ref-gen-spinner-label">Generating…</span>';
+            thumb.appendChild(overlay);
+            // Dim the generate button
+            genBtn.disabled = true;
+            genBtn.textContent = '⏳ Generating…';
+        });
+    });
+});
 </script>
 {% endblock %}
