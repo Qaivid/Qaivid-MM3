@@ -396,7 +396,28 @@ def _fallback() -> dict:
             }
         ],
         "visual_style": "Naturalistic and intimate — close to the subject, honest about the world.",
-        "section_flow": [],
+        "section_flow": [
+            {
+                "section_label": "intro",
+                "mood": "quiet and grounding",
+                "visual_idea": "Establish the world through stillness — a person, a place, a light source.",
+            },
+            {
+                "section_label": "verse",
+                "mood": "reflective and close",
+                "visual_idea": "Intimate coverage — faces, hands, small gestures that carry big feelings.",
+            },
+            {
+                "section_label": "chorus",
+                "mood": "expansive and emotional",
+                "visual_idea": "Open out to wider frames; motion increases; the world around the subject feels larger.",
+            },
+            {
+                "section_label": "outro",
+                "mood": "resolving and honest",
+                "visual_idea": "Return to stillness — the same world we opened on, changed by what has passed.",
+            },
+        ],
         "shot_ideas": [
             "A figure standing still in a doorway, light falling from one side.",
             "Hands touching an object that belongs to another person.",
@@ -477,6 +498,17 @@ def format_imagination_for_prompt(packet: Dict[str, Any]) -> str:
                     f"    • {m.get('name', '')} [{m.get('recurrence', '')}]: "
                     f"{m.get('visual_form', '')} — {m.get('emotional_role', '')}"
                 )
+
+    section_flow = packet.get("section_flow") or []
+    if section_flow:
+        lines.append("  Section Flow (per-section visual direction — apply to matching storyboard sections):")
+        for sf in section_flow:
+            if not isinstance(sf, dict):
+                continue
+            label = sf.get("section_label", "")
+            mood = sf.get("mood", "")
+            idea = sf.get("visual_idea", "")
+            lines.append(f"    [{label}] mood={mood} → {idea}")
 
     shot_ideas = packet.get("shot_ideas") or []
     if shot_ideas:
