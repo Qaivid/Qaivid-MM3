@@ -8,6 +8,7 @@ Returns public R2 URLs.
 """
 from __future__ import annotations
 
+import io
 import logging
 import os
 import time
@@ -15,6 +16,7 @@ import uuid
 
 import boto3
 import requests
+from PIL import Image
 
 import r2_storage
 
@@ -28,6 +30,12 @@ DEFAULT_DURATION        = 5               # seconds — fallback when no duratio
 MAX_DURATION            = 15              # seconds (WAN 2.6 maximum)
 MOTION_PROMPT_MAX_CHARS = 400             # change here when switching models
 POLL_INTERVAL_S         = 4
+
+# WAN 2.6 Flash start-frame target resolution (must match output resolution).
+# The GPT still is 1920x1088 — resizing to 1280x720 avoids any model-side
+# resize/crop and guarantees the first video frame is pixel-perfect.
+_WAN_FRAME_W = 1280
+_WAN_FRAME_H = 720
 VIDEO_TIMEOUT_S         = 360             # 6 min — Flash is faster than standard
 
 
@@ -99,6 +107,89 @@ def _accessible_url(r2_url: str) -> str:
         pass
     logger.info("R2 URL not publicly accessible — generating presigned URL")
     return _presigned_url(r2_url)
+
+
+# ── Start-frame normalisation ─────────────────────────────────────────────────
+
+def _normalize_start_frame(project_id: str, shot_index: int, still_url: str) -> str:
+    """Download *still_url*, resize to WAN 2.6 Flash input resolution, and
+    re-upload to R2 as a JPEG start frame.
+
+    WAN 2.6 Flash outputs 720p (1280×720).  Sending a perfectly sized start
+    frame avoids any model-side resize/crop and guarantees the first video
+    frame matches the still pixel-for-pixel.
+
+    GPT-image-2 stills are 1920×1088 (≈16:9 but not exact 16:9).  After
+    resize the aspect ratio becomes exact 1280×720 16:9.
+
+    The normalised frame is stored once per shot at a stable R2 key so it is
+    reused on re-renders without additional downloads.
+
+    Returns the public CDN URL of the normalised JPEG, or *still_url* on any
+    non-fatal error.
+    """
+    r2_key = f"projects/{project_id}/videos/startframes/shot_{shot_index}_frame.jpg"
+
+    # If already normalised from a previous render, reuse it.
+    try:
+        existing = r2_storage.public_url_for(r2_key)
+        resp = requests.head(existing, timeout=6)
+        if resp.status_code < 400:
+            logger.debug(
+                "_normalize_start_frame: reusing existing frame for project=%s shot=%s",
+                project_id, shot_index,
+            )
+            return existing
+    except Exception:
+        pass  # Not cached — proceed to create it.
+
+    try:
+        # Fetch the still — use a presigned URL if needed so private R2 works.
+        fetch_url = _accessible_url(still_url)
+        resp = requests.get(fetch_url, timeout=60)
+        resp.raise_for_status()
+
+        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+
+        src_w, src_h = img.size
+        target_w, target_h = _WAN_FRAME_W, _WAN_FRAME_H
+        src_ratio = src_w / src_h
+        tgt_ratio = target_w / target_h
+
+        if abs(src_ratio - tgt_ratio) > 0.02:
+            # Significant aspect-ratio mismatch — crop to target ratio first.
+            if src_ratio > tgt_ratio:
+                # Wider than target — crop width
+                new_w = int(src_h * tgt_ratio)
+                offset = (src_w - new_w) // 2
+                img = img.crop((offset, 0, offset + new_w, src_h))
+            else:
+                # Taller than target — crop height
+                new_h = int(src_w / tgt_ratio)
+                offset = (src_h - new_h) // 2
+                img = img.crop((0, offset, src_w, offset + new_h))
+
+        img = img.resize((target_w, target_h), Image.LANCZOS)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95, optimize=True)
+        buf.seek(0)
+
+        public_url = r2_storage.upload_bytes(
+            buf.read(), r2_key, content_type="image/jpeg"
+        )
+        logger.info(
+            "_normalize_start_frame: normalised %dx%d → %dx%d for project=%s shot=%s → %s",
+            src_w, src_h, target_w, target_h, project_id, shot_index, public_url,
+        )
+        return public_url
+
+    except Exception as exc:
+        logger.warning(
+            "_normalize_start_frame: failed for project=%s shot=%s (%s) — using original URL",
+            project_id, shot_index, exc,
+        )
+        return still_url
 
 
 # ── R2 storage ────────────────────────────────────────────────────────────────
@@ -221,14 +312,16 @@ def generate_shot_video(
         effective_prompt = (prompt or "cinematic camera motion, smooth dolly").strip()
     effective_prompt = effective_prompt[:MOTION_PROMPT_MAX_CHARS]
 
-    accessible_image_url = _accessible_url(still_url)
+    # Normalise the start frame to exactly 1280×720 so WAN receives an image
+    # at its native output resolution — no model-side resize or crop.
+    start_frame_url = _normalize_start_frame(project_id, shot_index, still_url)
 
     logger.info(
-        "Generating WAN 2.6 Flash video — project=%s shot=%s dur=%ss",
-        project_id, shot_index, clip_duration,
+        "Generating WAN 2.6 Flash video — project=%s shot=%s dur=%ss start_frame=%s",
+        project_id, shot_index, clip_duration, start_frame_url,
     )
 
-    prediction_id = _submit_job(accessible_image_url, effective_prompt, clip_duration)
+    prediction_id = _submit_job(start_frame_url, effective_prompt, clip_duration)
     video_url     = _poll_job(prediction_id)
 
     r2_key     = _r2_key(project_id, shot_index)
