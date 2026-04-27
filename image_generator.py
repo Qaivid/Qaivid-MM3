@@ -56,17 +56,20 @@ STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
 OPENAI_IMAGE_MODEL = "gpt-image-2"
-# gpt-image-2 landscape: 1536x1024. Portrait: 1024x1536.
-OPENAI_SIZE_LANDSCAPE = "1536x1024"
+# gpt-image-2 landscape: 1536x864 (true 16:9, both dims divisible by 16).
+# Portrait: 1024x1536.
+# NOTE: 1920x1080 is rejected by the API — 1080 is not divisible by 16.
+# 1536x864 = 16:9 exactly (1536÷864 = 1.777…) and both dims pass the ÷16 check.
+OPENAI_SIZE_LANDSCAPE = "1536x864"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 # ── OpenAI GPT Image 1.5 mode constants ──────────────────────────────────────
 # gpt_15_low mode — fallback for when gpt-image-2 business verification is pending.
 # gpt-image-1.5 supports img2img editing and does not require business verification.
-# Landscape: 1536x1024. Portrait: 1024x1536.
+# Landscape: 1536x864 (16:9, divisible by 16). Portrait: 1024x1536.
 # Cost: ~$0.013/image at low quality.
 OPENAI_IMAGE_MODEL_15 = "gpt-image-1.5"
-OPENAI_SIZE_LANDSCAPE_15 = "1536x1024"
+OPENAI_SIZE_LANDSCAPE_15 = "1536x864"
 
 
 def _resolve_ref_mode() -> str:
