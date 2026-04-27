@@ -3272,7 +3272,9 @@ def _stage_refs_job(project_id: str,
             prj = cur.fetchone()
             cur.execute(
                 "SELECT id, name, entity_type, ref_status, ref_image_url "
-                "  FROM characters WHERE project_id=%s ORDER BY entity_type, id",
+                "  FROM characters WHERE project_id=%s"
+                "    AND (entity_type IS NULL OR entity_type <> 'named_entity')"
+                " ORDER BY entity_type, id",
                 (project_id,),
             )
             chars = cur.fetchall() or []

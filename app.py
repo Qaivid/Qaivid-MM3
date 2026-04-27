@@ -474,7 +474,9 @@ def _persist_uploaded_ref(project_id: str, role: str, file_path: str) -> None:
 def _get_characters(project_id: str) -> list[dict]:
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT * FROM characters WHERE project_id = %s ORDER BY entity_type, id",
+            "SELECT * FROM characters WHERE project_id = %s"
+            "  AND (entity_type IS NULL OR entity_type <> 'named_entity')"
+            " ORDER BY entity_type, id",
             (project_id,),
         )
         return cur.fetchall()
@@ -483,7 +485,9 @@ def _get_characters(project_id: str) -> list[dict]:
 def _get_locations(project_id: str) -> list[dict]:
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT * FROM locations WHERE project_id = %s ORDER BY entity_type, id",
+            "SELECT * FROM locations WHERE project_id = %s"
+            "  AND (entity_type IS NULL OR entity_type <> 'world_dna')"
+            " ORDER BY entity_type, id",
             (project_id,),
         )
         return cur.fetchall()
@@ -3399,7 +3403,8 @@ def references_approve(project_id: str):
         with db() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) AS n FROM characters "
-                " WHERE project_id=%s AND ref_status <> 'ready'",
+                " WHERE project_id=%s AND ref_status <> 'ready'"
+                "   AND (entity_type IS NULL OR entity_type <> 'named_entity')",
                 (project_id,),
             )
             bad_chars = (cur.fetchone() or {}).get("n", 0) or 0
