@@ -1167,11 +1167,18 @@ def _render_shot(project_id: str, shot: dict,
             # fallback so the prompt pins gender/ethnicity from identity_seed.
             # The ref image routing is NOT changed here — this only affects the
             # text prompt's "Subject:" line.
+            #
+            # GUARD: shots that have a location FK (and no character FK) are
+            # definitively environment-only — the filmmaker chose to show only
+            # the space.  Never inject a character into those shots via this
+            # fallback, or the Frame 0 derivation will put a person into an
+            # intentionally empty frame.
+            _is_environment_shot = (location is not None and character is None)
             _human_shot_types = {
                 "close_up", "extreme_close_up", "head_shoulders",
                 "medium_shot", "full_body", "movement",
             }
-            if brain_char is None and _bc_list:
+            if brain_char is None and _bc_list and not _is_environment_shot:
                 _st = (shot.get("shot_type") or "").strip().lower()
                 if _st in _human_shot_types:
                     _primary_bc = next(
