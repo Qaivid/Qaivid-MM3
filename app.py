@@ -2178,7 +2178,8 @@ def advance_imagination(project_id: str):
     overrides = {
         "speaker_name": _speaker.get("name"),
         "location":     _icp.get("location_dna"),
-        "era":          (_icp.get("world_assumptions") or {}).get("era"),
+        "era":          ((_icp.get("world_assumptions") or {}).get("era")
+                         or _icp.get("era")),
         "style_preset": _isp.get("preset") or "cinematic_natural",
     }
     name = project.get("name") or "Qaivid_Project"

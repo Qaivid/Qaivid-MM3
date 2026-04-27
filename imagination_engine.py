@@ -393,7 +393,28 @@ def _fallback() -> dict:
                 "visual_form": "The interplay of warm light and deep shadow across faces and spaces.",
                 "emotional_role": "Carries the tension between presence and absence.",
                 "recurrence": "Throughout — especially in chorus moments.",
-            }
+            },
+            {
+                "motif_id": "threshold",
+                "name": "Threshold",
+                "visual_form": "Doorways, windows, and open roads — places of decision and crossing.",
+                "emotional_role": "Marks moments of change, choice, and longing.",
+                "recurrence": "Introduced in the verse; prominent in bridge and outro.",
+            },
+            {
+                "motif_id": "hands_and_objects",
+                "name": "Hands and Objects",
+                "visual_form": "Close-ups of hands touching meaningful objects — worn things, gifted things, absent things.",
+                "emotional_role": "Grounds emotion in the physical; makes inner life visible.",
+                "recurrence": "Appears in quiet scenes; evolves toward release.",
+            },
+            {
+                "motif_id": "stillness_in_motion",
+                "name": "Stillness in Motion",
+                "visual_form": "A static figure inside a moving world — or a moving figure in a frozen one.",
+                "emotional_role": "Isolates the subject; heightens their interiority.",
+                "recurrence": "Peak moments; used sparingly for maximum impact.",
+            },
         ],
         "visual_style": "Naturalistic and intimate — close to the subject, honest about the world.",
         "section_flow": [
