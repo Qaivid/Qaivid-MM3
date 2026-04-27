@@ -1203,6 +1203,16 @@ def generate_shot_still(
     if not prompt.strip():
         raise ImageGenerationError(f"Shot {shot.get('shot_index')} has no prompt to render.")
 
+    # Strip any quoted text (lyrics / song lines) that the prompt composer may
+    # have embedded — gpt-image-2 renders quoted strings as visible on-screen
+    # text, which is never wanted for a cinematic still.
+    import re as _re
+    prompt = _re.sub(r'["\u201c\u201d\u2018\u2019][^""\u201c\u201d\u2018\u2019]{1,200}["\u201c\u201d\u2018\u2019]', '', prompt).strip()
+    # Hard no-text suffix so every GPT still call suppresses rendered text.
+    _NO_TEXT = "No text, no captions, no subtitles, no overlaid script or lettering of any kind."
+    if _NO_TEXT not in prompt:
+        prompt = prompt.rstrip(". ") + ". " + _NO_TEXT
+
     logger.info(
         "Composed prompt for shot %s (%d chars, char_ref=%s, env_ref=%s, user_edit=%s)",
         shot.get("shot_index"), len(prompt), has_char_ref, has_env, bool(user_override),
