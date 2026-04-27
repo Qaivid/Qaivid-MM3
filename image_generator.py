@@ -44,20 +44,19 @@ SHOT_MODEL_ENV_I2I = "fal-ai/flux/dev/image-to-image"
 STANDARD_SHOT_MODEL = "fal-ai/flux/schnell"     # standard mode — FLUX schnell for all shot types
 
 # ── OpenAI GPT Image 2.0 mode constants ──────────────────────────────────────
-# GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-1.
-# Three quality tiers (landscape 1536×1024 — widest supported format):
+# GPT Image 2.0 routes ALL generation (refs + stills) through gpt-image-2.
+# Three quality tiers (landscape 1920×1080 — native cinematic widescreen):
 #   gpt_low    — $0.01/image  — fast testing
 #   gpt_medium — $0.04/image  — recommended
 #   gpt_high   — $0.16/image  — highest fidelity
 # Portrait (character refs): 1024×1536.
-# Supported sizes: 1024x1024, 1024x1536, 1536x1024, auto. 1920x1080 is NOT supported.
+# gpt-image-2 supports 1920x1080 landscape natively.
 # Supports image-to-image and multi-image references — face identity +
 # scene atmosphere preserved in a single edit call.
 # Legacy "cheap" alias → normalised to gpt_low at runtime via system_config.
-OPENAI_IMAGE_MODEL = "gpt-image-1"
-# gpt-image-1 supported sizes: 1024x1024, 1024x1536, 1536x1024, auto.
-# 1536x1024 is the widest landscape format (3:2). 1920x1080 is NOT supported.
-OPENAI_SIZE_LANDSCAPE = "1536x1024"
+OPENAI_IMAGE_MODEL = "gpt-image-2"
+# gpt-image-2 supported landscape: 1920x1080 (native cinematic widescreen).
+OPENAI_SIZE_LANDSCAPE = "1920x1080"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
 
@@ -396,8 +395,16 @@ def ai_build_ref_prompts(
     # was selected.  Empty strings produce no visible change for non-preset runs.
     _vibe_char_block = (
         f"\nPRODUCTION VIBE for character portraits: {_vibe_ref_direction}"
+        f"\nEvery portrait prompt MUST visually embody this vibe — lighting, wardrobe, makeup, and mood must all reflect it."
         f"\n{_vibe_avoid_str}"
         if _vibe_ref_direction else ""
+    )
+    # Portrait suffix — generic when no vibe, vibe-specific when a preset is active
+    _char_portrait_suffix = (
+        f"Photorealistic portrait, {_vibe_ref_direction.rstrip('.')},"
+        f" sharp facial detail, culturally authentic."
+        if _vibe_ref_direction
+        else "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
     )
     _vibe_loc_direction_block = (
         f"\nPRODUCTION VIBE for location plates: {_vibe_ref_direction}"
@@ -425,7 +432,17 @@ If cultural_markers are provided, embed them visually.
 Honour all continuity_rules absolutely — they define what must stay consistent across all images.
 If a character has no physical data, write a culturally-authentic anonymous portrait
 for someone from that cultural world.{_vibe_char_block}
-End every character prompt with: "Photorealistic portrait, cinematic lighting, sharp facial detail, culturally authentic."
+
+⚠ MANDATORY DIFFERENTIATION RULE — THIS OVERRIDES EVERYTHING:
+Every character in this list MUST be visually unique and immediately distinguishable from every other character.
+Even if two characters share the same ethnicity, gender, or cultural background — they must look like DIFFERENT PEOPLE.
+Differentiate using: complexion shade (fair / wheatish / dusky / deep brown), age signals (early 20s / mid-30s / late 40s),
+hair length and style (long loose / short cropped / braided / upswept), wardrobe colour palette and silhouette (vivid vs muted, structured vs flowing),
+jewellery type and quantity, facial bone structure (sharp / soft / angular / round), makeup intensity.
+A prompt that could describe ANY character in this list — or any generic "Punjabi woman" — is UNACCEPTABLE.
+Each prompt must describe one specific, unique, visually distinct individual.
+
+End every character prompt with: "{_char_portrait_suffix}"
 
 IMPORTANT: For every character, also return their physical fields as structured data in
 "character_fields" so downstream stages can stay consistent with the same appearance.
@@ -507,7 +524,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1 returned no image data.")
+        raise ImageGenerationError("gpt-image-2 returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -575,7 +592,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         image_arg = ("reference.png", io.BytesIO(img_bytes), "image/png")
     else:
         images = []
-        for i, url in enumerate(valid_urls[:3]):  # gpt-image-1 cap: 3 refs
+        for i, url in enumerate(valid_urls[:3]):  # gpt-image-2 cap: 3 refs
             img_bytes = _download_image_bytes(url)
             images.append((f"ref_{i}.png", io.BytesIO(img_bytes), "image/png"))
         image_arg = images
@@ -590,7 +607,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     )
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-1 edit returned no image data.")
+        raise ImageGenerationError("gpt-image-2 edit returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -1130,7 +1147,7 @@ def generate_shot_still(
         if has_char_ref and has_env:
             # Multi-image edit: pass character plate (face identity) +
             # environment plate (scene atmosphere) simultaneously.
-            # gpt-image-1 conditions on both in a single generation call.
+            # gpt-image-2 conditions on both in a single generation call.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
