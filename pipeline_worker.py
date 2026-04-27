@@ -1010,6 +1010,79 @@ def _resolve_user_edited_flag(project_id: str, shot_index) -> bool:
         return bool(r.get("f"))
 
 
+def _derive_frame0_prompt(video_prompt: str, shot: dict) -> str:
+    """Call GPT-4o-mini to derive a still image prompt that IS Frame 0 of the video.
+
+    The video prompt is the source of truth.  The still image prompt is
+    derived from it — a frozen snapshot of the exact opening moment, before
+    any motion begins.  This guarantees tight coupling: WAN receives a video
+    prompt, and gpt-image-2 receives the Frame 0 of that same video.
+
+    Returns an empty string on any failure so the pipeline falls back to the
+    normal programmatic prompt builder.
+    """
+    if not video_prompt or not video_prompt.strip():
+        return ""
+    try:
+        import os as _os
+        from openai import OpenAI as _OpenAI  # noqa: PLC0415
+
+        _api_key = _os.getenv("OPENAI_API_KEY")
+        if not _api_key:
+            return ""
+
+        _client = _OpenAI(api_key=_api_key)
+
+        _system = (
+            "You are a visual prompt engineer for AI image generation. "
+            "Your task: given a video clip prompt for the WAN 2.6 AI video model, "
+            "write the still image prompt for FRAME 0 — the exact frozen moment at "
+            "the very start of the video, before any motion or animation begins.\n\n"
+            "Rules:\n"
+            "1. Describe ONLY what is visible and static in the first frame.\n"
+            "2. Convert motion verbs into frozen starting positions "
+            "(e.g. 'walks forward' → 'standing, weight slightly forward, mid-step').\n"
+            "3. Keep ALL character details: appearance, wardrobe, hair, skin tone, "
+            "expression, body posture, eyeline.\n"
+            "4. Keep ALL environment details: setting, background elements, lighting "
+            "direction and quality, atmosphere, depth cues.\n"
+            "5. Keep ALL cinematic details: camera angle, focal length feel, "
+            "color grade, film stock or digital look.\n"
+            "6. Do NOT mention movement, animation, camera motion, or future action.\n"
+            "7. Write 120-180 words. Write ONLY the image prompt — no preamble, "
+            "no explanation, no labels."
+        )
+
+        _user = (
+            f"Video clip prompt:\n{video_prompt.strip()}\n\n"
+            "Write the Frame 0 still image prompt:"
+        )
+
+        _resp = _client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _system},
+                {"role": "user",   "content": _user},
+            ],
+            temperature=0.3,
+            max_tokens=350,
+        )
+        _derived = (_resp.choices[0].message.content or "").strip()
+        if _derived:
+            logger.debug(
+                "_derive_frame0_prompt: derived %d-char still prompt from video prompt",
+                len(_derived),
+            )
+        return _derived
+    except Exception:
+        logger.debug(
+            "_derive_frame0_prompt: GPT call failed (non-fatal); "
+            "pipeline will use programmatic prompt builder",
+            exc_info=True,
+        )
+        return ""
+
+
 def _render_shot(project_id: str, shot: dict,
                  character_ref_url: Optional[str] = None,
                  environment_ref_url: Optional[str] = None) -> None:
@@ -1122,6 +1195,7 @@ def _render_shot(project_id: str, shot: dict,
         #      immediately, so the video render stage uses a prompt that
         #      was locked at the same moment as the still it describes.
         shot_video_action: str = ""
+        computed_video_prompt: str = ""
         try:
             from motion_render_prompt_builder import build_video_clip_prompt as _bvcp
 
@@ -1181,19 +1255,49 @@ def _render_shot(project_id: str, shot: dict,
                 "project=%s shot=%s (non-fatal)", project_id, idx,
             )
 
-        # ── User-edited prompt override ──────────────────────────────────
+        # ── Determine the still image prompt ────────────────────────────
+        # Priority order:
+        #   1. User manual edit  → use their stored styled/visual prompt as-is
+        #   2. Frame 0 derivation → call GPT to derive the still from the video
+        #      prompt (video prompt is source of truth; still IS frame 0 of it)
+        #   3. Programmatic builder → compose_image_prompt fallback (no override)
         user_override = None
         try:
             if _resolve_user_edited_flag(project_id, idx):
+                # User manually wrote or edited this shot's prompt — respect it.
                 user_override = (shot.get("styled_visual_prompt")
                                  or shot.get("visual_prompt") or "").strip() or None
+                logger.debug(
+                    "_render_shot: shot=%s using user-edited prompt override", idx,
+                )
+            elif computed_video_prompt:
+                # No user edit — derive the still prompt as Frame 0 of the video.
+                # This is the preferred path: video prompt is built first with all
+                # story/brain data, then GPT writes a Frame 0 still from it, so
+                # the still and the video are perfectly coupled by construction.
+                _frame0 = _derive_frame0_prompt(computed_video_prompt, shot)
+                if _frame0:
+                    user_override = _frame0
+                    logger.debug(
+                        "_render_shot: shot=%s using GPT-derived Frame 0 still prompt "
+                        "(%d chars)", idx, len(_frame0),
+                    )
+                else:
+                    logger.debug(
+                        "_render_shot: shot=%s Frame 0 derivation returned empty; "
+                        "falling back to programmatic prompt builder", idx,
+                    )
         except Exception:
             logger.debug(
-                "_render_shot: user-edited flag check failed for project=%s shot=%s (non-fatal)",
+                "_render_shot: prompt resolution failed for project=%s shot=%s (non-fatal)",
                 project_id, idx,
             )
 
         # ── Generate the still ──────────────────────────────────────────
+        # video_action is passed for the rare fallback path (user_override=None)
+        # where compose_image_prompt builds the prompt programmatically; in that
+        # case the video_action anchor is still appended so the still is at least
+        # aware of the video it will become.
         try:
             url = generate_shot_still(
                 shot, character_ref_url, project_id,
