@@ -2690,7 +2690,7 @@ def rerun_from_stage(project_id: str, target_stage: str):
 
     RERUNNABLE = [
         "audio_review", "context_review", "narrative_review", "style_review",
-        "creative_brief_review", "storyboard_review",
+        "imagination_review", "creative_brief_review", "storyboard_review",
         "materializer_review", "references_review",
         "stills_control", "video_assembly_review",
         "videos_control", "post_production",
