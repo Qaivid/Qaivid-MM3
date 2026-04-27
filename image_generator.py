@@ -543,7 +543,6 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
         "prompt": prompt[:4000],
         "size": size,
         "n": 1,
-        "output_format": "png",
     }
     if quality:
         payload["quality"] = quality
@@ -645,7 +644,6 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         ("prompt",          (None, prompt[:4000])),
         ("size",            (None, size)),
         ("n",               (None, "1")),
-        ("output_format",   (None, "png")),
     ]
     if quality:
         fields.append(("quality", (None, quality)))
