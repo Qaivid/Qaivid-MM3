@@ -359,6 +359,8 @@ def generate_look_plates(project_id: str,
         _run_fal, _extract_image_url, _save_to_r2, _new_ref_key,
         _openai_generate, _resolve_ref_mode, OPENAI_SIZE_PORTRAIT,
         _save_bytes_to_r2,
+        _is_gpt_mode, _is_gpt15_mode, _resolve_openai_quality,
+        OPENAI_IMAGE_MODEL, OPENAI_IMAGE_MODEL_15,
     )
 
     # Load pending look rows + the linked character rows.
@@ -450,8 +452,9 @@ def generate_look_plates(project_id: str,
             base_url    = (row.get("base_plate_url") or "").strip() or None
             has_base    = bool(base_url and row.get("base_plate_status") == "ready")
 
-            from image_generator import _fal_accessible_url
+            from image_generator import _fal_accessible_url, _openai_edit
             PULID_MODEL = "fal-ai/flux-pulid"
+            ref_mode = _resolve_ref_mode()
 
             # ── Guard: require base plate for face-locked generation ─────────
             # Look plates without a base identity plate would show a random
@@ -476,19 +479,23 @@ def generate_look_plates(project_id: str,
                     conn.commit()
                 continue  # finally: _release(key) still runs
 
-            if _resolve_ref_mode() == "cheap":
-                # img2img from the base plate keeps the face; wardrobe text
-                # in the prompt steers the outfit change.
-                from image_generator import _openai_edit
+            if _is_gpt_mode(ref_mode):
+                # GPT Image img2img: edit from base plate keeps face identity;
+                # wardrobe text in the prompt steers the outfit change.
+                # Works for gpt_low / gpt_medium / gpt_high / gpt_15_low.
+                _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(ref_mode) else OPENAI_IMAGE_MODEL
+                _quality   = _resolve_openai_quality(ref_mode)
                 img_bytes = _openai_edit(prompt[:4000], base_url,
-                                         size=OPENAI_SIZE_PORTRAIT)
+                                         size=OPENAI_SIZE_PORTRAIT,
+                                         quality=_quality,
+                                         model=_gpt_model)
                 r2_key = _new_ref_key(
                     project_id, f"look_{look_id}_{safe_name}_{safe_cluster}", ext="png"
                 )
                 url = _save_bytes_to_r2(img_bytes, r2_key)
             else:
-                # PuLID: injects identity embeddings from the base plate into
-                # the diffusion process — proper face transfer, not pixel copy.
+                # PuLID (fal.ai): injects identity embeddings from the base
+                # plate into the diffusion process — proper face transfer.
                 fal_base_url = _fal_accessible_url(base_url)
                 result = _run_fal(PULID_MODEL, {
                     "prompt": prompt[:1800],
