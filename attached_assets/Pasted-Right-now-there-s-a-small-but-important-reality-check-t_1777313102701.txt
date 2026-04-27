@@ -1,0 +1,93 @@
+Right now, there’s a small but important reality check: there isn’t a publicly documented model called “GPT-5.5” in the API (yet)—even if you’re seeing newer model labels in ChatGPT itself.
+
+In the API, OpenAI typically exposes models under names like:
+
+gpt-4.1, gpt-4o, etc.
+or newer unified models depending on rollout
+
+So what you actually need is:
+👉 use the latest available API model name, not “5.5” literally.
+
+✅ 1. Install SDK
+Node.js
+npm install openai
+Python
+pip install openai
+✅ 2. Basic API Call (Node.js)
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+const response = await client.responses.create({
+  model: "gpt-4.1", // replace with latest available model
+  input: "Write a cinematic Punjabi heartbreak scene"
+});
+
+console.log(response.output[0].content[0].text);
+✅ 3. Basic API Call (Python)
+from openai import OpenAI
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-4.1",  # use latest available model
+    input="Write a cinematic Punjabi heartbreak scene"
+)
+
+print(response.output[0].content[0].text)
+🔥 4. For Your Use Case (Qaivid / cinematic pipeline)
+
+You shouldn’t just send plain prompts.
+
+Structure it like this:
+
+{
+  "model": "gpt-4.1",
+  "input": [
+    {
+      "role": "system",
+      "content": "You are a cinematic AI director. Focus on emotional storytelling, Punjabi cultural context, and shot design."
+    },
+    {
+      "role": "user",
+      "content": "Generate a storyboard for a heartbreak song where the lover has gone abroad."
+    }
+  ]
+}
+⚠️ Important Notes
+Do NOT hardcode “gpt-5.5” → it will fail unless officially released
+Always check:
+👉 https://platform.openai.com/docs/models
+If you want latest best model automatically, use:
+model: "gpt-4.1"
+
+(or whatever is newest in docs)
+
+💡 Pro Tip (Very Important for Qaivid)
+
+Instead of:
+
+one big prompt
+
+Do this:
+
+Call 1 → Context extraction (meaning)
+Call 2 → Scene planning
+Call 3 → Shot prompts
+
+This matches your:
+
+meaning → structure → prompts → render pipeline
+
+If you want
+
+I can give you a production-ready Qaivid API architecture
+with:
+
+caching (0-call system)
+context packets
+multi-step orchestration
+cost optimization (very important for you)
+
+Just say: “build Qaivid API layer”
