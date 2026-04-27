@@ -1858,16 +1858,16 @@ def generate_custom_vibe(project_id: str):
 @app.route("/project/<project_id>/advance/style", methods=["POST"])
 @login_required
 def advance_stage_style(project_id: str):
-    """User chose a style profile — save it and kick Storyboard.
+    """User chose a style profile — save it and kick the Director's Imagination Engine.
 
-    Pipeline order (per master spec): Input → Context → Narrative → Style →
-    Storyboard → Creative Brief. Context + Narrative are already locked in
-    the brain when this route fires, so picking a style hands off to the
-    Storyboard generator (kick_stage_2).
+    Pipeline order: Input → Context → Narrative → Style → Imagination (Stage 4.5) →
+    Storyboard → Creative Brief. Context + Narrative are already locked in the brain
+    when this route fires, so picking a style hands off to kick_stage_imagination,
+    which generates the imagination_packet and parks at imagination_review.
+    The user then approves the Director's Vision before Storyboard runs.
 
-    If the project already has a styled_timeline (the user came back from
-    storyboard_review or later via "Change Style"), this is a re-pick: we
-    re-kick Storyboard which in turn re-runs Brief + downstream.
+    If the project already has a styled_timeline (the user came back via "Change Style"),
+    this is a re-pick: we re-kick Imagination which in turn re-runs Storyboard + downstream.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
