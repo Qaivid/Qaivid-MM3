@@ -1183,13 +1183,29 @@ def generate_shot_still(
     expression_mode = (shot.get("expression_mode") or "environment").lower()
     has_human_focus = expression_mode in {"face", "body"}
     has_env = bool(environment_ref_url)
+    # GPT edit endpoint: use img2img whenever a character ref URL is available,
+    # regardless of expression_mode.  The prompt controls what appears in frame;
+    # passing the ref anchors the face whenever the character does appear,
+    # including environment/wide shots where the character is present but
+    # expression_mode is set to "environment".
+    has_char_ref_gpt = bool(character_ref_url)
+
+    # FAL/FLUX PuLID path: that model actively injects the reference face, so
+    # restrict it to shots where the character is the subject (face/body).
+    # Using it on pure environment shots would force a face where none belongs.
     has_char_ref = bool(character_ref_url) and has_human_focus
+
+    # For prompt composition, only flag "has_character_ref" when the shot
+    # genuinely features the character (face/body) so the composer adds the
+    # strong "match exact face" continuity cue.  For environment shots the
+    # identity_seed description path is used as the soft-lock anchor instead.
+    has_char_ref_for_prompt = has_char_ref
 
     prompt, negative_prompt = compose_image_prompt(
         shot,
         character=character,
         location=location,
-        has_character_ref=has_char_ref,
+        has_character_ref=has_char_ref_for_prompt,
         has_environment_ref=has_env,
         user_override=user_override,
         cine_prefix=cine_prefix,
@@ -1220,8 +1236,10 @@ def generate_shot_still(
 
     shot_idx = shot.get("shot_index") or shot.get("timeline_index") or "x"
     shot_mode = _resolve_shot_mode()
-    logger.info("Rendering shot %s mode=%s char_ref=%s env_ref=%s",
-                shot_idx, shot_mode, has_char_ref, has_env)
+    logger.info(
+        "Rendering shot %s mode=%s char_ref_gpt=%s char_ref_fal=%s env_ref=%s human_focus=%s",
+        shot_idx, shot_mode, has_char_ref_gpt, has_char_ref, has_env, has_human_focus,
+    )
 
     # ── GPT Image mode: 2.0 (low/medium/high) or 1.5 fallback ────────────────
     # img2img: character ref preserves face identity, env ref grounds the scene
@@ -1231,7 +1249,7 @@ def generate_shot_still(
         _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(shot_mode) else OPENAI_IMAGE_MODEL
         _land_size = OPENAI_SIZE_LANDSCAPE_15 if _is_gpt15_mode(shot_mode) else OPENAI_SIZE_LANDSCAPE
         r2_key = _new_shot_key(project_id, shot_idx, ext="png")
-        if has_char_ref and has_env:
+        if has_char_ref_gpt and has_env:
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
@@ -1239,7 +1257,7 @@ def generate_shot_still(
                 quality=gpt_quality,
                 model=_gpt_model,
             )
-        elif has_char_ref:
+        elif has_char_ref_gpt:
             img_bytes = _openai_edit(
                 prompt, character_ref_url,
                 size=_land_size,
