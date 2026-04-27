@@ -15,9 +15,9 @@ Namespaces (in pipeline order):
     input_structure    Stage 1  — InputProcessor output (sections, units, repetition map…)
     context_packet     Stage 2  — Context Engine output (meaning, world, speaker…)
     emotional_mode_packet Stage 2b — Emotional Mode Engine (mode id, pacing, shot biases, style modifiers)
-    narrative_packet   Stage 3  — Narrative Engine output (motifs, arc, story logic…)
-    imagination_packet Stage 4b — Director's Imagination Engine (visual concept, motifs, shot ideas)
-    style_packet       Stage 4  — Style Engine output (visual language, palette…)
+    narrative_packet   Stage 3   — Narrative Engine output (motifs, arc, story logic…)
+    style_packet       Stage 4   — Style Engine output (visual language, palette…)
+    imagination_packet Stage 4.5 — Director's Imagination Engine (visual concept, motifs, shot ideas)
     storyboard_packet  Stage 5  — Storyboard intent (scenes + valid_realizations) — POSSIBILITIES
     creative_briefs    Stage 6  — Creative Brief — ONE locked direction per scene (SELECTION)
     character_profile  Stage 7  — Materializer character anchors
@@ -44,8 +44,8 @@ NAMESPACES: List[str] = [
     "context_packet",
     "emotional_mode_packet",
     "narrative_packet",
-    "imagination_packet",
     "style_packet",
+    "imagination_packet",
     "storyboard_packet",
     "creative_briefs",
     "materializer_packet",
@@ -67,8 +67,8 @@ NAMESPACE_OWNERS: Dict[str, str] = {
     "context_packet":         "stage_2_context",
     "emotional_mode_packet":  "stage_2b_emotional_mode",
     "narrative_packet":       "stage_3_narrative",
-    "imagination_packet":     "stage_4b_imagination",
     "style_packet":           "stage_4_style",
+    "imagination_packet":     "stage_4_5_imagination",
     "storyboard_packet":      "stage_5_storyboard",
     "creative_briefs":        "stage_6_brief",
     "materializer_packet":    "stage_7_materializer",

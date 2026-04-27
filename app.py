@@ -2953,12 +2953,14 @@ def rerun_from_stage(project_id: str, target_stage: str):
             # Imagination is Stage 4.5 — after style, before storyboard.
             # Clears imagination_packet, storyboard, brief, and everything below.
             # Style_profile and narrative_packet stay intact.
+            # Set stage to running_imagination/queued immediately so stale
+            # imagination_packet is never briefly exposed as review-ready.
             cp.pop("creative_brief", None)
             cur.execute(
                 "UPDATE projects SET context_packet=%s,"
                 " styled_timeline=NULL, summary=NULL,"
                 " quick_video_url=NULL, final_video_url=NULL, postprod_config=NULL,"
-                " stage='imagination_review', status='awaiting_review', error=NULL, updated_at=NOW()"
+                " stage='running_imagination', status='queued', error=NULL, updated_at=NOW()"
                 " WHERE id=%s",
                 (Json(cp), project_id),
             )
