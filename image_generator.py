@@ -59,6 +59,14 @@ OPENAI_IMAGE_MODEL = "gpt-image-2"
 OPENAI_SIZE_LANDSCAPE = "1920x1080"
 OPENAI_SIZE_PORTRAIT = "1024x1536"
 
+# ── OpenAI GPT Image 1.5 mode constants ──────────────────────────────────────
+# gpt_15_low mode — fallback for when gpt-image-2 business verification is pending.
+# gpt-image-1.5 supports img2img editing and does not require business verification.
+# Max landscape: 1536x1024 (not 1920x1080). Portrait: 1024x1536.
+# Cost: ~$0.013/image at low quality.
+OPENAI_IMAGE_MODEL_15 = "gpt-image-1.5"
+OPENAI_SIZE_LANDSCAPE_15 = "1536x1024"
+
 
 def _resolve_ref_mode() -> str:
     """Returns the current image mode for reference plates."""
@@ -79,8 +87,13 @@ def _resolve_shot_mode() -> str:
 
 
 def _is_gpt_mode(mode: str) -> bool:
-    """True for any GPT Image 2.0 tier (or legacy cheap alias)."""
-    return mode in ("cheap", "gpt_low", "gpt_medium", "gpt_high")
+    """True for any OpenAI GPT image tier (2.0 or 1.5, including legacy cheap alias)."""
+    return mode in ("cheap", "gpt_low", "gpt_medium", "gpt_high", "gpt_15_low")
+
+
+def _is_gpt15_mode(mode: str) -> bool:
+    """True only for the GPT Image 1.5 tier (no business verification required)."""
+    return mode == "gpt_15_low"
 
 
 def _resolve_openai_quality(mode: str) -> str:
@@ -511,11 +524,15 @@ Return ONLY valid JSON, no markdown, no explanation:
 
 
 def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
-                     quality: str = "low") -> bytes:
-    """Text-to-image via GPT Image 2.0. Returns raw PNG bytes."""
+                     quality: str = "low",
+                     model: str = OPENAI_IMAGE_MODEL) -> bytes:
+    """Text-to-image via OpenAI image API. Returns raw PNG bytes.
+
+    Defaults to gpt-image-2. Pass model=OPENAI_IMAGE_MODEL_15 for gpt-image-1.5.
+    """
     client = _openai_client()
     response = client.images.generate(
-        model=OPENAI_IMAGE_MODEL,
+        model=model,
         prompt=prompt[:4000],
         size=size,
         quality=quality,
@@ -524,7 +541,7 @@ def _openai_generate(prompt: str, size: str = OPENAI_SIZE_LANDSCAPE,
     import base64 as _b64
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-2 returned no image data.")
+        raise ImageGenerationError(f"{model} returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -558,18 +575,20 @@ def _download_image_bytes(url: str) -> bytes:
 
 
 def _openai_edit(prompt: str, ref_url: str, size: str = OPENAI_SIZE_LANDSCAPE,
-                 quality: str = "low") -> bytes:
-    """Image-to-image edit via GPT Image 2.0 (single reference).
+                 quality: str = "low",
+                 model: str = OPENAI_IMAGE_MODEL) -> bytes:
+    """Image-to-image edit via OpenAI image API (single reference).
     Downloads ref from R2/URL, passes to the edits endpoint, returns raw PNG bytes."""
-    return _openai_edit_multi(prompt, [ref_url], size=size, quality=quality)
+    return _openai_edit_multi(prompt, [ref_url], size=size, quality=quality, model=model)
 
 
 def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LANDSCAPE,
-                       quality: str = "low") -> bytes:
-    """Multi-image-to-image edit via GPT Image 2.0.
+                       quality: str = "low",
+                       model: str = OPENAI_IMAGE_MODEL) -> bytes:
+    """Multi-image-to-image edit via OpenAI image API.
 
-    GPT Image 2.0 accepts multiple image references simultaneously — it uses
-    all supplied images to condition the output, preserving:
+    Accepts multiple image references simultaneously — uses all supplied images
+    to condition the output, preserving:
       * face identity (from character plate)
       * scene atmosphere / lighting (from environment plate)
       * wardrobe / colour palette (from look plate)
@@ -592,13 +611,13 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
         image_arg = ("reference.png", io.BytesIO(img_bytes), "image/png")
     else:
         images = []
-        for i, url in enumerate(valid_urls[:3]):  # gpt-image-2 cap: 3 refs
+        for i, url in enumerate(valid_urls[:3]):
             img_bytes = _download_image_bytes(url)
             images.append((f"ref_{i}.png", io.BytesIO(img_bytes), "image/png"))
         image_arg = images
 
     response = client.images.edit(
-        model=OPENAI_IMAGE_MODEL,
+        model=model,
         image=image_arg,
         prompt=prompt[:4000],
         size=size,
@@ -607,7 +626,7 @@ def _openai_edit_multi(prompt: str, ref_urls: list, size: str = OPENAI_SIZE_LAND
     )
     b64 = response.data[0].b64_json
     if not b64:
-        raise ImageGenerationError("gpt-image-2 edit returned no image data.")
+        raise ImageGenerationError(f"{model} edit returned no image data.")
     return _b64.b64decode(b64)
 
 
@@ -772,8 +791,10 @@ def generate_character_ref(speaker: dict, location_dna: str, project_id: str) ->
     logger.info("Generating character ref for project=%s mode=%s", project_id, ref_mode)
 
     if _is_gpt_mode(ref_mode):
+        _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(ref_mode) else OPENAI_IMAGE_MODEL
         img_bytes = _openai_generate(prompt, size=OPENAI_SIZE_PORTRAIT,
-                                     quality=_resolve_openai_quality(ref_mode))
+                                     quality=_resolve_openai_quality(ref_mode),
+                                     model=_gpt_model)
         r2_key = _new_ref_key(project_id, "character", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key)
 
@@ -873,8 +894,10 @@ def generate_character_plate(character: dict, project_id: str,
                 project_id, character.get("name"), ref_mode)
 
     if _is_gpt_mode(ref_mode):
+        _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(ref_mode) else OPENAI_IMAGE_MODEL
         img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_PORTRAIT,
-                                     quality=_resolve_openai_quality(ref_mode))
+                                     quality=_resolve_openai_quality(ref_mode),
+                                     model=_gpt_model)
         r2_key = _new_ref_key(project_id, f"char_{character.get('id','x')}_{safe}", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key), prompt
 
@@ -994,8 +1017,11 @@ def generate_location_plate(location: dict, project_id: str,
                 project_id, location.get("name"), ref_mode)
 
     if _is_gpt_mode(ref_mode):
-        img_bytes = _openai_generate(prompt[:4000], size=OPENAI_SIZE_LANDSCAPE,
-                                     quality=_resolve_openai_quality(ref_mode))
+        _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(ref_mode) else OPENAI_IMAGE_MODEL
+        _land_size = OPENAI_SIZE_LANDSCAPE_15 if _is_gpt15_mode(ref_mode) else OPENAI_SIZE_LANDSCAPE
+        img_bytes = _openai_generate(prompt[:4000], size=_land_size,
+                                     quality=_resolve_openai_quality(ref_mode),
+                                     model=_gpt_model)
         r2_key = _new_ref_key(project_id, f"loc_{location.get('id','x')}_{safe}", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key), prompt
 
@@ -1029,10 +1055,13 @@ def generate_environment_ref(location_dna: str, motifs: list, project_id: str) -
     logger.info("Generating env ref for project=%s mode=%s", project_id, ref_mode)
 
     if _is_gpt_mode(ref_mode):
+        _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(ref_mode) else OPENAI_IMAGE_MODEL
+        _land_size = OPENAI_SIZE_LANDSCAPE_15 if _is_gpt15_mode(ref_mode) else OPENAI_SIZE_LANDSCAPE
         img_bytes = _openai_generate(
             prompt,
-            size=OPENAI_SIZE_LANDSCAPE,
+            size=_land_size,
             quality=_resolve_openai_quality(ref_mode),
+            model=_gpt_model,
         )
         r2_key = _new_ref_key(project_id, "environment", ext="png")
         return _save_bytes_to_r2(img_bytes, r2_key)
@@ -1138,39 +1167,42 @@ def generate_shot_still(
     logger.info("Rendering shot %s mode=%s char_ref=%s env_ref=%s",
                 shot_idx, shot_mode, has_char_ref, has_env)
 
-    # ── GPT Image 2.0 mode: low / medium / high quality ───────────────────────
+    # ── GPT Image mode: 2.0 (low/medium/high) or 1.5 fallback ────────────────
     # img2img: character ref preserves face identity, env ref grounds the scene
     # atmosphere. Multi-image edit passes both references simultaneously.
     if _is_gpt_mode(shot_mode):
         gpt_quality = _resolve_openai_quality(shot_mode)
+        _gpt_model = OPENAI_IMAGE_MODEL_15 if _is_gpt15_mode(shot_mode) else OPENAI_IMAGE_MODEL
+        _land_size = OPENAI_SIZE_LANDSCAPE_15 if _is_gpt15_mode(shot_mode) else OPENAI_SIZE_LANDSCAPE
         r2_key = _new_shot_key(project_id, shot_idx, ext="png")
         if has_char_ref and has_env:
-            # Multi-image edit: pass character plate (face identity) +
-            # environment plate (scene atmosphere) simultaneously.
-            # gpt-image-2 conditions on both in a single generation call.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
-                size=OPENAI_SIZE_LANDSCAPE,
+                size=_land_size,
                 quality=gpt_quality,
+                model=_gpt_model,
             )
         elif has_char_ref:
             img_bytes = _openai_edit(
                 prompt, character_ref_url,
-                size=OPENAI_SIZE_LANDSCAPE,
+                size=_land_size,
                 quality=gpt_quality,
+                model=_gpt_model,
             )
         elif has_env:
             img_bytes = _openai_edit(
                 prompt, environment_ref_url,
-                size=OPENAI_SIZE_LANDSCAPE,
+                size=_land_size,
                 quality=gpt_quality,
+                model=_gpt_model,
             )
         else:
             img_bytes = _openai_generate(
                 prompt,
-                size=OPENAI_SIZE_LANDSCAPE,
+                size=_land_size,
                 quality=gpt_quality,
+                model=_gpt_model,
             )
         return _save_bytes_to_r2(img_bytes, r2_key)
 

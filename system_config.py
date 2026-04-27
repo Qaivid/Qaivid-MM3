@@ -10,6 +10,9 @@ GPT Image 2.0 tiers (native 1920×1080 landscape):
   * ``gpt_medium`` — $0.04/image  — recommended
   * ``gpt_high``   — $0.16/image  — highest fidelity
 
+GPT Image 1.5 tiers (max 1536×1024 landscape — no business verification needed):
+  * ``gpt_15_low`` — ~$0.013/image — fallback while GPT Image 2.0 is pending
+
 FAL tiers:
   * ``standard`` — FAL FLUX/schnell (~$0.003–0.005), no face-lock.
                    Cinematic-quality stills. Best for landscape/nature/abstract.
@@ -17,7 +20,7 @@ FAL tiers:
                    Required for character-driven narrative music videos.
 
 Legacy aliases:
-  * ``cheap``    → ``gpt_low``    (gpt-image-1.5 low; now routes to GPT Image 2.0 low)
+  * ``cheap``    → ``gpt_low``    (old gpt-image-1.5 "low" path, now GPT Image 2.0 low)
   * ``sdxl_face``→ ``standard``   (ip-adapter removed from fal.ai)
 
 A short in-process cache prevents hammering the DB on every render step.
@@ -32,7 +35,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-VALID_MODES = ("quality", "standard", "cheap", "gpt_low", "gpt_medium", "gpt_high")
+VALID_MODES = ("quality", "standard", "cheap", "gpt_low", "gpt_medium", "gpt_high", "gpt_15_low")
 # Legacy aliases — normalised at read time
 # cheap → gpt_low  (old gpt-image-1.5 "low" path, now GPT Image 2.0 low)
 # sdxl_face → standard  (ip-adapter-face-id-plus removed from fal.ai)
