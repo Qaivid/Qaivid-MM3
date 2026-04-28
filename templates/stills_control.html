@@ -108,12 +108,13 @@
         </button>
       </form>
       <form method="post"
-            action="{{ url_for('project_retry_all_failed_shots', project_id=project.id) }}"
+            action="{{ url_for('stills_generate_all', project_id=project.id) }}"
             class="sc-bulk-form"
             id="form-retry-failed-bulk"
             onsubmit="return scBulkSubmit(event, 'retry-failed');"
             style="{{ '' if ns.failed > 0 else 'display:none;' }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="failed" value="1">
         <button type="submit" class="btn-secondary sc-btn-retry-failed" id="btn-retry-failed-bulk"
                 style="border-color:#a83232;color:#ff8080;">
           &#9888; Generate Failed (<span id="btn-failed-count">{{ ns.failed }}</span>)
@@ -532,6 +533,14 @@
   };
   {% endfor %}
 
+  /* Per-shot dirty flags: set when the user types in a prompt textarea.
+     Server-pushed updates are suppressed for dirty fields (preserves user edits).
+     Cleared when the user saves. */
+  const motionPromptDirty = {};
+  const promptDirty = {};
+  window.scMarkVidPromptDirty = function(idx) { motionPromptDirty[idx] = true; };
+  window.scMarkPromptDirty    = function(idx) { promptDirty[idx]       = true; };
+
   /* ── Outpaint state ── */
   const opState = {};
   {% for shot in shots %}
@@ -606,7 +615,8 @@
             ▶ Video prompt (WAN 2.6 — edit here, then re-derive Frame 0)
           </span>
           <textarea class="sc-det-video-prompt-ta" id="sc-vid-prompt-${idx}"
-                    rows="4" maxlength="2000">${escHtml(shot.motionPrompt || '')}</textarea>
+                    rows="4" maxlength="2000"
+                    oninput="scMarkVidPromptDirty(${idx})">${escHtml(shot.motionPrompt || '')}</textarea>
           <div class="sc-det-prompt-row" style="margin-top:6px;gap:8px;flex-wrap:wrap;">
             <button class="sc-det-rederive-btn" id="sc-rederive-btn-${idx}"
                     onclick="scSaveVideoPrompt(${idx}, document.getElementById('sc-vid-prompt-${idx}').value, true)">
@@ -632,6 +642,7 @@
           </label>
           <textarea class="sc-det-prompt-ta" id="sc-prompt-${idx}"
                     rows="5" maxlength="4000"
+                    oninput="scMarkPromptDirty(${idx})"
                     onblur="scSavePrompt(${idx}, this.value)">${escHtml(shot.prompt || '')}</textarea>
           <div class="sc-det-prompt-row">
             <button class="btn-mini" style="font-size:10px;"
@@ -862,18 +873,21 @@
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
             applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
           }
-          // Apply prompt updates that arrived via pre_compute_shot_prompts.
-          // Only update fields that were blank before — never overwrite text the
-          // user is actively editing (check the focused element).
+          // Apply prompt updates from pre_compute_shot_prompts as they arrive.
+          // Rule: update if the server value changed AND the user has NOT dirtied
+          // that field (i.e. typed in it since last save).
+          // Never overwrite the currently focused element.
           const focused = document.activeElement;
           if (shotData[shot.shot_index]) {
             const sd = shotData[shot.shot_index];
-            if (shot.motion_prompt && !sd.motionPrompt) {
+            if (shot.motion_prompt && shot.motion_prompt !== sd.motionPrompt
+                && !motionPromptDirty[shot.shot_index]) {
               sd.motionPrompt = shot.motion_prompt;
               const vidTa = document.getElementById('sc-vid-prompt-' + shot.shot_index);
               if (vidTa && vidTa !== focused) vidTa.value = shot.motion_prompt;
             }
-            if (shot.prompt && !sd.prompt) {
+            if (shot.prompt && shot.prompt !== sd.prompt
+                && !promptDirty[shot.shot_index]) {
               sd.prompt = shot.prompt;
               const f0Ta = document.getElementById('sc-prompt-' + shot.shot_index);
               if (f0Ta && f0Ta !== focused) f0Ta.value = shot.prompt;
@@ -987,8 +1001,12 @@
     for (const idx of failedIdxs) applyStatus(idx, 'rendering', null, null);
     startPolling();
     try {
-      await fetch('/project/' + PID + '/retry/all_failed_shots', {
-        method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'fetch', 'Accept': 'application/json' }, credentials: 'same-origin'
+      const fd = new FormData();
+      fd.append('csrf_token', CSRF);
+      fd.append('failed', '1');
+      await fetch('/project/' + PID + '/stills/generate-all', {
+        method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        credentials: 'same-origin', body: fd
       });
     } catch(e) {}
   };
@@ -1093,7 +1111,10 @@
         body: JSON.stringify({ shot_index: idx, prompt: val }),
       });
       const data = await resp.json();
-      if (data.ok && ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      if (data.ok) {
+        promptDirty[idx] = false;
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      }
     } catch(e) {}
   };
 
@@ -1108,7 +1129,10 @@
         body: JSON.stringify({ shot_index: idx, motion_prompt: val, rederive: false }),
       });
       const data = await resp.json();
-      if (data.ok && ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      if (data.ok) {
+        motionPromptDirty[idx] = false;
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      }
     } catch(e) {}
   };
 
@@ -1128,8 +1152,10 @@
       });
       const data = await resp.json();
       if (data.ok) {
+        motionPromptDirty[idx] = false;
         if (data.frame0_prompt) {
           if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
+          promptDirty[idx] = false;
           const f0ta = document.getElementById('sc-prompt-' + idx);
           if (f0ta) f0ta.value = data.frame0_prompt;
         }

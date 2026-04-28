@@ -3677,11 +3677,13 @@ def stills_generate_all(project_id: str):
     Returns JSON for AJAX callers; redirects for plain HTML form POSTs.
     """
     _stills_control_guard(project_id)
-    force_raw = (request.values.get("force") or "").strip().lower()
-    force = force_raw in ("1", "true", "yes", "on")
-    kick_all_pending_shots(project_id, force=force)
+    force_raw  = (request.values.get("force")  or "").strip().lower()
+    failed_raw = (request.values.get("failed") or "").strip().lower()
+    force       = force_raw  in ("1", "true", "yes", "on")
+    failed_only = failed_raw in ("1", "true", "yes", "on")
+    kick_all_pending_shots(project_id, force=force, failed_only=failed_only)
     if _wants_json():
-        return jsonify({"ok": True, "force": force})
+        return jsonify({"ok": True, "force": force, "failed_only": failed_only})
     return redirect(url_for("project_detail", project_id=project_id))
 
 

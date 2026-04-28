@@ -4949,12 +4949,17 @@ def kick_single_shot(project_id: str, shot_index: int) -> None:
     _SHOT_EXECUTOR.submit(_render_shot, project_id, shot, None, None)
 
 
-def kick_all_pending_shots(project_id: str, force: bool = False) -> None:
+def kick_all_pending_shots(
+    project_id: str,
+    force: bool = False,
+    failed_only: bool = False,
+) -> None:
     """Generate shots in the background.
 
     With force=False (default) skips shots already marked ``ready``.
     With force=True regenerates every shot in the timeline, including
     already-ready ones — used for the bulk "Regenerate All" action.
+    With failed_only=True only queues shots currently marked ``failed``.
     """
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -4980,7 +4985,9 @@ def kick_all_pending_shots(project_id: str, force: bool = False) -> None:
     for shot in timeline:
         idx = shot.get("shot_index") or shot.get("timeline_index")
         asset = asset_rows.get(idx, {})
-        if not force and asset.get("status") == "ready":
+        if failed_only and asset.get("status") != "failed":
+            continue
+        if not force and not failed_only and asset.get("status") == "ready":
             continue
         merged = {**shot}
         if asset.get("prompt"):
