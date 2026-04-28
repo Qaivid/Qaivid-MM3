@@ -4179,7 +4179,7 @@ def stills_generate_ai_wan_prompt_single(project_id: str, shot_index: int):
     frame0_prompt = (row.get("prompt") or "").strip()
     try:
         from pipeline_worker import _generate_ai_wan_prompt  # noqa: PLC0415
-        ai_prompt = _generate_ai_wan_prompt(frame0_prompt, motion_prompt, shot_index)
+        ai_prompt = _generate_ai_wan_prompt(frame0_prompt, motion_prompt, shot_index, project_id)
         if not ai_prompt:
             return jsonify({"ok": False, "error": "Gemini returned an empty prompt"}), 500
         stored = ai_prompt[:2000]
@@ -4191,12 +4191,12 @@ def stills_generate_ai_wan_prompt_single(project_id: str, shot_index: int):
             )
             conn.commit()
         return jsonify({"ok": True, "ai_wan_video_prompt": stored})
-    except Exception as exc:
+    except Exception:
         logging.exception(
             "stills_generate_ai_wan_prompt_single: failed for project=%s shot=%s",
             project_id, shot_index,
         )
-        return jsonify({"ok": False, "error": f"Generation failed: {exc}"}), 500
+        return jsonify({"ok": False, "error": "Generation failed — please try again"}), 500
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
