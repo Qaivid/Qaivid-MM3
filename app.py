@@ -11,6 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+logger = logging.getLogger(__name__)
 from flask import (
     Flask,
     Response,
@@ -3971,13 +3972,15 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
             conn.commit()
         return jsonify({"ok": True, "wan_video_prompt": wan_prompt})
     except Exception as exc:
-        logger.exception(
+        logging.exception(
             "stills_rederive_wan_prompt: GPT call failed for project=%s shot=%s",
             project_id, shot_index,
         )
-        # Surface a human-readable hint for the most common transient failure.
+        # Surface a human-readable hint for the most common transient failures.
         exc_str = str(exc)
-        if "429" in exc_str or "rate" in exc_str.lower():
+        if "insufficient_quota" in exc_str:
+            user_msg = "OpenAI quota exhausted — please top up your OpenAI billing credits"
+        elif "429" in exc_str or "rate" in exc_str.lower():
             user_msg = "OpenAI rate limit — please wait a moment and try again"
         elif "401" in exc_str or "auth" in exc_str.lower():
             user_msg = "OpenAI API key error — contact support"
