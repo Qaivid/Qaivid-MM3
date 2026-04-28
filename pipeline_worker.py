@@ -1294,23 +1294,49 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
 
     motion_prompt = motion_prompt.strip()
 
-    # ── 1. Parse structured motion_prompt sections ────────────────────────────
+    # ── 1. Parse structured motion_prompt sections (Key: value | Key: value) ──
     secs = _parse_motion_prompt_sections(motion_prompt)
     is_structured = bool(secs)
 
-    # ── 1b. Legacy flat-text parser (comma-dump format from old pipeline) ─────
+    # ── 1b. Short camera-spec parser ──────────────────────────────────────────
+    # Some pipelines store compact specs like:
+    #   "fast dolly — slow push-in, 85mm portrait, shallow depth of field"
+    #   "moderate dolly — slow push-in, 85mm portrait"
+    #   "fast steadicam — floating follow, 50mm natural, medium depth"
+    # Detect this format (no Key: prefix, no "Apply a", short, comma-separated)
+    _is_short_spec = (
+        not is_structured
+        and len(motion_prompt) < 120
+        and not _re.match(r'^(?:apply|the camera|character anchor)', motion_prompt, _re.I)
+        and _re.search(r'\b(?:dolly|steadicam|handheld|push[- ]in|pull[- ]back|pan|tilt|zoom'
+                       r'|tracking|crane|float|drift)', motion_prompt, _re.I)
+    )
+
+    # Pull the primary camera move from the short spec
+    short_spec_camera = ""
+    short_spec_lens = ""
+    if _is_short_spec:
+        # Full spec (stripped of pure quality terms) is the camera description
+        _cam_parts = [p.strip() for p in motion_prompt.split(",") if p.strip()]
+        # Lens/tech terms: "85mm portrait", "50mm natural", "shallow depth of field"
+        _lens_terms = _re.compile(
+            r'^\d+mm|^shallow depth|^deep focus|^medium depth|^natural\b', _re.I)
+        _move_parts = [p for p in _cam_parts if not _lens_terms.match(p)]
+        _lens_parts = [p for p in _cam_parts if _lens_terms.match(p)]
+        short_spec_camera = ", ".join(_move_parts)  # e.g. "fast dolly — slow push-in"
+        short_spec_lens = ", ".join(_lens_parts)    # e.g. "85mm portrait, shallow depth"
+
+    # ── 1c. Legacy flat-text parser (comma-dump format from old pipeline) ─────
     # Old pipeline stored prose like:
     #   "Apply a warm colour grade..., The camera captures..., static hold, ..."
-    # Extract per-shot content from these flat lists without treating them as
-    # structured Key:value sections.
     legacy_camera_sentence = ""
     legacy_lighting_phrase = ""
     legacy_mood_phrase = ""
     legacy_camera_mode = ""
     legacy_avoid_items: list = []
 
-    if not is_structured:
-        # Camera sentence: "The camera captures..." or "Camera ..." prose sentence
+    if not is_structured and not _is_short_spec:
+        # Camera sentence: "The camera captures..." prose sentence
         _cam_sent = _re.search(
             r'(?:The camera\s+\w+(?:\s+\w+){0,8}[^.,]+(?:\.|,|$))',
             motion_prompt, _re.I
@@ -1329,13 +1355,13 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         if _cmode:
             legacy_camera_mode = _cmode.group(0).strip()
 
-        # Lighting: grab a cluster of lighting-adjacent words from the flat list
-        # e.g. "high-key open natural light, minimal shadow" or "backlit silhouette with soft rim glow"
+        # Lighting: grab a lighting-adjacent cluster from the flat list
         _light = _re.search(
             r'(?:'
             r'backlit\s+\w+(?:\s+with\s+\w[\w\s]+?)?'
             r'|high[- ]key\s+[\w\s]+?(?=,|$)'
-            r'|(?:warm|cool|soft|golden|diffused|dramatic|mixed[- ]temperature)\s+[\w\s]+?(?:light|glow|lamp|fill)[\w\s]*?(?=,|$)'
+            r'|(?:warm|cool|soft|golden|diffused|dramatic|mixed[- ]temperature)\s+[\w\s]+'
+            r'(?:light|glow|lamp|fill)[\w\s]*?(?=,|$)'
             r'|(?:soft|hard|directional)\s+(?:light|lighting)[\w\s]*?(?=,|$)'
             r')',
             motion_prompt, _re.I
@@ -1343,7 +1369,7 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         if _light:
             legacy_lighting_phrase = _clean(_light.group(0).strip().rstrip(".,"), 90)
 
-        # Mood: cluster of emotional/atmosphere words
+        # Mood: emotional/atmosphere words
         _mood = _re.search(
             r'(?:quiet\s+(?:anticipation|restrained|melancholic|longing|ache)'
             r'|nostalgic(?:\s+and\s+\w+)?'
@@ -1369,24 +1395,94 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
     # ── 2. Frame 0 anchor — the image prompt IS what the still shows ──────────
     # Accept 'prompt' (DB column name) OR 'visual_prompt' / 'styled_visual_prompt'
     frame0_desc = _pick_shot("styled_visual_prompt", "visual_prompt", "prompt")
-    # Strip markdown headers that appear in GPT-generated Frame 0 prompts
+    # Strip markdown bold headers from GPT-generated prompts
     frame0_desc = _re.sub(r'\*\*[^*]+\*\*\s*:?\s*', '', frame0_desc).strip()
-    frame0_anchor = _first_clause(frame0_desc, 110) if frame0_desc else ""
+
+    # ── 2b. Parse frame0 image prompt for story content ───────────────────────
+    # The image prompt comes in two formats from different pipeline versions:
+    #
+    # FORMAT A — Character anchor template (boilerplate, no scene specifics):
+    #   "Character anchor: portray a Adult Unspecified figure in the role of Lover,
+    #    with emotional state centered on Sorrowful. Speaker identity context: A
+    #    heartbroken lover. Appearance lock: ..."
+    #
+    # FORMAT B — Rich cinematic prompt (per-shot story content):
+    #   "Cinematography: dolly rig, slow push-in, 85mm. The beloved's actions have
+    #    caused the speaker to cry a lot. Subject: ... Framing: side profile, chin
+    #    slightly down, gaze distant. Camera: fast dolly — slow push-in, 85mm..."
+    #
+    # We extract: story sentence, emotional state, subject framing, camera spec.
+    frame0_is_anchor = frame0_desc.startswith("Character anchor:")
+    frame0_story_sentence = ""       # per-shot narrative beat from image prompt
+    frame0_emotion_raw = ""          # emotion keyword from the image prompt
+    frame0_framing_from_prompt = ""  # pose/framing description embedded in image prompt
+    frame0_camera_from_prompt = ""   # camera spec embedded in image prompt
+
+    if frame0_desc:
+        if frame0_is_anchor:
+            # Format A — extract emotion and speaker context
+            _em_m = _re.search(
+                r'emotional\s+state\s+centered\s+on\s+([A-Z][a-z]{3,25})',
+                frame0_desc, _re.I
+            )
+            if _em_m:
+                frame0_emotion_raw = _em_m.group(1).lower()
+
+            # "Speaker identity context: A heartbroken lover" → action synthesis hint
+            _sp_m = _re.search(
+                r'Speaker identity context:\s*A\s+([\w\s]{4,50}?)\.', frame0_desc, _re.I
+            )
+            if _sp_m:
+                frame0_story_sentence = _clean(_sp_m.group(1), 60)  # e.g. "heartbroken lover"
+
+        else:
+            # Format B — story sentence is typically the 2nd sentence (after Cinematography line)
+            _story_m = _re.search(
+                r'(?:\.\s+|\n)'
+                r'((?:The\s+(?:beloved|speaker|character|singer|subject)\s+[^.]{10,120})'
+                r'|(?:(?:She|He|They)\s+[a-z][^.]{10,80}))\.',
+                frame0_desc, _re.I
+            )
+            if _story_m:
+                frame0_story_sentence = _clean(_story_m.group(1), 130)
+
+            # Framing line: "Framing: side profile, chin slightly down, gaze distant"
+            _fr_m = _re.search(r'Framing:\s*([^.\n]{5,90}?)(?:\.|Camera:|$)', frame0_desc, _re.I)
+            if _fr_m:
+                frame0_framing_from_prompt = _clean(_fr_m.group(1).strip().rstrip(","), 80)
+
+            # Camera spec from image prompt — often duplicates motion_prompt
+            _cp_m = _re.search(r'\bCamera:\s*([^.\n]{5,90}?)(?:\.|$)', frame0_desc, _re.I)
+            if _cp_m:
+                frame0_camera_from_prompt = _clean(_cp_m.group(1).strip(), 80)
+
+    # frame0_anchor = a brief visual description for micro-detail extraction
+    # For Format A, don't use the boilerplate "Character anchor: portray..." as anchor
+    if not frame0_is_anchor:
+        frame0_anchor = _first_clause(frame0_desc, 110)
+    else:
+        frame0_anchor = ""  # No visual scene description in anchor format
 
     # ── 3. Subject ────────────────────────────────────────────────────────────
     subject = _clean(_pick_shot("subject", "character_name", "identity_seed"), 40)
-    # Try to extract subject from image prompt if not in shot dict
-    if not subject and frame0_anchor:
-        _subj_m = _re.match(r'^(?:A\s+)?(?:cinematic\s+still\s+of\s+)?(.{5,40}?)(?:\s+stand|\s+sit|\s+walk|\s+look|\s+gaz)',
-                            frame0_anchor, _re.I)
+    if not subject and not frame0_is_anchor and frame0_anchor:
+        _subj_m = _re.match(
+            r'^(?:A\s+)?(?:cinematic\s+still\s+of\s+)?(.{5,40}?)'
+            r'(?:\s+stand|\s+sit|\s+walk|\s+look|\s+gaz|\s+in\s+)',
+            frame0_anchor, _re.I
+        )
         if _subj_m:
             subject = _clean(_subj_m.group(1), 40)
 
-    # ── 4. Framing — close-up / medium / wide based on shot index ────────────
+    # ── 4. Framing — image prompt first, then shot-index heuristic ────────────
     _sidx = int(shot.get("shot_index") or shot.get("timeline_index") or 0)
     _framing_raw = _pick_shot("framing_type", "framing", "shot_size", "shot_type")
     if _framing_raw and not _is_postprocess(_framing_raw):
-        framing = _clean(_framing_raw, 50)
+        framing = _clean(_framing_raw, 60)
+    elif frame0_framing_from_prompt:
+        # Use the actual framing embedded in the image prompt (e.g. "side profile,
+        # chin slightly down, gaze distant") — this IS per-shot and story-relevant
+        framing = frame0_framing_from_prompt
     elif _sidx == 1:
         framing = "wide establishing shot"
     elif _sidx == 2:
@@ -1404,11 +1500,12 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
     emotion_start = _clean(_pick_shot("emotional_micro_state", "emotional_state", "emotional_tone"), 50)
     emotion_end   = _clean(_pick_shot("emotional_shift"), 50)
     intensity_raw = _pick_shot("emotional_intensity", "intensity", "audio_intensity") or "medium"
-    # Fall back to extracting emotion from legacy mood phrase
-    if not emotion_start and legacy_mood_phrase:
-        emotion_start = _clean(legacy_mood_phrase, 50)
+    # Fall back: emotion from image prompt (Format A gives "sorrowful", etc.)
+    if not emotion_start:
+        emotion_start = _clean(frame0_emotion_raw or legacy_mood_phrase, 50)
 
-    # ── 6. Story beat — skip if it's a colour-grade / post-processing instruction
+    # ── 6. Story beat — per-shot narrative content drives the Action ──────────
+    # Priority: shot dict fields → image prompt story sentence → legacy camera sentence
     story_beat = ""
     for _skey in ("chosen_direction", "_v2_chosen_direction", "action", "shot_event"):
         _sv = (shot.get(_skey) or "").strip()
@@ -1426,36 +1523,70 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         camera_raw, flags=_re.I
     )[0].strip().rstrip(",").strip()
 
-    # For legacy flat prompts, prefer the explicitly parsed camera mode
+    # Short-spec format: the whole spec IS the camera move
+    # e.g. "fast dolly — slow push-in" (already stripped of lens terms)
+    if not camera_motion and short_spec_camera:
+        camera_motion = short_spec_camera
+
+    # Legacy flat-text: prefer the explicitly extracted camera mode keyword
     if not camera_motion and legacy_camera_mode:
-        # "static hold, minimal camera movement" → just "static hold"
         camera_motion = _re.split(r',\s*minimal camera movement', legacy_camera_mode, flags=_re.I)[0].strip()
 
     # Fall back to emotion-driven camera when nothing else is available
     if not camera_motion:
         camera_motion = _camera_from_emotion(emotion_start or "nostalgic", intensity_raw)
 
-    # Link camera motion to story beat or legacy camera sentence for purpose
-    _purpose = story_beat or legacy_camera_sentence or ""
-    if camera_motion and _purpose:
-        _snip = _purpose[:55].rsplit(" ", 1)[0] if len(_purpose) > 55 else _purpose
+    # Append lens spec if available (e.g. "85mm portrait, shallow depth of field")
+    # This gives WAN the focal length / depth context for a more accurate generation
+    if camera_motion and short_spec_lens:
+        camera_motion = f"{camera_motion}, {short_spec_lens}"
+
+    # Link camera motion to story beat for cinematic purpose.
+    # Only use frame0_story_sentence if it is a real narrative sentence (≥20 chars,
+    # from Format B image prompt) — NOT the Format A short label ("heartbroken lover")
+    _narrative_purpose = (
+        story_beat
+        or (frame0_story_sentence if (not frame0_is_anchor and len(frame0_story_sentence) >= 20) else "")
+        or legacy_camera_sentence
+    )
+    if camera_motion and _narrative_purpose:
+        _snip = _narrative_purpose[:60].rsplit(" ", 1)[0] if len(_narrative_purpose) > 60 else _narrative_purpose
         cam_text = f"{camera_motion} — {_snip}"
     else:
         cam_text = camera_motion
 
     if cam_text:
-        wan_parts.append(f"Camera: {_clean(cam_text, 130)}")
+        wan_parts.append(f"Camera: {_clean(cam_text, 140)}")
 
-    # ── 7. ACTION ─────────────────────────────────────────────────────────────
+    # ── 7. ACTION — story beat drives what the character does in the clip ─────
+    # Priority: explicit shot dict beat → image prompt story sentence →
+    #           legacy camera sentence → emotion-driven synthesis
     if story_beat:
-        # Real story beat from shot data
         action_prefix = f"{subject} — " if subject and not story_beat.lower().startswith(subject.lower()) else ""
         wan_parts.append(f"Action: {_clean(action_prefix + story_beat, 130)}")
+    elif frame0_story_sentence:
+        # Story sentence extracted from image prompt (e.g. "The beloved's actions
+        # have caused the speaker to cry a lot" or "A heartbroken lover")
+        # Map it to a character action for the clip
+        _fs = frame0_story_sentence.lower()
+        if any(w in _fs for w in ("cry", "weep", "tear", "sob")):
+            _syn = f"{subject + ' — ' if subject else ''}eyes glistening, a single tear tracing the cheek, breath unsteady"
+        elif any(w in _fs for w in ("sorrow", "griev", "mourn", "despair")):
+            _syn = f"{subject + ' — ' if subject else ''}still, chest barely moving, expression weighted with loss"
+        elif any(w in _fs for w in ("heartbroken", "heartbreak", "broken")):
+            _syn = f"{subject + ' — ' if subject else ''}gaze averted, body turned inward, carrying the weight of absence"
+        elif any(w in _fs for w in ("emphasize", "extent", "depth", "intensity")):
+            _syn = f"{subject + ' — ' if subject else ''}pause deepens, the silence between breaths speaking louder than words"
+        elif any(w in _fs for w in ("long", "yearn", "ache", "miss")):
+            _syn = f"{subject + ' — ' if subject else ''}eyes drift toward the horizon, hands still, lost in the distance"
+        else:
+            # Use the sentence itself as a story note that drives synthesis
+            _syn = _action_from_emotion(emotion_start or "sorrowful", subject)
+        wan_parts.append(f"Action: {_clean(_syn, 130)}")
     elif legacy_camera_sentence:
-        # Legacy: the "The camera captures..." sentence IS the scene action description
+        # "The camera captures Kulwant standing at..." — IS the scene description
         wan_parts.append(f"Action: {_clean(legacy_camera_sentence, 130)}")
     elif emotion_start:
-        # Synthesise from emotional state
         wan_parts.append(f"Action: {_clean(_action_from_emotion(emotion_start, subject), 130)}")
     elif is_structured:
         scene_raw = secs.get("Scene", "")
@@ -1468,12 +1599,27 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             if action_text:
                 wan_parts.append(f"Action: {_clean(action_text, 130)}")
 
-    # ── 8. LIGHTING — prefer per-shot legacy phrase (it differs per shot!) ────
+    # ── 8. LIGHTING — prefer per-shot phrase; scan image prompt as last resort ─
     if legacy_lighting_phrase:
-        # Per-shot lighting from the flat comma list — this IS different per shot
         lighting_raw = legacy_lighting_phrase
+    elif is_structured:
+        lighting_raw = secs.get("Lighting", "")
     else:
-        lighting_raw = secs.get("Lighting", "") if is_structured else ""
+        lighting_raw = ""
+
+    # For short-spec and Format B prompts, scan the image prompt for lighting
+    if not lighting_raw and frame0_desc:
+        _lm2 = _re.search(
+            r'(?:'
+            r'backlit(?:\s+\w+)?(?:\s+with\s+[\w\s]+?)?'
+            r'|(?:warm|cool|soft|golden|diffused|dramatic|hard|rim)\s+[\w\s]*?(?:light|glow|fill)[\w\s]*?'
+            r'|(?:overcast|dappled|filtered|low[- ]key|high[- ]key)[\w\s]*?(?:light|lighting)'
+            r')',
+            frame0_desc, _re.I
+        )
+        if _lm2:
+            _ctx2 = frame0_desc[max(0, _lm2.start()-5):min(len(frame0_desc), _lm2.end()+40)]
+            lighting_raw = _ctx2.strip().split(".")[0].strip()
 
     lighting_raw = lighting_raw.lstrip(",; ").strip()
     if lighting_raw and len(lighting_raw) >= 12:
@@ -1485,6 +1631,22 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         wan_parts.append(f"Lighting: {lighting}")
 
     # ── 9. MOOD ───────────────────────────────────────────────────────────────
+    # If no explicit emotion, derive from the story sentence
+    if not emotion_start and frame0_story_sentence:
+        _fs2 = frame0_story_sentence.lower()
+        if any(w in _fs2 for w in ("cry", "weep", "tear", "sob")):
+            emotion_start = "grief — tears breaking through"
+        elif any(w in _fs2 for w in ("sorrow", "griev", "mourn", "bereavem")):
+            emotion_start = "deep sorrow"
+        elif any(w in _fs2 for w in ("heartbroken", "heartbreak", "broken")):
+            emotion_start = "heartbreak"
+        elif any(w in _fs2 for w in ("emphasize", "extent of their sorrow")):
+            emotion_start = "sorrow — held, barely contained"
+        elif any(w in _fs2 for w in ("long", "yearn", "miss", "absence")):
+            emotion_start = "longing"
+        elif any(w in _fs2 for w in ("tender", "love", "beloved")):
+            emotion_start = "tender love, touched by absence"
+
     if emotion_start and emotion_end and emotion_start.lower() != emotion_end.lower():
         mood_text = f"{emotion_start} → {emotion_end}"
     elif emotion_start:
