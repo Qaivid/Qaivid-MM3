@@ -399,13 +399,20 @@
         </div>
         <div class="pp-ctrl-group">
           <label class="pp-ctrl-label">Animation</label>
-          <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange()">
+          <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange(); ppSubPreview()">
             <option value="none">None</option>
-            <option value="fade">Fade In</option>
-            <option value="typewriter">Typewriter</option>
-            <option value="slide-up">Slide Up</option>
-            <option value="pop">Pop</option>
-            <option value="karaoke">Karaoke (word-by-word colour highlight)</option>
+            <option value="fade">Fade In / Out</option>
+            <option value="typewriter">Typewriter (letter-by-letter)</option>
+            <option value="karaoke">Karaoke (word fill)</option>
+            <option value="slide-up">Slide Up (from below)</option>
+            <option value="slide-down">Slide Down (from above)</option>
+            <option value="slide-left">Slide In from Right</option>
+            <option value="slide-right">Slide In from Left</option>
+            <option value="pop">Pop (scale bounce)</option>
+            <option value="zoom-in">Zoom In</option>
+            <option value="bounce">Bounce In</option>
+            <option value="shake">Shake</option>
+            <option value="glow-pulse">Glow Pulse</option>
           </select>
         </div>
         <div class="pp-ctrl-group">
@@ -862,6 +869,60 @@ body { overflow-y: auto !important; }
   text-align: center; pointer-events: none; font-size: 18px;
   text-shadow: 0 1px 3px #000; color: #fff; transition: all .2s;
 }
+
+/* ── Subtitle live-preview animations (mirrored in pipeline_worker.py
+       _srt_to_ass_animated so what you see is what gets burned in) ── */
+.pp-sub-anim-fade        { animation: ppSubFade .4s ease-out both; }
+.pp-sub-anim-slide-up    { animation: ppSubSlideUp .4s ease-out both; }
+.pp-sub-anim-slide-down  { animation: ppSubSlideDown .4s ease-out both; }
+.pp-sub-anim-slide-left  { animation: ppSubSlideLeft .4s ease-out both; }
+.pp-sub-anim-slide-right { animation: ppSubSlideRight .4s ease-out both; }
+.pp-sub-anim-pop         { animation: ppSubPop .4s cubic-bezier(.34,1.56,.64,1) both; }
+.pp-sub-anim-zoom-in     { animation: ppSubZoom .4s ease-out both; }
+.pp-sub-anim-bounce      { animation: ppSubBounce .55s cubic-bezier(.28,.84,.42,1) both; }
+.pp-sub-anim-shake       { animation: ppSubShake .5s ease-in-out infinite; }
+.pp-sub-anim-glow-pulse  { animation: ppSubGlow 1.6s ease-in-out infinite; }
+.pp-sub-anim-typewriter  {
+  /* Letters added one-by-one via JS; clip the caret to the right edge */
+  white-space: pre-wrap;
+}
+.pp-sub-anim-typewriter::after {
+  content: '|'; opacity: .8; margin-left: 1px;
+  animation: ppSubCaret .8s steps(1) infinite;
+}
+.pp-sub-anim-karaoke .pp-kar-word {
+  display: inline-block; opacity: .35; margin: 0 .12em;
+  transition: opacity .15s linear, color .15s linear;
+}
+.pp-sub-anim-karaoke .pp-kar-word.pp-kar-on { opacity: 1; }
+
+@keyframes ppSubFade        { from { opacity: 0 }                 to { opacity: 1 } }
+@keyframes ppSubSlideUp     { from { opacity: 0; transform: translateY(20px) }   to { opacity: 1; transform: translateY(0) } }
+@keyframes ppSubSlideDown   { from { opacity: 0; transform: translateY(-20px) }  to { opacity: 1; transform: translateY(0) } }
+@keyframes ppSubSlideLeft   { from { opacity: 0; transform: translateX(40px) }   to { opacity: 1; transform: translateX(0) } }
+@keyframes ppSubSlideRight  { from { opacity: 0; transform: translateX(-40px) }  to { opacity: 1; transform: translateX(0) } }
+@keyframes ppSubPop         {
+  0%   { opacity: 0; transform: scale(.5) }
+  60%  { opacity: 1; transform: scale(1.15) }
+  100% { opacity: 1; transform: scale(1) }
+}
+@keyframes ppSubZoom        { from { opacity: 0; transform: scale(.5) }          to { opacity: 1; transform: scale(1) } }
+@keyframes ppSubBounce      {
+  0%   { opacity: 0; transform: translateY(40px) scaleY(.8) }
+  55%  { opacity: 1; transform: translateY(-6px) scaleY(1.05) }
+  80%  { transform: translateY(2px) scaleY(.96) }
+  100% { transform: translateY(0) scaleY(1) }
+}
+@keyframes ppSubShake       {
+  0%,100% { transform: translateX(0) }
+  25%     { transform: translateX(-3px) }
+  75%     { transform: translateX(3px) }
+}
+@keyframes ppSubGlow        {
+  0%,100% { filter: drop-shadow(0 0 2px rgba(255,255,255,.4)) }
+  50%     { filter: drop-shadow(0 0 8px rgba(255,255,255,.95)) drop-shadow(0 0 14px rgba(255,255,255,.6)) }
+}
+@keyframes ppSubCaret       { 0%,50% { opacity: .8 } 51%,100% { opacity: 0 } }
 /* Text overlay (from Animation > Text Area) */
 .pp-text-overlay {
   position: absolute;
@@ -1350,14 +1411,93 @@ body { overflow-y: auto !important; }
       outline: document.getElementById('ctrl-sub-outline')?.value || 1.5,
       shadow:  document.getElementById('ctrl-sub-shadow')?.value  || 0,
       yPct:    document.getElementById('ctrl-sub-y')?.value       || 90,
+      anim:    document.getElementById('ctrl-sub-anim')?.value    || 'none',
     };
+  }
+
+  /* List of every animation class — used to wipe stale state before re-applying */
+  const PP_SUB_ANIM_CLASSES = [
+    'pp-sub-anim-fade','pp-sub-anim-typewriter','pp-sub-anim-karaoke',
+    'pp-sub-anim-slide-up','pp-sub-anim-slide-down','pp-sub-anim-slide-left','pp-sub-anim-slide-right',
+    'pp-sub-anim-pop','pp-sub-anim-zoom-in','pp-sub-anim-bounce','pp-sub-anim-shake','pp-sub-anim-glow-pulse'
+  ];
+
+  /* Cue duration lookup so per-letter / per-word timing matches the actual
+     SRT cue length (mirrors what the FFmpeg ASS output computes). */
+  function ppCueDurMs(text) {
+    const cue = (srtCues || []).find(c => (c.text || '').trim() === (text || '').trim());
+    return cue ? Math.max(400, (cue.end - cue.start) * 1000) : 1800;
+  }
+
+  /* Render the cue text inside `el` with the animation `s.anim` applied.
+     For typewriter / karaoke we structure the DOM with per-letter / per-word
+     spans and step them on a timer so the live preview matches the ASS burn-in.
+
+     We track the last applied (text, anim) pair on the element via dataset so
+     the RAF subtitle loop doesn't keep re-triggering CSS animations every frame. */
+  function ppPaintAnimated(el, text, anim) {
+    // Cancel any prior typewriter/karaoke timer so we don't leak intervals.
+    if (el._ppAnimTimer) { clearInterval(el._ppAnimTimer); el._ppAnimTimer = null; }
+
+    PP_SUB_ANIM_CLASSES.forEach(c => el.classList.remove(c));
+    el.innerHTML = '';
+
+    if (anim === 'typewriter') {
+      el.classList.add('pp-sub-anim-typewriter');
+      const chars = Array.from(text);
+      const total = ppCueDurMs(text);
+      // Reveal in the first 70% of the cue, hold the rest.
+      const stepMs = Math.max(20, Math.floor((total * 0.7) / Math.max(1, chars.length)));
+      let i = 0;
+      const tick = () => {
+        if (i >= chars.length) { clearInterval(el._ppAnimTimer); el._ppAnimTimer = null; return; }
+        el.insertBefore(document.createTextNode(chars[i++]), el.lastChild);
+      };
+      // Seed with one char so the caret is visible immediately.
+      if (chars.length) el.appendChild(document.createTextNode(chars[0]));
+      i = 1;
+      el._ppAnimTimer = setInterval(tick, stepMs);
+      return;
+    }
+
+    if (anim === 'karaoke') {
+      el.classList.add('pp-sub-anim-karaoke');
+      const words = text.split(/\s+/).filter(Boolean);
+      words.forEach(w => {
+        const span = document.createElement('span');
+        span.className = 'pp-kar-word';
+        span.textContent = w;
+        el.appendChild(span);
+      });
+      const total = ppCueDurMs(text);
+      const stepMs = Math.max(80, Math.floor(total / Math.max(1, words.length)));
+      let i = 0;
+      const tick = () => {
+        if (i >= words.length) { clearInterval(el._ppAnimTimer); el._ppAnimTimer = null; return; }
+        el.children[i++]?.classList.add('pp-kar-on');
+      };
+      el._ppAnimTimer = setInterval(tick, stepMs);
+      return;
+    }
+
+    // For everything else, the CSS keyframe class drives the animation.
+    el.textContent = text;
+    if (anim && anim !== 'none') el.classList.add('pp-sub-anim-' + anim);
   }
 
   /* force=true: show styled text even when no SRT is loaded (style preview) */
   function ppApplySubStyle(el, text, s, force) {
     if (!el) return;
-    if (!text || (!force && !cfg.srt_r2_key)) { el.textContent = ''; el.style.cssText = 'pointer-events:none;'; return; }
-    el.textContent = text;
+    if (!text || (!force && !cfg.srt_r2_key)) {
+      if (el._ppAnimTimer) { clearInterval(el._ppAnimTimer); el._ppAnimTimer = null; }
+      PP_SUB_ANIM_CLASSES.forEach(c => el.classList.remove(c));
+      el.textContent = '';
+      el.style.cssText = 'pointer-events:none;';
+      return;
+    }
+
+    // Static styling (position, font, colour, outline) — kept on the element
+    // so animations layer cleanly on top via the CSS classes above.
     el.style.cssText = `
       position:absolute; left:5%; right:5%;
       bottom:${100 - parseInt(s.yPct)}%;
@@ -1369,6 +1509,19 @@ body { overflow-y: auto !important; }
       background: ${s.bg}80; padding: 2px 8px; border-radius: 3px;
       pointer-events:none; z-index:10; white-space:pre-line;
     `;
+
+    // Only re-render (and re-trigger animation) when the cue, animation, OR
+    // any visual style prop actually changes. The RAF loop calls us every
+    // frame; without this guard each frame would restart the CSS animation.
+    // Without including style props, dragging the size/colour sliders would
+    // silently fail to re-render (since text+anim haven't changed).
+    const sig = [
+      text || '', s.anim || 'none', s.font, s.size, s.color, s.bg,
+      s.outline, s.shadow, s.yPct
+    ].join('|');
+    if (el.dataset.ppSubSig === sig) return;
+    el.dataset.ppSubSig = sig;
+    ppPaintAnimated(el, text, s.anim || 'none');
   }
 
   /* Show the SRT cue at 'time' on both the KB overlay and the AI overlay */

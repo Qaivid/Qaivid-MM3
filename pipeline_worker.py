@@ -6949,13 +6949,43 @@ def _srt_time_to_ass(t: str) -> str:
 
 
 def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
-    """Convert an SRT file to ASS format with word-by-word karaoke fill timing."""
+    """Backward-compat wrapper — delegates to the unified animated ASS builder."""
+    return _srt_to_ass_animated(srt_bytes, style, "karaoke")
+
+
+# Map every animation key from the UI dropdown to a description so ops/QA
+# can verify the pipeline knows about each option the user can pick.
+_SUB_ANIMATIONS = {
+    "none":        "Plain subtitle, no animation.",
+    "fade":        "Fade in (200ms) and fade out (200ms).",
+    "typewriter":  "Letter-by-letter reveal (karaoke-character timing).",
+    "karaoke":     "Word-by-word colour fill (karaoke style).",
+    "slide-up":    "Slides up into position from 60px below.",
+    "slide-down":  "Slides down into position from 60px above.",
+    "slide-left":  "Slides in from the right edge.",
+    "slide-right": "Slides in from the left edge.",
+    "pop":         "Pops in with a 115% scale bounce.",
+    "zoom-in":     "Starts at 50% scale and zooms to full size.",
+    "bounce":      "Bounces in from below with a settle.",
+    "shake":       "Subtle horizontal shake throughout.",
+    "glow-pulse":  "Outline thickness pulses for emphasis.",
+}
+
+
+def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
+    """Convert SRT → ASS, applying per-event ASS override tags for the
+    chosen animation. One unified path for every animation the UI exposes
+    so behaviour stays consistent between the live preview and the
+    FFmpeg-burnt video."""
     import re as _re
     content = srt_bytes.decode("utf-8", errors="replace")
 
     font       = style.get("font", "Arial")
     font_size  = int(style.get("font_size", 24))
     primary_c  = style.get("primary_colour", "&H00FFFFFF")
+    outline_c  = style.get("outline_colour", "&H00000000")
+    back_c     = style.get("back_colour", "&H80000000")
+    bold       = int(style.get("bold", 0))
     outline    = float(style.get("outline", 1.5))
     shadow     = float(style.get("shadow", 0))
     margin_v   = int(style.get("margin_v", 40))
@@ -6963,23 +6993,25 @@ def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
     margin_r   = int(style.get("margin_r", 10))
     alignment  = int(style.get("alignment", 2))
 
-    # Strip the leading &H from colour to get BBGGRR hex
     def _c(col: str) -> str:
-        return col.lstrip("&H").lstrip("&h")
+        # Normalise "&H00FFFFFF" / "&h00ffffff" → "00FFFFFF" hex chunk
+        return (col or "").lstrip("&").lstrip("Hh") or "00FFFFFF"
 
     ass_header = (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
         "PlayResX: 1920\n"
         "PlayResY: 1080\n"
+        "WrapStyle: 0\n"
         "\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,"
         " BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle,"
         " BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{font},{font_size},"
-        f"&H{_c(primary_c)},&H0000FFFF,&H00000000,&H80000000,"
-        f"0,0,0,0,100,100,0,0,1,{outline:.1f},{shadow:.1f},{alignment},{margin_l},{margin_r},{margin_v},1\n"
+        f"&H{_c(primary_c)},&H0000FFFF,&H{_c(outline_c)},&H{_c(back_c)},"
+        f"{bold},0,0,0,100,100,0,0,1,{outline:.1f},{shadow:.1f},"
+        f"{alignment},{margin_l},{margin_r},{margin_v},1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -7005,17 +7037,139 @@ def _srt_to_ass_karaoke(srt_bytes: bytes, style: dict) -> str:
             continue
 
         dur_cs = max(1, _srt_time_to_cs(m.group(2)) - _srt_time_to_cs(m.group(1)))
+        dur_ms = dur_cs * 10
         clean  = _re.sub(r'<[^>]+>', '', text_raw.replace("\n", " ")).strip()
-        words  = clean.split()
-        if not words:
+        if not clean:
             continue
-
-        per_word_cs = max(1, dur_cs // len(words))
-        kar_text = "".join(f"{{\\kf{per_word_cs}}}{w} " for w in words).rstrip()
 
         s_time = _srt_time_to_ass(m.group(1))
         e_time = _srt_time_to_ass(m.group(2))
-        event_lines.append(f"Dialogue: 0,{s_time},{e_time},Default,,0,0,0,,{kar_text}")
+
+        # ── Build the per-event ASS override prefix + transformed text ──
+        # Animation budget: enter takes the smaller of 400ms or 25% of cue.
+        enter_ms = max(80, min(400, dur_ms // 4))
+        # All animations except karaoke/typewriter use the cleaned line as-is.
+        text_out = clean
+
+        if animation == "karaoke":
+            words = clean.split()
+            per_word_cs = max(1, dur_cs // max(1, len(words)))
+            text_out = "".join(f"{{\\kf{per_word_cs}}}{w} " for w in words).rstrip()
+            override = ""
+        elif animation == "typewriter":
+            # Per-character karaoke timing: each letter "fills" in sequence.
+            chars = list(clean)
+            per_char_cs = max(1, dur_cs // max(1, len(chars)))
+            text_out = "".join(f"{{\\k{per_char_cs}}}{ch}" for ch in chars)
+            # Make secondary (un-revealed) colour transparent so chars truly hide.
+            override = "{\\2a&HFF&}"
+            text_out = override + text_out
+            override = ""  # already prepended
+        # Resolve the natural on-screen position from the style's alignment +
+        # margins so \move targets land exactly where a non-animated cue would.
+        # PlayRes is 1920x1080. Alignment 1/2/3 = bottom L/C/R, 7/8/9 = top L/C/R,
+        # 4/5/6 = middle L/C/R. MarginV is the gap from the matching edge.
+        if alignment in (7, 8, 9):
+            tgt_y = margin_v
+            off_y = -80                      # off-screen above
+        elif alignment in (4, 5, 6):
+            tgt_y = 540
+            off_y = 1180                     # below frame, used for slide-up
+        else:                                # bottom (1, 2, 3) — default
+            tgt_y = 1080 - margin_v
+            off_y = 1180
+        if alignment in (1, 4, 7):
+            tgt_x = margin_l
+            off_x_left  = -260
+            off_x_right = 2180
+        elif alignment in (3, 6, 9):
+            tgt_x = 1920 - margin_r
+            off_x_left  = -260
+            off_x_right = 2180
+        else:                                # centre column
+            tgt_x = 960
+            off_x_left  = -260
+            off_x_right = 2180
+
+        if animation == "fade":
+            override = f"{{\\fad({enter_ms},{enter_ms})}}"
+        elif animation == "slide-up":
+            override = (
+                f"{{\\move({tgt_x},{off_y},{tgt_x},{tgt_y},0,{enter_ms})"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "slide-down":
+            override = (
+                f"{{\\move({tgt_x},-80,{tgt_x},{tgt_y},0,{enter_ms})"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "slide-left":
+            # "Slide in from Right" — element starts off the right edge.
+            override = (
+                f"{{\\move({off_x_right},{tgt_y},{tgt_x},{tgt_y},0,{enter_ms})"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "slide-right":
+            override = (
+                f"{{\\move({off_x_left},{tgt_y},{tgt_x},{tgt_y},0,{enter_ms})"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "pop":
+            mid = enter_ms // 2
+            override = (
+                f"{{\\fscx50\\fscy50"
+                f"\\t(0,{mid},\\fscx115\\fscy115)"
+                f"\\t({mid},{enter_ms},\\fscx100\\fscy100)"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "zoom-in":
+            override = (
+                f"{{\\fscx50\\fscy50"
+                f"\\t(0,{enter_ms},\\fscx100\\fscy100)"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "bounce":
+            t1 = enter_ms // 3
+            t2 = (enter_ms * 2) // 3
+            override = (
+                f"{{\\move({tgt_x},{off_y},{tgt_x},{tgt_y - 20},0,{t1})"
+                f"\\t({t1},{t2},\\fscy90)"
+                f"\\t({t2},{enter_ms},\\fscy100)"
+                f"\\fad({enter_ms},120)}}"
+            )
+        elif animation == "shake":
+            # Chain ~7 oscillation cycles across the cue so it reads as a shake.
+            cycles = max(4, min(12, dur_ms // 180))
+            seg = max(60, dur_ms // (cycles * 2))
+            parts = [f"\\fad({enter_ms},{enter_ms})"]
+            t = 0
+            for i in range(cycles * 2):
+                ang = 1 if i % 2 == 0 else -1
+                parts.append(f"\\t({t},{t + seg},\\frz{ang})")
+                t += seg
+            override = "{" + "".join(parts) + "}"
+        elif animation == "glow-pulse":
+            # Chain pulses so the outline truly throbs across the whole cue.
+            big = max(2.0, outline * 1.7)
+            cycles = max(2, min(6, dur_ms // 600))
+            seg = max(150, dur_ms // (cycles * 2))
+            parts = [f"\\fad({enter_ms},{enter_ms})"]
+            t = 0
+            for i in range(cycles * 2):
+                target = big if i % 2 == 0 else outline
+                parts.append(f"\\t({t},{t + seg},\\bord{target:.1f})")
+                t += seg
+            override = "{" + "".join(parts) + "}"
+        else:
+            override = ""
+
+        # For non-prefix-already-built cases, prepend the override.
+        if override and animation not in ("typewriter",):
+            text_out = override + text_out
+
+        event_lines.append(
+            f"Dialogue: 0,{s_time},{e_time},Default,,0,0,0,,{text_out}"
+        )
 
     return ass_header + "\n".join(event_lines) + "\n"
 
@@ -7470,44 +7624,16 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
             # ── Subtitle burn-in ──────────────────────────────────────────────
             if srt_r2_key and r2_storage.r2_available():
                 try:
-                    srt_data = r2_storage.download_bytes(srt_r2_key)
-                    sub_style  = settings.get("subtitle_style") or {}
-                    animation  = sub_style.get("animation", "none")
-
-                    if animation == "karaoke":
-                        # Convert SRT → ASS with karaoke word-by-word fill timing
-                        ass_content = _srt_to_ass_karaoke(srt_data, sub_style)
-                        sub_path = work_dir / "subtitles.ass"
-                        sub_path.write_text(ass_content, encoding="utf-8")
-                        sub_filter = f"ass={sub_path.as_posix()}"
-                    else:
-                        srt_path = work_dir / "subtitles.srt"
-                        srt_path.write_bytes(srt_data)
-
-                        font_name  = sub_style.get("font", "Arial")
-                        font_size  = int(sub_style.get("font_size", 24))
-                        primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
-                        outline_c  = sub_style.get("outline_colour", "&H00000000")
-                        back_c     = sub_style.get("back_colour", "&H80000000")
-                        bold       = int(sub_style.get("bold", 0))
-                        outline    = float(sub_style.get("outline", 1.5))
-                        shadow     = float(sub_style.get("shadow", 0))
-                        alignment  = int(sub_style.get("alignment", 2))
-                        margin_v   = int(sub_style.get("margin_v", 40))
-                        margin_l   = int(sub_style.get("margin_l", 10))
-                        margin_r   = int(sub_style.get("margin_r", 10))
-
-                        force_style = (
-                            f"FontName={font_name},FontSize={font_size},"
-                            f"PrimaryColour={primary_c},OutlineColour={outline_c},"
-                            f"BackColour={back_c},Bold={bold},"
-                            f"Outline={outline},Shadow={shadow},"
-                            f"Alignment={alignment},"
-                            f"MarginL={margin_l},MarginR={margin_r},MarginV={margin_v}"
-                        )
-                        sub_filter = (
-                            f"subtitles={srt_path.as_posix()}:force_style='{force_style}'"
-                        )
+                    srt_data  = r2_storage.download_bytes(srt_r2_key)
+                    sub_style = settings.get("subtitle_style") or {}
+                    animation = sub_style.get("animation", "none")
+                    # Always go through the unified ASS path so every animation
+                    # the UI offers is honoured (fade, typewriter, slide-*, pop,
+                    # zoom-in, bounce, shake, glow-pulse, karaoke, none).
+                    ass_content = _srt_to_ass_animated(srt_data, sub_style, animation)
+                    sub_path = work_dir / "subtitles.ass"
+                    sub_path.write_text(ass_content, encoding="utf-8")
+                    sub_filter = f"ass={sub_path.as_posix()}"
 
                     subtitled = work_dir / "subtitled.mp4"
                     cmd = [
@@ -7786,41 +7912,15 @@ def _assemble_ai_postprod_job(project_id: str, settings: dict) -> None:
             # ── Subtitle burn-in ───────────────────────────────────────────────
             if srt_r2_key and r2_storage.r2_available():
                 try:
-                    srt_data = r2_storage.download_bytes(srt_r2_key)
+                    srt_data  = r2_storage.download_bytes(srt_r2_key)
                     sub_style = settings.get("subtitle_style") or {}
                     animation = sub_style.get("animation", "none")
-
-                    if animation == "karaoke":
-                        ass_content = _srt_to_ass_karaoke(srt_data, sub_style)
-                        sub_path = work_dir / "subtitles.ass"
-                        sub_path.write_text(ass_content, encoding="utf-8")
-                        sub_filter = f"ass={sub_path.as_posix()}"
-                    else:
-                        srt_path = work_dir / "subtitles.srt"
-                        srt_path.write_bytes(srt_data)
-                        font_name  = sub_style.get("font", "Arial")
-                        font_size  = int(sub_style.get("font_size", 24))
-                        primary_c  = sub_style.get("primary_colour", "&H00FFFFFF")
-                        outline_c  = sub_style.get("outline_colour", "&H00000000")
-                        back_c     = sub_style.get("back_colour", "&H80000000")
-                        bold       = int(sub_style.get("bold", 0))
-                        outline    = float(sub_style.get("outline", 1.5))
-                        shadow     = float(sub_style.get("shadow", 0))
-                        alignment  = int(sub_style.get("alignment", 2))
-                        margin_v   = int(sub_style.get("margin_v", 40))
-                        margin_l   = int(sub_style.get("margin_l", 10))
-                        margin_r   = int(sub_style.get("margin_r", 10))
-                        force_style = (
-                            f"FontName={font_name},FontSize={font_size},"
-                            f"PrimaryColour={primary_c},OutlineColour={outline_c},"
-                            f"BackColour={back_c},Bold={bold},"
-                            f"Outline={outline},Shadow={shadow},"
-                            f"Alignment={alignment},"
-                            f"MarginL={margin_l},MarginR={margin_r},MarginV={margin_v}"
-                        )
-                        sub_filter = (
-                            f"subtitles={srt_path.as_posix()}:force_style='{force_style}'"
-                        )
+                    # Same unified ASS path as Quick mode — every animation
+                    # the dropdown exposes is rendered identically here.
+                    ass_content = _srt_to_ass_animated(srt_data, sub_style, animation)
+                    sub_path = work_dir / "subtitles.ass"
+                    sub_path.write_text(ass_content, encoding="utf-8")
+                    sub_filter = f"ass={sub_path.as_posix()}"
 
                     subtitled = work_dir / "subtitled.mp4"
                     cmd = [
