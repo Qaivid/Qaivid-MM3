@@ -109,6 +109,8 @@
           <div class="pp-logo-tr" id="pp-logo-tr"></div>
           <div class="pp-logo-bl" id="pp-logo-bl"></div>
           <div class="pp-logo-br" id="pp-logo-br"></div>
+          <!-- Active-asset status chips (shown bottom-left of player frame) -->
+          <div class="pp-asset-bar" id="pp-asset-bar"></div>
         </div>
 
         <!-- AI video (AI mode) -->
@@ -255,7 +257,10 @@
                  oninput="ppRangeVal('trans-dur',this.value,'s'); ppConfigChange()">
         </div>
         <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Text Area</label>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <label class="pp-ctrl-label" style="margin:0;">Text Area</label>
+            <button class="pp-reset-btn" onclick="ppClearTextOverlay()" title="Remove text overlay">✕ Clear</button>
+          </div>
           <textarea class="pp-ctrl-select" id="ctrl-text-area" rows="3"
                     placeholder="Optional text overlay..." style="resize:vertical;"
                     oninput="ppUpdateTextOverlay(); ppConfigChange()"></textarea>
@@ -273,6 +278,8 @@
               ↑ Choose .srt or .vtt
             </button>
             <span class="pp-upload-name" id="srt-filename">No file uploaded</span>
+            <button class="pp-reset-btn" id="srt-rm-btn" style="display:none;"
+                    onclick="ppRemoveSrt()">✕ Remove</button>
           </div>
         </div>
         <div class="pp-ctrl-group">
@@ -414,6 +421,8 @@
           <div class="pp-logo-slot-header">
             <label class="pp-ctrl-label">{{ slot_label }} Logo</label>
             <span class="pp-logo-uploaded" id="logo-fn-{{ slot_id }}"></span>
+            <button class="pp-reset-btn" id="logo-rm-{{ slot_id }}" style="display:none;"
+                    onclick="ppRemoveLogo('{{ slot_id }}')">✕ Remove</button>
           </div>
           <div class="pp-upload-area">
             <input type="file" accept="image/png" id="logo-file-{{ slot_id }}"
@@ -873,11 +882,27 @@ body { overflow-y: auto !important; }
 .pp-logo-tl,.pp-logo-tr,.pp-logo-bl,.pp-logo-br {
   position: absolute; pointer-events: none;
   opacity: .9; transition: opacity .2s; max-width: 120px;
+  z-index: 20; /* above subtitle (10) and text overlay (5) */
 }
 .pp-logo-tl { top: 14px; left: 14px; }
 .pp-logo-tr { top: 14px; right: 14px; }
-.pp-logo-bl { bottom: 14px; left: 14px; }
-.pp-logo-br { bottom: 14px; right: 14px; }
+.pp-logo-bl { bottom: 48px; left: 14px; } /* lifted above asset bar */
+.pp-logo-br { bottom: 48px; right: 14px; }
+
+/* ── Active-asset status bar ───────────────────────────────────────────── */
+.pp-asset-bar {
+  position: absolute; bottom: 8px; left: 8px; right: 8px;
+  display: flex; gap: 5px; flex-wrap: wrap; pointer-events: none;
+  z-index: 30;
+}
+.pp-asset-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.18);
+  border-radius: 4px; padding: 2px 7px;
+  font-size: 10px; color: #d4ff3a; font-weight: 600;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
 
 /* AI video */
 .pp-ai-video-wrap { position: absolute; inset: 0; display: none; flex-direction: column; }
@@ -1097,8 +1122,15 @@ body { overflow-y: auto !important; }
 .pp-upload-btn:hover { background: rgba(212,255,58,.14); }
 .pp-upload-name { font-size: 10px; color: #4a5260; }
 .pp-logo-slot { border: 1px solid #1e2230; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
-.pp-logo-slot-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.pp-logo-uploaded { font-size: 10px; color: #22c55e; }
+.pp-logo-slot-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.pp-logo-uploaded { font-size: 10px; color: #22c55e; flex: 1; }
+.pp-reset-btn {
+  background: none; border: 1px solid rgba(239,68,68,.4);
+  color: #ef4444; border-radius: 4px; padding: 2px 8px;
+  font-size: 10px; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.pp-reset-btn:hover { background: rgba(239,68,68,.15); color: #fca5a5; }
 .pp-filter-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; margin-bottom: 12px; }
 .pp-filter-chip {
   background: #1a1f26; border: 1px solid #2a3040; color: #7a8594;
@@ -1405,12 +1437,20 @@ body { overflow-y: auto !important; }
       document.getElementById('srt-filename').textContent = '✓ Subtitle file loaded';
     }
 
+    // Show SRT remove button if file is already loaded
+    if (cfg.srt_r2_key) {
+      const srtRm = document.getElementById('srt-rm-btn');
+      if (srtRm) srtRm.style.display = '';
+    }
+
     // Restore logo controls for already-uploaded logos
     ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
       const logo = (cfg.logos || {})[slot];
       if (!logo || !logo.r2_key) return;
-      const ctrl = document.getElementById('logo-ctrl-' + slot);
-      if (ctrl) ctrl.style.display = '';
+      const ctrl  = document.getElementById('logo-ctrl-' + slot);
+      const rmBtn = document.getElementById('logo-rm-' + slot);
+      if (ctrl)  ctrl.style.display  = '';
+      if (rmBtn) rmBtn.style.display = '';
       const fn = document.getElementById('logo-fn-' + slot);
       if (fn && logo.filename) fn.textContent = '✓ ' + logo.filename;
       if (logo.width    !== undefined) { setVal('ctrl-logo-w-' + slot, logo.width); ppRangeVal('logo-w-' + slot, logo.width, 'px'); }
@@ -1433,7 +1473,8 @@ body { overflow-y: auto !important; }
     // Text overlay — restore textarea value and show in frame
     const taRestore = document.getElementById('ctrl-text-area');
     if (taRestore && cfg.text_overlay) taRestore.value = cfg.text_overlay;
-    ppUpdateTextOverlay();
+    // Refresh all overlays at once (logos, text, subtitle, filter, asset bar)
+    ppRefreshAllOverlays();
   }
 
   function setVal(id, v) {
@@ -1472,6 +1513,7 @@ body { overflow-y: auto !important; }
     markDirty();
     ppApplyFilterPreview();
     ppUpdateKBPreview();
+    ppUpdateAssetBar();
     scheduleAutosave();
   };
 
@@ -1785,7 +1827,7 @@ body { overflow-y: auto !important; }
     const shotNumEl = document.getElementById('pp-shot-num');
     if (shotNumEl) shotNumEl.textContent = (currentIdx + 1);
     ppUpdateTransport(playing ? ppCurrentTime() : elapsed);
-    ppSubPreview();
+    ppRefreshAllOverlays();
   }
 
   /* ── Transport / Scrubber bar ──────────────────────────────────────── */
@@ -2212,6 +2254,57 @@ body { overflow-y: auto !important; }
     }
   };
 
+  /* ── Asset status bar ───────────────────────────────────────────────── */
+  window.ppUpdateAssetBar = function() {
+    const bar = document.getElementById('pp-asset-bar');
+    if (!bar) return;
+    const chips = [];
+
+    // Logos
+    const logos = cfg.logos || {};
+    const slotLabel = { 'top-left':'TL', 'top-right':'TR', 'bottom-left':'BL', 'bottom-right':'BR' };
+    Object.entries(logos).forEach(([slot, ldata]) => {
+      if (ldata && ldata.r2_key) {
+        chips.push(`<span class="pp-asset-chip">🖼 Logo ${slotLabel[slot] || slot}</span>`);
+      }
+    });
+
+    // Subtitle SRT
+    if (cfg.srt_r2_key) {
+      chips.push('<span class="pp-asset-chip">📝 Subtitles</span>');
+    }
+
+    // Text overlay
+    const taEl = document.getElementById('ctrl-text-area');
+    if (taEl && taEl.value.trim()) {
+      const preview = taEl.value.trim().slice(0, 18);
+      chips.push(`<span class="pp-asset-chip">T "${preview}${taEl.value.trim().length > 18 ? '…' : ''}"</span>`);
+    }
+
+    // Colour filter
+    if (cfg.colour_filter && cfg.colour_filter !== 'original') {
+      const label = cfg.colour_filter.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      chips.push(`<span class="pp-asset-chip">🎨 ${label}</span>`);
+    }
+
+    bar.innerHTML = chips.join('');
+  };
+
+  /* ── Refresh all player overlays at once ────────────────────────────── */
+  window.ppRefreshAllOverlays = function() {
+    ppApplyFilterPreview();
+    ppUpdateTextOverlay();
+    ppSubPreview();
+    ppUpdateAssetBar();
+    // Restore logo images into corner divs (persists in DOM but may need
+    // refreshing after a mode switch or shot change)
+    const logos = cfg.logos || {};
+    ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
+      const ldata = logos[slot];
+      if (ldata && ldata.preview_url) ppLogoPreview(slot, ldata.preview_url);
+    });
+  };
+
   /* ── Fill mode ──────────────────────────────────────────────────────── */
   window.ppSelectFill = function(mode) {
     cfg.fill_mode = mode;
@@ -2329,10 +2422,68 @@ body { overflow-y: auto !important; }
       cfgAi.srt_r2_key    = d.r2_key;
       cfg.srt_r2_key      = d.r2_key;
       document.getElementById('srt-filename').textContent = '✓ ' + fname;
+      const srtRm = document.getElementById('srt-rm-btn');
+      if (srtRm) srtRm.style.display = '';
+      ppUpdateAssetBar();
       markDirty(); scheduleAutosave();
     } else {
       alert('Upload failed: ' + d.error);
     }
+  };
+
+  /* ── Remove logo from a slot ────────────────────────────────────────── */
+  window.ppRemoveLogo = function(slot) {
+    // Clear from both mode configs
+    [cfgQuick, cfgAi].forEach(c => { if (c.logos) delete c.logos[slot]; });
+    // Hide player overlay
+    const sfx = { 'top-left':'tl','top-right':'tr','bottom-left':'bl','bottom-right':'br' }[slot];
+    ['pp-logo-'+sfx, 'pp-ai-logo-'+sfx].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    // Reset the panel UI
+    const fn   = document.getElementById('logo-fn-' + slot);
+    const ctrl = document.getElementById('logo-ctrl-' + slot);
+    const rmBtn = document.getElementById('logo-rm-' + slot);
+    const fileEl = document.getElementById('logo-file-' + slot);
+    if (fn)    fn.textContent = '';
+    if (ctrl)  ctrl.style.display = 'none';
+    if (rmBtn) rmBtn.style.display = 'none';
+    if (fileEl) fileEl.value = '';
+    ppUpdateAssetBar();
+    markDirty(); scheduleAutosave();
+  };
+
+  /* ── Remove SRT subtitle file ────────────────────────────────────────── */
+  window.ppRemoveSrt = function() {
+    cfg.srt_r2_key = '';
+    [cfgQuick, cfgAi].forEach(c => { c.srt_r2_key = ''; });
+    srtCues = [];
+    // Clear subtitle overlay in player
+    const sub = document.getElementById('pp-sub-preview');
+    const aiSub = document.getElementById('pp-ai-sub-preview');
+    if (sub)   { sub.textContent = ''; sub.style.cssText = 'pointer-events:none;'; }
+    if (aiSub) { aiSub.textContent = ''; aiSub.style.cssText = 'pointer-events:none;'; }
+    // Reset panel UI
+    const fn = document.getElementById('srt-filename');
+    const rmBtn = document.getElementById('srt-rm-btn');
+    const fileEl = document.getElementById('srt-file-input');
+    if (fn)    fn.textContent = 'No file uploaded';
+    if (rmBtn) rmBtn.style.display = 'none';
+    if (fileEl) fileEl.value = '';
+    ppUpdateAssetBar();
+    markDirty(); scheduleAutosave();
+  };
+
+  /* ── Clear text overlay ──────────────────────────────────────────────── */
+  window.ppClearTextOverlay = function() {
+    const ta = document.getElementById('ctrl-text-area');
+    if (ta) ta.value = '';
+    cfg.text_overlay = '';
+    [cfgQuick, cfgAi].forEach(c => { c.text_overlay = ''; });
+    ppUpdateTextOverlay();
+    ppUpdateAssetBar();
+    markDirty(); scheduleAutosave();
   };
 
   /* ── Logo upload ────────────────────────────────────────────────────── */
@@ -2354,9 +2505,12 @@ body { overflow-y: auto !important; }
         c.logos[slot].preview_url = d.preview_url || '';
       });
       document.getElementById('logo-fn-' + slot).textContent = '✓ ' + fname;
-      const ctrl = document.getElementById('logo-ctrl-' + slot);
-      if (ctrl) ctrl.style.display = '';
+      const ctrl  = document.getElementById('logo-ctrl-' + slot);
+      const rmBtn = document.getElementById('logo-rm-' + slot);
+      if (ctrl)  ctrl.style.display  = '';
+      if (rmBtn) rmBtn.style.display = '';
       if (d.preview_url) ppLogoPreview(slot, d.preview_url);
+      ppUpdateAssetBar();
       markDirty(); scheduleAutosave();
     } else {
       alert('Upload failed: ' + d.error);
@@ -2420,8 +2574,7 @@ body { overflow-y: auto !important; }
   /* ── Init ───────────────────────────────────────────────────────────── */
   restoreControls();
   if (SHOTS.length > 0) ppJumpTo(0);
-  ppApplyFilterPreview();
-  ppSubPreview();
+  ppRefreshAllOverlays();
 
   /* ── Fetch existing SRT on page load for live cue preview ───────────── */
   const SRT_URL = {{ (srt_url or '') | tojson }};
@@ -2431,7 +2584,7 @@ body { overflow-y: auto !important; }
       .then(text => {
         if (!text) return;
         srtCues = parseSRT(text);
-        ppSubPreview(); // Re-render overlays with real cue data
+        ppRefreshAllOverlays(); // Re-render overlays with real cue data
       })
       .catch(() => {});
   }
