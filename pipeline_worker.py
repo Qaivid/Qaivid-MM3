@@ -2920,6 +2920,11 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
             val = str(bloc.get(field) or "").strip().lower()
             if val and len(val) > 2 and (val, fk) not in loc_lookup:
                 loc_lookup.append((val, fk))
+            # Also index with underscores replaced by spaces so prompts like
+            # "grand empty ballroom" match DB names like "grand_empty_ballroom".
+            val_spaces = val.replace("_", " ")
+            if val_spaces != val and val_spaces and (val_spaces, fk) not in loc_lookup:
+                loc_lookup.append((val_spaces, fk))
 
     # DB names appended as fallback (covers legacy projects + brain-load failures).
     for c in chars:
@@ -2930,6 +2935,11 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
         name = (l.get("name") or "").lower()
         if name and (name, l["id"]) not in loc_lookup:
             loc_lookup.append((name, l["id"]))
+        # Also index space-normalised form so "grand_empty_ballroom" matches
+        # shot prompts that contain "grand empty ballroom".
+        name_spaces = name.replace("_", " ")
+        if name_spaces != name and name_spaces and (name_spaces, l["id"]) not in loc_lookup:
+            loc_lookup.append((name_spaces, l["id"]))
 
     def _best_char(shot_text: str) -> Optional[int]:
         for name, cid in char_lookup:
