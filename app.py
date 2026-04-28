@@ -3905,18 +3905,23 @@ def stills_update_wan_prompt(project_id: str):
     """
     _stills_control_guard(project_id)
     data = request.get_json(silent=True) or {}
-    shot_index = data.get("shot_index")
-    if shot_index is None or "wan_video_prompt" not in data:
+    raw_idx = data.get("shot_index")
+    if raw_idx is None or "wan_video_prompt" not in data:
         return jsonify({"ok": False, "error": "shot_index and wan_video_prompt required"}), 400
+    try:
+        shot_index = int(raw_idx)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "shot_index must be an integer"}), 400
     # Allow empty string to clear the prompt (rendering then falls back to motion_prompt).
     wan_prompt = (data.get("wan_video_prompt") or "").strip()
-    shot_index = int(shot_index)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
             " WHERE project_id=%s AND shot_index=%s",
             (wan_prompt[:600] if wan_prompt else None, project_id, shot_index),
         )
+        if cur.rowcount == 0:
+            return jsonify({"ok": False, "error": "Shot not found"}), 404
         conn.commit()
     return jsonify({"ok": True})
 
