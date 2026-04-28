@@ -35,11 +35,11 @@
       <span class="stage-badge">Stage 9 — Stills</span>
       <h1>{{ project.name }}</h1>
       <p class="stage-sub">
-        Click any shot in the filmstrip to edit its prompt or generate.
+        Select any shot in the film roll to edit its prompts or generate.
       </p>
     </div>
 
-    <!-- ── Progress bar ─────────────────────────────────────────── -->
+    <!-- ── Progress bar ──────────────────────────────────────────── -->
     <div class="ref-progress-bar">
       <div class="ref-progress-dots" id="sc-dots">
         {% for s in shots %}
@@ -146,17 +146,23 @@
       </button>
     </div>
 
-    <!-- ══ TWO-COLUMN LAYOUT: filmstrip + detail ══════════════════════════ -->
+    <!-- ══ TWO-COLUMN LAYOUT: film roll + prompt editor ══════════════════ -->
     <div class="sc-split">
 
-      <!-- LEFT: scrollable filmstrip -->
+      <!-- LEFT: vertical film roll -->
       <div class="sc-filmstrip" id="sc-filmstrip">
+        <div class="sc-film-edge sc-film-edge--top"></div>
         {% for shot in shots %}
         {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
         <div class="sc-strip-item sc-strip-item--{{ shot.status }}"
              id="sc-strip-{{ shot.shot_index }}"
              data-idx="{{ shot.shot_index }}"
              onclick="scSelect({{ shot.shot_index }})">
+
+          <!-- Film perforations row -->
+          <div class="sc-perfs"></div>
+
+          <!-- Thumbnail area (16:9) -->
           <div class="sc-strip-thumb">
             {% if op.status == 'ready' and op.url %}
             <img src="{{ op.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
@@ -164,23 +170,31 @@
             <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
             {% else %}
             <div class="sc-strip-ph sc-strip-ph--{{ shot.status }}">
-              {% if shot.status == 'rendering' %}⏳{% elif shot.status == 'failed' %}⚠{% else %}···{% endif %}
+              {% if shot.status == 'rendering' %}
+              <div class="sc-strip-spinner"></div>
+              {% elif shot.status == 'failed' %}
+              <span class="sc-strip-ph-icon">⚠</span>
+              {% else %}
+              <span class="sc-strip-ph-icon sc-strip-ph-empty">· · ·</span>
+              {% endif %}
             </div>
             {% endif %}
+            <!-- Shot number badge -->
+            <span class="sc-strip-num-badge">{{ shot.shot_index }}</span>
+            <!-- Status badge -->
+            <span class="sc-strip-status-badge sc-strip-status-badge--{{ shot.status }}">{{ shot.status }}</span>
           </div>
-          <div class="sc-strip-meta">
-            <span class="sc-strip-num">Shot {{ shot.shot_index }}</span>
-            <span class="sc-strip-status sc-strip-status--{{ shot.status }}">{{ shot.status }}</span>
-          </div>
+
         </div>
         {% endfor %}
+        <div class="sc-film-edge sc-film-edge--bottom"></div>
       </div>
 
-      <!-- RIGHT: detail panel (populated by JS on click) -->
+      <!-- RIGHT: prompt editor panel -->
       <div class="sc-detail" id="sc-detail">
         <div class="sc-detail-empty" id="sc-detail-empty">
-          <div class="sc-detail-empty-icon">←</div>
-          <p>Click any shot to edit its prompt or generate</p>
+          <div class="sc-detail-empty-icon">🎬</div>
+          <p>Select a shot from the film roll to edit its prompts or generate</p>
         </div>
       </div>
 
@@ -225,228 +239,384 @@
 </div>
 
 <style>
-/* ══ Two-column stills layout ══════════════════════════════════════════ */
+/* ══ Two-column stills layout ════════════════════════════════════════════ */
 .sc-split {
   display: grid;
-  grid-template-columns: 210px 1fr;
-  grid-template-rows: 1fr;
+  grid-template-columns: 190px 1fr;
   gap: 0;
   border: 1px solid #1e1e2a;
   border-radius: 12px;
   overflow: hidden;
-  height: 72vh;
-  min-height: 480px;
-  margin: 20px 0 0;
+  height: 74vh;
+  min-height: 520px;
+  margin: 16px 0 0;
 }
 
-/* ── Filmstrip (left) ── */
+/* ══ Film roll (left) ════════════════════════════════════════════════════ */
 .sc-filmstrip {
   height: 100%;
   overflow-y: auto;
-  border-right: 1px solid #1e1e2a;
-  background: #0a0a11;
+  overflow-x: hidden;
+  background: #050508;
+  border-right: 2px solid #1a1a28;
   scrollbar-width: thin;
   scrollbar-color: #2a2a3a transparent;
-}
-.sc-strip-item {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  flex-direction: column;
+}
+
+/* Film edge strips (top/bottom) */
+.sc-film-edge {
+  width: 100%;
+  height: 14px;
+  background: #050508;
+  flex-shrink: 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 6px,
+    rgba(255,255,255,0.08) 6px,
+    rgba(255,255,255,0.08) 14px,
+    transparent 14px,
+    transparent 20px
+  );
+}
+
+/* Each shot item in the filmstrip */
+.sc-strip-item {
+  width: 100%;
+  flex-shrink: 0;
   cursor: pointer;
   border-bottom: 1px solid #111118;
-  transition: background .1s;
   border-left: 3px solid transparent;
-}
-.sc-strip-item:hover { background: #14141e; }
-.sc-strip-item.active {
-  background: #181828;
-  border-left-color: #d4ff3a;
-}
-.sc-strip-thumb {
-  width: 64px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #080810;
+  transition: border-left-color .15s, background .15s;
   position: relative;
 }
-.sc-strip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sc-strip-ph {
-  width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: #333;
+.sc-strip-item:hover { background: rgba(255,255,255,.03); }
+.sc-strip-item.active {
+  background: rgba(212,255,58,.05);
+  border-left-color: #d4ff3a;
 }
-.sc-strip-ph--failed { color: #663333; }
-.sc-strip-ph--rendering { color: #446644; }
-/* Generating overlay — shown on top of existing thumbnail */
+.sc-strip-item--failed    { border-left-color: rgba(255,107,107,.4) !important; }
+.sc-strip-item--failed.active { border-left-color: #ff6b6b !important; }
+
+/* Film perforations strip */
+.sc-perfs {
+  height: 10px;
+  background: #070709;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 5px,
+    rgba(255,255,255,0.07) 5px,
+    rgba(255,255,255,0.07) 12px,
+    transparent 12px,
+    transparent 18px
+  );
+}
+
+/* Thumbnail (16:9 ratio) */
+.sc-strip-thumb {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 */
+  background: #080810;
+  overflow: hidden;
+}
+.sc-strip-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Empty placeholder */
+.sc-strip-ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+}
+.sc-strip-ph--pending  { background: #06060e; }
+.sc-strip-ph--failed   { background: #0e0608; }
+.sc-strip-ph--rendering { background: #060e06; }
+.sc-strip-ph--queued   { background: #060e06; }
+
+.sc-strip-ph-icon { font-size: 13px; color: #2a2a40; }
+.sc-strip-ph-empty { letter-spacing: 3px; color: #1c1c2c; }
+.sc-strip-ph--failed .sc-strip-ph-icon { color: #663333; font-size: 16px; }
+
+/* Strip spinner */
+.sc-strip-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(200,241,53,.2);
+  border-top-color: #c8f135;
+  border-radius: 50%;
+  animation: sc-spin 0.8s linear infinite;
+}
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+
+/* Shot number badge (top-left overlay) */
+.sc-strip-num-badge {
+  position: absolute;
+  top: 5px; left: 6px;
+  background: rgba(0,0,0,.75);
+  color: #c8d0e0;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 5px; border-radius: 4px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+/* Status badge (top-right overlay) */
+.sc-strip-status-badge {
+  position: absolute;
+  top: 5px; right: 6px;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 5px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: .05em;
+  pointer-events: none;
+}
+.sc-strip-status-badge--ready     { background: rgba(100,200,140,.2); color: #7ec8a4; }
+.sc-strip-status-badge--failed    { background: rgba(255,107,107,.2); color: #ff6b6b; }
+.sc-strip-status-badge--rendering { background: rgba(200,241,53,.15); color: #c8f135; }
+.sc-strip-status-badge--queued    { background: rgba(200,241,53,.1);  color: #c8f135; }
+.sc-strip-status-badge--pending   { background: rgba(80,80,120,.25);  color: #8899bb; }
+
+/* Generating overlay on top of existing thumb */
 .sc-gen-overlay {
   position: absolute; inset: 0;
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,.6);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 4px; pointer-events: none;
+  gap: 5px; pointer-events: none;
 }
 .sc-gen-overlay-spinner {
-  width: 14px; height: 14px;
-  border: 2px solid rgba(212,255,58,0.3);
+  width: 16px; height: 16px;
+  border: 2px solid rgba(212,255,58,.3);
   border-top-color: #d4ff3a;
   border-radius: 50%;
   animation: sc-spin 0.75s linear infinite;
 }
 .sc-gen-overlay-label {
-  font-size: 8px; color: #d4ff3a; letter-spacing: .03em; white-space: nowrap;
+  font-size: 8px; color: #d4ff3a; letter-spacing: .04em;
 }
-@keyframes sc-spin { to { transform: rotate(360deg); } }
-.sc-strip-meta { flex: 1; min-width: 0; }
-.sc-strip-num {
-  font-size: 12px; font-weight: 600; color: #bbc; display: block;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.sc-strip-status {
-  font-size: 10px; color: #445; display: block; margin-top: 2px;
-}
-.sc-strip-status--ready     { color: #5a9 !important; }
-.sc-strip-status--failed    { color: #944 !important; }
-.sc-strip-status--rendering { color: #7a9a4a !important; }
 
-/* Status border on filmstrip item */
-.sc-strip-item--ready     { border-bottom-color: #111118; }
-.sc-strip-item--failed    { border-bottom-color: #1a1010; }
-
-/* ── Detail panel (right) ── */
+/* ══ Detail panel (right) ════════════════════════════════════════════════ */
 .sc-detail {
   height: 100%;
   overflow-y: auto;
-  background: #0e0e1a;
+  background: #0b0b16;
   scrollbar-width: thin;
   scrollbar-color: #2a2a3a transparent;
 }
 .sc-detail-empty {
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #2a2a3a;
-  gap: 10px;
-  padding: 40px;
-  text-align: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #2a2a3a; gap: 12px; padding: 40px; text-align: center;
 }
-.sc-detail-empty-icon { font-size: 36px; }
-.sc-detail-empty p { margin: 0; font-size: 14px; color: #333; }
+.sc-detail-empty-icon { font-size: 42px; opacity: .3; }
+.sc-detail-empty p { margin: 0; font-size: 13px; color: #333; line-height: 1.6; }
 
-/* ── Detail panel content ── */
-.sc-det-inner { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+/* Detail panel inner layout */
+.sc-det-inner {
+  padding: 20px 22px 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+/* Shot header */
 .sc-det-header {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding-bottom: 12px; border-bottom: 1px solid #1a1a26;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #1a1a28;
 }
-.sc-det-title { font-size: 15px; font-weight: 700; color: #dde; }
+.sc-det-title { font-size: 16px; font-weight: 700; color: #dde; }
 .sc-det-badge {
-  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
-  text-transform: uppercase; letter-spacing: .04em;
+  font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: .05em;
 }
 .sc-det-badge--ready     { background: rgba(100,200,140,.15); color: #7ec8a4; border: 1px solid rgba(100,200,140,.3); }
 .sc-det-badge--failed    { background: rgba(255,107,107,.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,.25); }
 .sc-det-badge--rendering { background: rgba(200,241,53,.1);  color: #c8f135; border: 1px solid rgba(200,241,53,.25); }
+.sc-det-badge--queued    { background: rgba(200,241,53,.08); color: #c8f135; border: 1px solid rgba(200,241,53,.2); }
 .sc-det-badge--pending   { background: rgba(120,120,160,.1); color: #7788aa; border: 1px solid rgba(120,120,160,.2); }
-.sc-det-timing { font-size: 11px; color: #445; margin-left: auto; }
+.sc-det-timing { font-size: 11px; color: #3a3a50; margin-left: auto; }
+
+/* Image preview */
 .sc-det-img-wrap {
   width: 100%; border-radius: 8px; overflow: hidden;
-  background: #080810; aspect-ratio: 16/9;
+  background: #060610; aspect-ratio: 16/9;
   display: flex; align-items: center; justify-content: center;
+  border: 1px solid #1a1a28;
 }
 .sc-det-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .sc-det-img-ph {
-  width: 100%; height: 100%; aspect-ratio: 16/9;
+  width: 100%; aspect-ratio: 16/9;
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px; color: #334; background: #080810; border-radius: 8px;
+  font-size: 13px; color: #2a2a40; background: #060610;
+  border-radius: 8px; border: 1px solid #141420;
 }
-.sc-det-meaning {
-  font-size: 12px; color: #556; line-height: 1.5;
-  padding: 8px 12px; background: #0a0a14;
-  border-left: 2px solid #2a2a40; border-radius: 0 6px 6px 0;
-}
-.sc-det-video-prompt {
-  padding: 10px 12px; background: #0a0e08;
-  border-left: 2px solid #3a5030; border-radius: 0 6px 6px 0;
-}
-.sc-det-video-prompt-text {
-  font-size: 11px; color: #7a9060; line-height: 1.55;
-  font-family: 'JetBrains Mono', monospace; white-space: pre-wrap;
-}
-.sc-det-video-prompt-ta {
-  width: 100%; box-sizing: border-box; font-size: 11px;
-  background: #080e06; border: 1px solid #2a3a20;
-  color: #8aaa68; border-radius: 6px; padding: 8px 10px;
-  resize: vertical; font-family: 'JetBrains Mono', monospace; line-height: 1.45;
-  min-height: 80px;
-}
-.sc-det-rederive-btn {
-  padding: 5px 12px; font-size: 10px; font-weight: 600;
-  background: rgba(80,160,60,.12); color: #7ec864;
-  border: 1px solid rgba(80,160,60,.3); border-radius: 6px;
-  cursor: pointer; transition: background .15s; white-space: nowrap;
-}
-.sc-det-rederive-btn:hover { background: rgba(80,160,60,.25); }
-.sc-det-rederive-btn:disabled { opacity: .5; cursor: default; }
+
+/* Error box */
 .sc-det-err {
   font-size: 11px; color: #ff6b6b; background: rgba(255,107,107,.08);
-  border: 1px solid rgba(255,107,107,.2); border-radius: 6px; padding: 6px 10px;
+  border: 1px solid rgba(255,107,107,.2); border-radius: 6px;
+  padding: 8px 12px; line-height: 1.5;
 }
-.sc-det-prompt-label {
-  font-size: 11px; font-weight: 600; color: #556; text-transform: uppercase;
-  letter-spacing: .05em; display: block; margin-bottom: 6px;
+
+/* Meaning text */
+.sc-det-meaning {
+  font-size: 12px; color: #44506a; line-height: 1.55;
+  font-style: italic;
 }
-.sc-det-prompt-ta {
-  width: 100%; box-sizing: border-box; font-size: 11px;
-  background: #0d1018; border: 1px solid #2a3040;
-  color: #cfd6df; border-radius: 6px; padding: 10px 12px;
-  resize: vertical; font-family: 'JetBrains Mono', monospace; line-height: 1.45;
-  min-height: 100px;
+
+/* ── Prompt section box ── */
+.sc-prompt-section {
+  border-radius: 8px;
+  overflow: hidden;
 }
-.sc-det-prompt-row {
-  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+
+/* Video / motion prompt section */
+.sc-prompt-section--motion {
+  background: #070e05;
+  border: 1px solid rgba(80,160,50,.25);
 }
+.sc-prompt-section--motion .sc-prompt-section-head {
+  background: rgba(60,120,30,.12);
+  border-bottom: 1px solid rgba(80,160,50,.15);
+}
+
+/* Frame 0 prompt section */
+.sc-prompt-section--frame0 {
+  background: #06080f;
+  border: 1px solid rgba(80,100,200,.2);
+}
+.sc-prompt-section--frame0 .sc-prompt-section-head {
+  background: rgba(60,80,180,.1);
+  border-bottom: 1px solid rgba(80,100,200,.12);
+}
+
+/* Section header row */
+.sc-prompt-section-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 14px;
+}
+.sc-prompt-section-title {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  flex: 1;
+}
+.sc-prompt-section--motion .sc-prompt-section-title { color: #6ab040; }
+.sc-prompt-section--frame0 .sc-prompt-section-title { color: #7090cc; }
+
+.sc-prompt-section-hint {
+  font-size: 10px; color: #3a4a5a;
+}
+
+/* Textarea */
+.sc-prompt-ta {
+  display: block;
+  width: 100%; box-sizing: border-box;
+  font-size: 11px; line-height: 1.5;
+  font-family: 'JetBrains Mono', monospace;
+  border: none; outline: none;
+  resize: vertical; padding: 10px 14px;
+}
+.sc-prompt-section--motion .sc-prompt-ta {
+  background: #070e05; color: #8ab868;
+  min-height: 80px;
+}
+.sc-prompt-section--frame0 .sc-prompt-ta {
+  background: #06080f; color: #9aaccc;
+  min-height: 110px;
+}
+.sc-prompt-ta:focus {
+  outline: none;
+}
+
+/* Section action row */
+.sc-prompt-section-actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(255,255,255,.04);
+  background: rgba(0,0,0,.15);
+}
+
+/* Rederive button */
+.sc-rederive-btn {
+  padding: 5px 13px; font-size: 10px; font-weight: 700;
+  background: rgba(80,160,50,.15); color: #7ec864;
+  border: 1px solid rgba(80,160,50,.35); border-radius: 6px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.sc-rederive-btn:hover:not(:disabled) { background: rgba(80,160,50,.28); }
+.sc-rederive-btn:disabled { opacity: .45; cursor: default; }
+
+/* Save button */
+.sc-save-btn {
+  padding: 5px 13px; font-size: 10px; font-weight: 700;
+  background: rgba(60,80,180,.12); color: #8099cc;
+  border: 1px solid rgba(60,80,180,.25); border-radius: 6px;
+  cursor: pointer; transition: background .15s;
+}
+.sc-save-btn:hover { background: rgba(60,80,180,.24); }
+
+/* Status indicator text */
+.sc-indicator {
+  font-size: 10px; margin-left: 2px;
+}
+
+/* ── Action bar (Generate / Regenerate / Upload / Outpaint) ── */
 .sc-det-actions {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-  padding-top: 4px;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px;
+  background: rgba(0,0,0,.25);
+  border: 1px solid #1a1a28;
+  border-radius: 8px;
+  margin-top: 2px;
 }
 
-/* ── Shared button styles ── */
-.sc-det-gen-btn {
-  padding: 7px 18px; font-size: 12px; font-weight: 600;
-  background: rgba(200,241,53,.12); color: #c8f135;
-  border: 1px solid rgba(200,241,53,.3); border-radius: 6px;
-  cursor: pointer; transition: background .15s;
+/* Primary generate button */
+.sc-gen-btn {
+  padding: 9px 22px; font-size: 13px; font-weight: 700;
+  background: rgba(200,241,53,.13); color: #c8f135;
+  border: 1px solid rgba(200,241,53,.35); border-radius: 7px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
 }
-.sc-det-gen-btn:hover:not(:disabled) { background: rgba(200,241,53,.22); }
-.sc-det-gen-btn:disabled { color: #445; background: transparent; border-color: #2a2a3a; cursor: default; }
-.sc-det-regen-btn {
-  padding: 7px 18px; font-size: 12px; font-weight: 600;
+.sc-gen-btn:hover:not(:disabled) { background: rgba(200,241,53,.24); }
+.sc-gen-btn:disabled { color: #445; background: transparent; border-color: #2a2a3a; cursor: default; }
+
+/* Regenerate button */
+.sc-regen-btn {
+  padding: 9px 22px; font-size: 13px; font-weight: 700;
   background: rgba(90,90,160,.15); color: #8899cc;
-  border: 1px solid rgba(90,90,160,.3); border-radius: 6px;
-  cursor: pointer; transition: background .15s;
+  border: 1px solid rgba(90,90,160,.3); border-radius: 7px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
 }
-.sc-det-regen-btn:hover { background: rgba(90,90,160,.3); }
-.sc-det-upload-label {
-  cursor: pointer; border: 1px dashed #333; padding: 7px 14px;
-  font-size: 12px; color: #556; border-radius: 6px;
-  transition: border-color .15s, color .15s;
-}
-.sc-det-upload-label:hover { border-color: #c8f135; color: #c8f135; }
-.sc-det-op-btn {
-  padding: 7px 14px; font-size: 12px;
-  background: rgba(212,255,58,.08); color: #d4ff3a;
-  border: 1px solid rgba(212,255,58,.25); border-radius: 6px;
-  cursor: pointer; transition: background .15s;
-}
-.sc-det-op-btn:hover { background: rgba(212,255,58,.18); }
+.sc-regen-btn:hover { background: rgba(90,90,160,.3); }
 
-/* ── Quick-action buttons (legacy, kept for bulk-ops footer) ── */
-.sc-quick-btn { display: none; }
+/* Upload label */
+.sc-upload-label {
+  cursor: pointer; border: 1px dashed #2a2a40; padding: 9px 16px;
+  font-size: 12px; color: #445; border-radius: 7px;
+  transition: border-color .15s, color .15s; white-space: nowrap;
+}
+.sc-upload-label:hover { border-color: #c8f135; color: #c8f135; }
+
+/* Outpaint button */
+.sc-op-btn {
+  padding: 9px 14px; font-size: 12px;
+  background: rgba(212,255,58,.08); color: #d4ff3a;
+  border: 1px solid rgba(212,255,58,.25); border-radius: 7px;
+  cursor: pointer; transition: background .15s;
+}
+.sc-op-btn:hover { background: rgba(212,255,58,.18); }
 
 /* ── Compact outpaint bar ── */
 .op-bar {
@@ -479,16 +649,16 @@
 }
 .btn-outpaint-remaining:hover { background: rgba(100,160,255,.18); }
 
-/* ── Other existing shared styles ── */
+/* ── Other shared styles ── */
 .sc-timing-bar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 8px 14px; margin: 6px 0 14px; border-radius: 8px;
+  padding: 8px 14px; margin: 6px 0 10px; border-radius: 8px;
   font-size: 12px; border: 1px solid transparent;
 }
 .sc-timing-ok   { border-color: #3a6a3a33; background: rgba(60,120,60,.06); color: #7ec8a4; }
 .sc-timing-warn { border-color: #6a4a2a33; background: rgba(120,80,30,.08); color: #c8a060; }
 .sc-bulk-actions {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px;
 }
 .sc-bulk-form { display: contents; }
 .sc-bulk-hint { font-size: 11px; }
@@ -585,11 +755,46 @@
     const imgUrl = (op.status === 'ready' && op.url) ? op.url : (shot.url || '');
     const statusLabel = shot.status.charAt(0).toUpperCase() + shot.status.slice(1);
 
+    const motionVal = escHtml(shot.motionPrompt || '');
+    const frame0Val = escHtml(shot.prompt || '');
+
+    // Action bar
+    let actionHtml = '';
+    if (shot.status === 'pending' || shot.status === 'failed') {
+      actionHtml += `<button class="sc-gen-btn" id="sc-gen-btn-${idx}"
+                             onclick="scGenOne(${idx}, false)">▶ Generate</button>`;
+    } else if (shot.status === 'rendering' || shot.status === 'queued') {
+      actionHtml += `<button class="sc-gen-btn" id="sc-gen-btn-${idx}" disabled>⏳ Generating…</button>`;
+    } else {
+      actionHtml += `<button class="sc-regen-btn" id="sc-gen-btn-${idx}"
+                             onclick="scGenOne(${idx}, true)">↺ Regenerate</button>`;
+    }
+
+    actionHtml += `
+      <form style="display:inline;" enctype="multipart/form-data" onsubmit="return false;">
+        <input type="hidden" name="csrf_token" value="${CSRF}">
+        <input type="file" accept="image/*" name="image"
+               id="sc-file-${idx}" style="display:none"
+               onchange="scUploadFile(${idx}, this)">
+        <label for="sc-file-${idx}" class="sc-upload-label" id="sc-upload-label-${idx}">⬆ Upload</label>
+      </form>
+    `;
+
+    if (shot.status === 'ready' || (op && op.status)) {
+      const opStatus = (op && op.status) ? op.status : 'pending';
+      const opIcon = opStatus === 'ready' ? '↺' : opStatus === 'rendering' ? '⏳' : '⬡';
+      actionHtml += `<button class="sc-op-btn" id="sc-op-btn-${idx}"
+                             data-op-status="${opStatus}"
+                             onclick="opOutpaintOne(${idx})">${opIcon} ${ASPECT}</button>`;
+    }
+
     detail.innerHTML = `
       <div class="sc-det-inner">
+
+        <!-- Header -->
         <div class="sc-det-header">
           <span class="sc-det-title">Shot ${idx}</span>
-          <span class="sc-det-badge sc-det-badge--${shot.status}" id="sc-det-badge-${idx}">${statusLabel}</span>
+          <span class="sc-det-badge sc-det-badge--${shot.status}">${statusLabel}</span>
           <span class="sc-det-timing">
             ${shot.startTime ? shot.startTime.toFixed(1) + 's' : ''}
             ${shot.duration  ? ' · ' + shot.duration.toFixed(1) + 's' : ''}
@@ -597,65 +802,73 @@
           </span>
         </div>
 
+        <!-- Image preview -->
         ${imgUrl
           ? `<div class="sc-det-img-wrap"><img src="${imgUrl}" alt="Shot ${idx}" class="sc-det-img" id="sc-img-${idx}"></div>`
           : `<div class="sc-det-img-ph" id="sc-img-ph-${idx}">
-               ${shot.status === 'rendering' ? '⏳ Generating…' : shot.status === 'failed' ? '⚠ Generation failed' : '· · ·'}
+               ${shot.status === 'rendering' || shot.status === 'queued'
+                 ? '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;"><div class="sc-strip-spinner" style="width:24px;height:24px;border-width:3px;"></div><span style=\'font-size:12px;color:#6a8040;\'>Generating…</span></div>'
+                 : shot.status === 'failed'
+                   ? '<span style=\'font-size:13px;color:#663333;\'>⚠ Generation failed</span>'
+                   : '<span style=\'font-size:13px;color:#22223a;\'>No image yet</span>'}
              </div>`
         }
 
-        ${shot.meaning ? `<div class="sc-det-meaning">${escHtml(shot.meaning)}</div>` : ''}
-
+        <!-- Error message -->
         ${shot.error
-          ? `<div class="sc-det-err" id="sc-err-${idx}">${escHtml(shot.error.slice(0, 200))}</div>`
+          ? `<div class="sc-det-err" id="sc-err-${idx}">⚠ ${escHtml(shot.error.slice(0, 300))}</div>`
           : `<div id="sc-err-${idx}" style="display:none;" class="sc-det-err"></div>`}
 
-        <div class="sc-det-video-prompt">
-          <span class="sc-det-prompt-label" style="color:#7a8060;">
-            ▶ Video prompt (WAN 2.6 — edit here, then re-derive Frame 0)
-          </span>
-          <textarea class="sc-det-video-prompt-ta" id="sc-vid-prompt-${idx}"
+        <!-- Meaning -->
+        ${shot.meaning ? `<div class="sc-det-meaning">${escHtml(shot.meaning)}</div>` : ''}
+
+        <!-- VIDEO PROMPT (motion) section -->
+        <div class="sc-prompt-section sc-prompt-section--motion">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">▶ Video Prompt (WAN 2.6 — Motion)</span>
+            <span class="sc-prompt-section-hint">max 2000 chars</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-vid-prompt-${idx}"
                     rows="4" maxlength="2000"
-                    oninput="scMarkVidPromptDirty(${idx})">${escHtml(shot.motionPrompt || '')}</textarea>
-          <div class="sc-det-prompt-row" style="margin-top:6px;gap:8px;flex-wrap:wrap;">
-            <button class="sc-det-rederive-btn" id="sc-rederive-btn-${idx}"
+                    oninput="scMarkVidPromptDirty(${idx})">${motionVal}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-rederive-btn" id="sc-rederive-btn-${idx}"
                     onclick="scSaveVideoPrompt(${idx}, document.getElementById('sc-vid-prompt-${idx}').value, true)">
               ↻ Save &amp; Re-derive Frame 0
             </button>
-            <button class="btn-mini" style="font-size:10px;"
+            <button class="sc-save-btn"
                     onclick="scSaveVideoPromptOnly(${idx}, document.getElementById('sc-vid-prompt-${idx}').value)">
-              Save prompt
+              Save only
             </button>
-            ${shot.status === 'failed' ? `
-            <button class="sc-det-gen-btn" style="font-size:10px;padding:4px 12px;"
-                    onclick="scGenOne(${idx}, false)">
-              ▶ Generate
-            </button>` : ''}
-            <span id="sc-vid-saved-${idx}" style="display:none;font-size:10px;color:#7ec8a4;">✓ Saved</span>
-            <span id="sc-vid-deriving-${idx}" style="display:none;font-size:10px;color:#c8f135;">⏳ Deriving…</span>
+            <span id="sc-vid-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#7ec8a4;">✓ Saved</span>
+            <span id="sc-vid-deriving-${idx}" style="display:none;" class="sc-indicator" style="color:#c8f135;">⏳ Deriving…</span>
           </div>
         </div>
 
-        <div>
-          <label class="sc-det-prompt-label">
-            Frame 0 still prompt — derived from video prompt above, sent to gpt-image-2
-          </label>
-          <textarea class="sc-det-prompt-ta" id="sc-prompt-${idx}"
+        <!-- FRAME 0 STILL PROMPT section -->
+        <div class="sc-prompt-section sc-prompt-section--frame0">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">📸 Frame 0 Still Prompt (gpt-image-2)</span>
+            <span class="sc-prompt-section-hint">derived from video prompt · editable</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-prompt-${idx}"
                     rows="5" maxlength="4000"
                     oninput="scMarkPromptDirty(${idx})"
-                    onblur="scSavePrompt(${idx}, this.value)">${escHtml(shot.prompt || '')}</textarea>
-          <div class="sc-det-prompt-row">
-            <button class="btn-mini" style="font-size:10px;"
+                    onblur="scSavePrompt(${idx}, this.value)">${frame0Val}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-save-btn"
                     onclick="scSavePrompt(${idx}, document.getElementById('sc-prompt-${idx}').value)">
-              Save prompt
+              Save Frame 0 prompt
             </button>
-            <span id="sc-saved-${idx}" style="display:none;font-size:10px;color:#7ec8a4;">✓ Saved</span>
+            <span id="sc-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#7ec8a4;">✓ Saved</span>
           </div>
         </div>
 
+        <!-- Generate / Regenerate action bar -->
         <div class="sc-det-actions" id="sc-actions-${idx}">
-          ${renderActions(idx, shot.status, op)}
+          ${actionHtml}
         </div>
+
       </div>
     `;
   }
@@ -668,49 +881,20 @@
       .replace(/"/g,'&quot;');
   }
 
-  function renderActions(idx, status, op) {
-    let html = '';
-    if (status === 'pending' || status === 'failed') {
-      html += `<button class="sc-det-gen-btn" id="sc-gen-btn-${idx}"
-                       onclick="scGenOne(${idx}, false)">▶ Generate</button>`;
-    } else if (status === 'rendering') {
-      html += `<button class="sc-det-gen-btn" id="sc-gen-btn-${idx}" disabled>⏳ Generating…</button>`;
-    } else {
-      html += `<button class="sc-det-regen-btn" id="sc-gen-btn-${idx}"
-                       onclick="scGenOne(${idx}, true)">↺ Regenerate</button>`;
-    }
-
-    html += `
-      <form style="display:inline;" enctype="multipart/form-data" onsubmit="return false;">
-        <input type="hidden" name="csrf_token" value="${CSRF}">
-        <input type="file" accept="image/*" name="image"
-               id="sc-file-${idx}" style="display:none"
-               onchange="scUploadFile(${idx}, this)">
-        <label for="sc-file-${idx}" class="sc-det-upload-label" id="sc-upload-label-${idx}">⬆ Upload</label>
-      </form>
-    `;
-
-    if (status === 'ready' || (op && op.status)) {
-      const opStatus = (op && op.status) ? op.status : 'pending';
-      const opIcon = opStatus === 'ready' ? '↺' : opStatus === 'rendering' ? '⏳' : '⬡';
-      html += `<button class="sc-det-op-btn" id="sc-op-btn-${idx}"
-                       data-op-status="${opStatus}"
-                       onclick="opOutpaintOne(${idx})">${opIcon} ${ASPECT}</button>`;
-    }
-    return html;
-  }
-
   /* ── Update filmstrip item status ── */
   function updateStripItem(idx, status, url) {
     const item = document.getElementById('sc-strip-' + idx);
     if (!item) return;
+
+    // Update border status class
     item.className = item.className.replace(/sc-strip-item--\S+/, '');
     item.classList.add('sc-strip-item--' + status);
 
-    const statusEl = item.querySelector('.sc-strip-status');
-    if (statusEl) {
-      statusEl.className = 'sc-strip-status sc-strip-status--' + status;
-      statusEl.textContent = status;
+    // Update status badge overlay
+    const badge = item.querySelector('.sc-strip-status-badge');
+    if (badge) {
+      badge.className = 'sc-strip-status-badge sc-strip-status-badge--' + status;
+      badge.textContent = status;
     }
 
     const thumb = item.querySelector('.sc-strip-thumb');
@@ -719,8 +903,8 @@
       const existing = thumb.querySelector('.sc-gen-overlay');
       if (existing) existing.remove();
 
-      if (status === 'rendering') {
-        // Show spinner overlay on top of whatever image is already there
+      if (status === 'rendering' || status === 'queued') {
+        // Show spinner overlay on top of whatever is already there
         const overlay = document.createElement('div');
         overlay.className = 'sc-gen-overlay';
         overlay.innerHTML = '<div class="sc-gen-overlay-spinner"></div><span class="sc-gen-overlay-label">Generating…</span>';
@@ -730,12 +914,17 @@
       const op = opState[idx] || {};
       const dispUrl = (op.status === 'ready' && op.url) ? op.url : url;
       if (dispUrl && status === 'ready') {
+        // Replace placeholder with image
+        const ph = thumb.querySelector('.sc-strip-ph');
+        if (ph) ph.remove();
         let img = thumb.querySelector('img');
         if (!img) {
-          thumb.innerHTML = `<img src="${dispUrl}" alt="Shot ${idx}" loading="lazy">`;
-        } else {
-          img.src = dispUrl;
+          img = document.createElement('img');
+          img.alt = 'Shot ' + idx;
+          img.loading = 'lazy';
+          thumb.insertBefore(img, thumb.querySelector('.sc-strip-num-badge'));
         }
+        img.src = dispUrl;
       }
     }
   }
@@ -852,12 +1041,8 @@
   let pollTimer = null, pollFailCount = 0;
   const POLL_FAIL_THRESHOLD = 2;
   let _reloadArmed = false;
-  /* True while pre_compute_shot_prompts is still writing prompts in the background.
-     Initialised to true so polling starts immediately; server flips it to false once
-     all non-ready shots have a non-NULL motion_prompt.  Hard-capped after 5 minutes
-     to avoid polling forever when a shot builder permanently fails to return a prompt. */
   let _precomputePending = true;
-  const _PRECOMPUTE_DEADLINE = Date.now() + 5 * 60 * 1000;  // 5 min from page load
+  const _PRECOMPUTE_DEADLINE = Date.now() + 5 * 60 * 1000;
 
   function armReloadFallback() {
     if (_reloadArmed) return;
@@ -874,19 +1059,12 @@
       if (r.ok) {
         const data = await r.json();
         pollFailCount = 0;
-        // Server tells us if background prompt pre-computation is still running.
-        // Hard-cap: treat as done after 5 minutes regardless, to prevent infinite polling
-        // when a shot builder permanently fails to return a motion_prompt.
         _precomputePending = !!data.precompute_pending && Date.now() < _PRECOMPUTE_DEADLINE;
         for (const shot of data.shots) {
           const prev = shotState[shot.shot_index];
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
             applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
           }
-          // Apply prompt updates from pre_compute_shot_prompts as they arrive.
-          // Rule: update if the server value changed AND the user has NOT dirtied
-          // that field (i.e. typed in it since last save).
-          // Never overwrite the currently focused element.
           const focused = document.activeElement;
           if (shotData[shot.shot_index]) {
             const sd = shotData[shot.shot_index];
@@ -910,9 +1088,6 @@
     } catch(e) {
       if (++pollFailCount >= POLL_FAIL_THRESHOLD) { clearInterval(pollTimer); pollTimer = null; armReloadFallback(); }
     }
-    // Keep polling alive while any shot is rendering/queued OR while
-    // background prompt pre-computation (pre_compute_shot_prompts) is still
-    // writing prompts to the DB — stopping prematurely would leave textareas blank.
     const hasLive = Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued');
     if (!hasLive && !_precomputePending && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
@@ -1167,25 +1342,21 @@
       if (data.ok) {
         motionPromptDirty[idx] = false;
         if (data.frame0_prompt) {
-          // Always show the newly-derived Frame-0 prompt in the textarea so the
-          // user can inspect it — they can edit and save manually if needed.
           const f0ta = document.getElementById('sc-prompt-' + idx);
           if (f0ta) f0ta.value = data.frame0_prompt;
           if (data.frame0_saved) {
-            // Only update in-memory state + clear dirty flag when the server
-            // actually persisted the derivation (rowcount > 0); when
-            // prompt_user_edited blocked the write the textarea shows the
-            // derived value but memory keeps the manual edit's dirty state.
             if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
             promptDirty[idx] = false;
           }
         }
         if (data.rederive_error) {
-          // Re-derive failed — motion prompt was saved but Frame-0 was not updated.
           if (btn) btn.title = 'Re-derive failed: ' + data.rederive_error;
-          if (ind) { ind.style.display = ''; ind.style.color = '#ff8080';
+          if (ind) {
+            ind.style.display = '';
+            ind.style.color = '#ff8080';
             ind.textContent = '\u26A0 Re-derive failed';
-            setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = 'Saved'; }, 4000); }
+            setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = '\u2713 Saved'; }, 4000);
+          }
         } else {
           if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
         }
@@ -1201,9 +1372,9 @@
   updateCounters();
   updateOpCounters();
 
-  /* ── Auto-select first shot for convenience ── */
-  const firstIdx = shotData[Object.keys(shotData)[0]] ? Object.keys(shotData)[0] : null;
-  if (firstIdx) window.scSelect(parseInt(firstIdx));
+  /* ── Auto-select first shot ── */
+  const firstIdx = Object.keys(shotData)[0];
+  if (firstIdx !== undefined) window.scSelect(parseInt(firstIdx));
 
 })();
 </script>
