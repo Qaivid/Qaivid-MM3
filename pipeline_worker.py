@@ -1379,7 +1379,8 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             r'|(?:warm|cool|soft|golden|diffused|dramatic|mixed[- ]temperature)\s+[\w\s]+'
             r'(?:light|glow|lamp|fill)[\w\s]*?(?=,|$)'
             r'|(?:soft|hard|directional)\s+(?:light|lighting)[\w\s]*?(?=,|$)'
-            r'|(?:overcast|dappled|filtered|low[- ]key|chiaroscuro)[\w\s]*?(?:light|lighting|top)?[\w\s]*?(?=,|$)'
+            r'|split\s+lighting[^,]*?(?=,|$)'
+            r'|(?:overcast|dappled|filtered|low[- ]key|chiaroscuro)[^,]*?(?=,|$)'
             r')',
             motion_prompt, _re.I
         )
@@ -1552,6 +1553,14 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         )
         if _subj_m:
             subject = _clean(_subj_m.group(1), 40)
+    # Reject subjects that are actually shot-size/camera descriptions, not character names
+    _SHOT_DESC_STARTS = (
+        "medium shot", "close-up", "close up", "wide shot", "long shot",
+        "extreme close", "medium close", "medium wide", "establishing shot",
+        "full body", "full-body", "a shot", "the shot",
+    )
+    if subject and any(subject.lower().startswith(_sd) for _sd in _SHOT_DESC_STARTS):
+        subject = ""
 
     # ── 4. Framing — image prompt first, then camera sentence, then shot-index ──
     _sidx = int(shot.get("shot_index") or shot.get("timeline_index") or 0)
@@ -1766,8 +1775,10 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             frame0_desc, _re.I
         )
         if _lm2:
-            _ctx2 = frame0_desc[max(0, _lm2.start()-5):min(len(frame0_desc), _lm2.end()+40)]
-            lighting_raw = _ctx2.strip().split(".")[0].strip()
+            # Start context exactly at the match (no -5 offset — avoids picking up
+            # stray "t:" from "split: " or similar prefixes)
+            _ctx2 = frame0_desc[_lm2.start():min(len(frame0_desc), _lm2.end()+60)]
+            lighting_raw = _ctx2.strip().split(".")[0].rstrip(",").strip()
 
     lighting_raw = lighting_raw.lstrip(",; ").strip()
     if lighting_raw and len(lighting_raw) >= 12:
@@ -1964,8 +1975,9 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             if _already_in_cam:
                 _char_p = _pmi.capitalize() + "." if _pmi else ""
             else:
+                _pa_cap = _pa[:1].upper() + _pa[1:] if _pa else _pa
                 _char_p = (
-                    f"{_pa.rstrip('.')}. "
+                    f"{_pa_cap.rstrip('.')}. "
                     f"{_pmi.capitalize() + '.' if _pmi else 'Breath is slow and deliberate.'}"
                 )
         elif _al.startswith("her ") or _al.startswith("his "):
@@ -2381,7 +2393,7 @@ def _render_shot(project_id: str, shot: dict,
                     _wan_p = _derive_wan_continuation_prompt(computed_video_prompt, shot)
                     if _wan_p:
                         _update_shot(project_id, idx, "ready",
-                                     wan_video_prompt=_wan_p[:600])
+                                     wan_video_prompt=_wan_p[:2000])
                         logger.debug(
                             "_render_shot: stored WAN continuation prompt for "
                             "shot=%s (%d chars)", idx, len(_wan_p),
