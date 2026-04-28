@@ -1476,6 +1476,20 @@ def _render_shot(project_id: str, shot: dict,
             )
 
         # ── Generate the still ──────────────────────────────────────────
+        # Clear any stale WAN continuation prompt before generating so that if
+        # re-derivation below fails the video render stage won't use a prompt
+        # that was locked to a different still/motion-prompt pair.
+        try:
+            with _db() as _wc, _wc.cursor() as _wcur:
+                _wcur.execute(
+                    "UPDATE shot_assets SET wan_video_prompt=NULL, updated_at=NOW()"
+                    " WHERE project_id=%s AND shot_index=%s",
+                    (project_id, idx),
+                )
+                _wc.commit()
+        except Exception:
+            pass  # non-critical; new value stored after derivation succeeds
+
         # video_action is passed for the rare fallback path (user_override=None)
         # where compose_image_prompt builds the prompt programmatically; in that
         # case the video_action anchor is still appended so the still is at least

@@ -3730,8 +3730,11 @@ def stills_status_json(project_id: str):
     )
     # Also keep polling when any ready shot is missing its WAN continuation prompt
     # so the UI auto-fills wan_video_prompt once derivation completes in the background.
+    # wan_pending: only count shots that have a motion_prompt available for derivation
+    # — shots with neither wan_video_prompt nor motion_prompt would spin fruitlessly.
     wan_pending = any(
-        not a.get("wan_video_prompt") and (a.get("status") or "pending") == "ready"
+        not a.get("wan_video_prompt") and a.get("motion_prompt")
+        and (a.get("status") or "pending") == "ready"
         for a in assets
     )
     # Kick a background thread to fill in any missing WAN prompts (legacy shots
