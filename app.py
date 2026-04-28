@@ -3637,17 +3637,29 @@ def _stills_control_guard(project_id: str):
 
 
 _wan_derive_inflight: set[str] = set()
-_wan_derive_done: set[str] = set()
+_wan_derive_next_ok: dict[str, float] = {}  # project_id → earliest next-attempt timestamp
 _wan_derive_lock = threading.Lock()
+_WAN_DERIVE_SUCCESS_TTL = 3600.0   # don't re-run if all shots already filled
+_WAN_DERIVE_FAIL_COOLDOWN = 60.0   # retry after 60 s on transient failure
 
 
 def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
     """Spawn a background thread to derive `wan_video_prompt` for every ready
-    shot that is still missing one.  Thread-safe: guards the inflight set with
-    a lock so concurrent requests never spawn duplicate workers.  Skips projects
-    whose entire backfill pass has already completed or permanently failed."""
+    shot that is still missing one.
+
+    Thread-safety: a lock guards the inflight set and per-project cooldown
+    timestamps so concurrent poll requests never spawn duplicate workers.
+    On full success, re-runs are suppressed for ~1 h.
+    On transient failure (e.g. GPT unavailable), retry is allowed after 60 s
+    so a later page load can backfill once the API recovers.
+    """
+    import time  # stdlib — safe to import inside function
     with _wan_derive_lock:
-        if project_id in _wan_derive_inflight or project_id in _wan_derive_done:
+        now = time.monotonic()
+        if project_id in _wan_derive_inflight:
+            return
+        next_ok = _wan_derive_next_ok.get(project_id, 0.0)
+        if now < next_ok:
             return
         missing = [
             a for a in assets
@@ -3660,7 +3672,8 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
         _wan_derive_inflight.add(project_id)
 
     def _worker() -> None:
-        any_success = False
+        import time as _time  # noqa: PLC0415
+        all_ok = True
         try:
             from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
             for a in missing:
@@ -3679,8 +3692,10 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
                                 (wan_p[:600], project_id, idx),
                             )
                             conn.commit()
-                        any_success = True
+                    else:
+                        all_ok = False
                 except Exception:
+                    all_ok = False
                     logger.debug(
                         "_kick_missing_wan_prompts: derivation failed for "
                         "project=%s shot=%s (non-fatal)", project_id, idx,
@@ -3688,10 +3703,8 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
         finally:
             with _wan_derive_lock:
                 _wan_derive_inflight.discard(project_id)
-                # Always mark done so polling never re-spawns a worker for this
-                # project (retry churn).  Users can still re-derive per-shot via
-                # the /stills/rederive-wan/<idx> endpoint.
-                _wan_derive_done.add(project_id)
+                ttl = _WAN_DERIVE_SUCCESS_TTL if all_ok else _WAN_DERIVE_FAIL_COOLDOWN
+                _wan_derive_next_ok[project_id] = _time.monotonic() + ttl
 
     threading.Thread(target=_worker, daemon=True, name=f"wan-derive-{project_id[:8]}").start()
 
