@@ -3661,10 +3661,12 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
         next_ok = _wan_derive_next_ok.get(project_id, 0.0)
         if now < next_ok:
             return
+        # Only backfill shots where wan_video_prompt IS NULL (never derived).
+        # Empty string ("") means the user intentionally cleared the prompt — respect that.
         missing = [
             a for a in assets
             if (a.get("status") or "pending") == "ready"
-            and not a.get("wan_video_prompt")
+            and a.get("wan_video_prompt") is None
             and a.get("motion_prompt")
         ]
         if not missing:
@@ -3730,10 +3732,11 @@ def stills_status_json(project_id: str):
     )
     # Also keep polling when any ready shot is missing its WAN continuation prompt
     # so the UI auto-fills wan_video_prompt once derivation completes in the background.
-    # wan_pending: only count shots that have a motion_prompt available for derivation
-    # — shots with neither wan_video_prompt nor motion_prompt would spin fruitlessly.
+    # wan_pending: only count shots where wan_video_prompt IS NULL (never derived)
+    # and motion_prompt is available.  Empty-string ("") means user intentionally
+    # cleared it — backfill must not overwrite that choice.
     wan_pending = any(
-        not a.get("wan_video_prompt") and a.get("motion_prompt")
+        a.get("wan_video_prompt") is None and a.get("motion_prompt")
         and (a.get("status") or "pending") == "ready"
         for a in assets
     )
@@ -3912,13 +3915,16 @@ def stills_update_wan_prompt(project_id: str):
         shot_index = int(raw_idx)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "shot_index must be an integer"}), 400
-    # Allow empty string to clear the prompt (rendering then falls back to motion_prompt).
+    # Allow empty string to clear the prompt (video render then falls back to motion_prompt).
+    # Store "" (not NULL) for an intentional clear so the backfill worker can distinguish
+    # "user cleared" from "never derived" (NULL).  Backfill only runs when value IS NULL.
     wan_prompt = (data.get("wan_video_prompt") or "").strip()
+    stored_value = wan_prompt[:600] if wan_prompt else ""
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
             " WHERE project_id=%s AND shot_index=%s",
-            (wan_prompt[:600] if wan_prompt else None, project_id, shot_index),
+            (stored_value, project_id, shot_index),
         )
         if cur.rowcount == 0:
             return jsonify({"ok": False, "error": "Shot not found"}), 404
