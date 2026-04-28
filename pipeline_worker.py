@@ -366,6 +366,12 @@ def ensure_schema() -> None:
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_url TEXT;")
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS outpaint_status TEXT;")
 
+        # WAN 2.6 start-frame continuation prompt (Task #193)
+        # Lean prompt focused on motion/continuity, derived from full motion_prompt
+        # after the still is stored. Used by generate_shot_video() instead of the
+        # full motion_prompt so WAN receives an optimised continuation-mode prompt.
+        cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS wan_video_prompt TEXT;")
+
         # Credit ledger — append-only audit log of credit transactions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS credit_ledger (
@@ -475,21 +481,23 @@ def _seed_shot_rows(project_id: str, shot_indices: list[int]) -> None:
 def _update_shot(project_id: str, shot_index: int, status: str,
                  file_path: Optional[str] = None, prompt: Optional[str] = None,
                  error: Optional[str] = None,
-                 motion_prompt: Optional[str] = None) -> None:
+                 motion_prompt: Optional[str] = None,
+                 wan_video_prompt: Optional[str] = None) -> None:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO shot_assets (project_id, shot_index, status, file_path, prompt, error, motion_prompt)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO shot_assets (project_id, shot_index, status, file_path, prompt, error, motion_prompt, wan_video_prompt)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (project_id, shot_index) DO UPDATE
                SET status = EXCLUDED.status,
                    file_path = COALESCE(EXCLUDED.file_path, shot_assets.file_path),
                    prompt = COALESCE(EXCLUDED.prompt, shot_assets.prompt),
                    motion_prompt = COALESCE(EXCLUDED.motion_prompt, shot_assets.motion_prompt),
+                   wan_video_prompt = COALESCE(EXCLUDED.wan_video_prompt, shot_assets.wan_video_prompt),
                    error = EXCLUDED.error,
                    updated_at = NOW()
             """,
-            (project_id, shot_index, status, file_path, prompt, error, motion_prompt),
+            (project_id, shot_index, status, file_path, prompt, error, motion_prompt, wan_video_prompt),
         )
         conn.commit()
 
@@ -768,6 +776,12 @@ def _render_video(project_id: str, shot: dict) -> None:
         )
         motion_prompt = motion_prompt or ""  # final null-safety guarantee
 
+        # Prefer the stored WAN 2.6 continuation prompt over the full motion_prompt.
+        # wan_video_prompt is a GPT-derived lean prompt focused on motion/continuity
+        # (no scene re-description), optimised for WAN's image-to-video mode.
+        # Falls back to motion_prompt if absent (legacy projects, derivation failed).
+        wan_video_prompt = _get_shot_wan_prompt(project_id, idx) or ""
+
         # Assemble explicit render_job for traceability — captures every input
         # used to produce this clip (brain-derived + linkage state).
         render_job: Dict[str, Any] = {
@@ -778,8 +792,10 @@ def _render_video(project_id: str, shot: dict) -> None:
             "duration":              duration,
             "visual_prompt":         prompt,
             "motion_prompt":         motion_prompt,
+            "wan_video_prompt":      wan_video_prompt,
             "motion_prompt_source":  ("brain" if brain_motion_prompt else
                                       ("shot_dict" if shot.get("motion_prompt") else "db")),
+            "wan_prompt_source":     ("db" if wan_video_prompt else "none"),
             "motion_philosophy":     motion_philosophy,
             "identity_seed":         identity_seed,
             "cinematic_style":       cinematic_style,
@@ -794,7 +810,8 @@ def _render_video(project_id: str, shot: dict) -> None:
         logger.debug("_render_video: render_job=%s", render_job)
 
         public_url = generate_shot_video(project_id, idx, still_url, prompt, duration,
-                                         motion_prompt=motion_prompt)
+                                         motion_prompt=motion_prompt,
+                                         wan_video_prompt=wan_video_prompt or None)
         _update_video(project_id, idx, "ready", file_path=public_url)
 
     except (VideoGenerationError, Exception) as exc:
@@ -1137,6 +1154,91 @@ def _store_frame0_prompt(project_id: str, shot_index: int, frame0_prompt: str) -
         )
 
 
+def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict) -> str:
+    """Call GPT-4.1-mini to build a start-frame-aware WAN 2.6 continuation prompt.
+
+    WAN 2.6 receives a still image as the start frame, so the prompt should NOT
+    re-describe the scene — only what CHANGES: camera motion, character action,
+    lighting continuity, emotional beat, and micro-detail hints (fabric, breath).
+
+    Output format (compact, labelled, ≤600 chars):
+        Camera: <motion direction> | Action: <character movement> |
+        Lighting: <continuity note> | Mood: <emotional progression> |
+        Micro-detail: <subtle hints> | Avoid: <negative terms>
+
+    Returns an empty string on any failure — non-fatal by design.
+    """
+    if not motion_prompt or not motion_prompt.strip():
+        return ""
+    try:
+        import os as _os
+        from openai import OpenAI as _OpenAI  # noqa: PLC0415
+
+        _api_key = _os.getenv("OPENAI_API_KEY")
+        if not _api_key:
+            return ""
+
+        _client = _OpenAI(api_key=_api_key)
+
+        _system_msg = (
+            "You write compact WAN 2.6 video prompts for image-to-video generation. "
+            "WAN 2.6 receives a still image as the start frame, so the prompt must "
+            "NOT describe the scene — only what CHANGES from the start frame onward. "
+            "Focus on: camera motion, character action, lighting continuity, emotional "
+            "progression, and micro-detail hints (fabric movement, breath, blinking). "
+            "Output ONLY the prompt in this labelled format (no preamble, no markdown):\n"
+            "Camera: <motion> | Action: <movement> | Lighting: <continuity> | "
+            "Mood: <progression> | Micro-detail: <subtle hints> | Avoid: <negatives>\n"
+            "Keep the total output under 600 characters."
+        )
+        _user_msg = (
+            f"Given this full motion prompt for the shot:\n\n"
+            f"{motion_prompt.strip()}\n\n"
+            "Write a WAN 2.6 start-frame continuation prompt for this shot."
+        )
+
+        _resp = _client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": _system_msg},
+                {"role": "user",   "content": _user_msg},
+            ],
+            temperature=0.3,
+            max_tokens=200,
+        )
+        _derived = (_resp.choices[0].message.content or "").strip()
+        if _derived:
+            # Enforce hard cap to match MOTION_PROMPT_MAX_CHARS in video_generator.py
+            _derived = _derived[:600]
+            logger.info(
+                "_derive_wan_continuation_prompt: GPT-4.1-mini derived %d-char "
+                "WAN prompt for shot=%s: %s…",
+                len(_derived),
+                shot.get("shot_index") or shot.get("timeline_index"),
+                _derived[:80],
+            )
+        return _derived
+    except Exception:
+        logger.debug(
+            "_derive_wan_continuation_prompt: GPT call failed (non-fatal)",
+            exc_info=True,
+        )
+        return ""
+
+
+def _get_shot_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
+    """Return the stored wan_video_prompt for a shot, or None."""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT wan_video_prompt FROM shot_assets WHERE project_id=%s AND shot_index=%s",
+            (project_id, shot_index),
+        )
+        row = cur.fetchone()
+    if row:
+        return row.get("wan_video_prompt") or None
+    return None
+
+
 def _render_shot(project_id: str, shot: dict,
                  character_ref_url: Optional[str] = None,
                  environment_ref_url: Optional[str] = None) -> None:
@@ -1393,6 +1495,26 @@ def _render_shot(project_id: str, shot: dict,
                 video_action=shot_video_action,
             )
             _update_shot(project_id, idx, "ready", file_path=url)
+
+            # Derive WAN 2.6 start-frame continuation prompt (best-effort, non-fatal).
+            # Runs after the still is ready so the still URL is already stored.
+            # Uses computed_video_prompt (the full motion_prompt) as the source.
+            try:
+                if computed_video_prompt:
+                    _wan_p = _derive_wan_continuation_prompt(computed_video_prompt, shot)
+                    if _wan_p:
+                        _update_shot(project_id, idx, "ready",
+                                     wan_video_prompt=_wan_p[:600])
+                        logger.debug(
+                            "_render_shot: stored WAN continuation prompt for "
+                            "shot=%s (%d chars)", idx, len(_wan_p),
+                        )
+            except Exception:
+                logger.debug(
+                    "_render_shot: WAN continuation prompt derivation failed for "
+                    "project=%s shot=%s (non-fatal)", project_id, idx,
+                )
+
         except Exception as exc:
             logger.exception("Shot %s render failed", idx)
             _update_shot(project_id, idx, "failed", error=str(exc))

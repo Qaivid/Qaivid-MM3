@@ -195,16 +195,20 @@ def generate_shot_video(
     prompt: str,
     duration_s: float | None = None,
     motion_prompt: str | None = None,
+    wan_video_prompt: str | None = None,
 ) -> str:
     """Animate *still_url* into a short video clip stored in R2.
 
     Args:
-        still_url:     Public (or R2) URL of the still image.
-        prompt:        Visual prompt for the shot.
-        duration_s:    Shot duration hint (clips are capped at MAX_DURATION).
-        motion_prompt: Concise WAN-optimised camera/motion description.
-                       When provided, used as the video prompt instead of the
-                       full visual prompt (which is often too long).
+        still_url:        Public (or R2) URL of the still image.
+        prompt:           Visual prompt for the shot.
+        duration_s:       Shot duration hint (clips are capped at MAX_DURATION).
+        motion_prompt:    Full WAN-optimised motion description (rich, for Frame 0
+                          derivation). Used as fallback when wan_video_prompt is absent.
+        wan_video_prompt: Lean start-frame continuation prompt (Camera/Action/Lighting/
+                          Mood/Micro-detail/Avoid format, ≤600 chars). When present,
+                          preferred over motion_prompt for WAN submission because it
+                          omits scene re-description (the still already shows the scene).
 
     Returns a public R2 URL string.
     Raises VideoGenerationError on failure.
@@ -216,7 +220,11 @@ def generate_shot_video(
     else:
         clip_duration = DEFAULT_DURATION
 
-    effective_prompt = (motion_prompt or "").strip()
+    # Prefer the lean WAN continuation prompt; fall back to full motion_prompt,
+    # then to the visual prompt as a last resort.
+    effective_prompt = (wan_video_prompt or "").strip()
+    if not effective_prompt:
+        effective_prompt = (motion_prompt or "").strip()
     if not effective_prompt:
         effective_prompt = (prompt or "cinematic camera motion, smooth dolly").strip()
     effective_prompt = effective_prompt[:MOTION_PROMPT_MAX_CHARS]

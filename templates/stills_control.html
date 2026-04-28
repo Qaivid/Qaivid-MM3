@@ -502,6 +502,18 @@
   border-bottom: 1px solid rgba(80,100,200,.12);
 }
 
+/* WAN 2.6 continuation prompt section */
+.sc-prompt-section--wan {
+  background: #0a0609;
+  border: 1px solid rgba(180,80,200,.18);
+}
+.sc-prompt-section--wan .sc-prompt-section-head {
+  background: rgba(140,40,160,.1);
+  border-bottom: 1px solid rgba(180,80,200,.12);
+}
+.sc-prompt-section--wan .sc-prompt-section-title { color: #c070d8; }
+.sc-prompt-section--wan .sc-prompt-ta { background: #0a0609; color: #c090d4; min-height: 80px; }
+
 /* Section header row */
 .sc-prompt-section-head {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -690,16 +702,17 @@
   const shotData = {};
   {% for shot in shots %}
   shotData[{{ shot.shot_index }}] = {
-    idx:          {{ shot.shot_index }},
-    status:       {{ shot.status | tojson }},
-    url:          {{ (shot.url or '') | tojson }},
-    prompt:       {{ (shot.prompt or '') | tojson }},
-    motionPrompt: {{ (shot.motion_prompt or '') | tojson }},
-    meaning:      {{ (shot.meaning or '') | tojson }},
-    error:        {{ (shot.error or '') | tojson }},
-    startTime:    {{ (shot.start_time or 0) | tojson }},
-    duration:     {{ (shot.duration or 0) | tojson }},
-    source:       {{ (shot.source or '') | tojson }},
+    idx:            {{ shot.shot_index }},
+    status:         {{ shot.status | tojson }},
+    url:            {{ (shot.url or '') | tojson }},
+    prompt:         {{ (shot.prompt or '') | tojson }},
+    motionPrompt:   {{ (shot.motion_prompt or '') | tojson }},
+    wanVideoPrompt: {{ (shot.wan_video_prompt or '') | tojson }},
+    meaning:        {{ (shot.meaning or '') | tojson }},
+    error:          {{ (shot.error or '') | tojson }},
+    startTime:      {{ (shot.start_time or 0) | tojson }},
+    duration:       {{ (shot.duration or 0) | tojson }},
+    source:         {{ (shot.source or '') | tojson }},
   };
   {% endfor %}
 
@@ -708,8 +721,10 @@
      Cleared when the user saves. */
   const motionPromptDirty = {};
   const promptDirty = {};
+  const wanPromptDirty = {};
   window.scMarkVidPromptDirty = function(idx) { motionPromptDirty[idx] = true; };
   window.scMarkPromptDirty    = function(idx) { promptDirty[idx]       = true; };
+  window.scMarkWanPromptDirty = function(idx) { wanPromptDirty[idx]    = true; };
 
   /* ── Outpaint state ── */
   const opState = {};
@@ -757,6 +772,7 @@
 
     const motionVal = escHtml(shot.motionPrompt || '');
     const frame0Val = escHtml(shot.prompt || '');
+    const wanVal    = escHtml(shot.wanVideoPrompt || '');
 
     // Action bar
     let actionHtml = '';
@@ -861,6 +877,29 @@
               Save Frame 0 prompt
             </button>
             <span id="sc-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#7ec8a4;">✓ Saved</span>
+          </div>
+        </div>
+
+        <!-- WAN 2.6 CONTINUATION PROMPT section -->
+        <div class="sc-prompt-section sc-prompt-section--wan">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">🎬 WAN 2.6 Video Prompt (Continuation)</span>
+            <span class="sc-prompt-section-hint">sent to WAN · max 600 chars</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-wan-prompt-${idx}"
+                    rows="3" maxlength="600"
+                    oninput="scMarkWanPromptDirty(${idx})">${wanVal}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-rederive-btn" id="sc-wan-rederive-btn-${idx}"
+                    onclick="scRederiveWan(${idx})">
+              ↻ Re-derive from Motion Prompt
+            </button>
+            <button class="sc-save-btn"
+                    onclick="scSaveWanPrompt(${idx}, document.getElementById('sc-wan-prompt-${idx}').value)">
+              Save only
+            </button>
+            <span id="sc-wan-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#c070d8;">✓ Saved</span>
+            <span id="sc-wan-deriving-${idx}" style="display:none;" class="sc-indicator" style="color:#c8f135;">⏳ Deriving…</span>
           </div>
         </div>
 
@@ -1079,6 +1118,12 @@
               sd.prompt = shot.prompt;
               const f0Ta = document.getElementById('sc-prompt-' + shot.shot_index);
               if (f0Ta && f0Ta !== focused) f0Ta.value = shot.prompt;
+            }
+            if (shot.wan_video_prompt && shot.wan_video_prompt !== sd.wanVideoPrompt
+                && !wanPromptDirty[shot.shot_index]) {
+              sd.wanVideoPrompt = shot.wan_video_prompt;
+              const wanTa = document.getElementById('sc-wan-prompt-' + shot.shot_index);
+              if (wanTa && wanTa !== focused) wanTa.value = shot.wan_video_prompt;
             }
           }
         }
@@ -1364,6 +1409,65 @@
     } catch(e) {}
     if (deriving) deriving.style.display = 'none';
     if (btn) { btn.disabled = false; btn.textContent = '\u21BB Save & Re-derive Frame 0'; }
+  };
+
+  /* ── WAN 2.6 continuation prompt save ── */
+  window.scSaveWanPrompt = async function(idx, val) {
+    if (shotData[idx]) shotData[idx].wanVideoPrompt = val;
+    const ind = document.getElementById('sc-wan-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/wan-prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, wan_video_prompt: val }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        wanPromptDirty[idx] = false;
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      }
+    } catch(e) {}
+  };
+
+  /* ── WAN continuation prompt on-demand re-derivation ── */
+  window.scRederiveWan = async function(idx) {
+    const btn      = document.getElementById('sc-wan-rederive-btn-' + idx);
+    const deriving = document.getElementById('sc-wan-deriving-' + idx);
+    const ind      = document.getElementById('sc-wan-saved-' + idx);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Deriving…'; }
+    if (deriving) deriving.style.display = '';
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/rederive-wan/' + idx, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+      });
+      const data = await resp.json();
+      if (data.ok && data.wan_video_prompt) {
+        if (shotData[idx]) shotData[idx].wanVideoPrompt = data.wan_video_prompt;
+        wanPromptDirty[idx] = false;
+        const wanTa = document.getElementById('sc-wan-prompt-' + idx);
+        if (wanTa) wanTa.value = data.wan_video_prompt;
+        if (ind) {
+          ind.style.display = '';
+          ind.style.color = '#c070d8';
+          ind.textContent = '✓ Derived & saved';
+          setTimeout(() => { ind.style.display = 'none'; ind.textContent = '✓ Saved'; ind.style.color = ''; }, 3000);
+        }
+      } else {
+        const errMsg = (data && data.error) ? data.error : 'Re-derive failed';
+        if (ind) {
+          ind.style.display = '';
+          ind.style.color = '#ff8080';
+          ind.textContent = '⚠ ' + errMsg.slice(0, 40);
+          setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = '✓ Saved'; }, 4000);
+        }
+      }
+    } catch(e) {
+      if (ind) { ind.style.display = ''; ind.style.color = '#ff8080'; ind.textContent = '⚠ Network error'; setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = '✓ Saved'; }, 3000); }
+    }
+    if (deriving) deriving.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.textContent = '\u21BB Re-derive from Motion Prompt'; }
   };
 
   /* ── Start polls and update counters on load ── */

@@ -1463,6 +1463,7 @@ def project_detail(project_id: str):
                 p["prompt"] = (preview_by_idx.get(a["shot_index"])
                                or p.get("prompt") or "")
             p["motion_prompt"] = a.get("motion_prompt") or ""
+            p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -1544,6 +1545,7 @@ def project_detail(project_id: str):
             else:
                 p["prompt"] = p.get("prompt") or ""
             p["motion_prompt"] = a.get("motion_prompt") or ""
+            p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -3652,17 +3654,24 @@ def stills_status_json(project_id: str):
         a.get("motion_prompt") is None and (a.get("status") or "pending") != "ready"
         for a in assets
     )
+    # Also keep polling when any ready shot is missing its WAN continuation prompt
+    # so the UI auto-fills wan_video_prompt once derivation completes in the background.
+    wan_pending = any(
+        a.get("wan_video_prompt") is None and (a.get("status") or "pending") == "ready"
+        for a in assets
+    )
     return jsonify({
-        "precompute_pending": precompute_pending,
+        "precompute_pending": precompute_pending or wan_pending,
         "shots": [
             {
-                "shot_index":    a["shot_index"],
-                "status":        ("rendering" if a["status"] == "queued" else a["status"]),
-                "url":           _asset_url(a.get("file_path")),
-                "source":        a.get("source"),
-                "error":         a.get("error"),
-                "motion_prompt": a.get("motion_prompt") or "",
-                "prompt":        a.get("prompt") or "",
+                "shot_index":      a["shot_index"],
+                "status":          ("rendering" if a["status"] == "queued" else a["status"]),
+                "url":             _asset_url(a.get("file_path")),
+                "source":          a.get("source"),
+                "error":           a.get("error"),
+                "motion_prompt":   a.get("motion_prompt") or "",
+                "prompt":          a.get("prompt") or "",
+                "wan_video_prompt": a.get("wan_video_prompt") or "",
             }
             for a in assets
         ]
@@ -3800,6 +3809,80 @@ def stills_update_video_prompt(project_id: str):
     if rederive_error:
         resp["rederive_error"] = rederive_error
     return jsonify(resp)
+
+
+@app.route("/project/<project_id>/stills/wan-prompt", methods=["POST"])
+@login_required
+def stills_update_wan_prompt(project_id: str):
+    """Save an edited WAN 2.6 continuation prompt for a shot (AJAX — returns JSON).
+
+    Body JSON:
+        shot_index     int   — required
+        wan_video_prompt str — required; new WAN continuation prompt (max 600 chars)
+
+    Returns JSON: {"ok": true}
+    """
+    _stills_control_guard(project_id)
+    data = request.get_json(silent=True) or {}
+    shot_index = data.get("shot_index")
+    wan_prompt = (data.get("wan_video_prompt") or "").strip()
+    if shot_index is None or not wan_prompt:
+        return jsonify({"ok": False, "error": "shot_index and wan_video_prompt required"}), 400
+    shot_index = int(shot_index)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
+            " WHERE project_id=%s AND shot_index=%s",
+            (wan_prompt[:600], project_id, shot_index),
+        )
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/project/<project_id>/stills/rederive-wan/<int:shot_index>", methods=["POST"])
+@login_required
+def stills_rederive_wan_prompt(project_id: str, shot_index: int):
+    """On-demand derivation of WAN 2.6 continuation prompt for a shot.
+
+    Reads the stored motion_prompt, calls GPT-4.1-mini, and stores the result.
+    Intended for shots that already have a still but no wan_video_prompt (e.g.
+    legacy projects, or if derivation failed during still generation).
+
+    Returns JSON: {"ok": true, "wan_video_prompt": "..."} or {"ok": false, "error": "..."}
+    """
+    _stills_control_guard(project_id)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT motion_prompt FROM shot_assets WHERE project_id=%s AND shot_index=%s",
+            (project_id, shot_index),
+        )
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "Shot not found"}), 404
+    motion_prompt = (row.get("motion_prompt") or "").strip()
+    if not motion_prompt:
+        return jsonify({"ok": False, "error": "No motion prompt available to derive from"}), 400
+    try:
+        from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
+        wan_prompt = _derive_wan_continuation_prompt(
+            motion_prompt, {"shot_index": shot_index}
+        )
+        if not wan_prompt:
+            return jsonify({"ok": False, "error": "Derivation returned empty prompt"}), 500
+        with db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
+                " WHERE project_id=%s AND shot_index=%s",
+                (wan_prompt[:600], project_id, shot_index),
+            )
+            conn.commit()
+        return jsonify({"ok": True, "wan_video_prompt": wan_prompt})
+    except Exception as exc:
+        logger.exception(
+            "stills_rederive_wan_prompt: GPT call failed for project=%s shot=%s",
+            project_id, shot_index,
+        )
+        return jsonify({"ok": False, "error": str(exc) or "Derivation failed"}), 500
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
