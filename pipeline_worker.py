@@ -1154,7 +1154,8 @@ def _store_frame0_prompt(project_id: str, shot_index: int, frame0_prompt: str) -
         )
 
 
-def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict) -> str:
+def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
+                                     raise_errors: bool = False) -> str:
     """Call GPT-4.1-mini to build a start-frame-aware WAN 2.6 continuation prompt.
 
     WAN 2.6 receives a still image as the start frame, so the prompt should NOT
@@ -1167,6 +1168,8 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict) -> str:
         Micro-detail: <subtle hints> | Avoid: <negative terms>
 
     Returns an empty string on any failure — non-fatal by design.
+    Set raise_errors=True when calling from an interactive endpoint so the
+    caller can surface the actual error (e.g. rate-limit) to the user.
     """
     if not motion_prompt or not motion_prompt.strip():
         return ""
@@ -1176,6 +1179,8 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict) -> str:
 
         _api_key = _os.getenv("OPENAI_API_KEY")
         if not _api_key:
+            if raise_errors:
+                raise RuntimeError("OPENAI_API_KEY is not configured")
             return ""
 
         _client = _OpenAI(api_key=_api_key)
@@ -1223,6 +1228,8 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict) -> str:
             "_derive_wan_continuation_prompt: GPT call failed (non-fatal)",
             exc_info=True,
         )
+        if raise_errors:
+            raise
         return ""
 
 

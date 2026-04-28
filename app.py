@@ -3958,10 +3958,10 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
     try:
         from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
         wan_prompt = _derive_wan_continuation_prompt(
-            motion_prompt, {"shot_index": shot_index}
+            motion_prompt, {"shot_index": shot_index}, raise_errors=True
         )
         if not wan_prompt:
-            return jsonify({"ok": False, "error": "Derivation returned empty prompt"}), 500
+            return jsonify({"ok": False, "error": "GPT returned an empty response — try again"}), 500
         with db() as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
@@ -3970,12 +3970,22 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
             )
             conn.commit()
         return jsonify({"ok": True, "wan_video_prompt": wan_prompt})
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "stills_rederive_wan_prompt: GPT call failed for project=%s shot=%s",
             project_id, shot_index,
         )
-        return jsonify({"ok": False, "error": "Derivation failed — check server logs"}), 500
+        # Surface a human-readable hint for the most common transient failure.
+        exc_str = str(exc)
+        if "429" in exc_str or "rate" in exc_str.lower():
+            user_msg = "OpenAI rate limit — please wait a moment and try again"
+        elif "401" in exc_str or "auth" in exc_str.lower():
+            user_msg = "OpenAI API key error — contact support"
+        elif "timeout" in exc_str.lower() or "timed out" in exc_str.lower():
+            user_msg = "Request timed out — try again shortly"
+        else:
+            user_msg = "Derivation failed — try again or check server logs"
+        return jsonify({"ok": False, "error": user_msg}), 500
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
