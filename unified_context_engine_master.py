@@ -1864,10 +1864,40 @@ REQUIREMENTS:
 
         # --- Latin-script: use langdetect to identify the actual language ---
         if re.search(r"[A-Za-z]", text):
+            # Stop-word pre-check for romanized Korean — langdetect cannot
+            # reliably distinguish Korean romanization from other Latin text,
+            # so we use two tiers of markers:
+            #   HIGH-confidence: a single word is unambiguous enough on its own.
+            #   MODERATE-confidence: require ≥2 co-occurring words to avoid false
+            #   positives (short common words that occasionally appear in English).
+            _KO_ROMAN_HIGH = {
+                "saranghae", "bogoshipda", "bogoshipo", "gwenchana",
+                "arasseo", "andwae", "mollayo", "eopseo", "michyeo",
+                "hajima", "hwaiting",
+            }
+            _KO_ROMAN_MOD = {
+                "sarang", "jinjja", "daebak", "maknae", "noona", "oppa",
+                "unni", "eonni", "wae", "nan", "neon", "uri", "nal",
+                "molla", "arayo", "isseo", "fighting",
+            }
+            lower_text = text.lower()
+            words_in_text = set(re.findall(r"[a-z]+", lower_text))
+            if words_in_text & _KO_ROMAN_HIGH:
+                return {"primary": "Korean/Romanized", "script": "Latin", "dialect": ""}
+            if len(words_in_text & _KO_ROMAN_MOD) >= 2:
+                return {"primary": "Korean/Romanized", "script": "Latin", "dialect": ""}
+
             try:
                 from langdetect import detect as _ld_detect
                 iso = _ld_detect(text[:400])
                 primary, script = self._LANGDETECT_MAP.get(iso, ("English/Romanized", "Latin"))
+                # If langdetect thinks this is a non-Latin-script language but the
+                # input text is actually Latin-script (e.g. romanized Korean/Japanese),
+                # mark it as Romanized so the correct cultural hint is still applied.
+                if script != "Latin":
+                    base = primary.split("/")[0]
+                    primary = f"{base}/Romanized"
+                    script = "Latin"
                 return {"primary": primary, "script": script, "dialect": ""}
             except Exception:
                 return {"primary": "English/Romanized", "script": "Latin", "dialect": ""}
@@ -1876,7 +1906,12 @@ REQUIREMENTS:
 
     def _language_to_location_dna(self, primary_language: str) -> str:
         key = (primary_language or "").strip().lower()
-        return self.LANGUAGE_LOCATION_DEFAULTS.get(key, "")
+        result = self.LANGUAGE_LOCATION_DEFAULTS.get(key, "")
+        if not result and "/" in key:
+            # "Korean/Romanized" → fall back to "korean" entry
+            base = key.split("/")[0]
+            result = self.LANGUAGE_LOCATION_DEFAULTS.get(base, "")
+        return result
 
     def _normalize_for_match(self, text: str) -> str:
         text = text.lower().strip()
