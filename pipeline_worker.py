@@ -372,6 +372,11 @@ def ensure_schema() -> None:
         # full motion_prompt so WAN receives an optimised continuation-mode prompt.
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS wan_video_prompt TEXT;")
 
+        # Task #196 — AI-generated WAN prose prompt via Gemini
+        # Richer, story-grounded alternative to the deterministic wan_video_prompt.
+        # Stored separately so both versions coexist and the user can choose which to send.
+        cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS ai_wan_video_prompt TEXT;")
+
         # Credit ledger — append-only audit log of credit transactions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS credit_ledger (
@@ -2112,6 +2117,144 @@ def _get_shot_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
     if row:
         return row.get("wan_video_prompt") or None
     return None
+
+
+def _generate_ai_wan_prompt(frame0_prompt: str, motion_prompt: str,
+                             shot_index: int, project_id: str) -> str:
+    """Call Gemini to write a rich cinematic WAN 2.6 continuation prose prompt.
+
+    Uses the Frame 0 text description (stored ``prompt`` column) and the
+    deterministic ``motion_prompt`` as grounding material.  Text-only call —
+    no image upload.  Returns a prose prompt capped at 2000 chars.
+
+    Raises RuntimeError / google.genai exceptions on failure so the caller
+    can catch, log, and handle gracefully.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+
+    from google import genai  # noqa: PLC0415
+
+    client = genai.Client(api_key=gemini_key)
+
+    system_prompt = (
+        "You are a cinematic prompt engineer specialising in WAN 2.6 AI video generation.\n"
+        "WAN 2.6 receives a still image as Frame 0 and generates a short video clip "
+        "continuing from that frame.\n"
+        "Your task: write a single rich prose prompt that tells WAN exactly what should "
+        "happen in the video clip.\n\n"
+        f"FRAME 0 DESCRIPTION (what the still image shows):\n"
+        f"{frame0_prompt or '(not available)'}\n\n"
+        f"MOTION BRIEF (cinematic intent for this shot):\n"
+        f"{motion_prompt or '(not available)'}\n\n"
+        "RULES:\n"
+        "- Write in flowing cinematic prose, 3 short paragraphs maximum\n"
+        "- Paragraph 1: Camera movement (push-in, pan, static hold, etc.)\n"
+        "- Paragraph 2: Subject/character action and micro-motion "
+        "(breath, fabric movement, expression shift)\n"
+        "- Paragraph 3: Lighting and atmosphere continuity from the still\n"
+        "- Then add 4 brief labelled lines: Camera: | Lighting: | Mood: | Avoid:\n"
+        "- Keep the total under 400 words\n"
+        "- Ground every detail in the Frame 0 description — do not invent new elements "
+        "not present in the still\n"
+        "- Do not mention 'WAN', 'AI', 'Frame 0', or any technical system terms\n"
+        "- Write in present tense, third person\n"
+        "- Output only the prompt text — no preamble, no explanation, no markdown headers"
+    )
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[system_prompt],
+    )
+
+    raw = (response.text or "").strip()
+    if not raw:
+        raise RuntimeError("Gemini returned an empty response")
+
+    result = raw[:2000]
+    logger.info(
+        "_generate_ai_wan_prompt: %d-char AI WAN prompt for project=%s shot=%s",
+        len(result), project_id, shot_index,
+    )
+    return result
+
+
+def generate_ai_wan_prompts_for_project(project_id: str) -> dict:
+    """Generate AI WAN prompts for all shots in a project using Gemini.
+
+    Runs generations in parallel (ThreadPoolExecutor, max 5 workers), stores
+    results in ``ai_wan_video_prompt`` column.
+
+    Returns::
+
+        {
+            "generated": int,   # shots with a new prompt stored
+            "skipped":   int,   # shots with no frame0 prompt or motion_prompt
+            "errors":    int,   # shots where Gemini call failed
+            "prompts":   {shot_index: prompt_text, ...},
+        }
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: PLC0415
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT shot_index, prompt, motion_prompt FROM shot_assets"
+            " WHERE project_id=%s ORDER BY shot_index",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+
+    if not rows:
+        return {"generated": 0, "skipped": 0, "errors": 0, "prompts": {}}
+
+    results: dict = {}
+    errors_count = 0
+    skipped_count = 0
+
+    def _generate_one(row: dict) -> tuple:
+        sidx = row["shot_index"]
+        fp = (row.get("prompt") or "").strip()
+        mp = (row.get("motion_prompt") or "").strip()
+        if not fp and not mp:
+            return (sidx, None, "skipped")
+        try:
+            prompt_text = _generate_ai_wan_prompt(fp, mp, sidx, project_id)
+            return (sidx, prompt_text, "ok")
+        except Exception as exc:
+            logger.warning(
+                "generate_ai_wan_prompts: failed for project=%s shot=%s: %s",
+                project_id, sidx, exc,
+            )
+            return (sidx, None, "error")
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = [pool.submit(_generate_one, row) for row in rows]
+        for future in as_completed(futures):
+            sidx, text, status = future.result()
+            if status == "ok" and text:
+                results[sidx] = text
+            elif status == "skipped":
+                skipped_count += 1
+            else:
+                errors_count += 1
+
+    if results:
+        with _db() as conn, conn.cursor() as cur:
+            for sidx, text in results.items():
+                cur.execute(
+                    "UPDATE shot_assets SET ai_wan_video_prompt=%s, updated_at=NOW()"
+                    " WHERE project_id=%s AND shot_index=%s",
+                    (text, project_id, sidx),
+                )
+            conn.commit()
+
+    return {
+        "generated": len(results),
+        "skipped": skipped_count,
+        "errors": errors_count,
+        "prompts": results,
+    }
 
 
 def _render_shot(project_id: str, shot: dict,

@@ -72,6 +72,7 @@ from pipeline_worker import (
     seed_video_rows,
     render_shot_videos,
     render_failed_videos,
+    generate_ai_wan_prompts_for_project,
 )
 from auth import (
     DuplicateEmailError,
@@ -1466,6 +1467,7 @@ def project_detail(project_id: str):
                                or p.get("prompt") or "")
             p["motion_prompt"] = a.get("motion_prompt") or ""
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
+            p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -1548,6 +1550,7 @@ def project_detail(project_id: str):
                 p["prompt"] = p.get("prompt") or ""
             p["motion_prompt"] = a.get("motion_prompt") or ""
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
+            p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -4061,6 +4064,79 @@ def stills_rederive_wan_all(project_id: str):
         "skipped": skipped,
         "message": f"Generated {derived} WAN prompt{'s' if derived != 1 else ''}{suffix}",
         "prompts": prompts_map,
+    })
+
+
+@app.route("/project/<project_id>/stills/ai-wan-prompt", methods=["POST"])
+@login_required
+def stills_update_ai_wan_prompt(project_id: str):
+    """Save an edited AI WAN prose prompt for a shot (AJAX — returns JSON).
+
+    Body JSON:
+        shot_index           int — required
+        ai_wan_video_prompt  str — required; AI-generated WAN prose prompt
+
+    Returns JSON: {"ok": true}
+    """
+    _stills_control_guard(project_id)
+    data = request.get_json(silent=True) or {}
+    raw_idx = data.get("shot_index")
+    if raw_idx is None or "ai_wan_video_prompt" not in data:
+        return jsonify({"ok": False, "error": "shot_index and ai_wan_video_prompt required"}), 400
+    try:
+        shot_index = int(raw_idx)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "shot_index must be an integer"}), 400
+    ai_wan_prompt = (data.get("ai_wan_video_prompt") or "").strip()
+    stored_value = ai_wan_prompt[:2000] if ai_wan_prompt else ""
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET ai_wan_video_prompt=%s, updated_at=NOW()"
+            " WHERE project_id=%s AND shot_index=%s",
+            (stored_value, project_id, shot_index),
+        )
+        if cur.rowcount == 0:
+            return jsonify({"ok": False, "error": "Shot not found"}), 404
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/project/<project_id>/stills/generate-ai-wan-prompts", methods=["POST"])
+@login_required
+def stills_generate_ai_wan_prompts(project_id: str):
+    """Generate AI WAN prose prompts for ALL shots using Gemini (text-only).
+
+    Runs in the request thread (parallel per-shot via ThreadPoolExecutor inside
+    generate_ai_wan_prompts_for_project).  Overwrites any existing
+    ai_wan_video_prompt values.
+
+    Returns JSON: {"ok": true, "generated": N, "skipped": N, "errors": N,
+                   "message": "...", "prompts": {idx: text}}
+    """
+    _stills_control_guard(project_id)
+    try:
+        result = generate_ai_wan_prompts_for_project(project_id)
+    except Exception as exc:
+        logger.exception(
+            "stills_generate_ai_wan_prompts: failed for project=%s", project_id
+        )
+        return jsonify({"ok": False, "error": f"Generation failed: {exc}"}), 500
+
+    generated = result.get("generated", 0)
+    skipped = result.get("skipped", 0)
+    errors = result.get("errors", 0)
+    parts = [f"Generated {generated} AI WAN prompt{'s' if generated != 1 else ''}"]
+    if skipped:
+        parts.append(f"skipped {skipped}")
+    if errors:
+        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+    return jsonify({
+        "ok": True,
+        "generated": generated,
+        "skipped": skipped,
+        "errors": errors,
+        "message": ", ".join(parts),
+        "prompts": result.get("prompts", {}),
     })
 
 

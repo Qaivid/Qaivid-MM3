@@ -70,6 +70,13 @@
         🎬 Generate All WAN Prompts
       </button>
       <span id="wan-all-status" style="display:none;font-size:11px;color:#c070d8;"></span>
+      <button class="sc-btn-wan-all" id="btn-generate-ai-wan-all"
+              onclick="scGenerateAiWanPromptsAll()"
+              title="Generate rich AI WAN prose prompts for every shot using Gemini"
+              style="background:#3a2060;border-color:#9060d8;">
+        ✨ Generate AI WAN Prompts
+      </button>
+      <span id="ai-wan-all-status" style="display:none;font-size:11px;color:#c8a0ff;"></span>
     </div>
 
     <!-- ── Ref plates row ────────────────────────────────────────── -->
@@ -375,8 +382,9 @@
     url:            {{ (shot.url or '') | tojson }},
     prompt:         {{ (shot.prompt or '') | tojson }},
     motionPrompt:   {{ (shot.motion_prompt or '') | tojson }},
-    wanVideoPrompt: {{ (shot.wan_video_prompt or '') | tojson }},
-    meaning:        {{ (shot.meaning or '') | tojson }},
+    wanVideoPrompt:   {{ (shot.wan_video_prompt or '') | tojson }},
+    aiWanVideoPrompt: {{ (shot.ai_wan_video_prompt or '') | tojson }},
+    meaning:          {{ (shot.meaning or '') | tojson }},
     error:          {{ (shot.error or '') | tojson }},
     startTime:      {{ (shot.start_time or 0) | tojson }},
     duration:       {{ (shot.duration or 0) | tojson }},
@@ -387,9 +395,11 @@
   const motionPromptDirty = {};
   const promptDirty = {};
   const wanPromptDirty = {};
-  window.scMarkVidPromptDirty = function(idx) { motionPromptDirty[idx] = true; };
-  window.scMarkPromptDirty    = function(idx) { promptDirty[idx] = true; };
-  window.scMarkWanPromptDirty = function(idx) { wanPromptDirty[idx] = true; };
+  const aiWanPromptDirty = {};
+  window.scMarkVidPromptDirty   = function(idx) { motionPromptDirty[idx] = true; };
+  window.scMarkPromptDirty      = function(idx) { promptDirty[idx]       = true; };
+  window.scMarkWanPromptDirty   = function(idx) { wanPromptDirty[idx]    = true; };
+  window.scMarkAiWanPromptDirty = function(idx) { aiWanPromptDirty[idx]  = true; };
 
   const opState = {};
   {% for shot in shots %}
@@ -426,9 +436,10 @@
     const op = opState[idx] || {};
     const imgUrl = (op.status === 'ready' && op.url) ? op.url : (shot.url || '');
     const statusLabel = shot.status.charAt(0).toUpperCase() + shot.status.slice(1);
-    const motionVal = escHtml(shot.motionPrompt || '');
-    const frame0Val = escHtml(shot.prompt || '');
-    const wanVal    = escHtml(shot.wanVideoPrompt || '');
+    const motionVal  = escHtml(shot.motionPrompt || '');
+    const frame0Val  = escHtml(shot.prompt || '');
+    const wanVal     = escHtml(shot.wanVideoPrompt || '');
+    const aiWanVal   = escHtml(shot.aiWanVideoPrompt || '');
 
     let actionHtml = '';
     if (shot.status === 'pending' || shot.status === 'failed') {
@@ -537,6 +548,25 @@
             </button>
             <span id="sc-wan-saved-${idx}" style="display:none;color:#c070d8;" class="sc-indicator">✓ Saved</span>
             <span id="sc-wan-deriving-${idx}" style="display:none;color:#c8f135;" class="sc-indicator">⏳ Deriving…</span>
+          </div>
+        </div>
+
+        <!-- AI WAN PROSE PROMPT section (Gemini-generated) -->
+        <div class="sc-prompt-section sc-prompt-section--wan" style="border-color:#7a44c0;">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">✨ AI WAN Prose Prompt (Gemini)</span>
+            <span class="sc-prompt-section-hint">richer story-grounded prompt · max 2000 chars</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-ai-wan-prompt-${idx}"
+                    rows="5" maxlength="2000"
+                    oninput="scMarkAiWanPromptDirty(${idx})">${aiWanVal}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-save-btn"
+                    onclick="scSaveAiWanPrompt(${idx}, document.getElementById('sc-ai-wan-prompt-${idx}').value)"
+                    style="border-color:#9060d8;color:#c8a0ff;">
+              Save only
+            </button>
+            <span id="sc-ai-wan-saved-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">✓ Saved</span>
           </div>
         </div>
 
@@ -894,6 +924,65 @@
       if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ Network error'; }
     }
     if (btn) { btn.disabled = false; btn.textContent = '🎬 Generate All WAN Prompts'; }
+  };
+
+  /* ── AI WAN prose prompt save (individual shot) ── */
+  window.scSaveAiWanPrompt = async function(idx, val) {
+    if (shotData[idx]) shotData[idx].aiWanVideoPrompt = val;
+    const ind = document.getElementById('sc-ai-wan-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/ai-wan-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify({ shot_index: idx, ai_wan_video_prompt: val }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        aiWanPromptDirty[idx] = false;
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
+      } else {
+        alert('Save failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch(e) {
+      alert('Network error saving AI WAN prompt');
+    }
+  };
+
+  /* ── Generate AI WAN prose prompts for all shots ── */
+  window.scGenerateAiWanPromptsAll = async function() {
+    const btn    = document.getElementById('btn-generate-ai-wan-all');
+    const status = document.getElementById('ai-wan-all-status');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+    if (status) { status.style.display = ''; status.style.color = '#c8a0ff'; status.textContent = 'Calling Gemini…'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/generate-ai-wan-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        if (data.prompts) {
+          for (const [idx, wp] of Object.entries(data.prompts)) {
+            const sidx = parseInt(idx);
+            if (shotData[sidx]) shotData[sidx].aiWanVideoPrompt = wp;
+            const ta = document.getElementById('sc-ai-wan-prompt-' + sidx);
+            if (ta && ta !== document.activeElement) ta.value = wp;
+          }
+        }
+        if (status) {
+          status.style.color = '#c8a0ff';
+          status.textContent = '✓ ' + (data.message || 'Done');
+          setTimeout(() => { status.style.display = 'none'; }, 5000);
+        }
+      } else {
+        if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ ' + (data.error || 'Failed'); }
+      }
+    } catch(e) {
+      if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ Network error'; }
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate AI WAN Prompts'; }
   };
 
   /* ── Init ── */
