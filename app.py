@@ -4869,6 +4869,23 @@ def postprod_page(project_id: str):
 
     total_duration = sum(s.get("duration") or 0 for s in timeline)
 
+    # Enrich shared_cfg logos with a usable preview_url so the player
+    # can show them on page load (the upload endpoint only saves r2_key).
+    _logos = shared_cfg.get("logos") or {}
+    for _slot, _ldata in _logos.items():
+        if _ldata and _ldata.get("r2_key") and not _ldata.get("preview_url"):
+            _r2k = _ldata["r2_key"]
+            try:
+                import r2_storage as _r2lgo
+                if _r2lgo.r2_available():
+                    _raw_logo_url = _r2lgo.public_url_for(_r2k)
+                    _ldata["preview_url"] = url_for("r2proxy", url=_raw_logo_url, _external=False)
+                else:
+                    # local fallback
+                    _ldata["preview_url"] = url_for("project_asset", asset_path=_r2k, _external=False)
+            except Exception:
+                _ldata["preview_url"] = url_for("project_asset", asset_path=_r2k, _external=False)
+
     # Construct audio preview URL from the uploaded audio file
     audio_url = None
     audio_filename = project.get("audio_filename")
