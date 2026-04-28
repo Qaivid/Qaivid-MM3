@@ -3739,6 +3739,7 @@ def stills_update_video_prompt(project_id: str):
 
     # Optionally re-derive the Frame-0 still prompt via GPT-4.1.
     frame0_prompt = None
+    frame0_saved  = False
     rederive_error = None
     if data.get("rederive"):
         try:
@@ -3754,6 +3755,7 @@ def stills_update_video_prompt(project_id: str):
                         "   AND (prompt_user_edited IS FALSE OR prompt_user_edited IS NULL)",
                         (frame0_prompt, project_id, shot_index),
                     )
+                    frame0_saved = cur.rowcount > 0
                     conn.commit()
             else:
                 rederive_error = "Re-derive returned an empty prompt"
@@ -3767,6 +3769,7 @@ def stills_update_video_prompt(project_id: str):
     resp: dict = {"ok": True}
     if frame0_prompt:
         resp["frame0_prompt"] = frame0_prompt
+        resp["frame0_saved"]  = frame0_saved
     if rederive_error:
         resp["rederive_error"] = rederive_error
     return jsonify(resp)

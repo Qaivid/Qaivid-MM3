@@ -1166,7 +1166,10 @@
       const data = await resp.json();
       if (data.ok) {
         motionPromptDirty[idx] = false;
-        if (data.frame0_prompt) {
+        if (data.frame0_prompt && data.frame0_saved) {
+          // Only overwrite the textarea when the server confirmed it persisted the
+          // derived prompt (rowcount > 0); if prompt_user_edited blocked the write
+          // we leave the user's manual edit intact.
           if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
           promptDirty[idx] = false;
           const f0ta = document.getElementById('sc-prompt-' + idx);

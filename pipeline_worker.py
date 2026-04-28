@@ -4619,7 +4619,6 @@ def _pre_compute_one_shot(
     shot: dict,
     bc_list: list,
     brain_char_idx: dict,
-    brain_loc_idx: dict,
     motion_philosophy: str,
     cinematic_style: Optional[str],
     lighting_logic: Optional[str],
@@ -4811,7 +4810,7 @@ def pre_compute_shot_prompts(project_id: str) -> int:
             _SHOT_EXECUTOR.submit(
                 _pre_compute_one_shot,
                 project_id, shot,
-                bc_list, brain_char_idx, brain_loc_idx,
+                bc_list, brain_char_idx,
                 motion_philosophy, cinematic_style, lighting_logic,
                 continuity_rules, emotional_mode_id, vibe_shot_direction, vibe_avoid,
                 asset,
