@@ -1296,8 +1296,22 @@ body { overflow-y: auto !important; }
   const SHARED_CFG = {{ shared_cfg | tojson }};
 
   /* ── Per-mode config objects (loaded from server) ───────────────────── */
-  let cfgQuick = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, {{ quick_cfg | tojson }});
-  let cfgAi    = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, {{ ai_cfg | tojson }});
+  const _RAW_QUICK = {{ quick_cfg | tojson }};
+  const _RAW_AI    = {{ ai_cfg    | tojson }};
+
+  /* Deep-merge logos at slot level so per-mode width/opacity overrides
+     don't wipe out other slots' r2_key/preview_url from SHARED_CFG. */
+  function _mergeLogos(shared, override) {
+    const out = {};
+    const slots = new Set([...Object.keys(shared || {}), ...Object.keys(override || {})]);
+    slots.forEach(s => { out[s] = Object.assign({}, (shared||{})[s] || {}, (override||{})[s] || {}); });
+    return out;
+  }
+
+  let cfgQuick = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, _RAW_QUICK);
+  cfgQuick.logos = _mergeLogos(SHARED_CFG.logos, _RAW_QUICK.logos);
+  let cfgAi    = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, _RAW_AI);
+  cfgAi.logos  = _mergeLogos(SHARED_CFG.logos, _RAW_AI.logos);
 
   /* cfg always points to the active mode's config object */
   let cfg = cfgQuick;
@@ -2291,18 +2305,29 @@ body { overflow-y: auto !important; }
   };
 
   /* ── Refresh all player overlays at once ────────────────────────────── */
+  /* Wrap each preview in try/catch so one failure doesn't break the rest */
+  let _safeFailures = [];
+  function _safe(fn, label) {
+    try { fn(); }
+    catch(e) {
+      console.warn('[postprod] '+label+' failed:', e);
+      _safeFailures.push(label + ': ' + (e && e.message ? e.message : e));
+    }
+  }
   window.ppRefreshAllOverlays = function() {
-    ppApplyFilterPreview();
-    ppUpdateTextOverlay();
-    ppSubPreview();
-    ppUpdateAssetBar();
+    _safe(ppApplyFilterPreview, 'filter');
+    _safe(ppUpdateTextOverlay,  'text-overlay');
+    _safe(ppSubPreview,         'subtitle');
+    _safe(ppUpdateAssetBar,     'asset-bar');
     // Restore logo images into corner divs (persists in DOM but may need
     // refreshing after a mode switch or shot change)
-    const logos = cfg.logos || {};
-    ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
-      const ldata = logos[slot];
-      if (ldata && ldata.preview_url) ppLogoPreview(slot, ldata.preview_url);
-    });
+    _safe(() => {
+      const logos = cfg.logos || {};
+      ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
+        const ldata = logos[slot];
+        if (ldata && ldata.preview_url) ppLogoPreview(slot, ldata.preview_url);
+      });
+    }, 'logos');
   };
 
   /* ── Fill mode ──────────────────────────────────────────────────────── */
@@ -2572,9 +2597,16 @@ body { overflow-y: auto !important; }
   }
 
   /* ── Init ───────────────────────────────────────────────────────────── */
-  restoreControls();
-  if (SHOTS.length > 0) ppJumpTo(0);
-  ppRefreshAllOverlays();
+  console.log('[postprod] boot — shots:', SHOTS.length,
+              'logos:', Object.keys(cfg.logos || {}).length,
+              'srt:', !!cfg.srt_r2_key);
+  _safe(restoreControls, 'restoreControls');
+  _safe(() => { if (SHOTS.length > 0) ppJumpTo(0); }, 'ppJumpTo(0)');
+  _safe(ppRefreshAllOverlays, 'ppRefreshAllOverlays');
+  if (_safeFailures.length > 0) {
+    console.error('[postprod] %d component(s) failed to initialize:\n  - %s',
+                  _safeFailures.length, _safeFailures.join('\n  - '));
+  }
 
   /* ── Fetch existing SRT on page load for live cue preview ───────────── */
   const SRT_URL = {{ (srt_url or '') | tojson }};
