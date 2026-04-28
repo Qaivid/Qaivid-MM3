@@ -3617,15 +3617,19 @@ def stills_status_json(project_id: str):
     if project.get("stage") not in ("stills_control", "stills_review"):
         abort(403)
     assets = _get_shot_assets(project_id)
-    # Collapse 'queued' → 'rendering' for the client (matches _shot_payload)
+    # Collapse 'queued' → 'rendering' for the client (matches _shot_payload).
+    # Also return motion_prompt and prompt so the client can update editable
+    # textareas live as pre_compute_shot_prompts populates them in the background.
     return jsonify({
         "shots": [
             {
-                "shot_index": a["shot_index"],
-                "status": ("rendering" if a["status"] == "queued" else a["status"]),
-                "url": _asset_url(a.get("file_path")),
-                "source": a.get("source"),
-                "error": a.get("error"),
+                "shot_index":   a["shot_index"],
+                "status":       ("rendering" if a["status"] == "queued" else a["status"]),
+                "url":          _asset_url(a.get("file_path")),
+                "source":       a.get("source"),
+                "error":        a.get("error"),
+                "motion_prompt": a.get("motion_prompt") or "",
+                "prompt":       a.get("prompt") or "",
             }
             for a in assets
         ]
@@ -3732,11 +3736,13 @@ def stills_update_video_prompt(project_id: str):
             from pipeline_worker import _derive_frame0_prompt  # noqa: PLC0415
             frame0_prompt = _derive_frame0_prompt(motion_prompt, {"shot_index": shot_index})
             if frame0_prompt:
-                # Overwrite unconditionally — the user explicitly requested re-derivation.
+                # Only write if the user has NOT manually edited the Frame-0 prompt;
+                # this matches _store_frame0_prompt semantics and preserves manual edits.
                 with db() as conn, conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE shot_assets SET prompt=%s, prompt_user_edited=FALSE, updated_at=NOW()"
-                        " WHERE project_id=%s AND shot_index=%s",
+                        "UPDATE shot_assets SET prompt=%s, updated_at=NOW()"
+                        " WHERE project_id=%s AND shot_index=%s"
+                        "   AND (prompt_user_edited IS FALSE OR prompt_user_edited IS NULL)",
                         (frame0_prompt, project_id, shot_index),
                     )
                     conn.commit()

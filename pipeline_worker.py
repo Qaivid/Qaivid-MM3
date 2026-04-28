@@ -4608,17 +4608,130 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
     return prompt
 
 
+_HUMAN_SHOT_TYPES = {
+    "close_up", "extreme_close_up", "head_shoulders",
+    "medium_shot", "full_body", "movement",
+}
+
+
+def _pre_compute_one_shot(
+    project_id: str,
+    shot: dict,
+    bc_list: list,
+    brain_char_idx: dict,
+    brain_loc_idx: dict,
+    motion_philosophy: str,
+    cinematic_style: Optional[str],
+    lighting_logic: Optional[str],
+    continuity_rules: Optional[List[str]],
+    emotional_mode_id: str,
+    vibe_shot_direction: str,
+    vibe_avoid: list,
+    asset_row: dict,
+) -> None:
+    """Compute + store video clip prompt and Frame-0 still prompt for one shot.
+
+    Runs concurrently per shot within _SHOT_EXECUTOR.  Brain-derived parameters
+    are passed in (read-only) from the coordinator so the DB/brain load happens
+    exactly once per project, not once per shot.
+    """
+    from motion_render_prompt_builder import build_video_clip_prompt as _bvcp  # noqa: PLC0415
+
+    idx = shot.get("shot_index") or shot.get("timeline_index")
+    if idx is None:
+        return
+
+    # ── Resolve character + location for this shot ───────────────────
+    try:
+        _char_url, _env_url, character, location = _resolve_shot_refs_full(project_id, idx)
+    except Exception:
+        character, location = None, None
+
+    brain_char: Optional[dict] = None
+    if character and isinstance(character.get("id"), int):
+        brain_char = brain_char_idx.get(character["id"])
+
+    # ── Human-shot fallback: no char FK → use primary brain char ────
+    _is_environment_shot = (location is not None and character is None)
+    if brain_char is None and bc_list and not _is_environment_shot:
+        _st = (shot.get("shot_type") or "").strip().lower()
+        if _st in _HUMAN_SHOT_TYPES:
+            _primary_bc = next(
+                (b for b in bc_list if isinstance(b, dict) and b.get("identity_seed")),
+                None,
+            )
+            if _primary_bc:
+                brain_char = _primary_bc
+
+    identity_seed_v = (brain_char or {}).get("identity_seed") or None
+
+    # ── Build video clip prompt ──────────────────────────────────────
+    try:
+        computed_video_prompt = _bvcp(
+            shot,
+            motion_philosophy=motion_philosophy,
+            identity_seed=identity_seed_v,
+            cinematic_style=cinematic_style,
+            lighting_logic=lighting_logic,
+            continuity_rules=continuity_rules,
+            emotional_mode_id=emotional_mode_id,
+            vibe_shot_direction=vibe_shot_direction,
+            vibe_avoid=vibe_avoid,
+        )
+    except Exception:
+        logger.debug(
+            "_pre_compute_one_shot: build_video_clip_prompt failed for shot=%s (non-fatal)",
+            idx, exc_info=True,
+        )
+        return
+
+    if not computed_video_prompt:
+        return
+
+    # ── Store motion_prompt ──────────────────────────────────────────
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE shot_assets SET motion_prompt=%s, updated_at=NOW()"
+                " WHERE project_id=%s AND shot_index=%s",
+                (computed_video_prompt[:2000], project_id, idx),
+            )
+            conn.commit()
+    except Exception:
+        logger.debug(
+            "_pre_compute_one_shot: motion_prompt store failed for shot=%s (non-fatal)",
+            idx, exc_info=True,
+        )
+
+    # ── Derive + store Frame-0 prompt (honours prompt_user_edited) ───
+    if not asset_row.get("prompt_user_edited"):
+        try:
+            frame0 = _derive_frame0_prompt(computed_video_prompt, shot)
+            if frame0:
+                _store_frame0_prompt(project_id, idx, frame0)
+                logger.debug(
+                    "_pre_compute_one_shot: shot=%s Frame-0 stored (%d chars)",
+                    idx, len(frame0),
+                )
+        except Exception:
+            logger.debug(
+                "_pre_compute_one_shot: Frame-0 derivation failed for shot=%s (non-fatal)",
+                idx, exc_info=True,
+            )
+
+
 def pre_compute_shot_prompts(project_id: str) -> int:
-    """Pre-compute video clip prompt + Frame-0 still prompt for every non-ready shot.
+    """Load brain data once, then submit per-shot precompute tasks concurrently.
 
     Called at stage transition (references_approve) so the stills_control page
     shows real WAN-ready prompts immediately, before any Generate click.
 
-    Replicates the brain data resolution pattern from _render_shot but without
-    image generation.  Motion prompts are always updated (overwriting stale
-    timeline data); Frame-0 prompts respect prompt_user_edited.
+    The coordinator runs in _SHOT_EXECUTOR, loads brain data + timeline in one
+    pass, then submits one _pre_compute_one_shot task per non-ready shot back
+    to _SHOT_EXECUTOR so that multiple GPT-4.1 Frame-0 derivations run in
+    parallel (bounded by executor pool size).
 
-    Returns the number of shots updated.
+    Returns the number of per-shot tasks submitted.
     """
     try:
         with _db() as conn, conn.cursor() as cur:
@@ -4635,18 +4748,17 @@ def pre_compute_shot_prompts(project_id: str) -> int:
 
         timeline = list(row["styled_timeline"])
 
-        # ── Load brain data once for all shots ──────────────────────────
+        # ── Load brain data once — shared (read-only) across all shot tasks ──
         bc_list: list = []
         brain_char_idx: dict = {}
-        brain_loc_idx:  dict = {}
-        motion_philosophy  = "mixed"
-        cinematic_style    = None
-        lighting_logic     = None
-        continuity_rules   = None
-        emotional_mode_id  = ""
+        brain_loc_idx: dict = {}
+        motion_philosophy = "mixed"
+        cinematic_style: Optional[str] = None
+        lighting_logic: Optional[str] = None
+        continuity_rules: Optional[List[str]] = None
+        emotional_mode_id = ""
         vibe_shot_direction = ""
-        vibe_avoid: list   = []
-        _shot_brain        = None
+        vibe_avoid: list = []
 
         try:
             with _db() as conn:
@@ -4687,14 +4799,8 @@ def pre_compute_shot_prompts(project_id: str) -> int:
                 project_id, exc_info=True,
             )
 
-        from motion_render_prompt_builder import build_video_clip_prompt as _bvcp  # noqa: PLC0415
-
-        _human_shot_types = {
-            "close_up", "extreme_close_up", "head_shoulders",
-            "medium_shot", "full_body", "movement",
-        }
-
-        updated = 0
+        # ── Submit one task per non-ready shot ───────────────────────────
+        submitted = 0
         for shot in timeline:
             idx = shot.get("shot_index") or shot.get("timeline_index")
             if idx is None:
@@ -4702,95 +4808,21 @@ def pre_compute_shot_prompts(project_id: str) -> int:
             asset = asset_rows.get(idx, {})
             if asset.get("status") == "ready":
                 continue
-
-            # ── Resolve character + location for this shot ───────────────
-            try:
-                _char_url, _env_url, character, location = _resolve_shot_refs_full(project_id, idx)
-            except Exception:
-                character, location = None, None
-
-            brain_char: Optional[dict] = None
-            brain_loc:  Optional[dict] = None
-            if character and isinstance(character.get("id"), int):
-                brain_char = brain_char_idx.get(character["id"])
-            if location and isinstance(location.get("id"), int):
-                brain_loc = brain_loc_idx.get(location["id"])
-
-            # ── Human-shot fallback: no char FK → use primary brain char ─
-            _is_environment_shot = (location is not None and character is None)
-            if brain_char is None and bc_list and not _is_environment_shot:
-                _st = (shot.get("shot_type") or "").strip().lower()
-                if _st in _human_shot_types:
-                    _primary_bc = next(
-                        (b for b in bc_list if isinstance(b, dict) and b.get("identity_seed")),
-                        None,
-                    )
-                    if _primary_bc:
-                        brain_char = _primary_bc
-
-            identity_seed_v = (brain_char or {}).get("identity_seed") or None
-
-            # ── Build video clip prompt ──────────────────────────────────
-            try:
-                computed_video_prompt = _bvcp(
-                    shot,
-                    motion_philosophy=motion_philosophy,
-                    identity_seed=identity_seed_v,
-                    cinematic_style=cinematic_style,
-                    lighting_logic=lighting_logic,
-                    continuity_rules=continuity_rules,
-                    emotional_mode_id=emotional_mode_id,
-                    vibe_shot_direction=vibe_shot_direction,
-                    vibe_avoid=vibe_avoid,
-                )
-            except Exception:
-                logger.debug(
-                    "pre_compute_shot_prompts: build_video_clip_prompt failed for shot=%s (non-fatal)",
-                    idx, exc_info=True,
-                )
-                continue
-
-            if not computed_video_prompt:
-                continue
-
-            # ── Store motion_prompt ──────────────────────────────────────
-            try:
-                with _db() as conn, conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE shot_assets SET motion_prompt=%s, updated_at=NOW()"
-                        " WHERE project_id=%s AND shot_index=%s",
-                        (computed_video_prompt[:2000], project_id, idx),
-                    )
-                    conn.commit()
-            except Exception:
-                logger.debug(
-                    "pre_compute_shot_prompts: motion_prompt store failed for shot=%s (non-fatal)",
-                    idx, exc_info=True,
-                )
-
-            # ── Derive + store Frame-0 prompt (honours prompt_user_edited) ─
-            if not asset.get("prompt_user_edited"):
-                try:
-                    frame0 = _derive_frame0_prompt(computed_video_prompt, shot)
-                    if frame0:
-                        _store_frame0_prompt(project_id, idx, frame0)
-                        logger.debug(
-                            "pre_compute_shot_prompts: shot=%s Frame-0 stored (%d chars)",
-                            idx, len(frame0),
-                        )
-                except Exception:
-                    logger.debug(
-                        "pre_compute_shot_prompts: Frame-0 derivation failed for shot=%s (non-fatal)",
-                        idx, exc_info=True,
-                    )
-
-            updated += 1
+            _SHOT_EXECUTOR.submit(
+                _pre_compute_one_shot,
+                project_id, shot,
+                bc_list, brain_char_idx, brain_loc_idx,
+                motion_philosophy, cinematic_style, lighting_logic,
+                continuity_rules, emotional_mode_id, vibe_shot_direction, vibe_avoid,
+                asset,
+            )
+            submitted += 1
 
         logger.info(
-            "pre_compute_shot_prompts: project=%s updated %d/%d shots",
-            project_id, updated, len(timeline),
+            "pre_compute_shot_prompts: project=%s submitted %d/%d shots to executor",
+            project_id, submitted, len(timeline),
         )
-        return updated
+        return submitted
     except Exception:
         logger.exception(
             "pre_compute_shot_prompts: unexpected error for project=%s", project_id,

@@ -862,6 +862,23 @@
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
             applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
           }
+          // Apply prompt updates that arrived via pre_compute_shot_prompts.
+          // Only update fields that were blank before — never overwrite text the
+          // user is actively editing (check the focused element).
+          const focused = document.activeElement;
+          if (shotData[shot.shot_index]) {
+            const sd = shotData[shot.shot_index];
+            if (shot.motion_prompt && !sd.motionPrompt) {
+              sd.motionPrompt = shot.motion_prompt;
+              const vidTa = document.getElementById('sc-vid-prompt-' + shot.shot_index);
+              if (vidTa && vidTa !== focused) vidTa.value = shot.motion_prompt;
+            }
+            if (shot.prompt && !sd.prompt) {
+              sd.prompt = shot.prompt;
+              const f0Ta = document.getElementById('sc-prompt-' + shot.shot_index);
+              if (f0Ta && f0Ta !== focused) f0Ta.value = shot.prompt;
+            }
+          }
         }
       } else {
         if (++pollFailCount >= POLL_FAIL_THRESHOLD) { clearInterval(pollTimer); pollTimer = null; armReloadFallback(); }
