@@ -30,33 +30,51 @@
 
         {# ── Progress strip ────────────────────────────────────────────── #}
         <div class="ref-progress-bar">
-            <div class="ref-progress-dots">
+            <div class="ref-progress-dots" id="ref-progress-dots">
                 {% for c in characters %}
-                <span class="ref-dot ref-dot--{{ c.ref_status }}" title="{{ c.name }} ({{ c.ref_status }})"></span>
+                <span class="ref-dot ref-dot--{{ c.ref_status }}"
+                      id="ref-dot-char-{{ c.id }}"
+                      title="{{ c.name }} ({{ c.ref_status }})"></span>
                 {% endfor %}
                 {% for l in locations %}
-                <span class="ref-dot ref-dot--{{ l.ref_status }}" title="{{ l.name }} ({{ l.ref_status }})"></span>
+                <span class="ref-dot ref-dot--{{ l.ref_status }}"
+                      id="ref-dot-loc-{{ l.id }}"
+                      title="{{ l.name }} ({{ l.ref_status }})"></span>
                 {% endfor %}
                 {% for lk in all_looks %}
                 <span class="ref-dot ref-dot--{{ lk.ref_status }} ref-dot--look"
+                      id="ref-dot-look-{{ lk.id }}"
                       title="Look: {{ lk.cluster_label or lk.cluster_id }} ({{ lk.ref_status }})"></span>
                 {% endfor %}
             </div>
-            <span class="ref-progress-label">
-                <strong>{{ total_ready }}/{{ total }}</strong> ready
-                {% if pending_count %}<span class="ref-progress-pending"> · {{ pending_count }} pending</span>{% endif %}
+            <span class="ref-progress-label" id="ref-progress-label">
+                <strong id="ref-ready-count">{{ total_ready }}</strong>/{{ total }} ready
+                {% if pending_count %}<span class="ref-progress-pending" id="ref-pending-span"> · {{ pending_count }} pending</span>{% endif %}
             </span>
         </div>
 
-        {# ── Failure banner ────────────────────────────────────────────── #}
+        {# ── Generate All + Failure banner row ──────────────────────────── #}
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:{% if total_failed > 0 %}0{% else %}18{% endif %}px;">
+            {% if pending_count %}
+            <button id="ref-gen-all-btn" onclick="generateAllPendingRefs()"
+                    class="btn-secondary"
+                    style="background:rgba(212,255,58,.08);border-color:#d4ff3a;color:#d4ff3a;font-size:13px;padding:8px 18px;white-space:nowrap;">
+                ▶ Generate All ({{ pending_count }} pending)
+            </button>
+            <span id="ref-gen-all-status" style="display:none;font-size:12px;color:#d4ff3a;"></span>
+            {% endif %}
+            {% if total_failed > 0 %}
+            <button onclick="retryAllFailedRefs()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
+            {% endif %}
+        </div>
+
         {% if total_failed > 0 %}
-        <div class="ref-failed-banner">
+        <div class="ref-failed-banner" style="margin-top:12px;">
             <span>⚠ {{ total_failed }} plate{{ 's' if total_failed != 1 }} failed
                 {% if failed_chars %}({{ failed_chars }} character{{ 's' if failed_chars != 1 }}){% endif %}
                 {% if failed_locs %}({{ failed_locs }} location{{ 's' if failed_locs != 1 }}){% endif %}
                 {% if failed_looks %}({{ failed_looks }} look{{ 's' if failed_looks != 1 }}){% endif %}
             </span>
-            <button onclick="retryAllFailedRefs()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
         </div>
         {% endif %}
 
@@ -702,6 +720,32 @@ function _showLook(lookId) {
     }
 }
 
+/* ── Generate all pending ────────────────────────────────────────────── */
+async function generateAllPendingRefs() {
+    const btn    = document.getElementById('ref-gen-all-btn');
+    const status = document.getElementById('ref-gen-all-status');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Queuing…'; }
+    if (status) { status.style.display = 'inline'; status.textContent = 'Starting…'; }
+    try {
+        const resp = await fetch('/project/' + _PID + '/refs/generate-all-pending', {
+            method: 'POST', headers: { 'X-CSRFToken': _CSRF }
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            const total = (data.characters || 0) + (data.locations || 0) + (data.looks || 0);
+            if (btn) { btn.textContent = '⏳ Generating ' + total + ' plates…'; }
+            if (status) status.textContent = 'Live updates below ↓';
+            _refStartPolling();
+        } else {
+            if (btn) { btn.disabled = false; btn.textContent = '▶ Generate All'; }
+            if (status) status.textContent = 'Error: ' + (data.error || 'unknown');
+        }
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = '▶ Generate All'; }
+        console.error(e);
+    }
+}
+
 /* ── Retry all failed ───────────────────────────────────────────────── */
 async function retryAllFailedRefs() {
     const btn = document.querySelector('.ref-retry-btn');
@@ -712,9 +756,8 @@ async function retryAllFailedRefs() {
         });
         const data = await resp.json();
         if (data.ok) {
-            const total = (data.characters || 0) + (data.locations || 0) + (data.looks || 0);
-            if (btn) btn.textContent = total + ' queued — reload in ~30s';
-            setTimeout(() => location.reload(), 30000);
+            if (btn) btn.textContent = 'Queued — watching for updates…';
+            _refStartPolling();
         } else {
             if (btn) { btn.disabled = false; btn.textContent = '↺ Retry All Failed'; }
             alert('Error: ' + (data.error || 'unknown'));
@@ -724,6 +767,136 @@ async function retryAllFailedRefs() {
         console.error(e);
     }
 }
+
+/* ── Live polling ────────────────────────────────────────────────────── */
+let _refPollTimer  = null;
+let _refPollActive = false;
+
+function _refStartPolling() {
+    if (_refPollActive) return;
+    _refPollActive = true;
+    _refPollTimer  = setInterval(_refPoll, 4000);
+}
+
+function _refStopPolling() {
+    _refPollActive = false;
+    if (_refPollTimer) { clearInterval(_refPollTimer); _refPollTimer = null; }
+}
+
+async function _refPoll() {
+    try {
+        const resp = await fetch('/project/' + _PID + '/refs/status.json');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.ok) return;
+
+        let anyRendering = false;
+
+        // Update character cards
+        (data.characters || []).forEach(function(c) {
+            _refApplyStatus('char', c.id, c.ref_status, c.ref_url);
+            if (c.ref_status === 'rendering') anyRendering = true;
+        });
+
+        // Update location cards
+        (data.locations || []).forEach(function(l) {
+            _refApplyStatus('loc', l.id, l.ref_status, l.ref_url);
+            if (l.ref_status === 'rendering') anyRendering = true;
+        });
+
+        // Update look dots
+        (data.looks || []).forEach(function(lk) {
+            const dot = document.getElementById('ref-dot-look-' + lk.id);
+            if (dot) {
+                dot.className = 'ref-dot ref-dot--' + lk.ref_status + ' ref-dot--look';
+            }
+            const panel = document.getElementById('look-' + lk.id);
+            if (panel && lk.ref_url) {
+                const existingImg = panel.querySelector('.ref-look-img');
+                if (!existingImg) {
+                    const img = document.createElement('img');
+                    img.src = lk.ref_url; img.className = 'ref-look-img'; img.loading = 'lazy';
+                    const genForm = panel.querySelector('.ref-prompt-form');
+                    if (genForm) panel.insertBefore(img, genForm); else panel.appendChild(img);
+                }
+                const spill = panel.querySelector('.ref-spill');
+                if (spill && lk.ref_status === 'ready') spill.textContent = '✓ Ready';
+            }
+            if (lk.ref_status === 'rendering') anyRendering = true;
+        });
+
+        // Update progress label
+        const readyEl = document.getElementById('ref-ready-count');
+        if (readyEl) readyEl.textContent = data.ready;
+        const pendingEl = document.getElementById('ref-pending-span');
+        if (pendingEl) {
+            const rem = data.total - data.ready;
+            pendingEl.style.display = rem > 0 ? '' : 'none';
+            pendingEl.textContent = ' · ' + rem + ' pending';
+        }
+
+        // Stop polling when everything is ready (and nothing is still rendering)
+        if (data.all_ready && !anyRendering) {
+            _refStopPolling();
+            // Enable the approve button if it was disabled
+            const approveBtn = document.querySelector('.btn-stage-primary[disabled]');
+            if (approveBtn) {
+                approveBtn.removeAttribute('disabled');
+                approveBtn.title = '';
+            }
+        }
+    } catch(e) { /* silent — next poll will retry */ }
+}
+
+function _refApplyStatus(kind, id, status, refUrl) {
+    const dot    = document.getElementById('ref-dot-' + kind + '-' + id);
+    const card   = document.getElementById('card-' + kind + '-' + id);
+    const spill  = card  ? card.querySelector('.ref-spill')  : null;
+    const thumb  = card  ? card.querySelector('.ref-card-thumb') : null;
+    const hint   = card  ? card.querySelector('.ref-edit-hint')  : null;
+
+    if (dot) dot.className = 'ref-dot ref-dot--' + status + (kind === 'look' ? ' ref-dot--look' : '');
+
+    if (spill) {
+        spill.className = 'ref-spill ref-spill--' + status;
+        if (status === 'ready')     spill.textContent = '✓ Ready';
+        else if (status === 'failed')  spill.textContent = '⚠ Failed';
+        else if (status === 'rendering') spill.textContent = 'Rendering';
+        else spill.textContent = 'Pending';
+    }
+
+    if (card) {
+        card.className = card.className
+            .replace(/ref-card--\w+/g, '')
+            .trim() + ' ref-card--' + status;
+    }
+
+    // When plate becomes ready, inject the image into the thumbnail
+    if (refUrl && thumb) {
+        const existingImg = thumb.querySelector('img');
+        if (!existingImg) {
+            const ph = thumb.querySelector('.ref-thumb-ph');
+            if (ph) ph.remove();
+            const img = document.createElement('img');
+            img.src = refUrl; img.alt = ''; img.loading = 'lazy';
+            thumb.insertBefore(img, thumb.querySelector('.ref-spill'));
+        } else {
+            existingImg.src = refUrl;
+        }
+        if (hint) hint.textContent = 'Edit ↓';
+        // Auto-close the edit panel now that an image exists
+        const panel = document.getElementById('panel-' + kind + '-' + id);
+        if (panel && !panel.hidden) { /* leave open if user is editing */ }
+    }
+}
+
+/* ── Auto-start polling if any plate is in "rendering" state on load ─ */
+document.addEventListener('DOMContentLoaded', function() {
+    const hasRendering = document.querySelector(
+        '.ref-dot--rendering, .ref-spill--rendering, .ref-thumb-ph--rendering'
+    );
+    if (hasRendering) _refStartPolling();
+});
 
 /* ── Auto-upload on file select ─────────────────────────────────────── */
 function refAutoUpload(input) {

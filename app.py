@@ -5123,6 +5123,177 @@ def project_retry_all_failed_refs(project_id: str):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@app.route("/project/<project_id>/refs/generate-all-pending", methods=["POST"])
+@login_required
+def project_refs_generate_all_pending(project_id: str):
+    """Generate every reference plate that is still pending or failed.
+
+    Queues character plates, location plates, and look plates that
+    have not yet been generated (ref_status = 'pending' or 'failed').
+    Returns JSON: {"ok": true, "characters": n, "locations": n, "looks": n}
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    try:
+        from pipeline_worker import (
+            _render_character_plate, _render_location_plate,
+            _set_entity_ref, _SHOT_EXECUTOR,
+        )
+        with db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT context_packet FROM projects WHERE id=%s", (project_id,)
+            )
+            row = cur.fetchone()
+        location_dna = ((row or {}).get("context_packet") or {}).get(
+            "location_dna"
+        ) or "Universal"
+
+        counts = {"characters": 0, "locations": 0, "looks": 0}
+
+        with db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM characters WHERE project_id=%s"
+                " AND ref_status IN ('pending','failed')",
+                (project_id,),
+            )
+            char_ids = [r["id"] for r in (cur.fetchall() or [])]
+
+            cur.execute(
+                "SELECT id FROM locations WHERE project_id=%s"
+                " AND ref_status IN ('pending','failed')",
+                (project_id,),
+            )
+            loc_ids = [r["id"] for r in (cur.fetchall() or [])]
+
+            cur.execute(
+                "SELECT id FROM character_looks WHERE project_id=%s"
+                " AND ref_status IN ('pending','failed','waiting_for_base_plate')",
+                (project_id,),
+            )
+            look_ids = [r["id"] for r in (cur.fetchall() or [])]
+
+        for char_id in char_ids:
+            _set_entity_ref(project_id, "character", char_id,
+                            status="rendering", source="ai", error=None)
+            _SHOT_EXECUTOR.submit(_render_character_plate, project_id,
+                                  char_id, location_dna, None)
+            counts["characters"] += 1
+
+        for loc_id in loc_ids:
+            _set_entity_ref(project_id, "location", loc_id,
+                            status="rendering", source="ai", error=None)
+            _SHOT_EXECUTOR.submit(_render_location_plate, project_id,
+                                  loc_id, None, None)
+            counts["locations"] += 1
+
+        if look_ids:
+            with db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE character_looks SET ref_status='pending', ref_error=NULL"
+                    " WHERE project_id=%s AND ref_status IN"
+                    " ('pending','failed','waiting_for_base_plate')",
+                    (project_id,),
+                )
+                conn.commit()
+
+            def _regen_looks():
+                try:
+                    from wardrobe_engine import generate_look_plates
+                    generate_look_plates(project_id, location_dna, None)
+                except Exception:
+                    logger.exception(
+                        "generate_all_pending: look regen failed project=%s", project_id
+                    )
+            _SHOT_EXECUTOR.submit(_regen_looks)
+            counts["looks"] = len(look_ids)
+
+        logger.info("refs/generate-all-pending: queued %s for project=%s",
+                    counts, project_id)
+        return jsonify({"ok": True, **counts})
+    except Exception as exc:
+        logger.exception("refs/generate-all-pending failed for project=%s", project_id)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/project/<project_id>/refs/status.json", methods=["GET"])
+@login_required
+def project_refs_status_json(project_id: str):
+    """Live-poll endpoint for the references review page.
+
+    Returns current ref_status + ref_url for every character,
+    location, and character_look in this project, so the frontend
+    can update thumbnails without a full page reload.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, ref_status, ref_url FROM characters"
+            " WHERE project_id=%s ORDER BY id",
+            (project_id,),
+        )
+        chars = [{"id": r["id"], "ref_status": r["ref_status"],
+                  "ref_url": r["ref_url"]} for r in (cur.fetchall() or [])]
+
+        cur.execute(
+            "SELECT id, ref_status, ref_url FROM locations"
+            " WHERE project_id=%s ORDER BY id",
+            (project_id,),
+        )
+        locs = [{"id": r["id"], "ref_status": r["ref_status"],
+                 "ref_url": r["ref_url"]} for r in (cur.fetchall() or [])]
+
+        cur.execute(
+            "SELECT id, ref_status, ref_url FROM character_looks"
+            " WHERE project_id=%s ORDER BY id",
+            (project_id,),
+        )
+        looks = [{"id": r["id"], "ref_status": r["ref_status"],
+                  "ref_url": r["ref_url"]} for r in (cur.fetchall() or [])]
+
+    ready   = sum(1 for x in chars + locs + looks if x["ref_status"] == "ready")
+    total   = len(chars) + len(locs) + len(looks)
+    pending = sum(1 for x in chars + locs + looks
+                  if x["ref_status"] not in ("ready", "failed"))
+    return jsonify({
+        "ok": True,
+        "characters": chars,
+        "locations": locs,
+        "looks": looks,
+        "ready": ready,
+        "total": total,
+        "pending": pending,
+        "all_ready": (total > 0 and ready == total),
+    })
+
+
+@app.route("/project/<project_id>/stills/batch-wan-source", methods=["POST"])
+@login_required
+def stills_batch_wan_source(project_id: str):
+    """Set wan_prompt_source for every shot in this project in one call.
+
+    Body JSON: {"wan_prompt_source": "ai" | "deterministic"}
+    Returns JSON: {"ok": true, "updated": n}
+    """
+    _stills_control_guard(project_id)
+    data   = request.get_json(silent=True) or {}
+    source = (data.get("wan_prompt_source") or "").strip()
+    if source not in ("deterministic", "ai"):
+        return jsonify({"ok": False,
+                        "error": "wan_prompt_source must be 'ai' or 'deterministic'"}), 400
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET wan_prompt_source=%s, updated_at=NOW()"
+            " WHERE project_id=%s",
+            (source, project_id),
+        )
+        updated = cur.rowcount
+        conn.commit()
+    return jsonify({"ok": True, "updated": updated})
+
+
 @app.route("/project/<project_id>/retry/all_failed_shots", methods=["POST"])
 @login_required
 def project_retry_all_failed_shots(project_id: str):

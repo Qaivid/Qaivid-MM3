@@ -133,30 +133,14 @@
               style="background:#3a2060;border-color:#9060d8;">
         ✨ Generate AI WAN Prompts
       </button>
+      <button class="sc-btn-wan-all" id="btn-use-ai-wan-all"
+              onclick="scUseAiWanForAll()"
+              title="Switch every shot to use its AI WAN prompt for video rendering"
+              style="background:#1a3020;border-color:#40c060;color:#80e0a0;">
+        ✓ Use AI Prompts for All Shots
+      </button>
       <span id="ai-wan-all-status" style="display:none;font-size:11px;color:#c8a0ff;"></span>
-    </div>
-
-    <!-- ══ OUTPAINT BAR ══════════════════════════════════════════════════ -->
-    <div class="op-bar" id="op-panel" style="{{ '' if all_ready else 'display:none;' }}">
-      <span class="op-bar-label">⬡ Outpaint to {{ aspect_ratio }}</span>
-      <span class="op-pill op-pill-ready" id="op-cnt-ready">{{ op_ns.op_ready }} ready</span>
-      <span class="op-pill op-pill-rendering" id="op-cnt-rendering"
-            style="{{ '' if op_ns.op_rendering > 0 else 'display:none;' }}">{{ op_ns.op_rendering }} running</span>
-      <span class="op-pill op-pill-failed" id="op-cnt-failed"
-            style="{{ '' if op_ns.op_failed > 0 else 'display:none;' }}">{{ op_ns.op_failed }} failed</span>
-      <span class="op-pill op-pill-pending" id="op-cnt-pending"
-            style="{{ '' if op_ns.op_pending > 0 else 'display:none;' }}">{{ op_ns.op_pending }} pending</span>
-      <button class="btn-outpaint" id="btn-outpaint-all" onclick="opOutpaintAll()"
-              {% if all_outpainted %}style="opacity:.5;cursor:default;"{% endif %}>
-        {% if all_outpainted %}✓ All Done
-        {% elif op_ns.op_rendering > 0 %}⏳ Running…
-        {% elif op_ns.op_ready > 0 %}↺ Re-outpaint All
-        {% else %}Outpaint All{% endif %}
-      </button>
-      <button class="btn-outpaint-remaining" id="btn-outpaint-remaining" onclick="opOutpaintRemaining()"
-              style="{{ '' if (op_ns.op_ready > 0 and op_ns.op_pending + op_ns.op_failed > 0) else 'display:none;' }}">
-        ⬡ Outpaint Remaining ({{ op_ns.op_pending + op_ns.op_failed }})
-      </button>
+      <span id="ai-wan-use-all-status" style="display:none;font-size:11px;color:#80e0a0;"></span>
     </div>
 
     <!-- ══ TWO-COLUMN LAYOUT: film roll + prompt editor ══════════════════ -->
@@ -849,14 +833,6 @@
         <label for="sc-file-${idx}" class="sc-upload-label" id="sc-upload-label-${idx}">⬆ Upload</label>
       </form>
     `;
-
-    if (shot.status === 'ready' || (op && op.status)) {
-      const opStatus = (op && op.status) ? op.status : 'pending';
-      const opIcon = opStatus === 'ready' ? '↺' : opStatus === 'rendering' ? '⏳' : '⬡';
-      actionHtml += `<button class="sc-op-btn" id="sc-op-btn-${idx}"
-                             data-op-status="${opStatus}"
-                             onclick="opOutpaintOne(${idx})">${opIcon} ${ASPECT}</button>`;
-    }
 
     detail.innerHTML = `
       <div class="sc-det-inner">
@@ -1664,6 +1640,56 @@
       alert('Network error saving WAN prompt source');
     }
   };
+
+  /* ── Use AI WAN prompt for ALL shots in one click ── */
+  window.scUseAiWanForAll = async function() {
+    const btn    = document.getElementById('btn-use-ai-wan-all');
+    const status = document.getElementById('ai-wan-use-all-status');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Applying…'; }
+    if (status) { status.style.display = 'inline'; status.textContent = ''; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/batch-wan-source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify({ wan_prompt_source: 'ai' }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        // Update all in-memory shot records
+        Object.keys(shotData).forEach(function(idx) {
+          if (shotData[idx]) shotData[idx].wanPromptSource = 'ai';
+        });
+        // Update the currently-displayed panel if one is open
+        const openSrc = document.querySelector('[id^="sc-wan-src-ai-"]');
+        if (openSrc) {
+          const match = openSrc.id.match(/\d+/);
+          if (match) {
+            const ACTIVE = 'background:#7a44c0;color:#fff;border-color:#9060d8;';
+            const IDLE   = 'color:#c8a0ff;border-color:#9060d8;';
+            const i = parseInt(match[0]);
+            const detBtn = document.getElementById('sc-wan-src-det-' + i);
+            const aiBtn  = document.getElementById('sc-wan-src-ai-'  + i);
+            if (detBtn) detBtn.style.cssText = IDLE;
+            if (aiBtn)  aiBtn.style.cssText  = ACTIVE;
+            _scUpdateAiWarnEl(i);
+          }
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+        if (status) { status.textContent = data.updated + ' shots updated'; }
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+        if (status) status.textContent = 'Error: ' + (data.error || 'unknown');
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+      if (status) status.textContent = 'Network error';
+      console.error(e);
+    }
+  };
+
+  /* ── Also expose generateAllPendingRefs for the generate-all button ── */
+  window.scGenerateAllWanAndUseAi = window.scUseAiWanForAll;
 
   /* ── AI WAN prose prompt save (individual shot) ── */
   window.scSaveAiWanPrompt = async function(idx, val) {

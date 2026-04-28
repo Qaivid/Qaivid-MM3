@@ -76,7 +76,14 @@
               style="background:#3a2060;border-color:#9060d8;">
         ✨ Generate AI WAN Prompts
       </button>
+      <button class="sc-btn-wan-all" id="btn-use-ai-wan-all"
+              onclick="scUseAiWanForAll()"
+              title="Switch every shot to use its AI WAN prompt for video rendering"
+              style="background:#1a3020;border-color:#40c060;color:#80e0a0;">
+        ✓ Use AI Prompts for All Shots
+      </button>
       <span id="ai-wan-all-status" style="display:none;font-size:11px;color:#c8a0ff;"></span>
+      <span id="ai-wan-use-all-status" style="display:none;font-size:11px;color:#80e0a0;"></span>
     </div>
 
     <!-- ── Ref plates row ────────────────────────────────────────── -->
@@ -1024,6 +1031,51 @@
       if (shotData[idx]) shotData[idx].wanPromptSource = prevSource;
       _scUpdateAiWarnEl(idx);
       alert('Network error saving WAN prompt source');
+    }
+  };
+
+  /* ── Use AI WAN prompt for ALL shots in one click ── */
+  window.scUseAiWanForAll = async function() {
+    const btn    = document.getElementById('btn-use-ai-wan-all');
+    const status = document.getElementById('ai-wan-use-all-status');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Applying…'; }
+    if (status) { status.style.display = 'inline'; status.textContent = ''; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/batch-wan-source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify({ wan_prompt_source: 'ai' }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        Object.keys(shotData).forEach(function(idx) {
+          if (shotData[idx]) shotData[idx].wanPromptSource = 'ai';
+        });
+        const openSrc = document.querySelector('[id^="sc-wan-src-ai-"]');
+        if (openSrc) {
+          const match = openSrc.id.match(/\d+/);
+          if (match) {
+            const ACTIVE = 'background:#7a44c0;color:#fff;border-color:#9060d8;';
+            const IDLE   = 'color:#c8a0ff;border-color:#9060d8;';
+            const i = parseInt(match[0]);
+            const detBtn = document.getElementById('sc-wan-src-det-' + i);
+            const aiBtn  = document.getElementById('sc-wan-src-ai-'  + i);
+            if (detBtn) detBtn.style.cssText = IDLE;
+            if (aiBtn)  aiBtn.style.cssText  = ACTIVE;
+            _scUpdateAiWarnEl(i);
+          }
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+        if (status) status.textContent = data.updated + ' shots updated';
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+        if (status) status.textContent = 'Error: ' + (data.error || 'unknown');
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Use AI Prompts for All Shots'; }
+      if (status) status.textContent = 'Network error';
+      console.error(e);
     }
   };
 
