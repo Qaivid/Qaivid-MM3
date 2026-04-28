@@ -836,14 +836,15 @@ def _render_video(project_id: str, shot: dict) -> None:
 
         # Record which WAN prompt source actually drove this render so the UI
         # can display a badge on the thumbnail (Task #202).
-        if wan_video_prompt:
-            with _db() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE shot_assets SET render_wan_source=%s, updated_at=NOW()"
-                    " WHERE project_id=%s AND shot_index=%s",
-                    (active_wan_source, project_id, idx),
-                )
-                conn.commit()
+        # When no WAN prompt was used, explicitly clear the column so a stale
+        # badge from a previous render is not shown.
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE shot_assets SET render_wan_source=%s, updated_at=NOW()"
+                " WHERE project_id=%s AND shot_index=%s",
+                (active_wan_source if wan_video_prompt else None, project_id, idx),
+            )
+            conn.commit()
 
     except (VideoGenerationError, Exception) as exc:
         logger.exception("Video render failed for project=%s shot=%s", project_id, idx)
