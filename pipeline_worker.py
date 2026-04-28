@@ -377,6 +377,13 @@ def ensure_schema() -> None:
         # Stored separately so both versions coexist and the user can choose which to send.
         cur.execute("ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS ai_wan_video_prompt TEXT;")
 
+        # Task #197 — per-shot selector: which prompt drives video generation.
+        # Values: 'deterministic' (default) | 'ai'
+        cur.execute(
+            "ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS wan_prompt_source TEXT"
+            " NOT NULL DEFAULT 'deterministic';"
+        )
+
         # Credit ledger — append-only audit log of credit transactions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS credit_ledger (
@@ -782,10 +789,10 @@ def _render_video(project_id: str, shot: dict) -> None:
         motion_prompt = motion_prompt or ""  # final null-safety guarantee
 
         # Prefer the stored WAN 2.6 continuation prompt over the full motion_prompt.
-        # wan_video_prompt is a GPT-derived lean prompt focused on motion/continuity
-        # (no scene re-description), optimised for WAN's image-to-video mode.
+        # _get_active_wan_prompt() reads wan_prompt_source ('deterministic'|'ai') and
+        # returns the correct column, falling back gracefully if the preferred one is empty.
         # Falls back to motion_prompt if absent (legacy projects, derivation failed).
-        wan_video_prompt = _get_shot_wan_prompt(project_id, idx) or ""
+        wan_video_prompt = _get_active_wan_prompt(project_id, idx) or ""
 
         # Assemble explicit render_job for traceability — captures every input
         # used to produce this clip (brain-derived + linkage state).
@@ -2117,6 +2124,30 @@ def _get_shot_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
     if row:
         return row.get("wan_video_prompt") or None
     return None
+
+
+def _get_active_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
+    """Return the WAN prompt that should drive video generation for this shot.
+
+    Reads ``wan_prompt_source`` (default ``'deterministic'``) and returns either
+    ``wan_video_prompt`` or ``ai_wan_video_prompt`` accordingly.  Falls back to
+    whichever column is non-empty when the preferred one is absent.
+    """
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT wan_video_prompt, ai_wan_video_prompt, wan_prompt_source"
+            " FROM shot_assets WHERE project_id=%s AND shot_index=%s",
+            (project_id, shot_index),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    source = (row.get("wan_prompt_source") or "deterministic").strip()
+    det = row.get("wan_video_prompt") or None
+    ai  = row.get("ai_wan_video_prompt") or None
+    if source == "ai":
+        return ai or det  # fall back to deterministic if AI prompt absent
+    return det or ai      # fall back to AI prompt if deterministic absent
 
 
 def _generate_ai_wan_prompt(frame0_prompt: str, motion_prompt: str,

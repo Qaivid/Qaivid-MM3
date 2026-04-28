@@ -1469,6 +1469,7 @@ def project_detail(project_id: str):
             p["motion_prompt"] = a.get("motion_prompt") or ""
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
+            p["wan_prompt_source"] = a.get("wan_prompt_source") or "deterministic"
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -1552,6 +1553,7 @@ def project_detail(project_id: str):
             p["motion_prompt"] = a.get("motion_prompt") or ""
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
+            p["wan_prompt_source"] = a.get("wan_prompt_source") or "deterministic"
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -4066,6 +4068,39 @@ def stills_rederive_wan_all(project_id: str):
         "message": f"Generated {derived} WAN prompt{'s' if derived != 1 else ''}{suffix}",
         "prompts": prompts_map,
     })
+
+
+@app.route("/project/<project_id>/stills/update-wan-prompt-source", methods=["POST"])
+@login_required
+def stills_update_wan_prompt_source(project_id: str):
+    """Save the per-shot WAN prompt source selection.
+
+    Body JSON:
+        shot_index        int  — required
+        wan_prompt_source str  — required; 'deterministic' or 'ai'
+
+    Returns JSON: {"ok": true}
+    """
+    _stills_control_guard(project_id)
+    data = request.get_json(silent=True) or {}
+    raw_idx = data.get("shot_index")
+    source  = (data.get("wan_prompt_source") or "").strip()
+    if raw_idx is None or source not in ("deterministic", "ai"):
+        return jsonify({"ok": False, "error": "shot_index and wan_prompt_source ('deterministic'|'ai') required"}), 400
+    try:
+        shot_index = int(raw_idx)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "shot_index must be an integer"}), 400
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET wan_prompt_source=%s, updated_at=NOW()"
+            " WHERE project_id=%s AND shot_index=%s",
+            (source, project_id, shot_index),
+        )
+        if cur.rowcount == 0:
+            return jsonify({"ok": False, "error": "Shot not found"}), 404
+        conn.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/project/<project_id>/stills/update-ai-wan-prompt", methods=["POST"])

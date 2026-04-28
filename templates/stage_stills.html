@@ -384,6 +384,7 @@
     motionPrompt:   {{ (shot.motion_prompt or '') | tojson }},
     wanVideoPrompt:   {{ (shot.wan_video_prompt or '') | tojson }},
     aiWanVideoPrompt: {{ (shot.ai_wan_video_prompt or '') | tojson }},
+    wanPromptSource:  {{ (shot.wan_prompt_source or 'deterministic') | tojson }},
     meaning:          {{ (shot.meaning or '') | tojson }},
     error:          {{ (shot.error or '') | tojson }},
     startTime:      {{ (shot.start_time or 0) | tojson }},
@@ -436,10 +437,13 @@
     const op = opState[idx] || {};
     const imgUrl = (op.status === 'ready' && op.url) ? op.url : (shot.url || '');
     const statusLabel = shot.status.charAt(0).toUpperCase() + shot.status.slice(1);
-    const motionVal  = escHtml(shot.motionPrompt || '');
-    const frame0Val  = escHtml(shot.prompt || '');
-    const wanVal     = escHtml(shot.wanVideoPrompt || '');
-    const aiWanVal   = escHtml(shot.aiWanVideoPrompt || '');
+    const motionVal    = escHtml(shot.motionPrompt || '');
+    const frame0Val    = escHtml(shot.prompt || '');
+    const wanVal       = escHtml(shot.wanVideoPrompt || '');
+    const aiWanVal     = escHtml(shot.aiWanVideoPrompt || '');
+    const wanPromptSrc = shot.wanPromptSource || 'deterministic';
+    const srcDetStyle  = wanPromptSrc === 'deterministic' ? 'background:#7a44c0;color:#fff;' : '';
+    const srcAiStyle   = wanPromptSrc === 'ai'            ? 'background:#7a44c0;color:#fff;' : '';
 
     let actionHtml = '';
     if (shot.status === 'pending' || shot.status === 'failed') {
@@ -573,6 +577,20 @@
             </button>
             <span id="sc-ai-wan-regen-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">⏳ Generating…</span>
             <span id="sc-ai-wan-saved-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">✓ Saved</span>
+          </div>
+          <div class="sc-prompt-section-actions" style="margin-top:6px;gap:6px;align-items:center;">
+            <span style="color:#aaa;font-size:0.78rem;">Video gen uses:</span>
+            <button class="sc-save-btn" id="sc-wan-src-det-${idx}"
+                    onclick="scSetWanPromptSource(${idx},'deterministic')"
+                    style="border-color:#9060d8;color:#c8a0ff;${srcDetStyle}">
+              Deterministic
+            </button>
+            <button class="sc-save-btn" id="sc-wan-src-ai-${idx}"
+                    onclick="scSetWanPromptSource(${idx},'ai')"
+                    style="border-color:#9060d8;color:#c8a0ff;${srcAiStyle}">
+              AI Prompt
+            </button>
+            <span id="sc-wan-src-saved-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">✓ Saved</span>
           </div>
         </div>
 
@@ -930,6 +948,34 @@
       if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ Network error'; }
     }
     if (btn) { btn.disabled = false; btn.textContent = '🎬 Generate All WAN Prompts'; }
+  };
+
+  /* ── Set which WAN prompt source drives video generation for a shot ── */
+  window.scSetWanPromptSource = async function(idx, source) {
+    const detBtn = document.getElementById('sc-wan-src-det-' + idx);
+    const aiBtn  = document.getElementById('sc-wan-src-ai-' + idx);
+    const ind    = document.getElementById('sc-wan-src-saved-' + idx);
+    const ACTIVE = 'background:#7a44c0;color:#fff;border-color:#9060d8;';
+    const IDLE   = 'color:#c8a0ff;border-color:#9060d8;';
+    if (detBtn) detBtn.style.cssText = (source === 'deterministic' ? ACTIVE : IDLE);
+    if (aiBtn)  aiBtn.style.cssText  = (source === 'ai'            ? ACTIVE : IDLE);
+    if (shotData[idx]) shotData[idx].wanPromptSource = source;
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/update-wan-prompt-source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify({ shot_index: idx, wan_prompt_source: source }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+      } else {
+        alert('Could not save selection: ' + (data.error || 'Unknown error'));
+      }
+    } catch(e) {
+      alert('Network error saving WAN prompt source');
+    }
   };
 
   /* ── AI WAN prose prompt save (individual shot) ── */
