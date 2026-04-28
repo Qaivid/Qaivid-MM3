@@ -2964,12 +2964,14 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
                 str(shot.get("character_name")  or ""),
             ])).lower()
 
-            if mode in human_modes:
-                char_id = _best_char(shot_text)
-                loc_id  = None
-            else:
-                char_id = None
-                loc_id  = _best_loc(shot_text)
+            # Always resolve both: character anchors the face across all shots
+            # (including environment/wide shots where the character appears),
+            # and location grounds the scene aesthetic.  When both are present,
+            # the image generator uses multi-image edit so the character ref
+            # locks the face and the location ref sets the room — they are
+            # complementary, not mutually exclusive.
+            char_id = _best_char(shot_text)
+            loc_id  = _best_loc(shot_text)
 
             cur.execute(
                 """
