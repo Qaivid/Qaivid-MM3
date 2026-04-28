@@ -100,7 +100,11 @@
         <div class="pp-kb-wrap" id="pp-kb-wrap">
           <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
           <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
+          <!-- Text overlay (from Animation > Text Area) -->
+          <div class="pp-text-overlay" id="pp-text-overlay"></div>
+          <!-- Subtitle cue overlay (synced during playback) -->
           <div class="pp-sub-preview" id="pp-sub-preview"></div>
+          <!-- Logo corner overlays -->
           <div class="pp-logo-tl" id="pp-logo-tl"></div>
           <div class="pp-logo-tr" id="pp-logo-tr"></div>
           <div class="pp-logo-bl" id="pp-logo-bl"></div>
@@ -254,7 +258,7 @@
           <label class="pp-ctrl-label">Text Area</label>
           <textarea class="pp-ctrl-select" id="ctrl-text-area" rows="3"
                     placeholder="Optional text overlay..." style="resize:vertical;"
-                    onchange="ppConfigChange()"></textarea>
+                    oninput="ppUpdateTextOverlay(); ppConfigChange()"></textarea>
         </div>
       </div>
 
@@ -849,9 +853,26 @@ body { overflow-y: auto !important; }
   text-align: center; pointer-events: none; font-size: 18px;
   text-shadow: 0 1px 3px #000; color: #fff; transition: all .2s;
 }
+/* Text overlay (from Animation > Text Area) */
+.pp-text-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 6% 6% 0;
+  text-align: center;
+  pointer-events: none;
+  font-size: clamp(12px, 2.8vw, 28px);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.7);
+  white-space: pre-line;
+  line-height: 1.35;
+  z-index: 5;
+  display: none; /* shown only when text is entered */
+}
+
 .pp-logo-tl,.pp-logo-tr,.pp-logo-bl,.pp-logo-br {
-  position: absolute; max-width: 120px; pointer-events: none;
-  opacity: .9; transition: opacity .2s;
+  position: absolute; pointer-events: none;
+  opacity: .9; transition: opacity .2s; max-width: 120px;
 }
 .pp-logo-tl { top: 14px; left: 14px; }
 .pp-logo-tr { top: 14px; right: 14px; }
@@ -1287,9 +1308,10 @@ body { overflow-y: auto !important; }
     };
   }
 
-  function ppApplySubStyle(el, text, s) {
+  /* force=true: show styled text even when no SRT is loaded (style preview) */
+  function ppApplySubStyle(el, text, s, force) {
     if (!el) return;
-    if (!text || !cfg.srt_r2_key) { el.textContent = ''; el.style.cssText = 'pointer-events:none;'; return; }
+    if (!text || (!force && !cfg.srt_r2_key)) { el.textContent = ''; el.style.cssText = 'pointer-events:none;'; return; }
     el.textContent = text;
     el.style.cssText = `
       position:absolute; left:5%; right:5%;
@@ -1408,6 +1430,11 @@ body { overflow-y: auto !important; }
       const badge = document.getElementById('pp-dur-' + idx);
       if (badge) badge.textContent = parseFloat(cfg.per_shot_duration[idx]).toFixed(1) + 's';
     });
+
+    // Text overlay — restore textarea value and show in frame
+    const taRestore = document.getElementById('ctrl-text-area');
+    if (taRestore && cfg.text_overlay) taRestore.value = cfg.text_overlay;
+    ppUpdateTextOverlay();
   }
 
   function setVal(id, v) {
@@ -1470,6 +1497,10 @@ body { overflow-y: auto !important; }
     s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, 128);
     s.animation  = document.getElementById('ctrl-sub-anim')?.value || 'none';
     cfg.subtitle_style = s;
+
+    // Text overlay
+    const taEl = document.getElementById('ctrl-text-area');
+    if (taEl) cfg.text_overlay = taEl.value;
 
     // Logo controls (height, x_offset, y_offset per slot)
     ['top-left','top-right','bottom-left','bottom-right'].forEach(slot => {
@@ -2167,6 +2198,21 @@ body { overflow-y: auto !important; }
     if (aiVid) aiVid.style.filter = filterVal;
   };
 
+  /* ── Text overlay preview in player frame ───────────────────────────── */
+  window.ppUpdateTextOverlay = function() {
+    const ta  = document.getElementById('ctrl-text-area');
+    const div = document.getElementById('pp-text-overlay');
+    if (!div) return;
+    const text = ta ? ta.value.trim() : '';
+    if (text) {
+      div.textContent = text;
+      div.style.display = 'block';
+    } else {
+      div.textContent  = '';
+      div.style.display = 'none';
+    }
+  };
+
   /* ── Fill mode ──────────────────────────────────────────────────────── */
   window.ppSelectFill = function(mode) {
     cfg.fill_mode = mode;
@@ -2204,19 +2250,23 @@ body { overflow-y: auto !important; }
   window.ppSubPreview = function() {
     const s = ppBuildSubStyle();
 
-    // Show real SRT cue at current shot's start time (static / non-playing view)
-    // During playback, subUpdateLoop handles live sync via ppShowSubtitleCue()
+    // Pick the best sample text: actual SRT cue → shot meaning → generic
+    const shotTime = ppElapsedAt(currentIdx);
+    const cue      = ppFindCue(shotTime);
+    const sampleTxt = (cue?.text) || SHOTS[currentIdx]?.meaning?.slice(0, 60) || 'Sample subtitle text';
+
+    // Always show styled text in the player frame so user can see position & style.
+    // During active playback the RAF loop (subUpdateLoop) takes over; this runs
+    // only in the static/paused state when the user is tweaking the panel controls.
     if (!playing) {
-      const shotTime = ppElapsedAt(currentIdx);
-      ppShowSubtitleCue(shotTime);
+      ppApplySubStyle(document.getElementById('pp-sub-preview'),    sampleTxt, s, true);
+      ppApplySubStyle(document.getElementById('pp-ai-sub-preview'), sampleTxt, s, true);
     }
 
-    // Update the styled preview box in the Subtitles panel
-    const shotText = SHOTS[currentIdx]?.meaning?.slice(0,60) || 'Sample subtitle text';
-    const cueText  = ppFindCue(ppElapsedAt(currentIdx))?.text?.slice(0,80) || shotText;
+    // Also update the styled swatch box inside the Subtitles panel
     const box = document.getElementById('pp-sub-preview-box');
     if (box) {
-      box.textContent = cueText;
+      box.textContent = sampleTxt.slice(0, 80);
       box.style.fontFamily  = s.font;
       box.style.fontSize    = s.size + 'px';
       box.style.color       = s.color;
