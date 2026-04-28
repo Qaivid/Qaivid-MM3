@@ -1339,13 +1339,15 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
     legacy_section_mood = ""
 
     if not is_structured and not _is_short_spec:
-        # Camera / scene sentence — catches any directing prose, not just "The camera"
-        # Matches: "The camera captures...", "Medium shots capture her walking...",
-        #          "Close-up on the face...", "Wide shot reveals...", etc.
+        # Camera / scene sentence — catches directing prose in several forms:
+        # "The camera captures...", "The scene revisits...",
+        # "Medium shots capture her walking...", etc.
         _cam_sent = _re.search(
             r'(?:'
             r'(?:The camera\s+\w+(?:\s+\w+){0,12}[^,\n]+'
             r'(?:,\s*(?:focusing on|capturing|holding on|lingering on)[^,\n]{0,80})?)'
+            r'|(?:The scene\s+(?:revisits?|reveals?|shows?|follows?|returns?\s+to|opens?\s+on)'
+            r'\s+[^,\n]{10,160})'
             r'|(?:(?:Medium|Close[- ]?up|Wide|Long|Extreme\s+close[- ]?up)'
             r'\s+shots?\s+(?:capture|focus|show|reveal|feature|follow)\s+[^,\n]+'
             r'(?:,\s*(?:her|his|their)\s+\w+[^,\n]{0,60})?)'
@@ -1359,7 +1361,7 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         _cmode = _re.search(
             r'\b(static hold|slow push(?:\s+in)?|slow pan(?:\s+(?:left|right))?'
             r'|slow drift|handheld|slow tilt|minimal camera movement'
-            r'|drift right|drift left|very slow push in|slow zoom in'
+            r'|drift right|drift left|very slow push in|very slow zoom in|slow zoom in'
             r'|tracking shot|crane up)',
             motion_prompt, _re.I
         )
@@ -1369,11 +1371,15 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         # Lighting: grab a lighting-adjacent cluster from the flat list
         _light = _re.search(
             r'(?:'
-            r'backlit\s+\w+(?:\s+with\s+[\w\s,]+?)?(?=,\s*(?:face|melancholic|quiet|grounded|aligned|static|slow|avoid)|$)'
+            r'high[- ]contrast\s+spotlight[\w\s,]*?(?=,\s*(?:visual|unresolved|aligned|slow|avoid)|$)'
+            r'|fading\s+light[\w\s,]*?(?=,|$)'
+            r'|spotlight[\w\s]*?(?=,|$)'
+            r'|backlit\s+\w+(?:\s+with\s+[\w\s,]+?)?(?=,\s*(?:face|melancholic|quiet|grounded|aligned|static|slow|avoid)|$)'
             r'|high[- ]key\s+[\w\s]+?(?=,|$)'
             r'|(?:warm|cool|soft|golden|diffused|dramatic|mixed[- ]temperature)\s+[\w\s]+'
             r'(?:light|glow|lamp|fill)[\w\s]*?(?=,|$)'
             r'|(?:soft|hard|directional)\s+(?:light|lighting)[\w\s]*?(?=,|$)'
+            r'|(?:overcast|dappled|filtered|low[- ]key|chiaroscuro)[\w\s]*?(?:light|lighting|top)?[\w\s]*?(?=,|$)'
             r')',
             motion_prompt, _re.I
         )
@@ -1419,6 +1425,10 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             "overcast": "resigned melancholy, quiet resignation",
             "mixed-temperature": "emotional ambiguity, warm-cool tension",
             "warm practical": "intimate warmth tinged with nostalgia",
+            "high-contrast spotlight": "isolated subject, visual emphasis on absence",
+            "high contrast spotlight": "isolated subject, visual emphasis on absence",
+            "spotlight": "focused intensity, subject isolated from surroundings",
+            "fading light": "quiet fading, emotional passage of time",
         }
         legacy_lighting_mood = ""
         _mp_lower = motion_prompt.lower()
@@ -1439,6 +1449,11 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             "peak": "raw emotional threshold — grief breaking open",
             "climax": "raw emotional threshold — grief breaking open",
             "transition": "shifting weight, emotional bridge",
+            "convey": "unresolved longing, emotional stillness",
+            "emphasise": "emotional emphasis, held breath",
+            "emphasize": "emotional emphasis, held breath",
+            "reveal": "quiet revelation, realisation breaking through",
+            "build": "gathering weight, emotional tension building",
         }
         legacy_section_mood = ""
         for _sk, _smood in _section_mood_map.items():
@@ -1838,17 +1853,237 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
     if avoid_clean:
         wan_parts.append(f"Avoid: {_clean(avoid_clean, 90)}")
 
-    # ── 12. Assemble, hard-cap, log ───────────────────────────────────────────
-    result = " | ".join(wan_parts)[:600]
+    # ── 12. Assemble — prose narrative format (ChatGPT/WAN 2.6 style) ──────────
+    # Parse wan_parts list into a field dict for prose assembly
+    _f: dict = {}
+    for _p in wan_parts:
+        for _lbl in ("Framing", "Camera", "Action", "Lighting", "Mood",
+                     "Micro-detail", "Avoid"):
+            if _p.startswith(f"{_lbl}:"):
+                _f[_lbl] = _p[len(_lbl) + 1:].strip()
+                break
+
+    _pf  = _f.get("Framing", framing or "medium shot")
+    _pc  = _f.get("Camera", cam_text or "")
+    _pa  = _f.get("Action", "")
+    _pl  = _f.get("Lighting", "")
+    _pm  = _f.get("Mood", mood_text or "")
+    _pmi = _f.get("Micro-detail", "")
+    _pav = _f.get("Avoid", avoid_clean or "")
+
+    # Split Camera field into mode + narrative purpose
+    if "—" in _pc:
+        _cam_mode, _cam_purpose = _pc.split("—", 1)
+        _cam_mode    = _cam_mode.strip()
+        _cam_purpose = _cam_purpose.strip()
+    else:
+        _cam_mode    = _pc.strip()
+        _cam_purpose = ""
+
+    # Lighting brief (strip "holds from still — " prefix)
+    _pl_brief = _re.sub(r'^holds from still\s*[—-]\s*', '', _pl, flags=_re.I).strip()
+
+    _prose_paras: list = []
+
+    # ── Paragraph 1: Camera movement ─────────────────────────────────────────
+    _cm = _cam_mode.lower()
+    if "static hold" in _cm or "minimal camera" in _cm:
+        _cp = (f"The camera holds steady on a {_pf}, "
+               f"allowing the emotional weight of the scene to settle.")
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif any(x in _cm for x in ("very slow zoom", "very slow push")):
+        _cp = (f"The camera opens on a {_pf}, then a very slow, almost imperceptible "
+               f"push-in begins, subtly tightening the frame toward the subject.")
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif any(x in _cm for x in ("slow zoom in", "slow push in", "subtle push")):
+        _cp = (f"The camera opens on a {_pf}, then slowly begins a gentle push-in, "
+               f"gradually drawing the frame closer.")
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif "slow pan left" in _cm:
+        _cp = f"The camera opens on a {_pf} and slowly pans left across the scene."
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif "slow pan right" in _cm:
+        _cp = f"The camera opens on a {_pf} and slowly pans right across the scene."
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif "drift" in _cm:
+        _dir = "right" if "right" in _cm else "left" if "left" in _cm else ""
+        _cp = (f"The camera opens on a {_pf} and gently drifts"
+               f"{' ' + _dir if _dir else ''}, barely perceptible.")
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif "tilt up" in _cm:
+        _cp = f"Opening on a {_pf}, the camera tilts slowly upward, rising through the frame."
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    elif _pc:
+        _cp = f"The camera maintains a {_pf}."
+        if _cam_purpose:
+            _cp += f" {_cam_purpose.rstrip('.')}."
+    else:
+        _cp = ""
+    if _cp:
+        _prose_paras.append(_cp)
+
+    # ── Paragraph 2: Character / scene action ─────────────────────────────────
+    if _pa:
+        _al = _pa.lower()
+        # Deduplication: skip if action is essentially already in the camera purpose paragraph
+        _pa_core = _pa.lower()[:60]  # first 60 chars as fingerprint
+        _already_in_cam = _cam_purpose and _pa_core in _cam_purpose.lower()
+
+        if any(x in _al for x in ("walking", "walks", "strolling", "brushing")):
+            _micro_note = (_pmi.replace("breath, subtle blink", "breath slow and deliberate")
+                           if _pmi else "breath slow and deliberate")
+            if _already_in_cam:
+                # Camera para already has the scene description; just add the movement note
+                _char_p = (
+                    f"The movement is unhurried and contemplative — "
+                    f"fabric shifting softly with each step, {_micro_note}."
+                )
+            else:
+                _char_p = (
+                    f"{_pa.rstrip('.')}. "
+                    f"The movement is unhurried and contemplative — "
+                    f"fabric shifting softly with each step, {_micro_note}."
+                )
+        elif any(x in _al for x in ("remains still", "stands still", "mostly still",
+                                     "barely moving")):
+            _micro_note = _pmi or "a soft breath, a barely noticeable shift in expression"
+            _mood_word  = _pm.split(",")[0] if _pm else "quiet stillness"
+            _char_p = (
+                f"The subject remains mostly still, with only micro-movements — "
+                f"{_micro_note} — reinforcing a sense of {_mood_word}."
+            )
+        elif any(x in _al for x in ("gaze drifting", "gaze softens", "eyes drift",
+                                     "eyes glistening")):
+            if _already_in_cam:
+                _char_p = _pmi.capitalize() + "." if _pmi else ""
+            else:
+                _char_p = (
+                    f"{_pa.rstrip('.')}. "
+                    f"{_pmi.capitalize() + '.' if _pmi else 'Breath is slow and deliberate.'}"
+                )
+        elif _al.startswith("her ") or _al.startswith("his "):
+            # "her long shadow stretching…" or "her gaze drifting…"
+            if _already_in_cam:
+                # Camera para already described this — skip to avoid repetition
+                _char_p = ""
+            else:
+                _char_p = f"The scene holds on {_pa.rstrip('.')}."
+        elif (_al.startswith("the scene ") or _al.startswith("the camera ")):
+            # Action is a scene description, not a character action
+            if _already_in_cam:
+                # Already stated in camera para; synthesise character micro-movement instead
+                _micro_note = _pmi or "a soft breath, a barely noticeable shift in expression"
+                _mood_word  = _pm.split(",")[0] if _pm else "quiet stillness"
+                _char_p = (
+                    f"The subject remains mostly still, with only micro-movements — "
+                    f"{_micro_note} — reinforcing a sense of {_mood_word}."
+                )
+            else:
+                _char_p = f"{_pa.rstrip('.')}."
+        else:
+            if _already_in_cam:
+                # Skip the repeated scene sentence; just add micro-detail if meaningful
+                _char_p = _pmi.capitalize() + "." if _pmi else ""
+            else:
+                _char_p = (
+                    f"{_pa.rstrip('.')}. "
+                    f"{_pmi.capitalize() + '.' if _pmi else ''}"
+                ).strip()
+        if _char_p:
+            _prose_paras.append(_char_p)
+
+    # ── Paragraph 3: Lighting / atmosphere evolution ──────────────────────────
+    if _pl_brief:
+        _ll = _pl_brief.lower()
+        if "backlit silhouette" in _ll or "rim glow" in _ll:
+            _env_p = ("The backlit silhouette holds throughout the clip — a soft rim of light "
+                      "outlines the subject as shadows deepen gently in the surroundings.")
+        elif "high-key open natural" in _ll or "high key open natural" in _ll:
+            _env_p = ("The high-key natural light remains even and breathable throughout — "
+                      "no harsh shadows, a gentle luminosity that feels open and unhurried.")
+        elif "split lighting" in _ll or "hard key from side" in _ll:
+            _env_p = ("The dramatic split between light and shadow holds steady, "
+                      "emphasising the internal tension carried in the subject's expression.")
+        elif "chiaroscuro" in _ll:
+            _env_p = ("Deep chiaroscuro shadows frame the subject — a single warm source "
+                      "carves the face in light and shadow, reinforcing theatrical weight.")
+        elif "golden-hour" in _ll or "golden hour" in _ll:
+            _env_p = ("The warm golden-hour light deepens subtly across the clip, "
+                      "saturating the scene with tender, nostalgic warmth.")
+        elif "overcast" in _ll:
+            _env_p = ("The even, overcast light maintains its documentary stillness — "
+                      "no directional shadow, just a quiet ambient glow across the scene.")
+        elif "warm practical" in _ll:
+            _env_p = ("A warm practical light holds from the opening frame, casting an "
+                      "intimate glow against the cooler ambient fill.")
+        elif "mixed-temperature" in _ll or "mixed temperature" in _ll:
+            _env_p = ("The mixed-temperature lighting creates a subtle warm-cool tension — "
+                      "the subject caught between two light sources with different emotional registers.")
+        elif "high-contrast spotlight" in _ll or "high contrast spotlight" in _ll:
+            _env_p = ("A high-contrast spotlight isolates the subject while the surroundings fall "
+                      "into gentle shadow — visual emphasis through composition rather than motion.")
+        elif "spotlight" in _ll:
+            _env_p = ("A focused spotlight isolates the emotional anchor of the frame "
+                      "as the surroundings recede into shadow.")
+        elif "fading light" in _ll:
+            _env_p = ("The fading light shifts gradually across the clip — shadows deepening at "
+                      "the edges as warmth slowly drains from the scene, marking the passage of time.")
+        else:
+            _env_p = f"The lighting holds from the opening frame — {_pl_brief}."
+        _prose_paras.append(_env_p)
+
+    # ── Section labels ─────────────────────────────────────────────────────────
+    _sec_labels: list = []
+
+    # Camera spec
+    if "static hold" in _cm:
+        _cam_spec = "Static hold, stable frame, no movement"
+    elif "very slow zoom" in _cm or "very slow push" in _cm:
+        _cam_spec = "Very slow push-in, stable frame, no handheld shake, no abrupt transitions"
+    elif any(x in _cm for x in ("slow zoom in", "slow push in")):
+        _cam_spec = "Slow push-in, stable frame, no handheld shake"
+    elif "slow pan left" in _cm:
+        _cam_spec = "Slow pan left, stable frame, no abrupt transitions"
+    elif "slow pan right" in _cm:
+        _cam_spec = "Slow pan right, stable frame, no abrupt transitions"
+    elif "drift" in _cm:
+        _cam_spec = "Slow lateral drift, stable frame, no handheld shake"
+    elif "tilt up" in _cm:
+        _cam_spec = "Slow tilt up, stable frame"
+    else:
+        _cam_spec = _cam_mode or "natural cinematic movement"
+    _sec_labels.append(f"Camera: {_cam_spec}.")
+
+    if _pl_brief:
+        _sec_labels.append(f"Lighting: {_pl_brief}.")
+    if _pm:
+        _sec_labels.append(f"Mood: {_pm}.")
+    _sec_labels.append(
+        "Style: cinematic realism, soft textures, filmic colour grading, "
+        "restrained visual language, natural motion."
+    )
+    if _pav:
+        _sec_labels.append(f"Avoid: {_pav}.")
+
+    _video_prose   = " ".join(_prose_paras)
+    _sections_text = " ".join(_sec_labels)
+    result = f"{_video_prose}\n\n{_sections_text}" if _video_prose else _sections_text
+
+    # Hard cap at 2000 chars (WAN 2.6 accepts long prompts)
+    result = result[:2000]
+
     if result:
         logger.info(
-            "_derive_wan_continuation_prompt: %d-char WAN prompt "
-            "(structured=%s, frame0=%d chars, story_beat=%r, emotion=%s→%s, "
-            "framing=%r, legacy_cam=%r, legacy_light=%r) shot=%s",
-            len(result), is_structured, len(frame0_anchor),
-            story_beat[:40] if story_beat else None,
-            emotion_start, emotion_end,
-            framing, legacy_camera_mode or None, legacy_lighting_phrase or None,
+            "_derive_wan_continuation_prompt (prose): %d-char WAN prompt "
+            "(framing=%r cam=%r mood=%r) shot=%s",
+            len(result), _pf, _cam_mode[:30] if _cam_mode else None, _pm[:30] if _pm else None,
             shot.get("shot_index") or shot.get("timeline_index"),
         )
     return result
