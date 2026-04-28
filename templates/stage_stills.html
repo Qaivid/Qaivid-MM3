@@ -957,8 +957,12 @@
     const ind    = document.getElementById('sc-wan-src-saved-' + idx);
     const ACTIVE = 'background:#7a44c0;color:#fff;border-color:#9060d8;';
     const IDLE   = 'color:#c8a0ff;border-color:#9060d8;';
-    if (detBtn) detBtn.style.cssText = (source === 'deterministic' ? ACTIVE : IDLE);
-    if (aiBtn)  aiBtn.style.cssText  = (source === 'ai'            ? ACTIVE : IDLE);
+    const prevSource = (shotData[idx] && shotData[idx].wanPromptSource) || 'deterministic';
+    const applyStyles = (src) => {
+      if (detBtn) detBtn.style.cssText = (src === 'deterministic' ? ACTIVE : IDLE);
+      if (aiBtn)  aiBtn.style.cssText  = (src === 'ai'            ? ACTIVE : IDLE);
+    };
+    applyStyles(source);
     if (shotData[idx]) shotData[idx].wanPromptSource = source;
     try {
       const resp = await fetch('/project/' + PID + '/stills/update-wan-prompt-source', {
@@ -971,9 +975,13 @@
       if (data.ok) {
         if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
       } else {
+        applyStyles(prevSource);
+        if (shotData[idx]) shotData[idx].wanPromptSource = prevSource;
         alert('Could not save selection: ' + (data.error || 'Unknown error'));
       }
     } catch(e) {
+      applyStyles(prevSource);
+      if (shotData[idx]) shotData[idx].wanPromptSource = prevSource;
       alert('Network error saving WAN prompt source');
     }
   };
