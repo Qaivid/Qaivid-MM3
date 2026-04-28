@@ -9,6 +9,8 @@ Covers:
 - generate_variants sets used_fallback=True when LLM returns <2 valid variants (Task #72).
 - generate_variants sets used_fallback=True on LLM exception (Task #72).
 - generate_variants sets used_fallback=False on a successful LLM response (Task #72).
+- stage_creative_brief.html renders #fallback-warning when used_fallback is True (Task #81).
+- stage_creative_brief.html omits #fallback-warning when used_fallback is False/None (Task #81).
 """
 
 import asyncio
@@ -185,3 +187,95 @@ def test_generate_variants_llm_exception_sets_fallback_true():
 
     assert used_fallback is True
     assert len(variants) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Template banner rendering — used_fallback flag (Task #81)
+#
+# These tests render the *real* templates/stage_creative_brief.html through
+# Jinja2's FileSystemLoader so that any future change to that file is caught.
+# Flask-specific globals (url_for, csrf_token) are stubbed out; base.html and
+# the small include partials are replaced with minimal pass-through stubs so
+# the render stays fast and self-contained.
+# ---------------------------------------------------------------------------
+
+import os
+import types
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
+
+_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+
+_STUB_TEMPLATES = {
+    "base.html": "{% block content %}{% endblock %}",
+    "_stage_header.html": "",
+    "_redo_panel.html": "",
+}
+
+
+def _make_jinja_env():
+    """Build a Jinja2 environment that loads the real templates directory but
+    overrides inherited/included partials with lightweight stubs."""
+    loader = ChoiceLoader([
+        DictLoader(_STUB_TEMPLATES),
+        FileSystemLoader(_TEMPLATES_DIR),
+    ])
+    env = Environment(loader=loader)
+    env.globals["url_for"] = lambda *a, **kw: "#"
+    env.globals["csrf_token"] = lambda: "test-csrf"
+    return env
+
+
+def _make_project(used_fallback):
+    """Return a minimal project-like namespace matching the template's data model."""
+    project = types.SimpleNamespace(
+        name="Test Project",
+        id="proj-1",
+        _is_review_only=True,
+        context_packet={
+            "creative_brief": {
+                "used_fallback": used_fallback,
+                "chosen_variant": None,
+                "title": "",
+                "pitch": "",
+                "treatment": "",
+                "scenes": [],
+                "cast_roster": [],
+                "central_metaphor": "",
+                "justification": "",
+                "self_critique": {"score": 7, "rationale": ""},
+                "world_assumptions": {},
+            }
+        },
+    )
+    return project
+
+
+def _render_brief_template(used_fallback):
+    """Render stage_creative_brief.html with the given used_fallback value."""
+    env = _make_jinja_env()
+    tmpl = env.get_template("stage_creative_brief.html")
+    return tmpl.render(project=_make_project(used_fallback))
+
+
+def test_brief_template_banner_present_when_used_fallback_true():
+    """stage_creative_brief.html must render #fallback-warning when used_fallback is True."""
+    html = _render_brief_template(True)
+    assert 'id="fallback-warning"' in html, (
+        "Expected #fallback-warning banner in rendered stage_creative_brief.html"
+    )
+
+
+def test_brief_template_banner_absent_when_used_fallback_false():
+    """stage_creative_brief.html must NOT render #fallback-warning when used_fallback is False."""
+    html = _render_brief_template(False)
+    assert 'id="fallback-warning"' not in html, (
+        "Banner should be hidden in stage_creative_brief.html when used_fallback is False"
+    )
+
+
+def test_brief_template_banner_absent_when_used_fallback_none():
+    """stage_creative_brief.html must NOT render #fallback-warning when used_fallback is None."""
+    html = _render_brief_template(None)
+    assert 'id="fallback-warning"' not in html, (
+        "Banner should be hidden in stage_creative_brief.html when used_fallback is None/missing"
+    )
