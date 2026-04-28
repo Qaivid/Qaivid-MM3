@@ -6972,11 +6972,18 @@ _SUB_ANIMATIONS = {
 }
 
 
-def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
+def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str,
+                          per_cue_anim: "dict[int, str] | None" = None) -> str:
     """Convert SRT → ASS, applying per-event ASS override tags for the
     chosen animation. One unified path for every animation the UI exposes
     so behaviour stays consistent between the live preview and the
-    FFmpeg-burnt video."""
+    FFmpeg-burnt video.
+
+    ``per_cue_anim`` is an optional mapping of cue-index (0-based) to an
+    animation name override.  When provided, each cue uses its own
+    animation and falls back to the global ``animation`` only if no
+    override is present.
+    """
     import re as _re
     content = srt_bytes.decode("utf-8", errors="replace")
 
@@ -7019,6 +7026,7 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
 
     blocks = _re.split(r'\n\n+', content.strip())
     event_lines: list[str] = []
+    cue_idx = 0  # 0-based index used for per_cue_anim lookup
 
     for block in blocks:
         block = block.strip()
@@ -7045,18 +7053,22 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
         s_time = _srt_time_to_ass(m.group(1))
         e_time = _srt_time_to_ass(m.group(2))
 
+        # Per-cue animation override (e.g. different animation per shot).
+        # Falls back to the global ``animation`` parameter.
+        anim = (per_cue_anim or {}).get(cue_idx, animation)
+
         # ── Build the per-event ASS override prefix + transformed text ──
         # Animation budget: enter takes the smaller of 400ms or 25% of cue.
         enter_ms = max(80, min(400, dur_ms // 4))
         # All animations except karaoke/typewriter use the cleaned line as-is.
         text_out = clean
 
-        if animation == "karaoke":
+        if anim == "karaoke":
             words = clean.split()
             per_word_cs = max(1, dur_cs // max(1, len(words)))
             text_out = "".join(f"{{\\kf{per_word_cs}}}{w} " for w in words).rstrip()
             override = ""
-        elif animation == "typewriter":
+        elif anim == "typewriter":
             # Per-character karaoke timing: each letter "fills" in sequence.
             chars = list(clean)
             per_char_cs = max(1, dur_cs // max(1, len(chars)))
@@ -7091,30 +7103,30 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
             off_x_left  = -260
             off_x_right = 2180
 
-        if animation == "fade":
+        if anim == "fade":
             override = f"{{\\fad({enter_ms},{enter_ms})}}"
-        elif animation == "slide-up":
+        elif anim == "slide-up":
             override = (
                 f"{{\\move({tgt_x},{off_y},{tgt_x},{tgt_y},0,{enter_ms})"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "slide-down":
+        elif anim == "slide-down":
             override = (
                 f"{{\\move({tgt_x},-80,{tgt_x},{tgt_y},0,{enter_ms})"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "slide-left":
+        elif anim == "slide-left":
             # "Slide in from Right" — element starts off the right edge.
             override = (
                 f"{{\\move({off_x_right},{tgt_y},{tgt_x},{tgt_y},0,{enter_ms})"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "slide-right":
+        elif anim == "slide-right":
             override = (
                 f"{{\\move({off_x_left},{tgt_y},{tgt_x},{tgt_y},0,{enter_ms})"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "pop":
+        elif anim == "pop":
             mid = enter_ms // 2
             override = (
                 f"{{\\fscx50\\fscy50"
@@ -7122,13 +7134,13 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
                 f"\\t({mid},{enter_ms},\\fscx100\\fscy100)"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "zoom-in":
+        elif anim == "zoom-in":
             override = (
                 f"{{\\fscx50\\fscy50"
                 f"\\t(0,{enter_ms},\\fscx100\\fscy100)"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "bounce":
+        elif anim == "bounce":
             t1 = enter_ms // 3
             t2 = (enter_ms * 2) // 3
             override = (
@@ -7137,7 +7149,7 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
                 f"\\t({t2},{enter_ms},\\fscy100)"
                 f"\\fad({enter_ms},120)}}"
             )
-        elif animation == "shake":
+        elif anim == "shake":
             # Chain ~7 oscillation cycles across the cue so it reads as a shake.
             cycles = max(4, min(12, dur_ms // 180))
             seg = max(60, dur_ms // (cycles * 2))
@@ -7148,7 +7160,7 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
                 parts.append(f"\\t({t},{t + seg},\\frz{ang})")
                 t += seg
             override = "{" + "".join(parts) + "}"
-        elif animation == "glow-pulse":
+        elif anim == "glow-pulse":
             # Chain pulses so the outline truly throbs across the whole cue.
             big = max(2.0, outline * 1.7)
             cycles = max(2, min(6, dur_ms // 600))
@@ -7164,12 +7176,13 @@ def _srt_to_ass_animated(srt_bytes: bytes, style: dict, animation: str) -> str:
             override = ""
 
         # For non-prefix-already-built cases, prepend the override.
-        if override and animation not in ("typewriter",):
+        if override and anim not in ("typewriter",):
             text_out = override + text_out
 
         event_lines.append(
             f"Dialogue: 0,{s_time},{e_time},Default,,0,0,0,,{text_out}"
         )
+        cue_idx += 1  # advance cue counter for next block
 
     return ass_header + "\n".join(event_lines) + "\n"
 
@@ -7646,10 +7659,57 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     srt_data  = r2_storage.download_bytes(srt_r2_key)
                     sub_style = settings.get("subtitle_style") or {}
                     animation = sub_style.get("animation", "none")
+
+                    # ── Per-shot animation overrides ───────────────────────────
+                    # Build a per_cue_anim dict: cue index → animation name.
+                    # Each SRT cue is assigned to the shot whose time range
+                    # contains the cue's start time; if that shot has a
+                    # per_shot_anim override, that animation is used for every
+                    # cue belonging to that shot.
+                    per_shot_anim_cfg = settings.get("per_shot_anim") or {}
+                    per_cue_anim_map: dict[int, str] = {}
+                    if per_shot_anim_cfg:
+                        # Cumulative shot time ranges from the final stills list.
+                        _shot_ranges: list[tuple[float, float, int]] = []
+                        _t = 0.0
+                        for _si, _, _sd in local_stills:
+                            _shot_ranges.append((_t, _t + _sd, _si))
+                            _t += _sd
+                        # Walk SRT blocks to find each cue's start time.
+                        import re as _re_sub
+                        _srt_text = srt_data.decode("utf-8", errors="replace")
+                        _srt_blocks = _re_sub.split(r'\n\n+', _srt_text.strip())
+                        _ci = 0
+                        for _blk in _srt_blocks:
+                            _blk = _blk.strip()
+                            if not _blk:
+                                continue
+                            _bparts = _blk.split("\n", 2)
+                            if len(_bparts) < 3:
+                                continue
+                            _tm = _re_sub.match(
+                                r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})',
+                                _bparts[1],
+                            )
+                            if not _tm:
+                                continue
+                            _start_sec = _srt_time_to_cs(_tm.group(1)) / 100.0
+                            for _sr_s, _sr_e, _sr_idx in _shot_ranges:
+                                if _sr_s <= _start_sec < _sr_e:
+                                    _ov = (per_shot_anim_cfg.get(str(_sr_idx))
+                                           or per_shot_anim_cfg.get(_sr_idx))
+                                    if _ov:
+                                        per_cue_anim_map[_ci] = _ov
+                                    break
+                            _ci += 1
+
                     # Always go through the unified ASS path so every animation
                     # the UI offers is honoured (fade, typewriter, slide-*, pop,
                     # zoom-in, bounce, shake, glow-pulse, karaoke, none).
-                    ass_content = _srt_to_ass_animated(srt_data, sub_style, animation)
+                    ass_content = _srt_to_ass_animated(
+                        srt_data, sub_style, animation,
+                        per_cue_anim=per_cue_anim_map or None,
+                    )
                     sub_path = work_dir / "subtitles.ass"
                     sub_path.write_text(ass_content, encoding="utf-8")
                     sub_filter = f"ass={sub_path.as_posix()}"

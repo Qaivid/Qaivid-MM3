@@ -5219,6 +5219,57 @@ def postprod_remove_audio(project_id: str):
     return jsonify({"ok": True})
 
 
+ALLOWED_AI_VIDEO = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+
+
+@app.route("/project/<project_id>/postprod/load_ai_video", methods=["POST"])
+@login_required
+def postprod_load_ai_video(project_id: str):
+    """Upload a video file to use as the AI source in postprod.
+
+    Stores the file in R2 under projects/{id}/postprod/ai_source<ext> and
+    updates ``final_video_url`` in the projects table so the AI tab becomes
+    active and the postprod AI pipeline can download and process it.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    f = request.files.get("video_file")
+    if not f:
+        return jsonify(ok=False, error="No file provided"), 400
+
+    ext = Path(f.filename).suffix.lower() if f.filename else ".mp4"
+    if ext not in ALLOWED_AI_VIDEO:
+        return jsonify(
+            ok=False,
+            error=f"Unsupported format. Allowed: {', '.join(sorted(ALLOWED_AI_VIDEO))}",
+        ), 400
+
+    r2_key = f"projects/{project_id}/postprod/ai_source{ext}"
+    try:
+        data = f.read()
+        if len(data) > 800 * 1024 * 1024:  # 800 MB guard
+            return jsonify(ok=False, error="File exceeds 800 MB limit"), 400
+        r2_storage.upload_bytes(r2_key, data,
+                                content_type=f.content_type or "video/mp4")
+    except Exception as exc:
+        logger.exception("postprod_load_ai_video upload failed project=%s", project_id)
+        return jsonify(ok=False, error=str(exc)), 500
+
+    preview_url = (r2_storage.public_url_for(r2_key)
+                   if r2_storage.r2_available() else None)
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET final_video_url=%s, updated_at=NOW() WHERE id=%s",
+            (r2_key, project_id),
+        )
+        conn.commit()
+
+    return jsonify(ok=True, r2_key=r2_key, preview_url=preview_url)
+
+
 @app.route("/project/<project_id>/retry/all_failed_refs", methods=["POST"])
 @login_required
 def project_retry_all_failed_refs(project_id: str):

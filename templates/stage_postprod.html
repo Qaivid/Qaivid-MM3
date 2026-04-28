@@ -25,9 +25,9 @@
         <button class="pp-nle-mpill active" id="pill-quick" onclick="ppSwitchMode('quick')">
           ⚡ Quick Video{% if quick_video_url %}<span class="pp-nle-pdot pp-nle-pdot-q"></span>{% endif %}
         </button>
-        <button class="pp-nle-mpill {% if not ai_video_url %}pp-nle-mpill-locked{% endif %}"
+        <button class="pp-nle-mpill"
                 id="pill-ai" onclick="ppSwitchMode('ai')">
-          🎬 AI Rendered{% if ai_video_url %}<span class="pp-nle-pdot pp-nle-pdot-ai"></span>{% endif %}
+          🎬 AI Rendered{% if ai_video_url %}<span class="pp-nle-pdot pp-nle-pdot-ai"></span>{% else %}<span class="pp-nle-pdot-empty" title="No AI video loaded — click to upload">+</span>{% endif %}
         </button>
       </div>
       <div class="pp-nle-sep"></div>
@@ -128,14 +128,21 @@
           </div>
         </div>
         {% else %}
-        <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
-          <div class="pp-ai-no-video-icon">🎬</div>
-          <p>AI video not rendered yet.</p>
-          <p class="pp-ai-no-video-hint">Generate AI clips first, then apply effects and export.</p>
-          <button class="pp-nle-btn pp-nle-btn-ai"
-                  onclick="document.getElementById('form-advance').submit()">
-            Full AI Render →
-          </button>
+        <div id="pp-ai-video-wrap" class="pp-ai-video-wrap pp-ai-load-wrap" style="display:none">
+          <div class="pp-ai-load-area">
+            <div class="pp-ai-load-icon">🎬</div>
+            <p class="pp-ai-load-title">Load AI-Rendered Video</p>
+            <p class="pp-ai-load-hint">Upload your AI-rendered video to apply logos, subtitles, filters and audio — then download the finished result.</p>
+            <input type="file" id="pp-ai-upload-input" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4,.mov,.avi,.mkv,.webm,.m4v"
+                   style="display:none;" onchange="ppLoadAIVideo(this)">
+            <button class="pp-nle-btn pp-nle-btn-gen" id="btn-ai-upload"
+                    onclick="document.getElementById('pp-ai-upload-input').click()">
+              ↑ Upload Video
+            </button>
+            <p class="pp-ai-load-hint" style="margin-top:10px;font-size:10px;">
+              Accepted: MP4, MOV, AVI, MKV, WebM · Max 800 MB
+            </p>
+          </div>
         </div>
         {% endif %}
 
@@ -190,10 +197,11 @@
               {{ '%.1f'|format(shot.duration or 4.0) }}s
             </button>
             <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+            <span class="pp-anim-badge" id="pp-anim-badge-{{ shot.shot_index }}" style="display:none;" title="Custom subtitle animation">✦</span>
           </div>
           <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
             <div class="pp-kb-pop-label">Ken Burns — Shot {{ shot.shot_index }}</div>
-            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
+            <select class="pp-kb-pop-select" id="pp-kb-sel-{{ shot.shot_index }}" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
               <option value="">— Use global —</option>
               <option value="zoom-in">Zoom In</option>
               <option value="zoom-out">Zoom Out</option>
@@ -205,6 +213,25 @@
               <option value="random">Random</option>
             </select>
             <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
+            <div class="pp-kb-pop-sep"></div>
+            <div class="pp-kb-pop-label">Subtitle Animation — Shot {{ shot.shot_index }}</div>
+            <select class="pp-kb-pop-select" id="pp-anim-sel-{{ shot.shot_index }}" onchange="ppSetShotAnim({{ shot.shot_index }}, this.value)">
+              <option value="">— Use global —</option>
+              <option value="none">None</option>
+              <option value="fade">Fade In / Out</option>
+              <option value="typewriter">Typewriter</option>
+              <option value="karaoke">Karaoke</option>
+              <option value="slide-up">Slide Up</option>
+              <option value="slide-down">Slide Down</option>
+              <option value="slide-left">Slide In from Right</option>
+              <option value="slide-right">Slide In from Left</option>
+              <option value="pop">Pop</option>
+              <option value="zoom-in">Zoom In</option>
+              <option value="bounce">Bounce In</option>
+              <option value="shake">Shake</option>
+              <option value="glow-pulse">Glow Pulse</option>
+            </select>
+            <button class="pp-kb-pop-clear" onclick="ppClearShotAnim({{ shot.shot_index }})">Clear animation override</button>
           </div>
         </div>
         {% endfor %}
@@ -399,7 +426,10 @@
           </div>
         </div>
         <div class="pp-ctrl-group">
-          <label class="pp-ctrl-label">Animation</label>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <label class="pp-ctrl-label" style="margin:0;">Animation <span class="pp-ctrl-hint" style="margin:0;">(global)</span></label>
+            <button class="pp-reset-btn" onclick="ppResetAllAnimations()" title="Clear all per-shot animation overrides — apply global to every shot">↺ Reset all shots</button>
+          </div>
           <select class="pp-ctrl-select" id="ctrl-sub-anim" onchange="ppConfigChange(); ppSubPreview()">
             <option value="none">None</option>
             <option value="fade">Fade In / Out</option>
@@ -415,6 +445,7 @@
             <option value="shake">Shake</option>
             <option value="glow-pulse">Glow Pulse</option>
           </select>
+          <p class="pp-ctrl-hint">Right-click any thumbnail to override animation for that shot.</p>
         </div>
         <div class="pp-ctrl-group">
           <label class="pp-ctrl-label">Preview text</label>
@@ -740,6 +771,10 @@ body { overflow-y: auto !important; }
 }
 .pp-nle-pdot-q  { background: #d4ff3a; }
 .pp-nle-pdot-ai { background: #22c55e; }
+.pp-nle-pdot-empty {
+  font-size: 10px; line-height: 1; color: #5a6270;
+  margin-left: 4px; flex-shrink: 0;
+}
 
 /* Buttons */
 .pp-nle-btn {
@@ -1040,14 +1075,20 @@ body { overflow-y: auto !important; }
 .pp-ai-video-wrap { position: absolute; inset: 0; display: none; flex-direction: column; }
 .pp-ai-video { width: 100%; height: 100%; object-fit: contain; background: #000; flex: 1; }
 .pp-ai-overlay { position: absolute; inset: 0; pointer-events: none; }
-.pp-ai-no-video {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 10px;
-  color: #5a6270; padding: 20px; text-align: center;
+.pp-ai-load-wrap {
+  position: absolute; inset: 0;
+  align-items: center; justify-content: center;
 }
-.pp-ai-no-video-icon { font-size: 40px; }
-.pp-ai-no-video p { font-size: 13px; margin: 0; color: #5a6270; }
-.pp-ai-no-video-hint { font-size: 12px !important; color: #3a3f4a !important; }
+.pp-ai-load-area {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: #5a6270; padding: 24px; text-align: center;
+  border: 2px dashed #2a3040; border-radius: 12px;
+  max-width: 380px;
+}
+.pp-ai-load-icon { font-size: 44px; margin-bottom: 4px; }
+.pp-ai-load-title { font-size: 15px; font-weight: 600; color: #cfd6df; margin: 0; }
+.pp-ai-load-hint { font-size: 12px; color: #5a6270; margin: 0; line-height: 1.5; }
 
 /* Playback controls */
 .pp-controls {
@@ -1316,6 +1357,11 @@ body { overflow-y: auto !important; }
   font-size: 10px; color: #ff6b6b; background: none; border: none;
   cursor: pointer; padding: 0; text-decoration: underline;
 }
+.pp-kb-pop-sep {
+  border-top: 1px solid rgba(255,255,255,.1);
+  margin: 8px 0;
+}
+.pp-anim-badge { font-size: 9px; color: #d4ff3a; margin-left: 1px; }
 
 /* ══ FILM STRIP — thumbnail rail ═══════════════════════════════════════ */
 .pp-thumb-strip {
@@ -1376,7 +1422,6 @@ body { overflow-y: auto !important; }
 .pp-ai-mode .pp-ai-only         { display: inline-flex !important; }
 .pp-ai-mode #pp-kb-wrap         { display: none !important; }
 .pp-ai-mode #pp-ai-video-wrap   { display: flex !important; }
-.pp-ai-mode #pp-ai-no-video     { display: flex !important; }
 .pp-ai-mode #pp-thumb-strip     { opacity: .4; pointer-events: none; }
 </style>
 
@@ -1406,6 +1451,7 @@ body { overflow-y: auto !important; }
   const CFG_DEFAULTS = {
     ken_burns_mode: 'zoom-in',
     per_shot_kb: {},
+    per_shot_anim: {},
     transition: 'crossfade',
     transition_duration: 0.8,
     colour_filter: 'original',
@@ -1704,6 +1750,8 @@ body { overflow-y: auto !important; }
 
     // per-shot KB badges
     Object.keys(cfg.per_shot_kb || {}).forEach(idx => ppUpdateKBBadge(parseInt(idx)));
+    // per-shot animation badges
+    Object.keys(cfg.per_shot_anim || {}).forEach(idx => ppUpdateAnimBadge(parseInt(idx)));
     // per-shot durations
     Object.keys(cfg.per_shot_duration || {}).forEach(idx => {
       const badge = document.getElementById('pp-dur-' + idx);
@@ -2373,8 +2421,12 @@ body { overflow-y: auto !important; }
     const pop = document.getElementById('pp-kb-pop-' + idx);
     if (!pop) return;
     pop.style.display = 'block';
-    const sel = pop.querySelector('.pp-kb-pop-select');
-    if (sel) sel.value = cfg.per_shot_kb[idx] || '';
+    // Restore KB select value
+    const kbSel = document.getElementById('pp-kb-sel-' + idx);
+    if (kbSel) kbSel.value = cfg.per_shot_kb[idx] || '';
+    // Restore animation select value
+    const animSel = document.getElementById('pp-anim-sel-' + idx);
+    if (animSel) animSel.value = cfg.per_shot_anim[idx] || '';
     // close on outside click
     setTimeout(() => {
       document.addEventListener('click', function close(e) {
@@ -2401,6 +2453,35 @@ body { overflow-y: auto !important; }
     const badge = document.getElementById('pp-kb-badge-' + idx);
     if (badge) badge.style.display = cfg.per_shot_kb[idx] ? '' : 'none';
   }
+
+  /* ── Per-shot subtitle animation override ───────────────────────────── */
+  window.ppSetShotAnim = function(idx, anim) {
+    if (!cfg.per_shot_anim) cfg.per_shot_anim = {};
+    if (anim) { cfg.per_shot_anim[idx] = anim; }
+    else { delete cfg.per_shot_anim[idx]; }
+    ppUpdateAnimBadge(idx);
+    markDirty(); scheduleAutosave();
+  };
+
+  window.ppClearShotAnim = function(idx) {
+    if (cfg.per_shot_anim) delete cfg.per_shot_anim[idx];
+    ppUpdateAnimBadge(idx);
+    document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+    markDirty(); scheduleAutosave();
+  };
+
+  function ppUpdateAnimBadge(idx) {
+    const badge = document.getElementById('pp-anim-badge-' + idx);
+    if (badge) badge.style.display = (cfg.per_shot_anim || {})[idx] ? '' : 'none';
+  }
+
+  /* Reset all per-shot animation overrides — revert every shot to global */
+  window.ppResetAllAnimations = function() {
+    cfg.per_shot_anim = {};
+    document.querySelectorAll('[id^="pp-anim-badge-"]').forEach(b => b.style.display = 'none');
+    document.querySelectorAll('[id^="pp-anim-sel-"]').forEach(s => { s.value = ''; });
+    markDirty(); scheduleAutosave();
+  };
 
   /* Thumbnail long-press on mobile also opens popover */
   document.querySelectorAll('.pp-thumb-item').forEach(item => {
@@ -2852,6 +2933,35 @@ body { overflow-y: auto !important; }
       }
     } catch (err) {
       alert('Remove error: ' + err.message);
+    }
+  };
+
+  /* ── Load AI video ───────────────────────────────────────────────────── */
+  window.ppLoadAIVideo = async function(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const btn = document.getElementById('btn-ai-upload');
+    if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+    showStatus('Uploading AI video — please wait…');
+    const fd = new FormData();
+    fd.append('video_file', file);
+    try {
+      const res = await fetch(`/project/${PID}/postprod/load_ai_video`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF },
+        body: fd,
+      });
+      const d = await res.json();
+      if (d.ok) {
+        showStatus('Upload complete — reloading…');
+        location.reload();
+      } else {
+        showError(d.error || 'Upload failed');
+        if (btn) { btn.disabled = false; btn.textContent = '↑ Upload Video'; }
+      }
+    } catch (err) {
+      showError('Upload error: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = '↑ Upload Video'; }
     }
   };
 
