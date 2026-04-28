@@ -1058,7 +1058,13 @@ body { overflow-y: auto !important; }
 
 /* Individual panels */
 .pp-panel { display: none; }
-.pp-panel.active { display: block; }
+.pp-panel.active {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px 24px;
+  align-items: start;
+  padding: 16px 20px 22px;
+}
 
 /* Controls inside panel */
 .pp-ctrl-group { margin-bottom: 14px; }
@@ -1195,13 +1201,6 @@ body { overflow-y: auto !important; }
 .pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
 
 /* ══ PANEL CONTENT LAYOUT — multi-column on wide screens ══════════════ */
-.pp-panel {
-  padding: 16px 20px 22px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px 24px;
-  align-items: start;
-}
 /* Groups that need to span all columns */
 .pp-ctrl-group       { margin-bottom: 0; }
 .pp-ctrl-group.pp-full-span { grid-column: 1 / -1; }
