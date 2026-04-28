@@ -4840,8 +4840,14 @@ def kick_pre_compute_shot_prompts(project_id: str) -> None:
 
 
 def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
-    """Seed shot_assets rows with prompts from the styled_timeline so the
-    stills_control page can display editable prompts before generation starts.
+    """Seed shot_assets rows with the Frame-0 still prompt from the styled_timeline.
+
+    Does NOT seed ``motion_prompt`` — that column is the exclusive property of
+    ``_pre_compute_one_shot`` which runs immediately after this call (via
+    ``kick_pre_compute_shot_prompts``).  Keeping ``motion_prompt = NULL`` here lets
+    ``stills_status_json`` use ``motion_prompt IS NULL`` as a reliable
+    ``precompute_pending`` signal so the client polls until all prompts arrive.
+
     Does NOT overwrite rows that are already 'ready' (user-uploaded or previously generated).
     """
     with _db() as conn, conn.cursor() as cur:
@@ -4850,19 +4856,18 @@ def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
             if idx is None:
                 continue
             prompt = (shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000]
-            motion = (shot.get("motion_prompt") or "")[:2000] or None  # safety cap — builder already sizes to model limit
             cur.execute(
                 """
                 INSERT INTO shot_assets (project_id, shot_index, status, prompt, motion_prompt)
-                VALUES (%s, %s, 'pending', %s, %s)
+                VALUES (%s, %s, 'pending', %s, NULL)
                 ON CONFLICT (project_id, shot_index) DO UPDATE
                    SET prompt        = COALESCE(EXCLUDED.prompt, shot_assets.prompt),
-                       motion_prompt = COALESCE(EXCLUDED.motion_prompt, shot_assets.motion_prompt),
+                       motion_prompt = NULL,
                        status        = CASE WHEN shot_assets.status IN ('ready') THEN shot_assets.status
                                             ELSE 'pending' END,
                        updated_at    = NOW()
                 """,
-                (project_id, idx, prompt, motion),
+                (project_id, idx, prompt),
             )
         conn.commit()
 
