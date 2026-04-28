@@ -3962,7 +3962,7 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
             motion_prompt, {"shot_index": shot_index}, raise_errors=True
         )
         if not wan_prompt:
-            return jsonify({"ok": False, "error": "GPT returned an empty response — try again"}), 500
+            return jsonify({"ok": False, "error": "Could not derive a WAN prompt — motion prompt may be empty or unrecognised"}), 500
         with db() as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
@@ -3973,22 +3973,10 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
         return jsonify({"ok": True, "wan_video_prompt": wan_prompt})
     except Exception as exc:
         logging.exception(
-            "stills_rederive_wan_prompt: GPT call failed for project=%s shot=%s",
+            "stills_rederive_wan_prompt: derivation failed for project=%s shot=%s",
             project_id, shot_index,
         )
-        # Surface a human-readable hint for the most common transient failures.
-        exc_str = str(exc)
-        if "insufficient_quota" in exc_str:
-            user_msg = "OpenAI quota exhausted — please top up your OpenAI billing credits"
-        elif "429" in exc_str or "rate" in exc_str.lower():
-            user_msg = "OpenAI rate limit — please wait a moment and try again"
-        elif "401" in exc_str or "auth" in exc_str.lower():
-            user_msg = "OpenAI API key error — contact support"
-        elif "timeout" in exc_str.lower() or "timed out" in exc_str.lower():
-            user_msg = "Request timed out — try again shortly"
-        else:
-            user_msg = "Derivation failed — try again or check server logs"
-        return jsonify({"ok": False, "error": user_msg}), 500
+        return jsonify({"ok": False, "error": f"Derivation failed: {exc}"}), 500
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])

@@ -1154,83 +1154,183 @@ def _store_frame0_prompt(project_id: str, shot_index: int, frame0_prompt: str) -
         )
 
 
+def _parse_motion_prompt_sections(motion_prompt: str) -> dict:
+    """Split a labelled 'Key: value | Key: value' motion prompt into a dict.
+
+    Handles the output format produced by build_video_clip_prompt().
+    Returns an empty dict for unstructured (prose) prompts.
+    """
+    import re as _re
+    sections: dict = {}
+    for part in motion_prompt.split(" | "):
+        part = part.strip()
+        m = _re.match(r'^([A-Za-z][A-Za-z -]{0,20}):\s+(.+)$', part)
+        if m:
+            sections[m.group(1).strip()] = m.group(2).strip()
+    return sections
+
+
 def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
                                      raise_errors: bool = False) -> str:
-    """Call GPT-4.1-mini to build a start-frame-aware WAN 2.6 continuation prompt.
+    """Build a start-frame-aware WAN 2.6 continuation prompt from a motion prompt.
 
     WAN 2.6 receives a still image as the start frame, so the prompt should NOT
     re-describe the scene — only what CHANGES: camera motion, character action,
     lighting continuity, emotional beat, and micro-detail hints (fabric, breath).
+
+    Strategy
+    --------
+    The motion_prompt produced by build_video_clip_prompt() is already structured
+    into labelled sections (Camera / Scene / Lighting / Mood / Avoid / Style /
+    Environment).  We parse those sections and remap them into the WAN format —
+    no API call required.
+
+    For unstructured / legacy prose prompts that don't contain labelled sections,
+    we fall back to a lightweight keyword extraction that still produces a usable
+    WAN prompt without any network call.
 
     Output format (compact, labelled, ≤600 chars):
         Camera: <motion direction> | Action: <character movement> |
         Lighting: <continuity note> | Mood: <emotional progression> |
         Micro-detail: <subtle hints> | Avoid: <negative terms>
 
-    Returns an empty string on any failure — non-fatal by design.
-    Set raise_errors=True when calling from an interactive endpoint so the
-    caller can surface the actual error (e.g. rate-limit) to the user.
+    Returns an empty string only if motion_prompt is blank — non-fatal by design.
+    raise_errors is kept for API compatibility but no longer triggers a network call.
     """
+    import re as _re
+
     if not motion_prompt or not motion_prompt.strip():
         return ""
-    try:
-        import os as _os
-        from openai import OpenAI as _OpenAI  # noqa: PLC0415
 
-        _api_key = _os.getenv("OPENAI_API_KEY")
-        if not _api_key:
-            if raise_errors:
-                raise RuntimeError("OPENAI_API_KEY is not configured")
-            return ""
+    motion_prompt = motion_prompt.strip()
 
-        _client = _OpenAI(api_key=_api_key)
+    # ── 1. Parse structured sections ─────────────────────────────────────────
+    secs = _parse_motion_prompt_sections(motion_prompt)
+    is_structured = bool(secs)
 
-        _system_msg = (
-            "You write compact WAN 2.6 video prompts for image-to-video generation. "
-            "WAN 2.6 receives a still image as the start frame, so the prompt must "
-            "NOT describe the scene — only what CHANGES from the start frame onward. "
-            "Focus on: camera motion, character action, lighting continuity, emotional "
-            "progression, and micro-detail hints (fabric movement, breath, blinking). "
-            "Output ONLY the prompt in this labelled format (no preamble, no markdown):\n"
-            "Camera: <motion> | Action: <movement> | Lighting: <continuity> | "
-            "Mood: <progression> | Micro-detail: <subtle hints> | Avoid: <negatives>\n"
-            "Keep the total output under 600 characters."
+    wan_parts: list = []
+
+    if is_structured:
+        # Camera: strip quality/resolution tail clauses, keep motion direction
+        camera_raw = secs.get("Camera", "")
+        camera = _re.split(
+            r',?\s*(cinematic quality|high[- ]quality|4K|8K|ultra[- ]sharp|crystal clear)',
+            camera_raw, flags=_re.I
+        )[0].strip().rstrip(",").strip()
+        if camera:
+            wan_parts.append(f"Camera: {camera}")
+
+        # Action: take the event/action portion of Scene (after the subject)
+        scene_raw = secs.get("Scene", "")
+        if scene_raw:
+            # Scene typically: "Subject name, doing something"
+            scene_clauses = [c.strip() for c in scene_raw.split(",") if c.strip()]
+            if len(scene_clauses) >= 2:
+                action = ", ".join(scene_clauses[1:])
+            else:
+                action = scene_clauses[0] if scene_clauses else ""
+            if action:
+                wan_parts.append(f"Action: {action}")
+
+        # Lighting: mark as a continuation note unless already framed that way
+        lighting_raw = secs.get("Lighting", "")
+        if lighting_raw:
+            low = lighting_raw.lower()
+            if "continu" not in low and "matches" not in low and "unchanged" not in low:
+                lighting = f"continues from still — {lighting_raw}"
+            else:
+                lighting = lighting_raw
+            wan_parts.append(f"Lighting: {lighting}")
+
+        # Mood: first clean clause only (keep it short)
+        mood_raw = secs.get("Mood", "")
+        if mood_raw:
+            mood = mood_raw.split(",")[0].strip()
+            wan_parts.append(f"Mood: {mood}")
+
+        # Micro-detail: synthesise from Style or Scene subject
+        micro = ""
+        style_raw = secs.get("Style", "")
+        if style_raw:
+            micro = style_raw.split(",")[0].strip()[:70]
+        if not micro and scene_raw:
+            subject = scene_raw.split(",")[0].strip()
+            if subject:
+                micro = f"subtle breath and fabric movement on {subject}"
+        if micro:
+            wan_parts.append(f"Micro-detail: {micro}")
+
+        # Avoid: pass through verbatim
+        avoid_raw = secs.get("Avoid", "")
+        if avoid_raw:
+            wan_parts.append(f"Avoid: {avoid_raw}")
+
+    else:
+        # ── 2. Prose / legacy fallback — keyword extraction ──────────────────
+        # Extract camera motion keywords
+        cam_match = _re.search(
+            r'\b(pan(?:ning)?(?:\s+(?:left|right|up|down))?'
+            r'|tilt(?:ing)?(?:\s+(?:up|down))?'
+            r'|zoom(?:ing)?(?:\s+(?:in|out))?'
+            r'|dolly(?:ing)?(?:\s+(?:in|out|forward|back(?:ward)?))?'
+            r'|track(?:ing)?(?:\s+(?:left|right|in|out))?'
+            r'|crane(?:\s+up)?'
+            r'|handheld|static shot|slow push|push in|pull back'
+            r'|aerial|drone shot'
+            r'|360[°\s]?(?:rotation)?)',
+            motion_prompt, flags=_re.I
         )
-        _user_msg = (
-            f"Given this full motion prompt for the shot:\n\n"
-            f"{motion_prompt.strip()}\n\n"
-            "Write a WAN 2.6 start-frame continuation prompt for this shot."
-        )
+        if cam_match:
+            wan_parts.append(f"Camera: {cam_match.group(0).strip()}")
 
-        _resp = _client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": _system_msg},
-                {"role": "user",   "content": _user_msg},
-            ],
-            temperature=0.3,
-            max_tokens=200,
+        # Action: first sentence or first 80 chars
+        first_sent = motion_prompt.split(".")[0].strip()
+        action_text = first_sent[:80] if first_sent else motion_prompt[:80]
+        if action_text:
+            wan_parts.append(f"Action: {action_text}")
+
+        # Lighting: extract if present
+        light_match = _re.search(
+            r'(?:(?:warm|cool|soft|harsh|golden|dim|bright|neon|diffused|dramatic)'
+            r'\s+)?(?:light(?:ing)?|glow|backlight|rim light|shadow)',
+            motion_prompt, flags=_re.I
         )
-        _derived = (_resp.choices[0].message.content or "").strip()
-        if _derived:
-            # Enforce hard cap to match MOTION_PROMPT_MAX_CHARS in video_generator.py
-            _derived = _derived[:600]
-            logger.info(
-                "_derive_wan_continuation_prompt: GPT-4.1-mini derived %d-char "
-                "WAN prompt for shot=%s: %s…",
-                len(_derived),
-                shot.get("shot_index") or shot.get("timeline_index"),
-                _derived[:80],
+        if light_match:
+            ctx_start = max(0, light_match.start() - 10)
+            ctx_end = min(len(motion_prompt), light_match.end() + 30)
+            wan_parts.append(
+                f"Lighting: continues from still — "
+                f"{motion_prompt[ctx_start:ctx_end].strip().rstrip(',.')}"
             )
-        return _derived
-    except Exception:
-        logger.debug(
-            "_derive_wan_continuation_prompt: GPT call failed (non-fatal)",
-            exc_info=True,
+
+        # Mood: look for emotion words
+        mood_match = _re.search(
+            r'\b(joyful|melancholic|tense|serene|dramatic|romantic|euphoric'
+            r'|sorrowful|triumphant|intimate|longing|nostalgic|intense)\b',
+            motion_prompt, flags=_re.I
         )
-        if raise_errors:
-            raise
-        return ""
+        if mood_match:
+            wan_parts.append(f"Mood: {mood_match.group(0).lower()} atmosphere builds")
+
+        wan_parts.append("Micro-detail: subtle breath and natural fabric movement")
+
+        # Avoid: look for explicit avoid / negative section
+        avoid_match = _re.search(r'(?i)\bAvoid\s*:\s*(.+?)(?:\||$)', motion_prompt)
+        if avoid_match:
+            wan_parts.append(f"Avoid: {avoid_match.group(1).strip()}")
+
+    # ── 3. Assemble, hard-cap, log ────────────────────────────────────────────
+    result = " | ".join(wan_parts)[:600]
+    if result:
+        logger.info(
+            "_derive_wan_continuation_prompt: derived %d-char WAN prompt "
+            "(structured=%s) for shot=%s: %s…",
+            len(result),
+            is_structured,
+            shot.get("shot_index") or shot.get("timeline_index"),
+            result[:80],
+        )
+    return result
 
 
 def _get_shot_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
