@@ -2189,7 +2189,7 @@ def _generate_ai_wan_prompt(frame0_prompt: str, motion_prompt: str,
 def generate_ai_wan_prompts_for_project(project_id: str) -> dict:
     """Generate AI WAN prompts for all shots in a project using Gemini.
 
-    Runs generations in parallel (ThreadPoolExecutor, max 5 workers), stores
+    Runs generations in parallel (ThreadPoolExecutor, max 10 workers), stores
     results in ``ai_wan_video_prompt`` column.
 
     Returns::
