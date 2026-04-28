@@ -4147,6 +4147,58 @@ def stills_generate_ai_wan_prompts(project_id: str):
     )
 
 
+@app.route(
+    "/project/<project_id>/stills/generate-ai-wan-prompt/<int:shot_index>",
+    methods=["POST"],
+)
+@login_required
+def stills_generate_ai_wan_prompt_single(project_id: str, shot_index: int):
+    """Regenerate the AI WAN prose prompt for a single shot using Gemini.
+
+    Reads the shot's ``prompt`` (Frame 0 description) and ``motion_prompt``
+    from the database, calls Gemini via ``_generate_ai_wan_prompt()``, writes
+    the result back to ``ai_wan_video_prompt``, and returns it.
+
+    Returns JSON:
+        {"ok": true,  "ai_wan_video_prompt": "..."}
+        {"ok": false, "error": "..."}
+    """
+    _stills_control_guard(project_id)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT motion_prompt, prompt FROM shot_assets"
+            " WHERE project_id=%s AND shot_index=%s",
+            (project_id, shot_index),
+        )
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "Shot not found"}), 404
+    motion_prompt = (row.get("motion_prompt") or "").strip()
+    if not motion_prompt:
+        return jsonify({"ok": False, "error": "No motion prompt — cannot generate AI WAN prompt"}), 400
+    frame0_prompt = (row.get("prompt") or "").strip()
+    try:
+        from pipeline_worker import _generate_ai_wan_prompt  # noqa: PLC0415
+        ai_prompt = _generate_ai_wan_prompt(frame0_prompt, motion_prompt, shot_index)
+        if not ai_prompt:
+            return jsonify({"ok": False, "error": "Gemini returned an empty prompt"}), 500
+        stored = ai_prompt[:2000]
+        with db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE shot_assets SET ai_wan_video_prompt=%s, updated_at=NOW()"
+                " WHERE project_id=%s AND shot_index=%s",
+                (stored, project_id, shot_index),
+            )
+            conn.commit()
+        return jsonify({"ok": True, "ai_wan_video_prompt": stored})
+    except Exception as exc:
+        logging.exception(
+            "stills_generate_ai_wan_prompt_single: failed for project=%s shot=%s",
+            project_id, shot_index,
+        )
+        return jsonify({"ok": False, "error": f"Generation failed: {exc}"}), 500
+
+
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
 @login_required
 def stills_upload_one(project_id: str, shot_index: int):

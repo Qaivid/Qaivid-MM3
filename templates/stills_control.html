@@ -946,6 +946,12 @@
                     style="border-color:#9060d8;color:#c8a0ff;">
               Save only
             </button>
+            <button class="sc-save-btn" id="sc-ai-wan-regen-btn-${idx}"
+                    onclick="scRegenerateAiWanPrompt(${idx})"
+                    style="border-color:#9060d8;color:#c8a0ff;">
+              ↻ Regenerate AI Prompt
+            </button>
+            <span id="sc-ai-wan-regen-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">⏳ Generating…</span>
             <span id="sc-ai-wan-saved-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">✓ Saved</span>
           </div>
         </div>
@@ -1575,6 +1581,35 @@
     } catch(e) {
       alert('Network error saving AI WAN prompt');
     }
+  };
+
+  /* ── Regenerate AI WAN prose prompt for a single shot ── */
+  window.scRegenerateAiWanPrompt = async function(idx) {
+    const btn  = document.getElementById('sc-ai-wan-regen-btn-' + idx);
+    const spin = document.getElementById('sc-ai-wan-regen-' + idx);
+    if (btn)  { btn.disabled = true; }
+    if (spin) { spin.style.display = ''; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/generate-ai-wan-prompt/' + idx, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const wp = data.ai_wan_video_prompt;
+        if (shotData[idx]) shotData[idx].aiWanVideoPrompt = wp;
+        aiWanPromptDirty[idx] = false;
+        const ta = document.getElementById('sc-ai-wan-prompt-' + idx);
+        if (ta) ta.value = wp;
+      } else {
+        alert('Regeneration failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch(e) {
+      alert('Network error regenerating AI WAN prompt');
+    }
+    if (btn)  { btn.disabled = false; }
+    if (spin) { spin.style.display = 'none'; }
   };
 
   /* ── Generate AI WAN prose prompts for all shots (NDJSON stream) ── */
