@@ -196,6 +196,10 @@
             <span class="sc-strip-num-badge">{{ shot.shot_index }}</span>
             <!-- Status badge -->
             <span class="sc-strip-status-badge sc-strip-status-badge--{{ shot.status }}">{{ shot.status }}</span>
+            <!-- WAN render-source badge -->
+            <span class="sc-strip-wan-badge{% if shot.render_wan_source in ('ai','deterministic') %} sc-strip-wan-badge--{{ shot.render_wan_source }}{% endif %}"
+                  id="sc-strip-wan-badge-{{ shot.shot_index }}"
+                  {% if shot.render_wan_source not in ('ai','deterministic') %}style="display:none"{% endif %}>{{ 'AI' if shot.render_wan_source == 'ai' else ('Det' if shot.render_wan_source == 'deterministic' else '') }}</span>
           </div>
 
         </div>
@@ -480,6 +484,10 @@
 }
 .sc-wan-render-badge--ai  { background: rgba(122,68,192,.85); color: #e0c8ff; border: 1px solid rgba(180,120,255,.4); }
 .sc-wan-render-badge--deterministic { background: rgba(20,20,40,.8); color: #8899cc; border: 1px solid rgba(100,120,180,.3); }
+/* Filmstrip thumbnail WAN source badge */
+.sc-strip-wan-badge { position: absolute; bottom: 4px; right: 4px; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: .06em; pointer-events: none; line-height: 1.4; }
+.sc-strip-wan-badge--ai { background: rgba(122,68,192,.85); color: #e0c8ff; border: 1px solid rgba(180,120,255,.4); }
+.sc-strip-wan-badge--deterministic { background: rgba(20,20,40,.8); color: #8899cc; border: 1px solid rgba(100,120,180,.3); }
 .sc-det-img-ph {
   width: 100%; aspect-ratio: 16/9;
   display: flex; align-items: center; justify-content: center;
@@ -1213,11 +1221,18 @@
             const newSrc = (['ai','deterministic'].includes(shot.render_wan_source || '')) ? shot.render_wan_source : '';
             if (newSrc !== (sd.renderWanSource || '')) {
               sd.renderWanSource = newSrc;
+              const label = newSrc === 'ai' ? 'AI' : newSrc === 'deterministic' ? 'Det' : '';
               const badgeEl = document.getElementById('sc-wan-badge-' + shot.shot_index);
               if (badgeEl) {
                 badgeEl.className = 'sc-wan-render-badge' + (newSrc ? ' sc-wan-render-badge--' + newSrc : '');
                 badgeEl.style.display = newSrc ? '' : 'none';
-                badgeEl.textContent = newSrc === 'ai' ? 'AI' : newSrc === 'deterministic' ? 'Det' : '';
+                badgeEl.textContent = label;
+              }
+              const stripBadgeEl = document.getElementById('sc-strip-wan-badge-' + shot.shot_index);
+              if (stripBadgeEl) {
+                stripBadgeEl.className = 'sc-strip-wan-badge' + (newSrc ? ' sc-strip-wan-badge--' + newSrc : '');
+                stripBadgeEl.style.display = newSrc ? '' : 'none';
+                stripBadgeEl.textContent = label;
               }
             }
           }
