@@ -134,6 +134,15 @@
             <span class="sc-strip-wan-badge{% if shot.render_wan_source in ('ai','deterministic') %} sc-strip-wan-badge--{{ shot.render_wan_source }}{% endif %}"
                   id="sc-strip-wan-badge-{{ shot.shot_index }}"
                   {% if shot.render_wan_source not in ('ai','deterministic') %}style="display:none"{% endif %}>{{ 'AI' if shot.render_wan_source == 'ai' else ('Det' if shot.render_wan_source == 'deterministic' else '') }}</span>
+            <!-- Per-shot regenerate button (overlay, bottom-right) -->
+            <button type="button"
+                    class="sc-strip-regen-btn"
+                    id="sc-strip-regen-{{ shot.shot_index }}"
+                    title="Regenerate this shot only"
+                    onclick="event.stopPropagation(); scStripRegen({{ shot.shot_index }}, this);"
+                    {% if shot.status in ('rendering','queued') %}disabled{% endif %}>
+              {% if shot.status in ('rendering','queued') %}⏳{% elif shot.url or shot.status == 'ready' %}↺{% else %}▶{% endif %}
+            </button>
           </div>
         </div>
         {% endfor %}
@@ -277,6 +286,35 @@
 .sc-strip-status-badge--failed    { background: rgba(255,107,107,.2); color: #ff6b6b; }
 .sc-strip-status-badge--rendering { background: rgba(200,241,53,.15); color: #c8f135; }
 .sc-strip-status-badge--pending   { background: rgba(80,80,120,.25);  color: #8899bb; }
+
+/* Per-shot regenerate button — overlay bottom-right of each thumb */
+.sc-strip-regen-btn {
+  position: absolute;
+  bottom: 5px; right: 5px;
+  width: 26px; height: 26px;
+  background: rgba(0,0,0,.78);
+  color: #c8f135;
+  border: 1px solid rgba(200,241,53,.45);
+  border-radius: 50%;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  padding: 0; line-height: 1;
+  transition: background .15s, transform .15s, border-color .15s;
+  z-index: 5;
+}
+.sc-strip-regen-btn:hover:not(:disabled) {
+  background: #c8f135;
+  color: #1a1a2e;
+  border-color: #c8f135;
+  transform: scale(1.12);
+}
+.sc-strip-regen-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  color: #8899bb;
+  border-color: rgba(136,153,187,.3);
+}
 
 .sc-gen-overlay {
   position: absolute; inset: 0; background: rgba(0,0,0,.6);
@@ -756,6 +794,15 @@
   }
 
   /* ── Generate one shot ── */
+  /* ── Per-thumbnail regenerate button (lets you test one shot at a time) ── */
+  window.scStripRegen = function(idx, btn) {
+    const st = (shotState[idx] && shotState[idx].status) || '';
+    if (st === 'rendering' || st === 'queued') return;
+    // Always show the confirm modal so an accidental click doesn't burn credits.
+    if (typeof scModalOpen === 'function') { scModalOpen(idx); return; }
+    if (typeof window.scGenOne === 'function') { window.scGenOne(idx, true); }
+  };
+
   window.scGenOne = function(idx, isRegen) {
     if (isRegen) { scModalOpen(idx); return; }
     _doGenOne(idx);
