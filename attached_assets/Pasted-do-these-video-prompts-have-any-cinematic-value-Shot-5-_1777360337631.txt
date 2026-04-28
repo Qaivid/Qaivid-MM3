@@ -1,0 +1,89 @@
+do these video prompts have any cinematic value Shot 5 Action: Apply a warm colour grade that enhances the emotional depth, with a slight vigne | Lighting: continues from still — , with a slight vignette to draw focus on the | Mood: nostalgic atmosphere builds | Micro-detail: subtle breath and natural fabric movement | Avoid: urban settings, fast cuts, dark themes, overly modern clothing, natural cinematic motion, realistic timing, no abrupt transitions, filmic quality Shot 6 Action: Apply a warm colour grade that enhances the emotional depth, with a slight vigne | Lighting: continues from still — , with a slight vignette to draw focus on the | Mood: nostalgic atmosphere builds | Micro-detail: subtle breath and natural fabric movement | Avoid: urban settings, fast cuts, dark themes, overly modern clothing, natural cinematic motion, realistic timing, no abrupt transitions, filmic quality Shot7 Action: Apply a warm colour grade that enhances the emotional depth, with a slight vigne | Lighting: continues from still — , with a slight vignette to draw focus on the | Mood: nostalgic atmosphere builds | Micro-detail: subtle breath and natural fabric movement | Avoid: urban settings, fast cuts, dark themes, overly modern clothing, natural cinematic motion, realistic timing, no abrupt transitions, filmic quality
+
+Short answer: No — not really. They sound cinematic, but they don’t actually behave like cinema.
+Let me explain properly, because this is exactly where most AI video systems fail (and where your Qaivid vision is actually right).
+
+🔴 What’s wrong with these prompts
+1. ❌ They are not shots — they are filters
+You’ve written:
+* “Apply warm colour grade”
+* “slight vignette”
+* “nostalgic mood”
+These are post-processing instructions, not cinematic shot direction.
+👉 A real shot answers:
+* What is happening?
+* Who is in frame?
+* What is the camera doing?
+* What is the emotional beat?
+Right now, your “Action” is not an action at all.
+
+2. ❌ All shots are identical → zero progression
+Shot 5, 6, 7 = same:
+* Same mood
+* Same lighting
+* Same micro-detail
+* Same instructions
+👉 Cinema is change over time Right now this is just:
+“Hold the same vibe for 3 shots”
+That kills narrative energy.
+
+3. ❌ No subject, no intention, no framing
+There is:
+* No character
+* No physical action
+* No framing (close-up? wide? profile?)
+* No camera logic (push, pull, static, handheld?)
+👉 Without this, the model will hallucinate randomly.
+
+4. ❌ “Avoid” section is overloaded and confused
+You wrote:
+* avoid fast cuts
+* avoid dark themes
+* avoid urban settings
+* natural cinematic motion (this is not even an “avoid”)
+👉 This creates conflicting constraints Models either ignore it or produce safe, boring output.
+
+5. ❌ No emotional beat change
+All shots say:
+“nostalgic atmosphere builds”
+But:
+* builds how?
+* what changes between 5 → 6 → 7?
+👉 Cinema = emotional progression per shot
+
+🟢 What cinematic prompts actually look like
+Here’s how your same idea should be written properly:
+
+✅ Shot 5 (Establish internal state)
+Action: Woman stands still, looking toward distant horizon, eyes slightly unfocused as if lost in memory Framing: medium 3/4 body, subject slightly off-center Camera: slow subtle push-in (almost imperceptible) Lighting: soft early morning light from side, gentle highlights on face Mood: quiet emotional heaviness, controlled stillness Micro-detail: fabric moves slightly in breeze, slow breath visible
+
+✅ Shot 6 (Internal shift)
+Action: Her gaze drops slightly, eyelids soften as emotion deepens Framing: tighter — chest to head Camera: static hold (no movement now) Lighting: same light but slightly warmer tones emerging Mood: nostalgia turning into personal ache Micro-detail: slight lip tension, micro eye movement
+
+✅ Shot 7 (Emotional peak hint)
+Action: She blinks slowly, almost holding back emotion Framing: close-up on face Camera: very slow push-in resumes Lighting: warm glow increases subtly on skin tones Mood: emotional threshold — not breaking, but close Micro-detail: moisture in eyes, breath slightly heavier
+
+🔥 The real issue (important for Qaivid)
+What you wrote is style-layer prompting What you need is intent-layer prompting
+You’re currently doing:
+“Make it look cinematic”
+But cinema is:
+“What is happening, and how does the camera reveal it over time”
+
+🧠 Key Rule (this is gold for your system)
+One shot = one emotional micro-change + one visual priority
+Right now:
+* ❌ You have zero micro-change
+* ❌ Multiple vague visual ideas
+* ❌ No subject focus
+
+🟢 Final Verdict
+Your prompts have:
+* ✅ aesthetic awareness
+* ✅ tonal consistency
+But they lack:
+* ❌ cinematic grammar
+* ❌ progression
+* ❌ subject-driven storytelling
+* ❌ camera logic
+👉 So they are “cinematic-sounding” but not cinematic

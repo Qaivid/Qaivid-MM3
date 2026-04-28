@@ -1186,13 +1186,15 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
 
     Source priority for each section:
       Frame anchor  → styled_visual_prompt / visual_prompt (the image prompt = Frame 0)
-      Story beat    → chosen_direction / action / shot_event (what happens in this shot)
-      Camera        → Camera section of motion_prompt, stripped of quality noise,
-                      linked to the story beat for cinematic purpose
+      Story beat    → chosen_direction / action / shot_event — but ONLY if it
+                      is a real character action, not a post-processing instruction
+      Camera        → Camera section of motion_prompt, stripped of quality noise;
+                      falls back to emotion-driven motion when section is absent
       Emotional arc → emotional_micro_state → emotional_shift (progression through clip)
-      Lighting      → Lighting section, framed as continuation from the still
-      Micro-detail  → key_elements, environment, subject-level physical hints
-      Avoid         → Avoid section pass-through
+      Lighting      → Lighting section, validated as real lighting (not a fragment),
+                      framed as continuation from the still
+      Micro-detail  → key_elements, frame0 fabric/jewellery scan, breath/blink anchor
+      Avoid         → Avoid section with quality-clause terms purged
 
     Output format (labelled, ≤600 chars):
         Camera: <motion with cinematic purpose> | Action: <story beat> |
@@ -1203,10 +1205,25 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
     """
     import re as _re
 
-    if not motion_prompt or not motion_prompt.strip():
-        return ""
+    # ── Quality / technical terms that belong in Camera, never in Avoid ───────
+    _QUALITY_TERMS = (
+        "natural cinematic motion", "cinematic quality", "high-quality",
+        "high quality", "no abrupt transitions", "filmic quality",
+        "realistic timing", "4k", "8k", "ultra sharp", "crystal clear",
+    )
 
-    motion_prompt = motion_prompt.strip()
+    # ── Post-processing / colour-grade instruction prefixes ───────────────────
+    # These leak into chosen_direction when the timeline brain mixes production
+    # notes with story beats. Detect and skip them — they are not character actions.
+    _POSTPROCESS_RE = _re.compile(
+        r'^(?:apply|add|use|include|create|render|give|maintain|ensure|keep|make)\b'
+        r'.{0,30}\b(?:colour|color|grade|grading|vignette|filter|tone|warm|lut'
+        r'|saturation|treatment|palette|tonal|look|colouris|coloris)',
+        _re.I,
+    )
+
+    def _is_postprocess(text: str) -> bool:
+        return bool(_POSTPROCESS_RE.search(text.strip()[:120]))
 
     def _clean(text: str, max_chars: int = 999) -> str:
         return text.strip().rstrip(".,; ").strip()[:max_chars]
@@ -1227,26 +1244,85 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
                 return str(v).strip()
         return ""
 
+    def _camera_from_emotion(emotion: str, intensity: str) -> str:
+        """Map emotional state + intensity to a cinematically appropriate camera move."""
+        e = emotion.lower()
+        i = (intensity or "medium").lower()
+        high = any(w in i for w in ("high", "intense", "strong", "peak"))
+        low  = any(w in i for w in ("low", "gentle", "soft", "calm", "quiet"))
+        if any(w in e for w in ("joy", "triumph", "elat", "euphori")):
+            return "slow tilt up" if not high else "crane up, widening"
+        if any(w in e for w in ("grief", "sorrow", "despair", "bereavem")):
+            return "very slow push in, tightening on face"
+        if any(w in e for w in ("long", "yearn", "ache", "miss")):
+            return "slow push in — holding on the gaze"
+        if any(w in e for w in ("nostalg", "reminisce", "memory")):
+            return "slow drift right, gentle push in"
+        if any(w in e for w in ("tense", "anxious", "fear", "dread")):
+            return "slight handheld drift, slow push in" if not low else "static hold"
+        if any(w in e for w in ("romantic", "intimate", "tender", "love")):
+            return "slow push in, shallow depth of field softens background"
+        if any(w in e for w in ("serene", "peace", "calm", "content")):
+            return "slow pan right, static drift"
+        if any(w in e for w in ("suppress", "restrain", "hold", "quiet")):
+            return "static hold — camera breathes with subject"
+        # default
+        return "slow push in" if not low else "slow drift, static hold"
+
+    def _action_from_emotion(emotion: str, subject: str) -> str:
+        """Generate a plausible character action from emotional state."""
+        e = emotion.lower()
+        s = (subject + " — ") if subject else ""
+        if any(w in e for w in ("joy", "triumph", "elat")):
+            return f"{s}face lifts, a smile breaking through"
+        if any(w in e for w in ("grief", "sorrow", "despair")):
+            return f"{s}stands still, eyes glistening, a single breath drawn deep"
+        if any(w in e for w in ("long", "yearn", "ache")):
+            return f"{s}eyes drift toward the distance, hands still"
+        if any(w in e for w in ("nostalg", "reminisce", "memory")):
+            return f"{s}gaze softens, lost in the moment, body barely moving"
+        if any(w in e for w in ("romantic", "intimate", "tender")):
+            return f"{s}turns slightly, expression opening, a quiet breath"
+        if any(w in e for w in ("suppress", "restrain", "hold")):
+            return f"{s}holds composure, small tremor in the lip, eyes steady"
+        if any(w in e for w in ("tense", "anxious")):
+            return f"{s}slight shift of weight, fingers curl, gaze flickers"
+        return f"{s}remains still, emotion carried in the eyes and breath"
+
+    if not motion_prompt or not motion_prompt.strip():
+        return ""
+
+    motion_prompt = motion_prompt.strip()
+
     # ── 1. Parse structured motion_prompt sections ────────────────────────────
     secs = _parse_motion_prompt_sections(motion_prompt)
     is_structured = bool(secs)
 
     wan_parts: list = []
 
-    # ── 2. Frame 0 anchor (visual_prompt = the image generation prompt = what
-    #        the still actually shows) — used to enrich Camera and Action ────
+    # ── 2. Frame 0 anchor ─────────────────────────────────────────────────────
     frame0_desc = _pick_shot("styled_visual_prompt", "visual_prompt")
-    # Take first sentence / first 100 chars — just the establishing detail
     frame0_anchor = _first_clause(frame0_desc, 100) if frame0_desc else ""
 
-    # ── 3. Story beat — the narrative action for this specific shot ───────────
-    story_beat = _clean(_pick_shot(
-        "chosen_direction", "_v2_chosen_direction", "action", "shot_event"
-    ), 120)
+    # ── 3. Subject ────────────────────────────────────────────────────────────
+    subject = _clean(_pick_shot("subject", "character_name", "identity_seed"), 40)
 
-    # ── 4. CAMERA — motion mode + cinematic purpose ───────────────────────────
+    # ── 4. Emotional state ───────────────────────────────────────────────────
+    emotion_start = _clean(_pick_shot("emotional_micro_state", "emotional_state", "emotional_tone"), 50)
+    emotion_end   = _clean(_pick_shot("emotional_shift"), 50)
+    intensity_raw = _pick_shot("emotional_intensity", "intensity", "audio_intensity") or "medium"
+
+    # ── 5. Story beat — skip if it's a colour-grade / post-processing instruction
+    story_beat = ""
+    for _skey in ("chosen_direction", "_v2_chosen_direction", "action", "shot_event"):
+        _sv = (shot.get(_skey) or "").strip()
+        if _sv and not _is_postprocess(_sv):
+            story_beat = _clean(_sv, 120)
+            break
+
+    # ── 6. CAMERA ─────────────────────────────────────────────────────────────
     camera_raw = secs.get("Camera", "") if is_structured else ""
-    # Strip generic quality tail clauses so only the motion direction remains
+    # Strip quality/technical tail clauses — keep only the motion direction
     camera_motion = _re.split(
         r',?\s*(natural cinematic motion|cinematic quality|high[- ]quality'
         r'|4K|8K|ultra[- ]sharp|crystal clear|no abrupt transitions|filmic quality'
@@ -1254,8 +1330,8 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
         camera_raw, flags=_re.I
     )[0].strip().rstrip(",").strip()
 
-    if not camera_motion and not is_structured:
-        # Prose/legacy: scan for camera motion keyword
+    # Also scan unstructured text for explicit camera keywords
+    if not camera_motion:
         cam_match = _re.search(
             r'\b(pan(?:ning)?(?:\s+(?:left|right|up|down))?'
             r'|tilt(?:ing)?(?:\s+(?:up|down))?'
@@ -1263,54 +1339,65 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             r'|dolly(?:ing)?(?:\s+(?:in|out|forward|back(?:wards?)?))?'
             r'|track(?:ing)?(?:\s+(?:left|right|in|out))?'
             r'|crane(?:\s+up)?'
-            r'|handheld|static shot|slow push|push in|pull back'
+            r'|handheld|slow push|push in|pull back'
             r'|aerial|drone shot)',
             motion_prompt, flags=_re.I
         )
         if cam_match:
             camera_motion = cam_match.group(0).strip()
 
+    # Fall back to emotion-driven camera when motion_prompt has no Camera section
+    if not camera_motion:
+        camera_motion = _camera_from_emotion(emotion_start or "nostalgic", intensity_raw)
+
     # Link camera motion to the story beat for cinematic purpose
-    # Trim story beat to a natural word boundary (≤60 chars) for the camera clause
     if camera_motion and story_beat:
-        _sb_snippet = story_beat[:60].rsplit(" ", 1)[0] if len(story_beat) > 60 else story_beat
+        _sb_snippet = story_beat[:55].rsplit(" ", 1)[0] if len(story_beat) > 55 else story_beat
         cam_text = f"{camera_motion} — {_sb_snippet}"
-    elif camera_motion:
-        cam_text = camera_motion
-    elif story_beat:
-        cam_text = f"static hold — {story_beat[:80]}"
     else:
-        cam_text = ""
+        cam_text = camera_motion
 
     if cam_text:
         wan_parts.append(f"Camera: {_clean(cam_text, 130)}")
 
-    # ── 5. ACTION — story beat as the primary narrative driver ────────────────
+    # ── 7. ACTION ─────────────────────────────────────────────────────────────
     if story_beat:
-        # Prefix with subject name if we have one, for specificity
-        subject = _clean(_pick_shot("subject", "character_name", "identity_seed"), 40)
         if subject and not story_beat.lower().startswith(subject.lower()):
             action_text = f"{subject} — {story_beat}"
         else:
             action_text = story_beat
         wan_parts.append(f"Action: {_clean(action_text, 130)}")
+    elif emotion_start:
+        # Generate a plausible action from the emotional state
+        wan_parts.append(f"Action: {_clean(_action_from_emotion(emotion_start, subject), 130)}")
     elif is_structured:
-        # Fallback: action part of Scene section
         scene_raw = secs.get("Scene", "")
         if scene_raw:
             clauses = [c.strip() for c in scene_raw.split(",") if c.strip()]
-            action_text = ", ".join(clauses[1:]) if len(clauses) >= 2 else clauses[0] if clauses else ""
+            # Skip clause if it looks like a post-processing instruction
+            valid_clauses = [c for c in clauses[1:] if not _is_postprocess(c)]
+            action_text = ", ".join(valid_clauses) if valid_clauses else (
+                clauses[0] if clauses and not _is_postprocess(clauses[0]) else ""
+            )
             if action_text:
                 wan_parts.append(f"Action: {_clean(action_text, 130)}")
 
-    # ── 6. LIGHTING — continuation note ──────────────────────────────────────
-    lighting_raw = (secs.get("Lighting", "") if is_structured
-                    else _re.search(
-                        r'(?:(?:warm|cool|soft|harsh|golden|dim|bright|neon|diffused|dramatic)'
-                        r'\s+)?(?:light(?:ing)?|glow|backlight|rim light|shadow)',
-                        motion_prompt, _re.I
-                    ) and motion_prompt)
-    if isinstance(lighting_raw, str) and lighting_raw.strip():
+    # ── 8. LIGHTING ───────────────────────────────────────────────────────────
+    lighting_raw = secs.get("Lighting", "") if is_structured else ""
+    if not lighting_raw:
+        # Scan unstructured text for a lighting phrase
+        lm = _re.search(
+            r'(?:(?:warm|cool|soft|harsh|golden|dim|bright|neon|diffused|dramatic)'
+            r'\s+)?(?:light(?:ing)?|glow|backlight|rim light|shadow)',
+            motion_prompt, _re.I
+        )
+        if lm:
+            ctx = motion_prompt[max(0, lm.start()-8):min(len(motion_prompt), lm.end()+30)]
+            lighting_raw = ctx.strip()
+
+    # Validate: must start with a real word (not comma/fragment) and be ≥15 chars
+    lighting_raw = lighting_raw.lstrip(",; ").strip()
+    if lighting_raw and len(lighting_raw) >= 15:
         low = lighting_raw.lower()
         if "continu" not in low and "matches" not in low and "unchanged" not in low:
             lighting = f"holds from still — {_first_clause(lighting_raw, 80)}"
@@ -1318,71 +1405,67 @@ def _derive_wan_continuation_prompt(motion_prompt: str, shot: dict,
             lighting = _clean(lighting_raw, 90)
         wan_parts.append(f"Lighting: {lighting}")
 
-    # ── 7. MOOD — emotional arc through the clip (start → end) ───────────────
-    emotion_start = _clean(_pick_shot("emotional_micro_state", "emotional_state", "emotional_tone"), 50)
-    emotion_end = _clean(_pick_shot("emotional_shift"), 50)
-    atmosphere = _first_clause(_pick_shot("atmosphere_profile", "meaning"), 70)
-
+    # ── 9. MOOD ───────────────────────────────────────────────────────────────
     if emotion_start and emotion_end and emotion_start.lower() != emotion_end.lower():
         mood_text = f"{emotion_start} → {emotion_end}"
     elif emotion_start:
+        atmosphere = _first_clause(_pick_shot("atmosphere_profile", "meaning"), 60)
         mood_text = f"{emotion_start}{(', ' + atmosphere) if atmosphere else ''}"
-    elif is_structured:
-        mood_raw = secs.get("Mood", "")
-        mood_text = _first_clause(mood_raw, 80) if mood_raw else ""
     else:
-        mood_text = ""
+        mood_raw = secs.get("Mood", "") if is_structured else ""
+        mood_text = _first_clause(mood_raw, 80) if mood_raw else ""
 
     if mood_text:
         wan_parts.append(f"Mood: {_clean(mood_text, 100)}")
 
-    # ── 8. MICRO-DETAIL — specific physical motion grounded in the scene ──────
+    # ── 10. MICRO-DETAIL ─────────────────────────────────────────────────────
     micro_parts: list = []
-
-    # Key visual elements from shot dict — these are physical things in the scene
     key_elems = shot.get("key_elements") or []
-    if isinstance(key_elems, list) and key_elems:
-        elem = str(key_elems[0]).strip()
-        if elem:
-            micro_parts.append(f"{elem} shifts slightly")
+    if isinstance(key_elems, list):
+        for elem in key_elems[:2]:
+            e = str(elem).strip()
+            if e and not _is_postprocess(e):
+                micro_parts.append(f"{e} shifts slightly")
+                break
 
-    # Frame 0 anchor gives us physical subject details
     if frame0_anchor:
-        # Pick out clothing/fabric/jewellery mentions from the frame description
         fabric_match = _re.search(
             r'\b(dupatta|kurta|saree|fabric|jewel(?:ry|lery)?|earring|necklace'
-            r'|hair|veil|shawl|garment|cloth(?:ing)?)',
+            r'|hair|veil|shawl|garment|cloth(?:ing)?|chunni|phulkari)',
             frame0_anchor, _re.I
         )
         if fabric_match:
             micro_parts.append(f"{fabric_match.group(0)} moves with breath")
 
-    # Always add breath/blink as the universal human micro-anchor
-    subject_name = _clean(_pick_shot("subject", "character_name", "identity_seed"), 30)
-    micro_parts.append(
-        f"breath, subtle blink{(' on ' + subject_name) if subject_name else ''}"
-    )
-
+    micro_parts.append(f"breath, subtle blink{(' on ' + subject) if subject else ''}")
     wan_parts.append(f"Micro-detail: {_clean(', '.join(micro_parts), 110)}")
 
-    # ── 9. AVOID — pass through verbatim ─────────────────────────────────────
+    # ── 11. AVOID — strip quality-clause terms that don't belong here ─────────
     avoid_raw = secs.get("Avoid", "") if is_structured else ""
     if not avoid_raw:
         avoid_match = _re.search(r'(?i)\bAvoid\s*:\s*(.+?)(?:\s*\||$)', motion_prompt)
         if avoid_match:
             avoid_raw = avoid_match.group(1).strip()
     if avoid_raw:
-        wan_parts.append(f"Avoid: {_clean(avoid_raw, 80)}")
+        # Remove quality-clause fragments that leaked from the Camera section
+        avoid_items = [
+            a.strip() for a in avoid_raw.split(",")
+            if a.strip() and a.strip().lower() not in _QUALITY_TERMS
+        ]
+        avoid_clean = ", ".join(avoid_items)
+        if avoid_clean:
+            wan_parts.append(f"Avoid: {_clean(avoid_clean, 90)}")
 
-    # ── 10. Assemble, hard-cap, log ───────────────────────────────────────────
+    # ── 12. Assemble, hard-cap, log ───────────────────────────────────────────
     result = " | ".join(wan_parts)[:600]
     if result:
         logger.info(
             "_derive_wan_continuation_prompt: derived %d-char cinematic WAN prompt "
-            "(structured=%s, has_frame0=%s, has_story_beat=%s) for shot=%s: %s…",
-            len(result), is_structured, bool(frame0_anchor), bool(story_beat),
+            "(structured=%s, has_frame0=%s, story_beat=%r, emotion=%s→%s) shot=%s",
+            len(result), is_structured, bool(frame0_anchor),
+            story_beat[:40] if story_beat else None,
+            emotion_start, emotion_end,
             shot.get("shot_index") or shot.get("timeline_index"),
-            result[:100],
         )
     return result
 
