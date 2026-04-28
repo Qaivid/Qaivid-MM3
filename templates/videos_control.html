@@ -67,6 +67,20 @@
             <div class="vc-frame-empty">No still</div>
             {% endif %}
             <span class="vc-frame-num">#{{ s.shot_index }}</span>
+            {% if s.video_status in ('pending', 'failed') %}
+            <button class="vc-frame-gen-btn {% if s.video_status == 'failed' %}vc-frame-gen-btn--failed{% endif %}"
+                    id="vc-frame-btn-{{ s.shot_index }}"
+                    onclick="event.preventDefault(); event.stopPropagation(); vcGenerateOne({{ s.shot_index }})"
+                    title="Generate AI clip for shot {{ s.shot_index }}">
+              <span class="vc-frame-gen-icon">{% if s.video_status == 'failed' %}↺{% else %}▶{% endif %}</span>
+              <span class="vc-frame-gen-label">{% if s.video_status == 'failed' %}Retry{% else %}Generate{% endif %}</span>
+            </button>
+            {% elif s.video_status == 'rendering' %}
+            <div class="vc-frame-rendering-overlay" id="vc-frame-btn-{{ s.shot_index }}">
+              <div class="vc-spinner"></div>
+              <span>Rendering…</span>
+            </div>
+            {% endif %}
           </div>
 
           <!-- Change start frame -->
@@ -353,6 +367,40 @@
 
 .vc-action-row { display:flex;gap:8px;margin-top:auto;padding-top:4px; }
 .vc-gen-btn { font-size:13px;padding:8px 16px; }
+
+/* ── Frame thumbnail overlay buttons ────────────────────────────── */
+.vc-frame-gen-btn {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  background: linear-gradient(transparent, rgba(0,0,0,.82) 55%);
+  padding: 22px 10px 10px;
+  border: none; cursor: pointer;
+  font-size: 12px; font-weight: 700; color: #d4ff3a;
+  letter-spacing: .3px;
+  transition: color .15s, padding .15s;
+  z-index: 2;
+}
+.vc-frame-gen-btn:hover {
+  color: #fff;
+  background: linear-gradient(transparent, rgba(80,180,40,.55) 45%);
+  padding-bottom: 14px;
+}
+.vc-frame-gen-btn--failed { color: #ff9090; }
+.vc-frame-gen-btn--failed:hover {
+  background: linear-gradient(transparent, rgba(200,50,50,.5) 45%);
+  color: #ffcccc;
+}
+.vc-frame-gen-icon { font-size: 15px; line-height: 1; }
+.vc-frame-gen-label { font-size: 11px; }
+
+.vc-frame-rendering-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  background: rgba(0,0,0,.58);
+  font-size: 11px; color: #ffd070;
+  pointer-events: none;
+}
 </style>
 
 <script>
@@ -406,6 +454,29 @@ function applyStatus(idx, status, url, error) {
     } else {
       btn.disabled = false; btn.textContent = '▶ Generate clip'; btn.style.opacity = '';
       btn.onclick = () => vcGenerateOne(idx);
+    }
+  }
+
+  /* ── Sync frame overlay ── */
+  const frameWrap = document.querySelector('#vc-row-' + idx + ' .vc-frame-wrap');
+  if (frameWrap) {
+    const old = document.getElementById('vc-frame-btn-' + idx);
+    if (old) old.remove();
+    if (status === 'rendering') {
+      const ov = document.createElement('div');
+      ov.className = 'vc-frame-rendering-overlay';
+      ov.id = 'vc-frame-btn-' + idx;
+      ov.innerHTML = '<div class="vc-spinner"></div><span>Rendering…</span>';
+      frameWrap.appendChild(ov);
+    } else if (status === 'pending' || status === 'failed') {
+      const ob = document.createElement('button');
+      ob.className = 'vc-frame-gen-btn' + (status === 'failed' ? ' vc-frame-gen-btn--failed' : '');
+      ob.id = 'vc-frame-btn-' + idx;
+      ob.title = 'Generate AI clip for shot ' + idx;
+      ob.innerHTML = `<span class="vc-frame-gen-icon">${status === 'failed' ? '↺' : '▶'}</span>
+        <span class="vc-frame-gen-label">${status === 'failed' ? 'Retry' : 'Generate'}</span>`;
+      ob.onclick = (e) => { e.preventDefault(); e.stopPropagation(); vcGenerateOne(idx); };
+      frameWrap.appendChild(ob);
     }
   }
 
