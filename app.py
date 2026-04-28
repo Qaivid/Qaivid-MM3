@@ -1528,12 +1528,39 @@ def project_detail(project_id: str):
             role: {**r, "url": _asset_url(r.get("file_path"))}
             for role, r in refs_raw.items()
         }
-        timeline = project["styled_timeline"]
-        shots = [_shot_payload(a, next((s for s in timeline
-                               if (s.get("shot_index") or s.get("timeline_index")) == a["shot_index"]), {}))
-                 for a in shot_assets]
+        timeline = project.get("styled_timeline") or []
+        shots = []
+        for a in shot_assets:
+            tl_shot = next(
+                (s for s in timeline
+                 if (s.get("shot_index") or s.get("timeline_index")) == a["shot_index"]),
+                {},
+            )
+            p = _shot_payload(a, tl_shot)
+            # Use the stored DB prompt (possibly user-edited) instead of the
+            # timeline's styled_visual_prompt, just like stills_control does.
+            if a.get("prompt"):
+                p["prompt"] = a["prompt"]
+            else:
+                p["prompt"] = p.get("prompt") or ""
+            p["motion_prompt"] = a.get("motion_prompt") or ""
+            p["source"] = a.get("source")
+            shots.append(p)
+
+        # Outpaint state per shot
+        outpaint_by_idx = {
+            a["shot_index"]: {
+                "status": a.get("outpaint_status") or "pending",
+                "url":    _asset_url(a.get("outpaint_url")) if a.get("outpaint_url") else None,
+            }
+            for a in shot_assets
+        }
+        aspect_ratio = (project.get("settings") or {}).get("aspect_ratio") or "16:9"
+
         return render_template("stage_stills.html", project=project,
-                               shots=shots, refs=refs)
+                               shots=shots, refs=refs,
+                               outpaint_by_idx=outpaint_by_idx,
+                               aspect_ratio=aspect_ratio)
 
     if stage == "video_assembly_review":
         # Read the locked motion plan (video_sequence_packet) so the user

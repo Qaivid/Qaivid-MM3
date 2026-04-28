@@ -1,325 +1,754 @@
 {% extends "base.html" %}
 {% set active_stage = 'stills_review' %}
 {% block title %}{{ project.name }} — Stills · Qaivid{% endblock %}
+
 {% block content %}
+{% set ns = namespace(pending=0, rendering=0, ready=0, failed=0) %}
+{% for s in shots %}
+  {% if s.status == 'ready' %}{% set ns.ready = ns.ready + 1 %}
+  {% elif s.status == 'rendering' %}{% set ns.rendering = ns.rendering + 1 %}
+  {% elif s.status == 'failed' %}{% set ns.failed = ns.failed + 1 %}
+  {% else %}{% set ns.pending = ns.pending + 1 %}
+  {% endif %}
+{% endfor %}
+{% set total_shots = shots | length %}
+
+{% set op_ns = namespace(op_pending=0, op_rendering=0, op_ready=0, op_failed=0) %}
+{% for s in shots %}
+  {% set op = outpaint_by_idx.get(s.shot_index, {}) %}
+  {% if op.status == 'ready' %}{% set op_ns.op_ready = op_ns.op_ready + 1 %}
+  {% elif op.status == 'rendering' %}{% set op_ns.op_rendering = op_ns.op_rendering + 1 %}
+  {% elif op.status == 'failed' %}{% set op_ns.op_failed = op_ns.op_failed + 1 %}
+  {% else %}{% set op_ns.op_pending = op_ns.op_pending + 1 %}
+  {% endif %}
+{% endfor %}
+
 <div class="stage-wrap">
-    {% include '_stage_header.html' %}
+  {% include '_stage_header.html' %}
 
-    <div class="stage-card">
-        <div class="stage-header">
-            <span class="stage-badge">Stage 9 — Stills</span>
-            <h1>{{ project.name }}</h1>
-            <p class="stage-sub">
-                Per-shot stills have been rendered. Click any card to edit its prompt or retry.
-                {% set ok = shots|selectattr('status','equalto','ready')|list|length %}
-                {% set fail = shots|selectattr('status','equalto','failed')|list|length %}
-                <strong>{{ ok }}/{{ shots|length }} ready</strong>{% if fail %} · <span style="color:#ff6b6b;">{{ fail }} failed</span>{% endif %}.
-            </p>
-        </div>
-
-        {% if refs %}
-        <div class="ref-row">
-            {% if refs.character %}
-            <div class="ref-mini">
-                <span class="ref-mini-label">Character ref ({{ refs.character.source }})</span>
-                {% if refs.character.url %}
-                <img src="{{ refs.character.url }}" alt="Character ref">
-                {% else %}<span class="muted">{{ refs.character.status }}</span>{% endif %}
-            </div>
-            {% endif %}
-            {% if refs.environment %}
-            <div class="ref-mini">
-                <span class="ref-mini-label">Environment ref ({{ refs.environment.source }})</span>
-                {% if refs.environment.url %}
-                <img src="{{ refs.environment.url }}" alt="Environment ref">
-                {% else %}<span class="muted">{{ refs.environment.status }}</span>{% endif %}
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        <div class="ss-gallery" id="ss-grid">
-            {% for shot in shots %}
-
-            {# ── Shot card ── #}
-            <div class="ss-card ss-card--{{ shot.status }}"
-                 id="ss-card-{{ shot.shot_index }}"
-                 onclick="ssToggle({{ shot.shot_index }})">
-                <div class="ss-thumb">
-                    {% if shot.url %}
-                    <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
-                    {% else %}
-                    <div class="ss-ph">
-                        {% if shot.status == "failed" %}⚠{% elif shot.status == "rendering" %}⏳{% else %}•••{% endif %}
-                    </div>
-                    {% endif %}
-                    <span class="ss-spill ss-spill--{{ shot.status }}">
-                        {% if shot.status == 'ready' %}✓ Ready
-                        {% elif shot.status == 'failed' %}⚠ Failed
-                        {% elif shot.status == 'rendering' %}Rendering
-                        {% else %}Pending{% endif %}
-                    </span>
-                    <span class="ss-edit-hint">Edit ↓</span>
-                </div>
-                <div class="ss-foot">
-                    <span class="ss-num">Shot {{ shot.shot_index }}</span>
-                    <span class="ss-time">{{ "%.1f"|format(shot.start_time or 0) }}s · {{ "%.1f"|format(shot.duration or 0) }}s</span>
-                </div>
-            </div>
-
-            {# ── Edit panel — full-width grid row ── #}
-            <div class="ss-edit-panel" id="ss-panel-{{ shot.shot_index }}" hidden>
-                <div class="ss-edit-inner" onclick="event.stopPropagation()">
-
-                    {% if shot.meaning %}
-                    <div style="font-size:12px;color:#7a8594;line-height:1.45;padding-bottom:10px;border-bottom:1px solid #1e1e2a;">
-                        {{ shot.meaning }}
-                    </div>
-                    {% endif %}
-
-                    <div class="ss-err" id="ss-err-{{ shot.shot_index }}"
-                         style="{{ '' if shot.error else 'display:none;' }}">
-                        {{ shot.error[:150] if shot.error else '' }}
-                    </div>
-
-                    <div>
-                        <label class="ss-label">Prompt — edit before generating</label>
-                        <textarea class="ss-ta" id="ss-prompt-{{ shot.shot_index }}"
-                                  rows="4" maxlength="4000"
-                                  onblur="ssSavePrompt({{ shot.shot_index }}, this.value)"
-                                  >{{ shot.prompt or '' }}</textarea>
-                        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-                            <button class="btn-mini"
-                                    onclick="ssSavePrompt({{ shot.shot_index }}, document.getElementById('ss-prompt-{{ shot.shot_index }}').value)">
-                                Save prompt
-                            </button>
-                            <span id="ss-saved-{{ shot.shot_index }}"
-                                  style="display:none;font-size:10px;color:#7ec8a4;">Saved</span>
-                        </div>
-                    </div>
-
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-                        {% if shot.status == 'ready' %}
-                        <button class="btn-mini"
-                                onclick="ssGenOne({{ shot.shot_index }}, true)">&#8635; Regen</button>
-                        {% elif shot.status == 'failed' %}
-                        <button class="btn-mini"
-                                onclick="ssGenOne({{ shot.shot_index }}, false)">&#8635; Retry</button>
-                        {% else %}
-                        <button class="btn-mini"
-                                onclick="ssGenOne({{ shot.shot_index }}, false)">&#9654; Generate</button>
-                        {% endif %}
-                    </div>
-
-                </div>
-            </div>
-            {# /ss-edit-panel #}
-
-            {% endfor %}
-        </div>
-
-        <div class="stage-actions">
-            <a href="{{ url_for('postprod_page', project_id=project.id) }}"
-               class="btn-stage-primary">Continue to Post Production →</a>
-            <div style="margin-top:10px; font-size:13px; color:#6b7280; text-align:center;">
-                Or skip straight to AI video:
-                <form method="post" action="{{ url_for('advance_stage_4', project_id=project.id) }}" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" style="background:none;border:none;color:#9aa6b2;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Animate into AI Video Clips →</button>
-                </form>
-            </div>
-            {% include '_redo_panel.html' %}
-        </div>
+  <div class="stage-card">
+    <div class="stage-header">
+      <span class="stage-badge">Stage 9 — Stills</span>
+      <h1>{{ project.name }}</h1>
+      <p class="stage-sub">
+        Select any shot to review its prompts, edit, or regenerate. When ready, continue below.
+      </p>
     </div>
+
+    <!-- ── Progress summary ──────────────────────────────────────── -->
+    <div class="ref-progress-bar">
+      <div class="ref-progress-dots" id="sc-dots">
+        {% for s in shots %}
+        <span class="ref-dot ref-dot--{{ s.status }}"
+              id="sc-dot-{{ s.shot_index }}"
+              title="Shot {{ s.shot_index }} ({{ s.status }})"></span>
+        {% endfor %}
+      </div>
+      <span class="ref-progress-label">
+        <strong id="cnt-ready">{{ ns.ready }}</strong>/<strong>{{ total_shots }}</strong> ready
+        {% if ns.failed %} · <span style="color:#ff6b6b;" id="cnt-failed-label">{{ ns.failed }} failed</span>{% endif %}
+      </span>
+    </div>
+
+    {% if ns.failed > 0 %}
+    <div class="ref-failed-banner" id="ss-failed-banner">
+      <span>⚠ <span id="ss-failed-count">{{ ns.failed }}</span> shot{{ 's' if ns.failed != 1 }} failed</span>
+      <button onclick="ssRetryAllFailed()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
+    </div>
+    {% else %}
+    <div class="ref-failed-banner" id="ss-failed-banner" style="display:none;">
+      <span>⚠ <span id="ss-failed-count">0</span> shots failed</span>
+      <button onclick="ssRetryAllFailed()" class="btn-secondary ref-retry-btn">↺ Retry All Failed</button>
+    </div>
+    {% endif %}
+
+    <!-- ── Ref plates row ────────────────────────────────────────── -->
+    {% if refs %}
+    <div class="ref-row" style="margin-bottom:6px;">
+      {% if refs.character and refs.character.url %}
+      <div class="ref-mini">
+        <span class="ref-mini-label">Character ref</span>
+        <img src="{{ refs.character.url }}" alt="Character ref">
+      </div>
+      {% endif %}
+      {% if refs.environment and refs.environment.url %}
+      <div class="ref-mini">
+        <span class="ref-mini-label">Environment ref</span>
+        <img src="{{ refs.environment.url }}" alt="Environment ref">
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ══ TWO-COLUMN LAYOUT: film roll + prompt editor ══════════════════ -->
+    <div class="sc-split">
+
+      <!-- LEFT: vertical film roll -->
+      <div class="sc-filmstrip" id="sc-filmstrip">
+        <div class="sc-film-edge sc-film-edge--top"></div>
+        {% for shot in shots %}
+        {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
+        <div class="sc-strip-item sc-strip-item--{{ shot.status }}"
+             id="sc-strip-{{ shot.shot_index }}"
+             data-idx="{{ shot.shot_index }}"
+             onclick="scSelect({{ shot.shot_index }})">
+          <div class="sc-perfs"></div>
+          <div class="sc-strip-thumb">
+            {% if op.status == 'ready' and op.url %}
+            <img src="{{ op.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+            {% elif shot.url %}
+            <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+            {% else %}
+            <div class="sc-strip-ph sc-strip-ph--{{ shot.status }}">
+              {% if shot.status == 'rendering' %}<div class="sc-strip-spinner"></div>
+              {% elif shot.status == 'failed' %}<span class="sc-strip-ph-icon">⚠</span>
+              {% else %}<span class="sc-strip-ph-icon sc-strip-ph-empty">· · ·</span>{% endif %}
+            </div>
+            {% endif %}
+            <span class="sc-strip-num-badge">{{ shot.shot_index }}</span>
+            <span class="sc-strip-status-badge sc-strip-status-badge--{{ shot.status }}">{{ shot.status }}</span>
+          </div>
+        </div>
+        {% endfor %}
+        <div class="sc-film-edge sc-film-edge--bottom"></div>
+      </div>
+
+      <!-- RIGHT: prompt editor panel -->
+      <div class="sc-detail" id="sc-detail">
+        <div class="sc-detail-empty" id="sc-detail-empty">
+          <div class="sc-detail-empty-icon">🎬</div>
+          <p>Select a shot from the film roll to review or edit its prompts</p>
+        </div>
+      </div>
+
+    </div><!-- /sc-split -->
+
+    <!-- ── Proceed bar ──────────────────────────────────────────── -->
+    <div class="stage-actions" style="margin-top:28px;">
+      <a href="{{ url_for('postprod_page', project_id=project.id) }}"
+         class="btn-stage-primary">Continue to Post Production →</a>
+      <div style="margin-top:10px;font-size:13px;color:#6b7280;text-align:center;">
+        Or skip straight to AI video:
+        <form method="post" action="{{ url_for('advance_stage_4', project_id=project.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" style="background:none;border:none;color:#9aa6b2;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">
+            Animate into AI Video Clips →
+          </button>
+        </form>
+      </div>
+      {% include '_redo_panel.html' %}
+    </div>
+
+  </div><!-- /stage-card -->
+</div><!-- /stage-wrap -->
+
+<!-- Regenerate warning modal -->
+<div class="sc-modal-overlay" id="sc-regen-modal">
+  <div class="sc-modal">
+    <h3>&#9888; This will use generation credits</h3>
+    <p id="sc-modal-body">Regenerating this image will cost additional generation credits. Are you sure?</p>
+    <div class="sc-modal-actions">
+      <button class="btn-secondary" onclick="scModalCancel()">Cancel</button>
+      <button class="btn-stage-primary" id="sc-modal-confirm"
+              style="font-size:13px;padding:8px 20px;">Regenerate anyway</button>
+    </div>
+  </div>
 </div>
 
 <style>
-.ss-gallery {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 14px;
-    align-items: start;
-    margin: 20px 0;
+/* ══ Two-column stills layout ════════════════════════════════════════════ */
+.sc-split {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 0;
+  border: 1px solid #1e1e2a;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 70vh;
+  min-height: 500px;
+  margin: 12px 0 0;
 }
 
-.ss-card {
-    background: #13131c;
-    border: 1px solid #22222e;
-    border-radius: 12px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: border-color .15s, box-shadow .15s;
-    user-select: none;
-    position: relative;
+/* ══ Film roll (left) ════════════════════════════════════════════════════ */
+.sc-filmstrip {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #050508;
+  border-right: 2px solid #1a1a28;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a3a transparent;
+  display: flex;
+  flex-direction: column;
 }
-.ss-card:hover          { border-color: #3a3a50; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
-.ss-card--ready         { border-color: rgba(76,175,125,.3); }
-.ss-card--failed        { border-color: rgba(224,85,85,.3); }
-.ss-card--open          { border-color: #d4ff3a; box-shadow: 0 0 0 1px #d4ff3a22; }
+.sc-film-edge {
+  width: 100%; height: 14px; flex-shrink: 0;
+  background: #050508;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0px, transparent 6px,
+    rgba(255,255,255,0.08) 6px, rgba(255,255,255,0.08) 14px,
+    transparent 14px, transparent 20px
+  );
+}
+.sc-strip-item {
+  width: 100%; flex-shrink: 0;
+  cursor: pointer;
+  border-bottom: 1px solid #111118;
+  border-left: 3px solid transparent;
+  transition: border-left-color .15s, background .15s;
+  position: relative;
+}
+.sc-strip-item:hover { background: rgba(255,255,255,.03); }
+.sc-strip-item.active { background: rgba(212,255,58,.05); border-left-color: #d4ff3a; }
+.sc-strip-item--failed { border-left-color: rgba(255,107,107,.4) !important; }
+.sc-strip-item--failed.active { border-left-color: #ff6b6b !important; }
 
-.ss-thumb {
-    position: relative;
-    aspect-ratio: 16/9;
-    background: #0d0d14;
-    overflow: hidden;
-}
-.ss-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
-.ss-ph {
-    width:100%; height:100%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:22px; color:#2a2a3a;
+.sc-perfs {
+  height: 10px; background: #070709;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0px, transparent 5px,
+    rgba(255,255,255,0.07) 5px, rgba(255,255,255,0.07) 12px,
+    transparent 12px, transparent 18px
+  );
 }
 
-.ss-spill {
-    position:absolute; top:7px; right:7px;
-    font-size:10px; font-weight:700;
-    padding:2px 8px; border-radius:10px;
-    letter-spacing:.3px; pointer-events:none;
+.sc-strip-thumb {
+  position: relative; width: 100%;
+  padding-top: 56.25%; background: #080810; overflow: hidden;
 }
-.ss-spill--ready    { background:rgba(76,175,125,.22);  color:#4cdb90; border:1px solid rgba(76,175,125,.38); }
-.ss-spill--pending  { background:rgba(255,177,66,.14);  color:#ffb142; border:1px solid rgba(255,177,66,.28); }
-.ss-spill--failed   { background:rgba(224,85,85,.18);   color:#ff7070; border:1px solid rgba(224,85,85,.32); }
-.ss-spill--rendering{ background:rgba(85,153,255,.18);  color:#88aaff; border:1px solid rgba(85,153,255,.32); }
+.sc-strip-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.sc-strip-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.sc-strip-ph--pending  { background: #06060e; }
+.sc-strip-ph--failed   { background: #0e0608; }
+.sc-strip-ph--rendering { background: #060e06; }
+.sc-strip-ph-icon { font-size: 13px; color: #2a2a40; }
+.sc-strip-ph-empty { letter-spacing: 3px; color: #1c1c2c; }
+.sc-strip-ph--failed .sc-strip-ph-icon { color: #663333; font-size: 16px; }
 
-.ss-edit-hint {
-    position:absolute; bottom:7px; right:7px;
-    font-size:9px; font-weight:600; color:#777;
-    background:rgba(0,0,0,.55); padding:2px 7px; border-radius:5px;
-    letter-spacing:.4px; text-transform:uppercase;
-    pointer-events:none; opacity:0; transition:opacity .15s;
+.sc-strip-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(200,241,53,.2);
+  border-top-color: #c8f135; border-radius: 50%;
+  animation: sc-spin 0.8s linear infinite;
 }
-.ss-card:hover .ss-edit-hint,
-.ss-card--open .ss-edit-hint { opacity:1; }
-.ss-card--open .ss-edit-hint { color:#d4ff3a; }
+@keyframes sc-spin { to { transform: rotate(360deg); } }
 
-.ss-foot {
-    padding:8px 10px 10px;
-    display:flex; justify-content:space-between; align-items:center;
+.sc-strip-num-badge {
+  position: absolute; top: 5px; left: 6px;
+  background: rgba(0,0,0,.75); color: #c8d0e0;
+  font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 4px;
+  pointer-events: none;
 }
-.ss-num  { font-size:13px; font-weight:700; color:#dde4ef; }
-.ss-time { font-size:11px; color:#556; }
+.sc-strip-status-badge {
+  position: absolute; top: 5px; right: 6px;
+  font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: .05em; pointer-events: none;
+}
+.sc-strip-status-badge--ready     { background: rgba(100,200,140,.2); color: #7ec8a4; }
+.sc-strip-status-badge--failed    { background: rgba(255,107,107,.2); color: #ff6b6b; }
+.sc-strip-status-badge--rendering { background: rgba(200,241,53,.15); color: #c8f135; }
+.sc-strip-status-badge--pending   { background: rgba(80,80,120,.25);  color: #8899bb; }
 
-/* Edit panel — spans full grid width as a new row */
-.ss-edit-panel {
-    grid-column: 1 / -1;
-    background: #0e0e1a;
-    border: 1px solid #d4ff3a44;
-    border-radius: 12px;
-    margin-bottom: 4px;
-    display: block;
+.sc-gen-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; pointer-events: none;
 }
-.ss-edit-panel[hidden] { display: none !important; }
-.ss-edit-panel::before {
-    content:'';
-    display:block; width:0; height:0;
-    border-left:8px solid transparent;
-    border-right:8px solid transparent;
-    border-bottom:8px solid #d4ff3a44;
-    margin:0 auto;
-    position:relative; top:-1px;
+.sc-gen-overlay-spinner {
+  width: 16px; height: 16px; border: 2px solid rgba(212,255,58,.3);
+  border-top-color: #d4ff3a; border-radius: 50%; animation: sc-spin 0.75s linear infinite;
 }
-.ss-edit-inner {
-    padding:16px 20px 20px;
-    display:flex; flex-direction:column; gap:12px;
+.sc-gen-overlay-label { font-size: 8px; color: #d4ff3a; letter-spacing: .04em; }
+
+/* ══ Detail panel (right) ════════════════════════════════════════════════ */
+.sc-detail { height: 100%; overflow-y: auto; background: #0b0b16; scrollbar-width: thin; scrollbar-color: #2a2a3a transparent; }
+.sc-detail-empty {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px; padding: 40px; text-align: center;
 }
-.ss-label {
-    display:block; font-size:11px; font-weight:600;
-    color:#9aa6b2; letter-spacing:.4px; text-transform:uppercase;
-    margin-bottom:6px;
-}
-.ss-ta {
-    width:100%; box-sizing:border-box;
-    background:#0a0a14; border:1px solid #2a2a3c;
-    border-radius:8px; color:#dde4ef;
-    font-size:13px; line-height:1.55; padding:10px 12px;
-    resize:vertical; font-family:inherit;
-}
-.ss-ta:focus { outline:none; border-color:#d4ff3a66; }
-.ss-err {
-    background:rgba(224,85,85,.12); border:1px solid rgba(224,85,85,.3);
-    border-radius:8px; padding:8px 12px;
-    font-size:12px; color:#ff8080;
-}
+.sc-detail-empty-icon { font-size: 42px; opacity: .3; }
+.sc-detail-empty p { margin: 0; font-size: 13px; color: #333; line-height: 1.6; }
+
+.sc-det-inner { padding: 20px 22px 28px; display: flex; flex-direction: column; gap: 14px; }
+.sc-det-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid #1a1a28; }
+.sc-det-title { font-size: 16px; font-weight: 700; color: #dde; }
+.sc-det-badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: .05em; }
+.sc-det-badge--ready     { background: rgba(100,200,140,.15); color: #7ec8a4; border: 1px solid rgba(100,200,140,.3); }
+.sc-det-badge--failed    { background: rgba(255,107,107,.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,.25); }
+.sc-det-badge--rendering { background: rgba(200,241,53,.1);  color: #c8f135; border: 1px solid rgba(200,241,53,.25); }
+.sc-det-badge--pending   { background: rgba(120,120,160,.1); color: #7788aa; border: 1px solid rgba(120,120,160,.2); }
+.sc-det-timing { font-size: 11px; color: #3a3a50; margin-left: auto; }
+
+.sc-det-img-wrap { width: 100%; border-radius: 8px; overflow: hidden; background: #060610; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; border: 1px solid #1a1a28; }
+.sc-det-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sc-det-img-ph { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #2a2a40; background: #060610; border-radius: 8px; border: 1px solid #141420; }
+.sc-det-err { font-size: 11px; color: #ff6b6b; background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.2); border-radius: 6px; padding: 8px 12px; line-height: 1.5; }
+.sc-det-meaning { font-size: 12px; color: #44506a; line-height: 1.55; font-style: italic; }
+
+.sc-prompt-section { border-radius: 8px; overflow: hidden; }
+.sc-prompt-section--motion { background: #070e05; border: 1px solid rgba(80,160,50,.25); }
+.sc-prompt-section--motion .sc-prompt-section-head { background: rgba(60,120,30,.12); border-bottom: 1px solid rgba(80,160,50,.15); }
+.sc-prompt-section--frame0 { background: #06080f; border: 1px solid rgba(80,100,200,.2); }
+.sc-prompt-section--frame0 .sc-prompt-section-head { background: rgba(60,80,180,.1); border-bottom: 1px solid rgba(80,100,200,.12); }
+
+.sc-prompt-section-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 14px; }
+.sc-prompt-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; flex: 1; }
+.sc-prompt-section--motion .sc-prompt-section-title { color: #6ab040; }
+.sc-prompt-section--frame0 .sc-prompt-section-title { color: #7090cc; }
+.sc-prompt-section-hint { font-size: 10px; color: #3a4a5a; }
+
+.sc-prompt-ta { display: block; width: 100%; box-sizing: border-box; font-size: 11px; line-height: 1.5; font-family: 'JetBrains Mono', monospace; border: none; outline: none; resize: vertical; padding: 10px 14px; }
+.sc-prompt-section--motion .sc-prompt-ta { background: #070e05; color: #8ab868; min-height: 80px; }
+.sc-prompt-section--frame0 .sc-prompt-ta { background: #06080f; color: #9aaccc; min-height: 110px; }
+
+.sc-prompt-section-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 14px 10px; border-top: 1px solid rgba(255,255,255,.04); background: rgba(0,0,0,.15); }
+
+.sc-rederive-btn { padding: 5px 13px; font-size: 10px; font-weight: 700; background: rgba(80,160,50,.15); color: #7ec864; border: 1px solid rgba(80,160,50,.35); border-radius: 6px; cursor: pointer; transition: background .15s; white-space: nowrap; }
+.sc-rederive-btn:hover:not(:disabled) { background: rgba(80,160,50,.28); }
+.sc-rederive-btn:disabled { opacity: .45; cursor: default; }
+.sc-save-btn { padding: 5px 13px; font-size: 10px; font-weight: 700; background: rgba(60,80,180,.12); color: #8099cc; border: 1px solid rgba(60,80,180,.25); border-radius: 6px; cursor: pointer; transition: background .15s; }
+.sc-save-btn:hover { background: rgba(60,80,180,.24); }
+.sc-indicator { font-size: 10px; margin-left: 2px; }
+
+.sc-det-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: rgba(0,0,0,.25); border: 1px solid #1a1a28; border-radius: 8px; margin-top: 2px; }
+.sc-gen-btn { padding: 9px 22px; font-size: 13px; font-weight: 700; background: rgba(200,241,53,.13); color: #c8f135; border: 1px solid rgba(200,241,53,.35); border-radius: 7px; cursor: pointer; transition: background .15s; white-space: nowrap; }
+.sc-gen-btn:hover:not(:disabled) { background: rgba(200,241,53,.24); }
+.sc-gen-btn:disabled { color: #445; background: transparent; border-color: #2a2a3a; cursor: default; }
+.sc-regen-btn { padding: 9px 22px; font-size: 13px; font-weight: 700; background: rgba(90,90,160,.15); color: #8899cc; border: 1px solid rgba(90,90,160,.3); border-radius: 7px; cursor: pointer; transition: background .15s; white-space: nowrap; }
+.sc-regen-btn:hover { background: rgba(90,90,160,.3); }
+.sc-upload-label { cursor: pointer; border: 1px dashed #2a2a40; padding: 9px 16px; font-size: 12px; color: #445; border-radius: 7px; transition: border-color .15s, color .15s; white-space: nowrap; }
+.sc-upload-label:hover { border-color: #c8f135; color: #c8f135; }
+.sc-op-btn { padding: 9px 14px; font-size: 12px; background: rgba(212,255,58,.08); color: #d4ff3a; border: 1px solid rgba(212,255,58,.25); border-radius: 7px; cursor: pointer; transition: background .15s; }
+.sc-op-btn:hover { background: rgba(212,255,58,.18); }
+
+.sc-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 999; align-items: center; justify-content: center; }
+.sc-modal-overlay.open { display: flex; }
+.sc-modal { background: #1a1f26; border: 1px solid #444; border-radius: 12px; padding: 28px; max-width: 420px; width: 90%; text-align: center; }
+.sc-modal h3 { margin: 0 0 10px; font-size: 16px; color: #ff9f43; }
+.sc-modal p  { color: #9aa6b2; font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
+.sc-modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* ref plates row */
+.ref-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 6px; }
+.ref-mini { display: flex; flex-direction: column; gap: 4px; }
+.ref-mini-label { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: .04em; }
+.ref-mini img { height: 52px; width: auto; border-radius: 6px; border: 1px solid #2a2a3a; object-fit: cover; }
 </style>
 
 <script>
 (function () {
-    const PID  = {{ project.id | tojson }};
-    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+  const PID    = {{ project.id | tojson }};
+  const CSRF   = document.querySelector('meta[name="csrf-token"]').content;
+  const ASPECT = {{ aspect_ratio | tojson }};
+  const TOTAL  = {{ total_shots }};
 
-    let _openPanel = null;
+  const shotData = {};
+  {% for shot in shots %}
+  shotData[{{ shot.shot_index }}] = {
+    idx:          {{ shot.shot_index }},
+    status:       {{ shot.status | tojson }},
+    url:          {{ (shot.url or '') | tojson }},
+    prompt:       {{ (shot.prompt or '') | tojson }},
+    motionPrompt: {{ (shot.motion_prompt or '') | tojson }},
+    meaning:      {{ (shot.meaning or '') | tojson }},
+    error:        {{ (shot.error or '') | tojson }},
+    startTime:    {{ (shot.start_time or 0) | tojson }},
+    duration:     {{ (shot.duration or 0) | tojson }},
+    source:       {{ (shot.source or '') | tojson }},
+  };
+  {% endfor %}
 
-    function _closeAll() {
-        document.querySelectorAll('.ss-edit-panel').forEach(p => { p.hidden = true; });
-        document.querySelectorAll('.ss-card').forEach(c => {
-            c.classList.remove('ss-card--open');
-            const h = c.querySelector('.ss-edit-hint');
-            if (h) h.textContent = 'Edit ↓';
-        });
-        _openPanel = null;
+  const motionPromptDirty = {};
+  const promptDirty = {};
+  window.scMarkVidPromptDirty = function(idx) { motionPromptDirty[idx] = true; };
+  window.scMarkPromptDirty    = function(idx) { promptDirty[idx] = true; };
+
+  const opState = {};
+  {% for shot in shots %}
+  {% set op = outpaint_by_idx.get(shot.shot_index, {}) %}
+  opState[{{ shot.shot_index }}] = {
+    status: {{ (op.status or 'pending') | tojson }},
+    url:    {{ (op.url or '') | tojson }},
+  };
+  {% endfor %}
+
+  const shotState = {};
+  for (const [idx, d] of Object.entries(shotData)) {
+    shotState[idx] = { status: d.status, url: d.url };
+  }
+
+  let activeIdx = null;
+
+  window.scSelect = function(idx) {
+    if (activeIdx !== null) {
+      const prev = document.getElementById('sc-strip-' + activeIdx);
+      if (prev) prev.classList.remove('active');
+    }
+    activeIdx = idx;
+    const item = document.getElementById('sc-strip-' + idx);
+    if (item) { item.classList.add('active'); item.scrollIntoView({ block: 'nearest' }); }
+    renderDetail(idx);
+  };
+
+  function renderDetail(idx) {
+    const detail = document.getElementById('sc-detail');
+    if (!detail) return;
+    const shot = shotData[idx];
+    if (!shot) return;
+    const op = opState[idx] || {};
+    const imgUrl = (op.status === 'ready' && op.url) ? op.url : (shot.url || '');
+    const statusLabel = shot.status.charAt(0).toUpperCase() + shot.status.slice(1);
+    const motionVal = escHtml(shot.motionPrompt || '');
+    const frame0Val = escHtml(shot.prompt || '');
+
+    let actionHtml = '';
+    if (shot.status === 'pending' || shot.status === 'failed') {
+      actionHtml += `<button class="sc-gen-btn" id="sc-gen-btn-${idx}" onclick="scGenOne(${idx}, false)">▶ Generate</button>`;
+    } else if (shot.status === 'rendering') {
+      actionHtml += `<button class="sc-gen-btn" id="sc-gen-btn-${idx}" disabled>⏳ Generating…</button>`;
+    } else {
+      actionHtml += `<button class="sc-regen-btn" id="sc-gen-btn-${idx}" onclick="scGenOne(${idx}, true)">↺ Regenerate</button>`;
+    }
+    actionHtml += `
+      <form style="display:inline;" enctype="multipart/form-data" onsubmit="return false;">
+        <input type="hidden" name="csrf_token" value="${CSRF}">
+        <input type="file" accept="image/*" name="image" id="sc-file-${idx}" style="display:none"
+               onchange="scUploadFile(${idx}, this)">
+        <label for="sc-file-${idx}" class="sc-upload-label" id="sc-upload-label-${idx}">⬆ Upload</label>
+      </form>`;
+    if (shot.status === 'ready' || (op && op.status)) {
+      const opStatus = (op && op.status) ? op.status : 'pending';
+      const opIcon = opStatus === 'ready' ? '↺' : opStatus === 'rendering' ? '⏳' : '⬡';
+      actionHtml += `<button class="sc-op-btn" id="sc-op-btn-${idx}" onclick="ssOutpaintOne(${idx})">${opIcon} ${ASPECT}</button>`;
     }
 
-    window.ssToggle = function (idx) {
-        const panelId = 'ss-panel-' + idx;
-        const panel   = document.getElementById(panelId);
-        const card    = document.getElementById('ss-card-' + idx);
-        if (!panel) return;
+    detail.innerHTML = `
+      <div class="sc-det-inner">
+        <div class="sc-det-header">
+          <span class="sc-det-title">Shot ${idx}</span>
+          <span class="sc-det-badge sc-det-badge--${shot.status}">${statusLabel}</span>
+          <span class="sc-det-timing">
+            ${shot.startTime ? shot.startTime.toFixed(1) + 's' : ''}
+            ${shot.duration  ? ' · ' + shot.duration.toFixed(1) + 's' : ''}
+            ${shot.source === 'uploaded' ? ' · <span style="color:#c8f135;">uploaded</span>' : ''}
+          </span>
+        </div>
 
-        if (_openPanel === panelId) { _closeAll(); return; }
+        ${imgUrl
+          ? `<div class="sc-det-img-wrap"><img src="${imgUrl}" alt="Shot ${idx}" class="sc-det-img" id="sc-img-${idx}"></div>`
+          : `<div class="sc-det-img-ph" id="sc-img-ph-${idx}">
+               ${shot.status === 'rendering'
+                 ? '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;"><div class="sc-strip-spinner" style="width:24px;height:24px;border-width:3px;"></div><span style=\'font-size:12px;color:#6a8040;\'>Generating…</span></div>'
+                 : shot.status === 'failed'
+                   ? '<span style=\'font-size:13px;color:#663333;\'>⚠ Generation failed</span>'
+                   : '<span style=\'font-size:13px;color:#22223a;\'>No image yet</span>'}
+             </div>`}
 
-        _closeAll();
-        panel.hidden = false;
-        if (card) {
-            card.classList.add('ss-card--open');
-            const h = card.querySelector('.ss-edit-hint');
-            if (h) h.textContent = '↑ Close';
+        ${shot.error ? `<div class="sc-det-err" id="sc-err-${idx}">⚠ ${escHtml(shot.error.slice(0, 300))}</div>`
+                     : `<div id="sc-err-${idx}" style="display:none;" class="sc-det-err"></div>`}
+
+        ${shot.meaning ? `<div class="sc-det-meaning">${escHtml(shot.meaning)}</div>` : ''}
+
+        <div class="sc-prompt-section sc-prompt-section--motion">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">▶ Video Prompt (WAN 2.6 — Motion)</span>
+            <span class="sc-prompt-section-hint">max 2000 chars</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-vid-prompt-${idx}"
+                    rows="4" maxlength="2000"
+                    oninput="scMarkVidPromptDirty(${idx})">${motionVal}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-rederive-btn" id="sc-rederive-btn-${idx}"
+                    onclick="scSaveVideoPrompt(${idx}, document.getElementById('sc-vid-prompt-${idx}').value, true)">
+              ↻ Save &amp; Re-derive Frame 0
+            </button>
+            <button class="sc-save-btn"
+                    onclick="scSaveVideoPromptOnly(${idx}, document.getElementById('sc-vid-prompt-${idx}').value)">
+              Save only
+            </button>
+            <span id="sc-vid-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#7ec8a4;">✓ Saved</span>
+            <span id="sc-vid-deriving-${idx}" style="display:none;" class="sc-indicator" style="color:#c8f135;">⏳ Deriving…</span>
+          </div>
+        </div>
+
+        <div class="sc-prompt-section sc-prompt-section--frame0">
+          <div class="sc-prompt-section-head">
+            <span class="sc-prompt-section-title">📸 Frame 0 Still Prompt (gpt-image-2)</span>
+            <span class="sc-prompt-section-hint">derived from video prompt · editable</span>
+          </div>
+          <textarea class="sc-prompt-ta" id="sc-prompt-${idx}"
+                    rows="5" maxlength="4000"
+                    oninput="scMarkPromptDirty(${idx})"
+                    onblur="scSavePrompt(${idx}, this.value)">${frame0Val}</textarea>
+          <div class="sc-prompt-section-actions">
+            <button class="sc-save-btn"
+                    onclick="scSavePrompt(${idx}, document.getElementById('sc-prompt-${idx}').value)">
+              Save Frame 0 prompt
+            </button>
+            <span id="sc-saved-${idx}" style="display:none;" class="sc-indicator" style="color:#7ec8a4;">✓ Saved</span>
+          </div>
+        </div>
+
+        <div class="sc-det-actions" id="sc-actions-${idx}">${actionHtml}</div>
+      </div>`;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function updateStripItem(idx, status, url) {
+    const item = document.getElementById('sc-strip-' + idx);
+    if (!item) return;
+    item.className = item.className.replace(/sc-strip-item--\S+/, '');
+    item.classList.add('sc-strip-item--' + status);
+    const badge = item.querySelector('.sc-strip-status-badge');
+    if (badge) { badge.className = 'sc-strip-status-badge sc-strip-status-badge--' + status; badge.textContent = status; }
+    const thumb = item.querySelector('.sc-strip-thumb');
+    if (thumb) {
+      const existing = thumb.querySelector('.sc-gen-overlay');
+      if (existing) existing.remove();
+      if (status === 'rendering') {
+        const overlay = document.createElement('div');
+        overlay.className = 'sc-gen-overlay';
+        overlay.innerHTML = '<div class="sc-gen-overlay-spinner"></div><span class="sc-gen-overlay-label">Generating…</span>';
+        thumb.appendChild(overlay);
+      }
+      const op = opState[idx] || {};
+      const dispUrl = (op.status === 'ready' && op.url) ? op.url : url;
+      if (dispUrl && status === 'ready') {
+        const ph = thumb.querySelector('.sc-strip-ph');
+        if (ph) ph.remove();
+        let img = thumb.querySelector('img');
+        if (!img) {
+          img = document.createElement('img');
+          img.alt = 'Shot ' + idx; img.loading = 'lazy';
+          thumb.insertBefore(img, thumb.querySelector('.sc-strip-num-badge'));
         }
-        _openPanel = panelId;
-        setTimeout(() => {
-            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 60);
-    };
+        img.src = dispUrl;
+      }
+    }
+  }
 
-    window.ssSavePrompt = function (idx, value) {
-        const v = (value || '').trim();
-        if (!v) return;
-        fetch('/project/' + PID + '/stills/prompt', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-            body: JSON.stringify({ shot_index: idx, prompt: v })
-        }).then(r => r.json()).then(data => {
-            if (data.ok) {
-                const el = document.getElementById('ss-saved-' + idx);
-                if (el) { el.style.display = ''; setTimeout(() => { el.style.display = 'none'; }, 2000); }
-            }
-        }).catch(() => {});
-    };
+  function applyStatus(idx, status, url, error) {
+    shotState[idx] = { status, url };
+    if (shotData[idx]) {
+      shotData[idx].status = status;
+      if (url) shotData[idx].url = url;
+      if (error !== undefined && error !== null) shotData[idx].error = error || '';
+    }
+    const dot = document.getElementById('sc-dot-' + idx);
+    if (dot) { dot.className = 'ref-dot ref-dot--' + status; dot.title = 'Shot ' + idx + ' (' + status + ')'; }
+    updateStripItem(idx, status, url);
+    updateCounters();
+    if (activeIdx === idx) renderDetail(idx);
+  }
 
-    window.ssGenOne = function (idx, regen) {
-        const btn = event && event.target ? event.target : null;
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ …'; }
-        const prompt = (document.getElementById('ss-prompt-' + idx) || {}).value || '';
-        fetch('/project/' + PID + '/stills/generate/' + idx, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF,
-                'X-Requested-With': 'fetch',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ prompt: prompt, regen: regen })
-        }).then(r => r.json()).then(data => {
-            if (data.ok !== false) {
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                const err = document.getElementById('ss-err-' + idx);
-                if (err) { err.textContent = data.error || 'Error'; err.style.display = ''; }
-                if (btn) { btn.disabled = false; btn.textContent = '⚠ Retry'; }
+  function updateCounters() {
+    let pending = 0, ready = 0, failed = 0;
+    for (const s of Object.values(shotState)) {
+      if      (s.status === 'ready')  ready++;
+      else if (s.status === 'failed') failed++;
+      else if (s.status !== 'rendering') pending++;
+    }
+    const el = id => document.getElementById(id);
+    if (el('cnt-ready')) el('cnt-ready').textContent = ready;
+    const banner = el('ss-failed-banner');
+    if (banner) {
+      banner.style.display = failed > 0 ? '' : 'none';
+      const fc = el('ss-failed-count');
+      if (fc) fc.textContent = failed;
+    }
+  }
+
+  /* ── Polling ── */
+  let pollTimer = null, pollFailCount = 0;
+  async function _pollOnce() {
+    try {
+      const r = await fetch('/project/' + PID + '/stills/status.json', {
+        credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        pollFailCount = 0;
+        for (const shot of data.shots) {
+          const prev = shotState[shot.shot_index];
+          if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
+            applyStatus(shot.shot_index, shot.status, shot.url, shot.error);
+          }
+          const focused = document.activeElement;
+          if (shotData[shot.shot_index]) {
+            const sd = shotData[shot.shot_index];
+            if (shot.motion_prompt && shot.motion_prompt !== sd.motionPrompt && !motionPromptDirty[shot.shot_index]) {
+              sd.motionPrompt = shot.motion_prompt;
+              const vidTa = document.getElementById('sc-vid-prompt-' + shot.shot_index);
+              if (vidTa && vidTa !== focused) vidTa.value = shot.motion_prompt;
             }
-        }).catch(() => { if (btn) { btn.disabled = false; btn.textContent = '⚠ Retry'; } });
+            if (shot.prompt && shot.prompt !== sd.prompt && !promptDirty[shot.shot_index]) {
+              sd.prompt = shot.prompt;
+              const f0Ta = document.getElementById('sc-prompt-' + shot.shot_index);
+              if (f0Ta && f0Ta !== focused) f0Ta.value = shot.prompt;
+            }
+          }
+        }
+      } else {
+        if (++pollFailCount >= 3) { clearInterval(pollTimer); pollTimer = null; }
+      }
+    } catch(e) { if (++pollFailCount >= 3) { clearInterval(pollTimer); pollTimer = null; } }
+    const hasLive = Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued');
+    if (!hasLive && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    _pollOnce();
+    pollTimer = setInterval(_pollOnce, 3000);
+  }
+
+  /* ── Generate one shot ── */
+  window.scGenOne = function(idx, isRegen) {
+    if (isRegen) { scModalOpen(idx); return; }
+    _doGenOne(idx);
+  };
+  async function _doGenOne(idx) {
+    applyStatus(idx, 'rendering', null, null);
+    startPolling();
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/generate/' + idx, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      if (!resp.ok) {
+        let errMsg = 'Server error ' + resp.status;
+        try { const b = await resp.json(); if (b.error) errMsg = b.error; } catch(e) {}
+        applyStatus(idx, 'failed', null, errMsg);
+      }
+    } catch(e) { applyStatus(idx, 'failed', null, 'Network error'); }
+  }
+
+  window.ssRetryAllFailed = async function() {
+    const failedIdxs = Object.entries(shotState).filter(([,s]) => s.status === 'failed').map(([idx]) => parseInt(idx));
+    if (!failedIdxs.length) return;
+    for (const idx of failedIdxs) applyStatus(idx, 'rendering', null, null);
+    startPolling();
+    try {
+      const fd = new FormData();
+      fd.append('csrf_token', CSRF); fd.append('failed', '1');
+      await fetch('/project/' + PID + '/stills/generate-all', {
+        method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        credentials: 'same-origin', body: fd
+      });
+    } catch(e) {}
+  };
+
+  /* ── Outpaint one shot ── */
+  window.ssOutpaintOne = async function(idx) {
+    try { await fetch('/project/' + PID + '/stills/outpaint/' + idx, { method: 'POST', headers: { 'X-CSRFToken': CSRF }, credentials: 'same-origin' }); }
+    catch(e) {}
+    const btn = document.getElementById('sc-op-btn-' + idx);
+    if (btn) { btn.textContent = '⏳ Running…'; btn.disabled = true; }
+  };
+
+  /* ── Upload own image ── */
+  window.scUploadFile = function(idx, input) {
+    if (!input.files || !input.files.length) return;
+    const label = document.getElementById('sc-upload-label-' + idx);
+    if (label) label.textContent = 'Uploading…';
+    const fd = new FormData();
+    fd.append('image', input.files[0]); fd.append('csrf_token', CSRF);
+    fetch('/project/' + PID + '/stills/upload/' + idx, { method: 'POST', body: fd })
+      .then(r => r.json()).then(data => {
+        if (data.ok) { applyStatus(idx, 'ready', data.url, null); if (label) label.textContent = '✓ Uploaded'; }
+        else { if (label) label.textContent = '⬆ Upload'; alert(data.error || 'Upload failed.'); }
+      }).catch(() => { if (label) label.textContent = '⬆ Upload'; });
+  };
+
+  /* ── Frame-0 prompt save ── */
+  window.scSavePrompt = async function(idx, val) {
+    if (shotData[idx]) shotData[idx].prompt = val;
+    const ind = document.getElementById('sc-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, prompt: val }),
+      });
+      const data = await resp.json();
+      if (data.ok) { promptDirty[idx] = false; if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); } }
+    } catch(e) {}
+  };
+
+  /* ── Video prompt save only ── */
+  window.scSaveVideoPromptOnly = async function(idx, val) {
+    if (shotData[idx]) shotData[idx].motionPrompt = val;
+    const ind = document.getElementById('sc-vid-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/video-prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, motion_prompt: val, rederive: false }),
+      });
+      const data = await resp.json();
+      if (data.ok) { motionPromptDirty[idx] = false; if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); } }
+    } catch(e) {}
+  };
+
+  /* ── Video prompt save + re-derive Frame 0 ── */
+  window.scSaveVideoPrompt = async function(idx, val, rederive) {
+    if (shotData[idx]) shotData[idx].motionPrompt = val;
+    const ind      = document.getElementById('sc-vid-saved-' + idx);
+    const deriving = document.getElementById('sc-vid-deriving-' + idx);
+    const btn      = document.getElementById('sc-rederive-btn-' + idx);
+    if (rederive && deriving) deriving.style.display = '';
+    if (rederive && btn) { btn.disabled = true; btn.textContent = '⏳ Deriving…'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/video-prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, motion_prompt: val, rederive: !!rederive }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        motionPromptDirty[idx] = false;
+        if (data.frame0_prompt) {
+          const f0ta = document.getElementById('sc-prompt-' + idx);
+          if (f0ta) f0ta.value = data.frame0_prompt;
+          if (data.frame0_saved && shotData[idx]) { shotData[idx].prompt = data.frame0_prompt; promptDirty[idx] = false; }
+        }
+        if (data.rederive_error) {
+          if (ind) { ind.style.display = ''; ind.style.color = '#ff8080'; ind.textContent = '⚠ Re-derive failed'; setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = '✓ Saved'; }, 4000); }
+        } else {
+          if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
+        }
+      }
+    } catch(e) {}
+    if (deriving) deriving.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Save & Re-derive Frame 0'; }
+  };
+
+  /* ── Regen modal ── */
+  let modalTarget = null;
+  function scModalOpen(target) {
+    modalTarget = target;
+    document.getElementById('sc-modal-body').textContent = 'Regenerating this image will use additional generation credits. Continue?';
+    document.getElementById('sc-regen-modal').classList.add('open');
+    document.getElementById('sc-modal-confirm').onclick = function() {
+      document.getElementById('sc-regen-modal').classList.remove('open');
+      _doGenOne(modalTarget);
+      modalTarget = null;
     };
+  }
+  window.scModalCancel = function() { document.getElementById('sc-regen-modal').classList.remove('open'); modalTarget = null; };
+
+  /* ── Init ── */
+  startPolling();
+  updateCounters();
+  const firstIdx = Object.keys(shotData)[0];
+  if (firstIdx !== undefined) window.scSelect(parseInt(firstIdx));
+
 })();
 </script>
 {% endblock %}
