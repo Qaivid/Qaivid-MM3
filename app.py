@@ -3637,24 +3637,30 @@ def _stills_control_guard(project_id: str):
 
 
 _wan_derive_inflight: set[str] = set()
+_wan_derive_done: set[str] = set()
+_wan_derive_lock = threading.Lock()
 
 
 def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
     """Spawn a background thread to derive `wan_video_prompt` for every ready
-    shot that is still missing one.  No-ops immediately if a thread is already
-    in flight for this project so polling never spawns multiple workers."""
-    if project_id in _wan_derive_inflight:
-        return
-    missing = [
-        a for a in assets
-        if (a.get("status") or "pending") == "ready"
-        and not a.get("wan_video_prompt")
-        and a.get("motion_prompt")
-    ]
-    if not missing:
-        return
+    shot that is still missing one.  Thread-safe: guards the inflight set with
+    a lock so concurrent requests never spawn duplicate workers.  Skips projects
+    whose entire backfill pass has already completed or permanently failed."""
+    with _wan_derive_lock:
+        if project_id in _wan_derive_inflight or project_id in _wan_derive_done:
+            return
+        missing = [
+            a for a in assets
+            if (a.get("status") or "pending") == "ready"
+            and not a.get("wan_video_prompt")
+            and a.get("motion_prompt")
+        ]
+        if not missing:
+            return
+        _wan_derive_inflight.add(project_id)
 
     def _worker() -> None:
+        any_success = False
         try:
             from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
             for a in missing:
@@ -3673,15 +3679,18 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
                                 (wan_p[:600], project_id, idx),
                             )
                             conn.commit()
+                        any_success = True
                 except Exception:
                     logger.debug(
                         "_kick_missing_wan_prompts: derivation failed for "
                         "project=%s shot=%s (non-fatal)", project_id, idx,
                     )
         finally:
-            _wan_derive_inflight.discard(project_id)
+            with _wan_derive_lock:
+                _wan_derive_inflight.discard(project_id)
+                if any_success or not missing:
+                    _wan_derive_done.add(project_id)
 
-    _wan_derive_inflight.add(project_id)
     threading.Thread(target=_worker, daemon=True, name=f"wan-derive-{project_id[:8]}").start()
 
 
