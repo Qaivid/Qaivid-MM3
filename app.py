@@ -1470,6 +1470,7 @@ def project_detail(project_id: str):
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
             p["wan_prompt_source"] = a.get("wan_prompt_source") or "deterministic"
+            p["render_wan_source"] = a.get("render_wan_source") or ""
             p["source"] = a.get("source")
             shots.append(p)
 
@@ -1554,6 +1555,7 @@ def project_detail(project_id: str):
             p["wan_video_prompt"] = a.get("wan_video_prompt") or ""
             p["ai_wan_video_prompt"] = a.get("ai_wan_video_prompt") or ""
             p["wan_prompt_source"] = a.get("wan_prompt_source") or "deterministic"
+            p["render_wan_source"] = a.get("render_wan_source") or ""
             p["source"] = a.get("source")
             shots.append(p)
 

@@ -384,6 +384,13 @@ def ensure_schema() -> None:
             " NOT NULL DEFAULT 'deterministic';"
         )
 
+        # Task #202 — records which WAN prompt source was ACTUALLY used for the
+        # most recent video render (accounts for fallback logic).
+        # Values: 'deterministic' | 'ai' | NULL (no video rendered yet)
+        cur.execute(
+            "ALTER TABLE shot_assets ADD COLUMN IF NOT EXISTS render_wan_source TEXT;"
+        )
+
         # Credit ledger — append-only audit log of credit transactions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS credit_ledger (
@@ -790,9 +797,10 @@ def _render_video(project_id: str, shot: dict) -> None:
 
         # Prefer the stored WAN 2.6 continuation prompt over the full motion_prompt.
         # _get_active_wan_prompt() reads wan_prompt_source ('deterministic'|'ai') and
-        # returns the correct column, falling back gracefully if the preferred one is empty.
-        # Falls back to motion_prompt if absent (legacy projects, derivation failed).
-        wan_video_prompt = _get_active_wan_prompt(project_id, idx) or ""
+        # returns (prompt, source_used), falling back gracefully if the preferred one
+        # is empty.  Falls back to motion_prompt if absent (legacy projects).
+        wan_video_prompt, active_wan_source = _get_active_wan_prompt(project_id, idx)
+        wan_video_prompt = wan_video_prompt or ""
 
         # Assemble explicit render_job for traceability — captures every input
         # used to produce this clip (brain-derived + linkage state).
@@ -807,7 +815,7 @@ def _render_video(project_id: str, shot: dict) -> None:
             "wan_video_prompt":      wan_video_prompt,
             "motion_prompt_source":  ("brain" if brain_motion_prompt else
                                       ("shot_dict" if shot.get("motion_prompt") else "db")),
-            "wan_prompt_source":     ("db" if wan_video_prompt else "none"),
+            "wan_prompt_source":     (active_wan_source if wan_video_prompt else "none"),
             "motion_philosophy":     motion_philosophy,
             "identity_seed":         identity_seed,
             "cinematic_style":       cinematic_style,
@@ -825,6 +833,17 @@ def _render_video(project_id: str, shot: dict) -> None:
                                          motion_prompt=motion_prompt,
                                          wan_video_prompt=wan_video_prompt or None)
         _update_video(project_id, idx, "ready", file_path=public_url)
+
+        # Record which WAN prompt source actually drove this render so the UI
+        # can display a badge on the thumbnail (Task #202).
+        if wan_video_prompt:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE shot_assets SET render_wan_source=%s, updated_at=NOW()"
+                    " WHERE project_id=%s AND shot_index=%s",
+                    (active_wan_source, project_id, idx),
+                )
+                conn.commit()
 
     except (VideoGenerationError, Exception) as exc:
         logger.exception("Video render failed for project=%s shot=%s", project_id, idx)
@@ -2126,12 +2145,19 @@ def _get_shot_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
     return None
 
 
-def _get_active_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
-    """Return the WAN prompt that should drive video generation for this shot.
+def _get_active_wan_prompt(
+    project_id: str, shot_index: int
+) -> "tuple[Optional[str], str]":
+    """Return (prompt, source_used) for the WAN prompt that should drive video generation.
 
-    Reads ``wan_prompt_source`` (default ``'deterministic'``) and returns either
-    ``wan_video_prompt`` or ``ai_wan_video_prompt`` accordingly.  Falls back to
-    whichever column is non-empty when the preferred one is absent.
+    Reads ``wan_prompt_source`` (default ``'deterministic'``) and chooses either
+    ``wan_video_prompt`` or ``ai_wan_video_prompt``.  Falls back gracefully when
+    the preferred column is empty.
+
+    Returns:
+        (prompt_text, source_used) where source_used is 'deterministic' or 'ai',
+        reflecting the column that provided the non-empty prompt (after fallback).
+        Returns (None, 'deterministic') when the shot is not found.
     """
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -2141,13 +2167,18 @@ def _get_active_wan_prompt(project_id: str, shot_index: int) -> Optional[str]:
         )
         row = cur.fetchone()
     if not row:
-        return None
+        return None, "deterministic"
     source = (row.get("wan_prompt_source") or "deterministic").strip()
     det = row.get("wan_video_prompt") or None
     ai  = row.get("ai_wan_video_prompt") or None
     if source == "ai":
-        return ai or det  # fall back to deterministic if AI prompt absent
-    return det or ai      # fall back to AI prompt if deterministic absent
+        if ai:
+            return ai, "ai"
+        return det, "deterministic"   # fallback
+    # source == "deterministic" (or any unknown value)
+    if det:
+        return det, "deterministic"
+    return ai, "ai"                   # fallback
 
 
 def _generate_ai_wan_prompt(frame0_prompt: str, motion_prompt: str,
