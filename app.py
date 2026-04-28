@@ -3690,7 +3690,7 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
                             cur.execute(
                                 "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
                                 " WHERE project_id=%s AND shot_index=%s"
-                                "   AND (wan_video_prompt IS NULL OR wan_video_prompt='')",
+                                "   AND wan_video_prompt IS NULL",
                                 (wan_p[:600], project_id, idx),
                             )
                             conn.commit()
