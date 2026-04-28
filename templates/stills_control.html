@@ -852,8 +852,12 @@
   let pollTimer = null, pollFailCount = 0;
   const POLL_FAIL_THRESHOLD = 2;
   let _reloadArmed = false;
-  /* True while pre_compute_shot_prompts is still writing prompts in the background. */
+  /* True while pre_compute_shot_prompts is still writing prompts in the background.
+     Initialised to true so polling starts immediately; server flips it to false once
+     all non-ready shots have a non-NULL motion_prompt.  Hard-capped after 5 minutes
+     to avoid polling forever when a shot builder permanently fails to return a prompt. */
   let _precomputePending = true;
+  const _PRECOMPUTE_DEADLINE = Date.now() + 5 * 60 * 1000;  // 5 min from page load
 
   function armReloadFallback() {
     if (_reloadArmed) return;
@@ -871,7 +875,9 @@
         const data = await r.json();
         pollFailCount = 0;
         // Server tells us if background prompt pre-computation is still running.
-        _precomputePending = !!data.precompute_pending;
+        // Hard-cap: treat as done after 5 minutes regardless, to prevent infinite polling
+        // when a shot builder permanently fails to return a motion_prompt.
+        _precomputePending = !!data.precompute_pending && Date.now() < _PRECOMPUTE_DEADLINE;
         for (const shot of data.shots) {
           const prev = shotState[shot.shot_index];
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
@@ -1166,7 +1172,15 @@
           const f0ta = document.getElementById('sc-prompt-' + idx);
           if (f0ta) f0ta.value = data.frame0_prompt;
         }
-        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
+        if (data.rederive_error) {
+          // Re-derive failed — motion prompt was saved but Frame-0 was not updated.
+          if (btn) btn.title = 'Re-derive failed: ' + data.rederive_error;
+          if (ind) { ind.style.display = ''; ind.style.color = '#ff8080';
+            ind.textContent = '\u26A0 Re-derive failed';
+            setTimeout(() => { ind.style.display = 'none'; ind.style.color = ''; ind.textContent = 'Saved'; }, 4000); }
+        } else {
+          if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
+        }
       }
     } catch(e) {}
     if (deriving) deriving.style.display = 'none';

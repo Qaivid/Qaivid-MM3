@@ -62,7 +62,6 @@ from pipeline_worker import (
     retry_video,
     set_entity_uploaded_plate,
     seed_shot_rows_with_prompts,
-    pre_compute_shot_prompts,
     kick_pre_compute_shot_prompts,
     update_shot_prompt,
     set_shot_uploaded_image,
@@ -3740,6 +3739,7 @@ def stills_update_video_prompt(project_id: str):
 
     # Optionally re-derive the Frame-0 still prompt via GPT-4.1.
     frame0_prompt = None
+    rederive_error = None
     if data.get("rederive"):
         try:
             from pipeline_worker import _derive_frame0_prompt  # noqa: PLC0415
@@ -3755,15 +3755,20 @@ def stills_update_video_prompt(project_id: str):
                         (frame0_prompt, project_id, shot_index),
                     )
                     conn.commit()
-        except Exception:
+            else:
+                rederive_error = "Re-derive returned an empty prompt"
+        except Exception as exc:
             logger.exception(
                 "stills_update_video_prompt: re-derive Frame-0 failed for project=%s shot=%s",
                 project_id, shot_index,
             )
+            rederive_error = str(exc) or "Re-derive failed"
 
     resp: dict = {"ok": True}
     if frame0_prompt:
         resp["frame0_prompt"] = frame0_prompt
+    if rederive_error:
+        resp["rederive_error"] = rederive_error
     return jsonify(resp)
 
 
