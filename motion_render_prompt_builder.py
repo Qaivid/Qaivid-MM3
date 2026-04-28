@@ -3,14 +3,16 @@ motion_render_prompt_builder.py
 
 Builds video motion prompts sized to fit the active video model.
 
-Components are added in priority order — the most essential cinematic
-information comes first.  Lower-priority parts are dropped cleanly when
-the budget is exhausted, so the prompt is always complete and never
-truncated mid-sentence.
+Output format: labelled sections separated by " | " so WAN 2.6 can parse
+a clear hierarchy of meaning rather than a flat comma-joined string.
 
-The max_chars budget is read from video_generator.MOTION_PROMPT_MAX_CHARS
-at import time, so switching video models only requires changing one
-constant in video_generator.py.
+    Style: <vibe direction> | Scene: <subject, action> | Environment: <setting, elements>
+    | Lighting: <lighting> | Mood: <emotion, atmosphere> | Camera: <motion, quality>
+    | Avoid: <negative terms>
+
+Each section is omitted (never truncated) if it would push the output over the
+budget.  The budget is read from video_generator.MOTION_PROMPT_MAX_CHARS at
+import time, so switching video models only requires changing one constant.
 """
 
 from typing import Dict, List, Optional
@@ -22,21 +24,17 @@ try:
 except Exception:
     _MODEL_MAX_CHARS = 400
 
-# Component priority list — highest priority first.
-# Each entry is (label, event_key).  label=None means no "label: " prefix.
-_COMPONENTS = [
-    (None,                  "action"),
-    ("triggered by",        "trigger"),
-    ("emotional shift",     "emotional_shift"),
-    ("object interaction",  "object_interaction"),
-    ("environment",         "environment_interaction"),
-]
+# Section separator used to join the labelled blocks.
+_SEP = " | "
 
-# Quality suffix appended only if there is room.
-_QUALITY_SUFFIX = (
+# Quality clause folded into the Camera section.
+_QUALITY_CLAUSE = (
     "natural cinematic motion, realistic timing, "
     "no abrupt transitions, filmic quality"
 )
+
+# Legacy quality suffix — kept for MotionRenderPromptBuilder compatibility.
+_QUALITY_SUFFIX = _QUALITY_CLAUSE
 
 # Spec motion modes — used by _motion_mode_for_intensity()
 _MOTION_MODES = {
@@ -47,6 +45,16 @@ _MOTION_MODES = {
     "pan_right":     "slow pan right, drifting reveal",
     "drift":         "subtle camera drift, organic handheld quality",
 }
+
+# Component priority list for the legacy MotionRenderPromptBuilder.
+# Each entry is (label, event_key).  label=None means no "label: " prefix.
+_COMPONENTS = [
+    (None,                  "action"),
+    ("triggered by",        "trigger"),
+    ("emotional shift",     "emotional_shift"),
+    ("object interaction",  "object_interaction"),
+    ("environment",         "environment_interaction"),
+]
 
 # Aliases mapping common camera_plan.movement strings → canonical spec mode keys
 _MOTION_ALIASES = {
@@ -69,6 +77,36 @@ _MOTION_ALIASES = {
     "drift_left": "drift", "drift_right": "drift", "subtle_drift": "drift",
     "tracking": "drift", "track": "drift",
 }
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _clean_trailing_punct(text: str) -> str:
+    """Strip trailing periods, commas, and semicolons so clauses join cleanly."""
+    return text.rstrip(".,;: ").strip()
+
+
+def _truncate_to_clause(text: str, max_chars: int) -> str:
+    """Truncate *text* to at most *max_chars*, always ending at a complete clause.
+
+    Splits on ', ' boundaries and drops the last fragment when the full text
+    is too long.  This prevents dangling prepositional phrases such as
+    "aligned with the," that appear when truncating by character position alone.
+    Returns an empty string if even the first clause exceeds max_chars.
+    """
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return _clean_trailing_punct(text)
+    parts = text.split(", ")
+    result = ""
+    for part in parts:
+        candidate = f"{result}, {part}" if result else part
+        if len(candidate) <= max_chars:
+            result = candidate
+        else:
+            break
+    return _clean_trailing_punct(result)
 
 
 def normalize_camera_movement(raw: str) -> str:
@@ -181,6 +219,8 @@ def _intensity_float(intensity) -> float:
     return _MAP.get(label, 0.5)
 
 
+# ── Legacy builder ────────────────────────────────────────────────────────────
+
 class MotionRenderPromptBuilder:
     def __init__(self, max_chars: Optional[int] = None):
         self._max_chars = max_chars or _MODEL_MAX_CHARS
@@ -200,9 +240,9 @@ class MotionRenderPromptBuilder:
             tentative = ", ".join(chosen + [candidate])
             return len(tentative) <= budget
 
-        # Priority components
+        # Priority components — strip trailing punctuation before joining.
         for label, key in _COMPONENTS:
-            value = (event.get(key) or "").strip()
+            value = _clean_trailing_punct((event.get(key) or "").strip())
             if not value:
                 continue
             clause = f"{label}: {value}" if label else value
@@ -227,6 +267,8 @@ class MotionRenderPromptBuilder:
         return [self.build_prompt(e) for e in events]
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _pick(shot: Dict, *keys: str) -> str:
     """Return the first non-empty string value from shot for any of the given keys."""
     for key in keys:
@@ -235,6 +277,8 @@ def _pick(shot: Dict, *keys: str) -> str:
             return val
     return ""
 
+
+# ── Main builder ──────────────────────────────────────────────────────────────
 
 def build_video_clip_prompt(
     shot: Dict,
@@ -251,113 +295,129 @@ def build_video_clip_prompt(
 ) -> str:
     """Build a brain-aware WAN 2.6 Flash video prompt for a single shot.
 
-    Reads timeline fields with full fallback coverage — the timeline builder
-    uses different key names across versions (e.g. chosen_direction vs action,
-    emotional_state vs emotional_micro_state, intensity vs emotional_intensity).
-    All known aliases are checked so no story data is silently dropped.
+    Output format — labelled sections separated by ' | ':
 
-    Components (in priority order):
-        0. Vibe shot direction (cultural/aesthetic identity)
-        1. Subject / identity (identity_seed or shot subject)
-        2. Scene action / direction (chosen_direction → action → visual_prompt excerpt)
-        3. Environment (environment_interaction → environment_type → key_elements)
-        4. Lighting (style_packet.lighting_logic → shot lighting_style)
-        5. Emotion (emotional_micro_state → emotional_state → meaning)
-        6. Atmosphere / meaning (atmosphere_profile → meaning for story weight)
-        7. Cinematic style hint
-        8. Motion instruction (scaled to intensity + philosophy + mode)
-        9. Continuity rule excerpt
-       10. Quality suffix (if budget allows)
+        Style: <vibe direction> | Scene: <subject, action> | Environment: <setting>
+        | Lighting: <lighting> | Mood: <emotion, atmosphere> | Camera: <motion, quality>
+        | Avoid: <negative terms>
 
-    The output is always <= max_chars and never truncated mid-sentence.
+    This gives WAN 2.6 a clear parsing hierarchy.  Each section is included only
+    if its content is non-empty and it fits within *max_chars*; sections are never
+    truncated mid-clause.
+
+    Data sources (unchanged from previous flat format):
+        Style    ← vibe_shot_direction (brain style_packet)
+        Scene    ← identity_seed / character_name, chosen_direction / action / shot_event
+        Environ  ← environment_interaction / environment_type, key_elements (up to 3)
+        Lighting ← lighting_logic (brain) / lighting_style / lighting_condition
+        Mood     ← emotional_micro_state / emotional_shift / emotional_state,
+                   atmosphere_profile / meaning (truncated to a clean clause boundary)
+        Camera   ← cinematic_style (brain), motion instruction (intensity-scaled),
+                   first continuity rule, quality clause
+        Avoid    ← vibe_avoid (brain, up to 4 items)
     """
     budget = max_chars
-    chosen: List[str] = []
+    sections: List[str] = []
 
-    def _fits(candidate: str) -> bool:
-        tentative = ", ".join(chosen + [candidate])
-        return len(tentative) <= budget
+    def _current_len(extra_section: str = "") -> int:
+        """Length of the assembled prompt if *extra_section* were appended."""
+        all_secs = sections + ([extra_section] if extra_section else [])
+        return len(_SEP.join(all_secs))
 
-    def _add(clause: str) -> None:
-        clause = clause.strip()
-        if clause and _fits(clause):
-            chosen.append(clause)
+    def _add_section(label: str, content: str) -> None:
+        """Append a labelled section if it fits in the budget."""
+        content = content.strip()
+        if not content:
+            return
+        sec = f"{label}: {content}" if label else content
+        if _current_len(sec) <= budget:
+            sections.append(sec)
 
-    # 0. Vibe shot direction — cultural/aesthetic identity of the production.
+    # ── Style — vibe identity, goes first as production fingerprint ───────────
     if vibe_shot_direction:
-        _add(vibe_shot_direction.strip())
+        vsd = _clean_trailing_punct(vibe_shot_direction.strip())
+        if vsd:
+            _add_section("Style", vsd)
 
-    # 1. Subject / identity — identity_seed is the authoritative physical anchor.
-    subject = (identity_seed or "").strip()
+    # ── Scene — who + what is happening ──────────────────────────────────────
+    scene_parts: List[str] = []
+
+    subject = _clean_trailing_punct((identity_seed or "").strip())
     if not subject:
-        subject = _pick(shot, "subject", "character_name")
+        subject = _clean_trailing_punct(_pick(shot, "subject", "character_name"))
     if subject:
-        _add(subject)
+        scene_parts.append(subject)
 
-    # 2. Scene action / direction — what is HAPPENING in this shot.
-    # Timeline v2: chosen_direction / _v2_chosen_direction
-    # MM3.1+:      action / shot_event
-    # Fallback:    first 120 chars of visual_prompt (contains the scene sentence)
-    action = _pick(shot,
-                   "chosen_direction", "_v2_chosen_direction",
-                   "action", "shot_event")
+    # chosen_direction ends with a period on many timeline entries — strip it.
+    action = _pick(shot, "chosen_direction", "_v2_chosen_direction", "action", "shot_event")
     if not action:
         vp = (shot.get("visual_prompt") or "").strip()
         if vp:
-            # Take only the first sentence — avoids lyric fragments / noise.
             first = vp.split(".")[0].strip()
             if len(first) > 20:
                 action = first[:120]
+    action = _clean_trailing_punct(action.strip()) if action else ""
     if action and action != subject:
-        _add(action)
+        scene_parts.append(action)
 
-    # 3. Environment — setting / physical space.
-    # Timeline v2: environment_type (str), key_elements (list)
-    # MM3.1+:      environment_interaction, environment
-    env = _pick(shot, "environment_interaction", "environment",
-                "environment_type")
+    if scene_parts:
+        _add_section("Scene", ", ".join(scene_parts))
+
+    # ── Environment — setting + key visual elements ───────────────────────────
+    env_parts: List[str] = []
+
+    env = _pick(shot, "environment_interaction", "environment", "environment_type")
     if not env:
-        # Build from environment_profile dict
         ep = shot.get("environment_profile") or {}
         env = (ep.get("environment_type") or "").strip()
     if env:
-        _add(env)
+        env_parts.append(_clean_trailing_punct(env))
 
-    # Append up to 3 key visual elements as enrichment.
     key_elems = shot.get("key_elements") or []
     if isinstance(key_elems, list) and key_elems:
-        elems_str = ", ".join(str(e).strip() for e in key_elems[:3] if e)
-        if elems_str:
-            _add(elems_str)
+        env_parts.extend(
+            str(e).strip() for e in key_elems[:3] if e and str(e).strip()
+        )
 
-    # 4. Lighting — brain style_packet first, then shot-level field.
-    light = (lighting_logic or "").strip() or _pick(shot, "lighting_style", "lighting_condition")
+    if env_parts:
+        _add_section("Environment", ", ".join(env_parts))
+
+    # ── Lighting — brain style_packet first, then shot-level field ────────────
+    light = _clean_trailing_punct(
+        (lighting_logic or "").strip()
+        or _pick(shot, "lighting_style", "lighting_condition")
+    )
     if light:
-        _add(light)
+        _add_section("Lighting", light)
 
-    # 5. Emotional state / micro-state.
-    # MM3.1+:      emotional_micro_state, emotional_shift
-    # Timeline v2: emotional_state, emotional_tone
-    emotion = _pick(shot,
-                    "emotional_micro_state", "emotional_shift",
-                    "emotional_state", "emotional_tone")
+    # ── Mood — emotional state + atmosphere/meaning ───────────────────────────
+    mood_parts: List[str] = []
+
+    emotion = _pick(
+        shot,
+        "emotional_micro_state", "emotional_shift",
+        "emotional_state", "emotional_tone",
+    )
     if emotion:
-        _add(emotion)
+        mood_parts.append(_clean_trailing_punct(emotion))
 
-    # 6. Atmosphere / story meaning — gives WAN the narrative weight of the shot.
-    # Trimmed to 80 chars so it doesn't eat the whole budget.
-    meaning = _pick(shot, "atmosphere_profile", "meaning")
-    if meaning and len(meaning) > 80:
-        meaning = meaning[:80].rsplit(" ", 1)[0]
-    if meaning:
-        _add(meaning)
+    # atmosphere_profile can be very long ("aligned with the emotional meaning of …")
+    # — truncate to a complete clause boundary so no dangling phrase leaks through.
+    atmosphere = _pick(shot, "atmosphere_profile", "meaning")
+    if atmosphere:
+        atmosphere = _truncate_to_clause(atmosphere, 100)
+    if atmosphere:
+        mood_parts.append(atmosphere)
 
-    # 7. Cinematic style hint (brief).
+    if mood_parts:
+        _add_section("Mood", ", ".join(mood_parts))
+
+    # ── Camera — cinematic style + motion + continuity + quality ──────────────
+    camera_parts: List[str] = []
+
     if cinematic_style:
-        _add(cinematic_style.strip())
+        camera_parts.append(_clean_trailing_punct(cinematic_style.strip()))
 
-    # 8. Motion instruction — scaled to emotional_intensity + motion_philosophy + mode.
-    # Timeline v2 uses "intensity" (float 0–1); MM3.1 uses "emotional_intensity".
     raw_intensity = (
         shot.get("emotional_intensity")
         or shot.get("intensity")
@@ -367,27 +427,23 @@ def build_video_clip_prompt(
     intensity_f = _intensity_float(raw_intensity)
     motion_clause = _motion_mode_for_intensity(intensity_f, motion_philosophy, emotional_mode_id)
     if motion_clause:
-        _add(motion_clause)
+        camera_parts.append(motion_clause)
 
-    # 9. First continuity rule (brief excerpt — strictly from brain).
     rules = continuity_rules or []
     if rules:
-        rule = str(rules[0]).strip()
-        if len(rule) > 80:
-            rule = rule[:80].rsplit(" ", 1)[0]
+        rule = _truncate_to_clause(str(rules[0]).strip(), 80)
         if rule:
-            _add(rule)
+            camera_parts.append(rule)
 
-    # 10. Vibe avoid — compact negative clause.
-    # WAN 2.6 has no negative prompt field; avoid terms go in the positive prompt.
-    _avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
-    if _avoid_items:
-        _avoid_clause = "avoid: " + ", ".join(_avoid_items[:4])
-        _add(_avoid_clause)
+    # Quality clause folds into Camera so it isn't a free-floating suffix.
+    camera_parts.append(_QUALITY_CLAUSE)
 
-    # Quality suffix — appended last only if budget allows.
-    if _fits(_QUALITY_SUFFIX):
-        chosen.append(_QUALITY_SUFFIX)
+    if camera_parts:
+        _add_section("Camera", ", ".join(camera_parts))
 
-    prompt = ", ".join(chosen)
-    return prompt.strip()
+    # ── Avoid — compact negative clause (WAN has no dedicated negative field) ─
+    avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
+    if avoid_items:
+        _add_section("Avoid", ", ".join(avoid_items[:4]))
+
+    return _SEP.join(sections).strip()
