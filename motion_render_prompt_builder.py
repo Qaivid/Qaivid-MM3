@@ -413,6 +413,10 @@ def build_video_clip_prompt(
         _add_section("Mood", ", ".join(mood_parts))
 
     # ── Camera — cinematic style + motion + continuity + quality ──────────────
+    # Quality clause is the lowest priority within this section: we first try
+    # to include it, and fall back to the section without it if budget is tight.
+    # This ensures the motion instruction is never dropped just because quality
+    # would push the total over the limit.
     camera_parts: List[str] = []
 
     if cinematic_style:
@@ -435,11 +439,14 @@ def build_video_clip_prompt(
         if rule:
             camera_parts.append(rule)
 
-    # Quality clause folds into Camera so it isn't a free-floating suffix.
-    camera_parts.append(_QUALITY_CLAUSE)
-
     if camera_parts:
-        _add_section("Camera", ", ".join(camera_parts))
+        core_content = ", ".join(camera_parts)
+        full_content = core_content + ", " + _QUALITY_CLAUSE
+        # Prefer full content (with quality); fall back to core if it doesn't fit.
+        if _current_len(f"Camera: {full_content}") <= budget:
+            _add_section("Camera", full_content)
+        else:
+            _add_section("Camera", core_content)
 
     # ── Avoid — compact negative clause (WAN has no dedicated negative field) ─
     avoid_items = [str(a).strip() for a in (vibe_avoid or []) if a and str(a).strip()]
