@@ -852,6 +852,8 @@
   let pollTimer = null, pollFailCount = 0;
   const POLL_FAIL_THRESHOLD = 2;
   let _reloadArmed = false;
+  /* True while pre_compute_shot_prompts is still writing prompts in the background. */
+  let _precomputePending = true;
 
   function armReloadFallback() {
     if (_reloadArmed) return;
@@ -868,6 +870,8 @@
       if (r.ok) {
         const data = await r.json();
         pollFailCount = 0;
+        // Server tells us if background prompt pre-computation is still running.
+        _precomputePending = !!data.precompute_pending;
         for (const shot of data.shots) {
           const prev = shotState[shot.shot_index];
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
@@ -900,8 +904,11 @@
     } catch(e) {
       if (++pollFailCount >= POLL_FAIL_THRESHOLD) { clearInterval(pollTimer); pollTimer = null; armReloadFallback(); }
     }
+    // Keep polling alive while any shot is rendering/queued OR while
+    // background prompt pre-computation (pre_compute_shot_prompts) is still
+    // writing prompts to the DB — stopping prematurely would leave textareas blank.
     const hasLive = Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued');
-    if (!hasLive && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (!hasLive && !_precomputePending && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
   function startPolling() {

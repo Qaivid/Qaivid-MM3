@@ -3620,16 +3620,23 @@ def stills_status_json(project_id: str):
     # Collapse 'queued' → 'rendering' for the client (matches _shot_payload).
     # Also return motion_prompt and prompt so the client can update editable
     # textareas live as pre_compute_shot_prompts populates them in the background.
+    # precompute_pending: true when any non-ready shot still has a NULL motion_prompt
+    # — the client uses this to keep polling even when no generation is in flight.
+    precompute_pending = any(
+        a.get("motion_prompt") is None and (a.get("status") or "pending") != "ready"
+        for a in assets
+    )
     return jsonify({
+        "precompute_pending": precompute_pending,
         "shots": [
             {
-                "shot_index":   a["shot_index"],
-                "status":       ("rendering" if a["status"] == "queued" else a["status"]),
-                "url":          _asset_url(a.get("file_path")),
-                "source":       a.get("source"),
-                "error":        a.get("error"),
+                "shot_index":    a["shot_index"],
+                "status":        ("rendering" if a["status"] == "queued" else a["status"]),
+                "url":           _asset_url(a.get("file_path")),
+                "source":        a.get("source"),
+                "error":         a.get("error"),
                 "motion_prompt": a.get("motion_prompt") or "",
-                "prompt":       a.get("prompt") or "",
+                "prompt":        a.get("prompt") or "",
             }
             for a in assets
         ]
