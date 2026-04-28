@@ -603,6 +603,7 @@
               AI Prompt
             </button>
             <span id="sc-wan-src-saved-${idx}" style="display:none;color:#c8a0ff;" class="sc-indicator">✓ Saved</span>
+            <span id="sc-wan-ai-warn-${idx}" style="${(wanPromptSrc === 'ai' && !shot.aiWanVideoPrompt) ? '' : 'display:none'};color:#ffaa44;font-size:0.78rem;" class="sc-indicator">⚠ No AI prompt yet — generate one first</span>
           </div>
         </div>
 
@@ -979,6 +980,14 @@
     if (btn) { btn.disabled = false; btn.textContent = '🎬 Generate All WAN Prompts'; }
   };
 
+  /* ── Update the "No AI prompt yet" warning visibility for a shot ── */
+  function _scUpdateAiWarnEl(idx) {
+    const sd      = shotData[idx];
+    const warnEl  = document.getElementById('sc-wan-ai-warn-' + idx);
+    if (!warnEl) return;
+    warnEl.style.display = (sd && sd.wanPromptSource === 'ai' && !sd.aiWanVideoPrompt) ? '' : 'none';
+  }
+
   /* ── Set which WAN prompt source drives video generation for a shot ── */
   window.scSetWanPromptSource = async function(idx, source) {
     const detBtn = document.getElementById('sc-wan-src-det-' + idx);
@@ -993,6 +1002,7 @@
     };
     applyStyles(source);
     if (shotData[idx]) shotData[idx].wanPromptSource = source;
+    _scUpdateAiWarnEl(idx);
     try {
       const resp = await fetch('/project/' + PID + '/stills/update-wan-prompt-source', {
         method: 'POST',
@@ -1017,7 +1027,7 @@
 
   /* ── AI WAN prose prompt save (individual shot) ── */
   window.scSaveAiWanPrompt = async function(idx, val) {
-    if (shotData[idx]) shotData[idx].aiWanVideoPrompt = val;
+    if (shotData[idx]) { shotData[idx].aiWanVideoPrompt = val; _scUpdateAiWarnEl(idx); }
     const ind = document.getElementById('sc-ai-wan-saved-' + idx);
     try {
       const resp = await fetch('/project/' + PID + '/stills/update-ai-wan-prompt', {
@@ -1053,7 +1063,7 @@
       const data = await resp.json();
       if (data.ok) {
         const wp = data.ai_wan_video_prompt;
-        if (shotData[idx]) shotData[idx].aiWanVideoPrompt = wp;
+        if (shotData[idx]) { shotData[idx].aiWanVideoPrompt = wp; _scUpdateAiWarnEl(idx); }
         aiWanPromptDirty[idx] = false;
         const ta = document.getElementById('sc-ai-wan-prompt-' + idx);
         if (ta) ta.value = wp;
@@ -1101,7 +1111,7 @@
           } else if (chunk.shot_index !== undefined && !chunk.error) {
             const sidx = chunk.shot_index;
             const wp   = chunk.ai_wan_video_prompt;
-            if (shotData[sidx]) shotData[sidx].aiWanVideoPrompt = wp;
+            if (shotData[sidx]) { shotData[sidx].aiWanVideoPrompt = wp; _scUpdateAiWarnEl(sidx); }
             const ta = document.getElementById('sc-ai-wan-prompt-' + sidx);
             if (ta && ta !== document.activeElement) ta.value = wp;
             if (status && chunk.total > 0) {
