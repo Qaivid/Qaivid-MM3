@@ -1166,14 +1166,19 @@
       const data = await resp.json();
       if (data.ok) {
         motionPromptDirty[idx] = false;
-        if (data.frame0_prompt && data.frame0_saved) {
-          // Only overwrite the textarea when the server confirmed it persisted the
-          // derived prompt (rowcount > 0); if prompt_user_edited blocked the write
-          // we leave the user's manual edit intact.
-          if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
-          promptDirty[idx] = false;
+        if (data.frame0_prompt) {
+          // Always show the newly-derived Frame-0 prompt in the textarea so the
+          // user can inspect it — they can edit and save manually if needed.
           const f0ta = document.getElementById('sc-prompt-' + idx);
           if (f0ta) f0ta.value = data.frame0_prompt;
+          if (data.frame0_saved) {
+            // Only update in-memory state + clear dirty flag when the server
+            // actually persisted the derivation (rowcount > 0); when
+            // prompt_user_edited blocked the write the textarea shows the
+            // derived value but memory keeps the manual edit's dirty state.
+            if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
+            promptDirty[idx] = false;
+          }
         }
         if (data.rederive_error) {
           // Re-derive failed — motion prompt was saved but Frame-0 was not updated.

@@ -4862,7 +4862,11 @@ def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
                 VALUES (%s, %s, 'pending', %s, NULL)
                 ON CONFLICT (project_id, shot_index) DO UPDATE
                    SET prompt        = COALESCE(EXCLUDED.prompt, shot_assets.prompt),
-                       motion_prompt = NULL,
+                       -- NULL motion_prompt only for non-ready shots so the stills
+                       -- polling can detect precompute_pending reliably.  Ready shots
+                       -- keep their existing motion_prompt (precompute skips them).
+                       motion_prompt = CASE WHEN shot_assets.status = 'ready' THEN shot_assets.motion_prompt
+                                            ELSE NULL END,
                        status        = CASE WHEN shot_assets.status IN ('ready') THEN shot_assets.status
                                             ELSE 'pending' END,
                        updated_at    = NOW()
