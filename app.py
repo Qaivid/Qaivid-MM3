@@ -4873,17 +4873,12 @@ def postprod_page(project_id: str):
     # can show them on page load (the upload endpoint only saves r2_key).
     _logos = shared_cfg.get("logos") or {}
     for _slot, _ldata in _logos.items():
-        if _ldata and _ldata.get("r2_key") and not _ldata.get("preview_url"):
+        if _ldata and _ldata.get("r2_key"):
             _r2k = _ldata["r2_key"]
-            try:
-                import r2_storage as _r2lgo
-                if _r2lgo.r2_available():
-                    _raw_logo_url = _r2lgo.public_url_for(_r2k)
-                    _ldata["preview_url"] = url_for("r2proxy", url=_raw_logo_url, _external=False)
-                else:
-                    # local fallback
-                    _ldata["preview_url"] = url_for("project_asset", asset_path=_r2k, _external=False)
-            except Exception:
+            if r2_storage.r2_available():
+                _raw_logo_url = r2_storage.public_url_for(_r2k)
+                _ldata["preview_url"] = url_for("r2proxy", url=_raw_logo_url, _external=False)
+            else:
                 _ldata["preview_url"] = url_for("project_asset", asset_path=_r2k, _external=False)
 
     # Construct audio preview URL from the uploaded audio file
@@ -5122,7 +5117,14 @@ def postprod_upload_logo(project_id: str, slot: str):
             (Json(config), project_id),
         )
         conn.commit()
-    preview_url = _asset_url(r2_key) if r2_storage.r2_available() else ""
+    # Build a browser-usable preview URL for the just-uploaded logo.
+    # _asset_url(r2_key) treats the key as a local path (404 when file is in R2),
+    # so we must use r2proxy when R2 is available.
+    if r2_storage.r2_available():
+        _raw_logo_url = r2_storage.public_url_for(r2_key)
+        preview_url = url_for("r2proxy", url=_raw_logo_url, _external=False)
+    else:
+        preview_url = url_for("project_asset", asset_path=r2_key, _external=False)
     return jsonify({"ok": True, "r2_key": r2_key, "preview_url": preview_url})
 
 
