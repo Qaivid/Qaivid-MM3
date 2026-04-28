@@ -448,10 +448,8 @@
     const wanPromptSrc = shot.wanPromptSource || 'deterministic';
     const srcDetStyle  = wanPromptSrc === 'deterministic' ? 'background:#7a44c0;color:#fff;' : '';
     const srcAiStyle   = wanPromptSrc === 'ai'            ? 'background:#7a44c0;color:#fff;' : '';
-    const renderWanSrc = shot.renderWanSource || '';
-    const wanBadgeHtml = renderWanSrc
-      ? `<span class="sc-wan-render-badge sc-wan-render-badge--${renderWanSrc}">${renderWanSrc === 'ai' ? 'AI' : 'Det'}</span>`
-      : '';
+    const renderWanSrc = (['ai','deterministic'].includes(shot.renderWanSource || '')) ? shot.renderWanSource : '';
+    const wanBadgeHtml = `<span id="sc-wan-badge-${idx}" class="sc-wan-render-badge${renderWanSrc ? ' sc-wan-render-badge--' + renderWanSrc : ''}" style="${renderWanSrc ? '' : 'display:none'}">${renderWanSrc === 'ai' ? 'AI' : renderWanSrc === 'deterministic' ? 'Det' : ''}</span>`;
 
     let actionHtml = '';
     if (shot.status === 'pending' || shot.status === 'failed') {
@@ -709,6 +707,16 @@
               sd.wanVideoPrompt = shot.wan_video_prompt;
               const wanTa = document.getElementById('sc-wan-prompt-' + shot.shot_index);
               if (wanTa && wanTa !== focused) wanTa.value = shot.wan_video_prompt;
+            }
+            const newSrc = (['ai','deterministic'].includes(shot.render_wan_source || '')) ? shot.render_wan_source : '';
+            if (newSrc !== (sd.renderWanSource || '')) {
+              sd.renderWanSource = newSrc;
+              const badgeEl = document.getElementById('sc-wan-badge-' + shot.shot_index);
+              if (badgeEl) {
+                badgeEl.className = 'sc-wan-render-badge' + (newSrc ? ' sc-wan-render-badge--' + newSrc : '');
+                badgeEl.style.display = newSrc ? '' : 'none';
+                badgeEl.textContent = newSrc === 'ai' ? 'AI' : newSrc === 'deterministic' ? 'Det' : '';
+              }
             }
           }
         }

@@ -3769,7 +3769,8 @@ def stills_status_json(project_id: str):
                 "error":           a.get("error"),
                 "motion_prompt":   a.get("motion_prompt") or "",
                 "prompt":          a.get("prompt") or "",
-                "wan_video_prompt": a.get("wan_video_prompt") or "",
+                "wan_video_prompt":  a.get("wan_video_prompt") or "",
+                "render_wan_source": a.get("render_wan_source") or "",
             }
             for a in assets
         ]
