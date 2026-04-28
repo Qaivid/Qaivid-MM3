@@ -1,0 +1,149 @@
+rate this prompt for Wan 2.6
+
+Apply a warm colour grade that enhances the emotional depth, with a slight vignette to draw focus on the woman. Textures should be soft and inviting, with a lighting mood that feels nostalgic and slightly melancholic., The camera captures the village awakening with the first light, focusing on her contemplative gaze toward the horizon., village landscape, village awakening, soft light, contemplative gaze, high-key open natural light, minimal shadow, breathable and gentle, quiet restrained softness, quiet anticipation, grounded cinematic atmosphere, spacious and restrained, aligned with the, static hold, minimal camera movement, avoid: urban settings, fast cuts, dark themes, overly modern clothing, natural cinematic motion, realistic timing, no abrupt transitions, filmic quality
+
+I’ll be direct — this is a good prompt in intention, but inefficient for Wan 2.6 execution.
+
+Rating: 7 / 10
+
+It has strong mood, tone, and cinematic sensitivity, but Wan 2.6 cares more about clarity, structure, and shot logic than poetic layering.
+
+What’s Working (Why it’s good)
+
+* Clear emotional tone → nostalgic, melancholic, soft
+* Consistent lighting direction → warm, high-key, soft shadows
+* Good restraint → “static hold”, “minimal movement” is perfect for Wan
+* Negative prompts included → helps stability
+
+This shows you understand cinematic language — that’s a big plus.
+
+Where It Breaks for Wan 2.6
+
+1. Too many overlapping descriptors
+   Wan doesn’t interpret poetry — it picks dominant tokens. You’re giving competing signals instead of hierarchy.
+
+2. No clear subject definition
+   Wan needs age, ethnicity, clothing, physical presence. Right now → too abstract → weak character consistency.
+
+3. No shot composition clarity
+   Missing framing (close-up, medium), camera height, lens feel.
+
+4. Mixed lighting logic
+   “Warm nostalgic grade” vs “high-key open light” can conflict.
+
+5. Ending clutter
+   “aligned with the…” looks incomplete → weak parsing.
+
+Optimised Version (Wan 2.6 Ready)
+
+A young Punjabi woman (early 20s), wearing a simple pastel salwar kameez with a light dupatta, stands still in a rural village landscape at sunrise.
+
+Framing: medium close-up (chest to head), eye-level, static camera.
+Lens: shallow depth of field, soft background separation.
+
+Action: she gazes quietly toward the horizon as the village slowly awakens in the background.
+
+Lighting: soft golden morning light, warm natural tones, gentle highlights, minimal shadows.
+
+Mood: nostalgic, calm, slightly melancholic, quiet anticipation.
+
+Color grade: warm cinematic tone with subtle vignette.
+
+Environment: rural Punjab village, mud houses, open fields, light morning haze.
+
+Motion: minimal movement, natural stillness, no abrupt transitions.
+
+Avoid: urban elements, modern clothing, fast cuts, dark or dramatic lighting, heavy contrast.
+
+Key Insight
+
+What you wrote is perfect for a Context Engine, but Wan needs a Prompt Engine translation layer like above.
+
+Meaning vs Execution separation:
+
+* Your version → Meaning-rich
+* Optimised version → Model-executable
+
+Final Verdict
+
+* As a creative brief → 9/10
+* As a Wan 2.6 prompt → 7/10
+* After optimisation → 9.2/10 output quality potential
+
+---
+
+the prompt will be sent with a start frame
+
+That changes things significantly — and in a good way.
+
+With a start frame, Wan 2.6 relies less on descriptive reconstruction and more on continuity + motion guidance.
+
+Updated Rating (with start frame)
+
+8.5 / 10
+
+Because:
+
+* Character, setting, and composition are anchored by the image
+* Your prompt’s job shifts from “describe everything” → “guide motion + mood”
+
+What Changes When You Use a Start Frame
+
+No longer needed:
+
+* Detailed subject description
+* Heavy environment description
+* Overloaded visual adjectives
+
+Must focus on:
+
+1. Motion direction
+2. Emotional progression
+3. Camera behavior
+4. Lighting continuity
+
+Weaknesses still present:
+
+* Too many poetic duplicates
+* No clear motion instruction
+* Lighting redefinition
+* Lack of shot intent
+
+Optimised Version (Start Frame Aware)
+
+Continue from the provided start frame.
+
+Camera: static hold with very subtle natural drift.
+Framing remains consistent.
+
+Action: the woman stays still, her gaze fixed toward the horizon, with slight eye movement and minimal breathing.
+
+Environment: village slowly awakens — faint background motion.
+
+Lighting: maintain existing light, gently evolving into warm morning tones.
+
+Mood: quiet, introspective, nostalgic, slightly melancholic.
+
+Motion: slow, natural, continuous.
+
+Style: cinematic realism, soft textures, gentle atmosphere.
+
+Avoid: cuts, sudden motion, lighting shifts, new elements.
+
+Pro-Level Upgrade
+
+micro details: slight fabric movement, subtle blinking, soft environmental motion
+
+Critical Insight
+
+With start frames, Wan becomes a continuation engine, not a generator.
+
+Simple Rule:
+Without start frame → Describe everything
+With start frame → Describe only what changes
+
+Final Verdict
+
+* Original prompt thinking → strong
+* With start frame → stronger alignment
+* After optimisation → near production-level quality
