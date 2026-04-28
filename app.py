@@ -3707,7 +3707,7 @@ def stills_status_json(project_id: str):
     # Also keep polling when any ready shot is missing its WAN continuation prompt
     # so the UI auto-fills wan_video_prompt once derivation completes in the background.
     wan_pending = any(
-        a.get("wan_video_prompt") is None and (a.get("status") or "pending") == "ready"
+        not a.get("wan_video_prompt") and (a.get("status") or "pending") == "ready"
         for a in assets
     )
     # Kick a background thread to fill in any missing WAN prompts (legacy shots
@@ -3931,12 +3931,12 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
             )
             conn.commit()
         return jsonify({"ok": True, "wan_video_prompt": wan_prompt})
-    except Exception as exc:
+    except Exception:
         logger.exception(
             "stills_rederive_wan_prompt: GPT call failed for project=%s shot=%s",
             project_id, shot_index,
         )
-        return jsonify({"ok": False, "error": str(exc) or "Derivation failed"}), 500
+        return jsonify({"ok": False, "error": "Derivation failed — check server logs"}), 500
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
