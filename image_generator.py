@@ -1252,6 +1252,7 @@ def generate_shot_still(
         _land_size = OPENAI_SIZE_LANDSCAPE_15 if _is_gpt15_mode(shot_mode) else OPENAI_SIZE_LANDSCAPE
         r2_key = _new_shot_key(project_id, shot_idx, ext="png")
         if has_char_ref_gpt and has_env:
+            # Both refs: character anchors the face, environment grounds the scene.
             img_bytes = _openai_edit_multi(
                 prompt,
                 [character_ref_url, environment_ref_url],
@@ -1260,20 +1261,20 @@ def generate_shot_still(
                 model=_gpt_model,
             )
         elif has_char_ref_gpt:
+            # Character ref only: face-anchored image edit.
             img_bytes = _openai_edit(
                 prompt, character_ref_url,
                 size=_land_size,
                 quality=gpt_quality,
                 model=_gpt_model,
             )
-        elif has_env:
-            img_bytes = _openai_edit(
-                prompt, environment_ref_url,
-                size=_land_size,
-                quality=gpt_quality,
-                model=_gpt_model,
-            )
         else:
+            # No character ref (env-only or bare): use text-only generation.
+            # Passing a location plate to the image-edit API bleeds the face of
+            # whoever is in that plate into every shot that shares the same
+            # scene location — causing different faces per scene group.
+            # The environment description is already in the prompt text, which
+            # provides scene aesthetic consistency without locking a foreign face.
             img_bytes = _openai_generate(
                 prompt,
                 size=_land_size,
