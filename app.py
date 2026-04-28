@@ -452,6 +452,78 @@ def _get_project(project_id: str, user_id: int) -> dict | None:
         return cur.fetchone()
 
 
+def _backfill_cine_justifications(project: dict) -> tuple[list, bool]:
+    """Lazily refresh stale cinematography justifications in *styled_timeline*.
+
+    Older projects store comma-separated keyword tags in the
+    ``cinematography.justification`` field (e.g. "emotion match, framing fit").
+    The current engine generates proper sentences.  This helper detects the
+    old format and re-derives **only the justification** for affected shots in
+    a single sequential pass so the anti-repeat rig history stays consistent.
+    All other fields (framing, motion, etc.) are left untouched.
+
+    Returns ``(timeline, changed)`` where *changed* is True when at least one
+    shot was updated so the caller knows whether to persist the result.
+    """
+    try:
+        from cinematography_engine import derive as _cine_derive, is_legacy_justification
+    except Exception:
+        return project.get("styled_timeline") or [], False
+
+    timeline = list(project.get("styled_timeline") or [])
+    if not timeline:
+        return timeline, False
+
+    ctx = project.get("context_packet") or {}
+    sp = project.get("style_profile") or {}
+
+    # Quick scan — skip expensive sequential pass if everything is current.
+    needs_update = any(
+        is_legacy_justification((s.get("cinematography") or {}).get("justification", ""))
+        for s in timeline
+    )
+    if not needs_update:
+        return timeline, False
+
+    changed = False
+    history: list = []
+
+    for i, shot in enumerate(timeline):
+        cine = shot.get("cinematography") or {}
+        existing_just = cine.get("justification", "")
+
+        if is_legacy_justification(existing_just):
+            new_block = _cine_derive(
+                shot, ctx, sp,
+                prev_block=(history[-1] if history else None),
+                recent_blocks=history[-4:],
+            )
+            if new_block:
+                stored_rig = cine.get("rig") or ""
+                derived_rig = new_block.get("rig") or ""
+                if stored_rig and derived_rig != stored_rig:
+                    # derive() would switch rigs; keep stored rig and use a
+                    # safe generic sentence so the popover stays consistent.
+                    rig_label = stored_rig.capitalize()
+                    new_justification = (
+                        f"{rig_label} was selected as the best fit for this shot."
+                    )
+                else:
+                    new_justification = new_block["justification"]
+                updated_cine = {**cine, "justification": new_justification}
+                timeline[i] = {**shot, "cinematography": updated_cine}
+                history.append(new_block)
+                changed = True
+                continue
+
+        # Shot is already current — feed its existing block into anti-repeat
+        # history so the rig-diversity logic stays calibrated.
+        if cine.get("rig"):
+            history.append(cine)
+
+    return timeline, changed
+
+
 def _get_refs(project_id: str) -> dict:
     with db() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM refs WHERE project_id = %s", (project_id,))
@@ -1381,6 +1453,28 @@ def project_detail(project_id: str):
         except Exception:
             storyboard_packet = {}
         sb_scenes = list(storyboard_packet.get("scenes") or [])
+
+        # Lazily refresh any stale comma-separated rig justifications left over
+        # from older pipeline runs.  Only the justification text is updated;
+        # all other shot fields (framing, motion, etc.) are untouched.
+        _fresh_tl, _tl_changed = _backfill_cine_justifications(project)
+        if _tl_changed:
+            try:
+                with db() as _bfconn, _bfconn.cursor() as _bfcur:
+                    _bfcur.execute(
+                        "UPDATE projects SET styled_timeline=%s, updated_at=NOW() WHERE id=%s",
+                        (Json(_fresh_tl), project_id),
+                    )
+                    _bfconn.commit()
+                project["styled_timeline"] = _fresh_tl
+                logger.info(
+                    "backfilled cinematography justifications for project=%s", project_id
+                )
+            except Exception:
+                logger.exception(
+                    "failed to persist cinematography backfill for project=%s", project_id
+                )
+
         return render_template(
             "stage_storyboard.html",
             project=project,

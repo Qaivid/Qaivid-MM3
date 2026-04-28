@@ -627,6 +627,26 @@ def motion_prompt_from_block(block: Optional[Dict[str, Any]]) -> str:
     return out[:240]
 
 
+def is_legacy_justification(justification: str) -> bool:
+    """Return True if *justification* looks like the old comma-separated tag
+    format (e.g. "emotion match, framing fit") rather than a modern sentence.
+
+    Detection criteria (all must hold):
+    1. Does NOT end with a full stop — modern sentences always do.
+    2. Contains ", " OR begins with a lowercase letter — the comma-tag pattern
+       is always lowercase with no leading capital.
+
+    This avoids false positives on any edge-case custom text that happens not
+    to end with a period but is still clearly a proper noun phrase.
+    """
+    if not justification or not isinstance(justification, str):
+        return False
+    j = justification.strip()
+    if not j or j.endswith("."):
+        return False
+    return ", " in j or (not j[0].isupper())
+
+
 def lens_clause(block: Optional[Dict[str, Any]]) -> str:
     """One-line lens/framing clause for stills prompts."""
     if not isinstance(block, dict):
