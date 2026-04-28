@@ -2149,12 +2149,18 @@ def _generate_ai_wan_prompt(frame0_prompt: str, motion_prompt: str,
         f"MOTION BRIEF (cinematic intent for this shot):\n"
         f"{motion_prompt or '(not available)'}\n\n"
         "RULES:\n"
-        "- Write in flowing cinematic prose, 3 short paragraphs maximum\n"
+        "- Write in flowing cinematic prose, exactly 3 narrative paragraphs\n"
         "- Paragraph 1: Camera movement (push-in, pan, static hold, etc.)\n"
         "- Paragraph 2: Subject/character action and micro-motion "
         "(breath, fabric movement, expression shift)\n"
         "- Paragraph 3: Lighting and atmosphere continuity from the still\n"
-        "- Then add 4 brief labelled lines: Camera: | Lighting: | Mood: | Avoid:\n"
+        "- Then add exactly 5 brief labelled lines in this order:\n"
+        "  Camera: <camera move spec>\n"
+        "  Lighting: <lighting continuity note>\n"
+        "  Mood: <emotional arc>\n"
+        "  Style: cinematic realism, soft textures, filmic colour grading, "
+        "restrained visual language, natural motion.\n"
+        "  Avoid: <negative terms>\n"
         "- Keep the total under 400 words\n"
         "- Ground every detail in the Frame 0 description — do not invent new elements "
         "not present in the still\n"
@@ -2208,16 +2214,22 @@ def generate_ai_wan_prompts_for_project(project_id: str) -> dict:
     if not rows:
         return {"generated": 0, "skipped": 0, "errors": 0, "prompts": {}}
 
+    # Only generate for shots that have a motion_prompt — it is the primary
+    # grounding source.  Shots without motion_prompt have no cinematic intent
+    # for Gemini to work from, so skip them and track the count.
+    eligible = [r for r in rows if (r.get("motion_prompt") or "").strip()]
+    skipped_count = len(rows) - len(eligible)
+
+    if not eligible:
+        return {"generated": 0, "skipped": skipped_count, "errors": 0, "prompts": {}}
+
     results: dict = {}
     errors_count = 0
-    skipped_count = 0
 
     def _generate_one(row: dict) -> tuple:
         sidx = row["shot_index"]
         fp = (row.get("prompt") or "").strip()
         mp = (row.get("motion_prompt") or "").strip()
-        if not fp and not mp:
-            return (sidx, None, "skipped")
         try:
             prompt_text = _generate_ai_wan_prompt(fp, mp, sidx, project_id)
             return (sidx, prompt_text, "ok")
@@ -2228,14 +2240,12 @@ def generate_ai_wan_prompts_for_project(project_id: str) -> dict:
             )
             return (sidx, None, "error")
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futures = [pool.submit(_generate_one, row) for row in rows]
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = [pool.submit(_generate_one, row) for row in eligible]
         for future in as_completed(futures):
             sidx, text, status = future.result()
             if status == "ok" and text:
                 results[sidx] = text
-            elif status == "skipped":
-                skipped_count += 1
             else:
                 errors_count += 1
 
@@ -2255,6 +2265,106 @@ def generate_ai_wan_prompts_for_project(project_id: str) -> dict:
         "errors": errors_count,
         "prompts": results,
     }
+
+
+def stream_ai_wan_prompts_for_project(project_id: str):
+    """Generator yielding progress dicts as AI WAN prompts complete.
+
+    Designed for use with Flask's ``stream_with_context`` to stream
+    NDJSON (one JSON object per line) to the browser so the UI can
+    update shot textareas and counters as each Gemini call finishes.
+
+    Yields dicts with these shapes:
+
+    Per-shot completion::
+
+        {"shot_index": int, "ai_wan_video_prompt": str,
+         "processed": int, "total": int}
+
+    Per-shot error::
+
+        {"shot_index": int, "error": true,
+         "processed": int, "total": int}
+
+    Final summary (always last)::
+
+        {"done": true, "generated": int, "skipped": int,
+         "errors": int, "total": int, "message": str}
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: PLC0415
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT shot_index, prompt, motion_prompt FROM shot_assets"
+            " WHERE project_id=%s ORDER BY shot_index",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+
+    eligible = [r for r in rows if (r.get("motion_prompt") or "").strip()]
+    skipped_count = len(rows) - len(eligible)
+    total = len(eligible)
+
+    if not eligible:
+        yield {"done": True, "generated": 0, "skipped": skipped_count,
+               "errors": 0, "total": 0,
+               "message": "No shots with motion_prompt found"}
+        return
+
+    processed = 0
+    generated = 0
+    errors_count = 0
+
+    def _generate_one(row: dict) -> tuple:
+        sidx = row["shot_index"]
+        fp = (row.get("prompt") or "").strip()
+        mp = (row.get("motion_prompt") or "").strip()
+        try:
+            text = _generate_ai_wan_prompt(fp, mp, sidx, project_id)
+            return (sidx, text, "ok")
+        except Exception as exc:
+            logger.warning(
+                "stream_ai_wan_prompts: failed project=%s shot=%s: %s",
+                project_id, sidx, exc,
+            )
+            return (sidx, None, "error")
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {pool.submit(_generate_one, row): row["shot_index"]
+                   for row in eligible}
+        for future in as_completed(futures):
+            processed += 1
+            sidx, text, status = future.result()
+            if status == "ok" and text:
+                generated += 1
+                try:
+                    with _db() as conn, conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE shot_assets SET ai_wan_video_prompt=%s,"
+                            " updated_at=NOW()"
+                            " WHERE project_id=%s AND shot_index=%s",
+                            (text, project_id, sidx),
+                        )
+                        conn.commit()
+                except Exception:
+                    logger.exception(
+                        "stream_ai_wan_prompts: DB write failed project=%s shot=%s",
+                        project_id, sidx,
+                    )
+                yield {"shot_index": sidx, "ai_wan_video_prompt": text,
+                       "processed": processed, "total": total}
+            else:
+                errors_count += 1
+                yield {"shot_index": sidx, "error": True,
+                       "processed": processed, "total": total}
+
+    parts = [f"Generated {generated} AI WAN prompt{'s' if generated != 1 else ''}"]
+    if skipped_count:
+        parts.append(f"skipped {skipped_count}")
+    if errors_count:
+        parts.append(f"{errors_count} error{'s' if errors_count != 1 else ''}")
+    yield {"done": True, "generated": generated, "skipped": skipped_count,
+           "errors": errors_count, "total": total, "message": ", ".join(parts)}
 
 
 def _render_shot(project_id: str, shot: dict,

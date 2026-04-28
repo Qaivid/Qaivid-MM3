@@ -931,7 +931,7 @@
     if (shotData[idx]) shotData[idx].aiWanVideoPrompt = val;
     const ind = document.getElementById('sc-ai-wan-saved-' + idx);
     try {
-      const resp = await fetch('/project/' + PID + '/stills/ai-wan-prompt', {
+      const resp = await fetch('/project/' + PID + '/stills/update-ai-wan-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         credentials: 'same-origin',
@@ -949,35 +949,52 @@
     }
   };
 
-  /* ── Generate AI WAN prose prompts for all shots ── */
+  /* ── Generate AI WAN prose prompts for all shots (NDJSON stream) ── */
   window.scGenerateAiWanPromptsAll = async function() {
     const btn    = document.getElementById('btn-generate-ai-wan-all');
     const status = document.getElementById('ai-wan-all-status');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
-    if (status) { status.style.display = ''; status.style.color = '#c8a0ff'; status.textContent = 'Calling Gemini…'; }
+    if (status) { status.style.display = ''; status.style.color = '#c8a0ff'; status.textContent = 'Generating AI prompts…'; }
     try {
       const resp = await fetch('/project/' + PID + '/stills/generate-ai-wan-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         credentials: 'same-origin',
       });
-      const data = await resp.json();
-      if (data.ok) {
-        if (data.prompts) {
-          for (const [idx, wp] of Object.entries(data.prompts)) {
-            const sidx = parseInt(idx);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let chunk;
+          try { chunk = JSON.parse(line); } catch(e) { continue; }
+          if (chunk.done) {
+            if (status) {
+              status.style.color = '#c8a0ff';
+              status.textContent = '✓ ' + (chunk.message || 'Done');
+              setTimeout(() => { status.style.display = 'none'; }, 5000);
+            }
+          } else if (chunk.shot_index !== undefined && !chunk.error) {
+            const sidx = chunk.shot_index;
+            const wp   = chunk.ai_wan_video_prompt;
             if (shotData[sidx]) shotData[sidx].aiWanVideoPrompt = wp;
             const ta = document.getElementById('sc-ai-wan-prompt-' + sidx);
             if (ta && ta !== document.activeElement) ta.value = wp;
+            if (status && chunk.total > 0) {
+              status.textContent = `Generating AI prompts — ${chunk.processed} / ${chunk.total}`;
+            }
+          } else if (chunk.error) {
+            if (status && chunk.total > 0) {
+              status.textContent = `Generating AI prompts — ${chunk.processed} / ${chunk.total}`;
+            }
           }
         }
-        if (status) {
-          status.style.color = '#c8a0ff';
-          status.textContent = '✓ ' + (data.message || 'Done');
-          setTimeout(() => { status.style.display = 'none'; }, 5000);
-        }
-      } else {
-        if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ ' + (data.error || 'Failed'); }
       }
     } catch(e) {
       if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ Network error'; }

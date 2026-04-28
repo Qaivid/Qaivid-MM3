@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import threading
@@ -73,6 +74,7 @@ from pipeline_worker import (
     render_shot_videos,
     render_failed_videos,
     generate_ai_wan_prompts_for_project,
+    stream_ai_wan_prompts_for_project,
 )
 from auth import (
     DuplicateEmailError,
@@ -4067,7 +4069,7 @@ def stills_rederive_wan_all(project_id: str):
     })
 
 
-@app.route("/project/<project_id>/stills/ai-wan-prompt", methods=["POST"])
+@app.route("/project/<project_id>/stills/update-ai-wan-prompt", methods=["POST"])
 @login_required
 def stills_update_ai_wan_prompt(project_id: str):
     """Save an edited AI WAN prose prompt for a shot (AJAX — returns JSON).
@@ -4106,38 +4108,44 @@ def stills_update_ai_wan_prompt(project_id: str):
 def stills_generate_ai_wan_prompts(project_id: str):
     """Generate AI WAN prose prompts for ALL shots using Gemini (text-only).
 
-    Runs in the request thread (parallel per-shot via ThreadPoolExecutor inside
-    generate_ai_wan_prompts_for_project).  Overwrites any existing
-    ai_wan_video_prompt values.
+    Streams NDJSON — one JSON object per line as each shot completes in
+    parallel (ThreadPoolExecutor, 10 workers).  Only processes shots that
+    have a ``motion_prompt``.  Overwrites any existing ``ai_wan_video_prompt``.
 
-    Returns JSON: {"ok": true, "generated": N, "skipped": N, "errors": N,
-                   "message": "...", "prompts": {idx: text}}
+    Stream line shapes:
+
+    Per-shot completion:
+        {"shot_index": int, "ai_wan_video_prompt": str,
+         "processed": int, "total": int}
+
+    Per-shot error:
+        {"shot_index": int, "error": true,
+         "processed": int, "total": int}
+
+    Final summary (always last):
+        {"done": true, "generated": int, "skipped": int,
+         "errors": int, "total": int, "message": str}
     """
     _stills_control_guard(project_id)
-    try:
-        result = generate_ai_wan_prompts_for_project(project_id)
-    except Exception as exc:
-        logger.exception(
-            "stills_generate_ai_wan_prompts: failed for project=%s", project_id
-        )
-        return jsonify({"ok": False, "error": f"Generation failed: {exc}"}), 500
 
-    generated = result.get("generated", 0)
-    skipped = result.get("skipped", 0)
-    errors = result.get("errors", 0)
-    parts = [f"Generated {generated} AI WAN prompt{'s' if generated != 1 else ''}"]
-    if skipped:
-        parts.append(f"skipped {skipped}")
-    if errors:
-        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
-    return jsonify({
-        "ok": True,
-        "generated": generated,
-        "skipped": skipped,
-        "errors": errors,
-        "message": ", ".join(parts),
-        "prompts": result.get("prompts", {}),
-    })
+    def _stream():
+        try:
+            for chunk in stream_ai_wan_prompts_for_project(project_id):
+                yield json.dumps(chunk) + "\n"
+        except Exception as exc:
+            logger.exception(
+                "stills_generate_ai_wan_prompts: stream failed for project=%s",
+                project_id,
+            )
+            yield json.dumps({"done": True, "generated": 0, "skipped": 0,
+                               "errors": 1, "total": 0,
+                               "message": f"Generation failed: {exc}"}) + "\n"
+
+    return Response(
+        stream_with_context(_stream()),
+        mimetype="application/x-ndjson",
+        headers={"X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
