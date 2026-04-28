@@ -73,7 +73,6 @@ from pipeline_worker import (
     seed_video_rows,
     render_shot_videos,
     render_failed_videos,
-    generate_ai_wan_prompts_for_project,
     stream_ai_wan_prompts_for_project,
 )
 from auth import (
