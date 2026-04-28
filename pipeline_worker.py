@@ -2879,7 +2879,14 @@ def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> Non
         return
 
     primary_char_id = next((c["id"] for c in chars if c["entity_type"] == "speaker"),   None)
-    primary_loc_id  = next((l["id"] for l in locs  if l["entity_type"] == "world_dna"), None)
+    # Prefer materializer_v2 locations as the primary fallback — these are the
+    # scene-specific locations that actually get reference plates generated.
+    # world_dna is a background cultural record and never gets a plate, so it
+    # must not be used as the default FK for location shots.
+    primary_loc_id = (
+        next((l["id"] for l in locs if l["entity_type"] == "materializer_v2"), None)
+        or next((l["id"] for l in locs if l["entity_type"] == "world_dna"), None)
+    )
 
     # ── Build lookup lists: brain db_id first, DB names as fallback ──────
     # The brain materializer_packet entries now carry a `db_id` field (written
