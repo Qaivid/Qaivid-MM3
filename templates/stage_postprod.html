@@ -89,74 +89,132 @@
     </div>
   </div>
 
-  <!-- ══ MAIN WORKSPACE: player | controls ════════════════════════════════ -->
-  <div class="pp-nle-main">
+  <!-- ══ STUDIO BODY: vertical stack ═════════════════════════════════════ -->
+  <div class="pp-studio-body" id="pp-studio-body">
 
-    <!-- Left: video player -->
-    <div class="pp-nle-player-col">
-      <div class="pp-nle-player-area">
-        <div class="pp-preview-frame" id="pp-preview-frame">
+    <!-- 1 ── VIDEO PLAYER: full width, edge-to-edge ───────────────────── -->
+    <div class="pp-player-area" id="pp-player-area">
+      <div class="pp-preview-frame" id="pp-preview-frame">
 
-          <!-- Ken Burns image (Quick mode) -->
-          <div class="pp-kb-wrap" id="pp-kb-wrap">
-            <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
-            <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
-            <div class="pp-sub-preview" id="pp-sub-preview"></div>
-            <div class="pp-logo-tl" id="pp-logo-tl"></div>
-            <div class="pp-logo-tr" id="pp-logo-tr"></div>
-            <div class="pp-logo-bl" id="pp-logo-bl"></div>
-            <div class="pp-logo-br" id="pp-logo-br"></div>
-          </div>
+        <!-- Ken Burns image (Quick mode) -->
+        <div class="pp-kb-wrap" id="pp-kb-wrap">
+          <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
+          <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
+          <div class="pp-sub-preview" id="pp-sub-preview"></div>
+          <div class="pp-logo-tl" id="pp-logo-tl"></div>
+          <div class="pp-logo-tr" id="pp-logo-tr"></div>
+          <div class="pp-logo-bl" id="pp-logo-bl"></div>
+          <div class="pp-logo-br" id="pp-logo-br"></div>
+        </div>
 
-          <!-- AI video (AI mode) -->
-          {% if ai_video_url %}
-          <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
-            <video id="pp-ai-video" class="pp-ai-video"
-                   src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
-            <div class="pp-ai-overlay" id="pp-ai-overlay">
-              <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
-              <div class="pp-sub-preview" id="pp-ai-sub-preview"></div>
-              <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
-              <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
-              <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
-              <div class="pp-logo-br" id="pp-ai-logo-br"></div>
-            </div>
+        <!-- AI video (AI mode) -->
+        {% if ai_video_url %}
+        <div id="pp-ai-video-wrap" class="pp-ai-video-wrap" style="display:none">
+          <video id="pp-ai-video" class="pp-ai-video"
+                 src="{{ ai_video_url }}" preload="metadata" controls playsinline></video>
+          <div class="pp-ai-overlay" id="pp-ai-overlay">
+            <div class="pp-filter-overlay" id="pp-ai-filter-overlay"></div>
+            <div class="pp-sub-preview" id="pp-ai-sub-preview"></div>
+            <div class="pp-logo-tl" id="pp-ai-logo-tl"></div>
+            <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
+            <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
+            <div class="pp-logo-br" id="pp-ai-logo-br"></div>
           </div>
-          {% else %}
-          <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
-            <div class="pp-ai-no-video-icon">🎬</div>
-            <p>AI video not rendered yet.</p>
-            <p class="pp-ai-no-video-hint">Generate AI clips first, then apply effects and export.</p>
-            <button class="pp-nle-btn pp-nle-btn-ai"
-                    onclick="document.getElementById('form-advance').submit()">
-              Full AI Render →
-            </button>
-          </div>
-          {% endif %}
+        </div>
+        {% else %}
+        <div id="pp-ai-no-video" class="pp-ai-no-video" style="display:none">
+          <div class="pp-ai-no-video-icon">🎬</div>
+          <p>AI video not rendered yet.</p>
+          <p class="pp-ai-no-video-hint">Generate AI clips first, then apply effects and export.</p>
+          <button class="pp-nle-btn pp-nle-btn-ai"
+                  onclick="document.getElementById('form-advance').submit()">
+            Full AI Render →
+          </button>
+        </div>
+        {% endif %}
 
-          <!-- Playback controls overlay (Quick mode) -->
-          <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
-            <button class="pp-ctrl-btn" onclick="ppPrev()" title="First">⏮</button>
-            <button class="pp-ctrl-btn" onclick="ppPrev()" title="Prev">◀</button>
-            <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()">▶</button>
-            <button class="pp-ctrl-btn" onclick="ppNext()" title="Next">▶</button>
-            <button class="pp-ctrl-btn" onclick="ppNext()" title="Last">⏭</button>
-            <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
-            <span class="pp-shot-lbl">CURRENT SHOT: <strong id="pp-shot-num">1</strong></span>
-          </div>
+        <!-- Minimal hover overlay: prev / play / next + shot counter -->
+        <div class="pp-controls pp-quick-ctrl" id="pp-quick-controls">
+          <button class="pp-ctrl-btn" onclick="ppPrev()" title="Prev shot">◀</button>
+          <button class="pp-ctrl-btn pp-play-btn" id="pp-play-btn" onclick="ppTogglePlay()">▶</button>
+          <button class="pp-ctrl-btn" onclick="ppNext()" title="Next shot">▶</button>
+          <span class="pp-time-display" id="pp-time-display">0.0s / 0.0s</span>
+          <span class="pp-shot-lbl">SHOT <strong id="pp-shot-num">1</strong> / {{ shots|length }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Right: tabbed control panel -->
-    <div class="pp-control-panel">
-      <div class="pp-tabs">
-        <button class="pp-tab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
-        <button class="pp-tab" onclick="ppTab(this,'subs')">Subtitles</button>
-        <button class="pp-tab" onclick="ppTab(this,'over')">Overlays</button>
-        <button class="pp-tab" onclick="ppTab(this,'filt')">Filters</button>
-        <button class="pp-tab" onclick="ppTab(this,'expo')">Export</button>
+    <!-- 2 ── TRANSPORT / SCRUBBER BAR ─────────────────────────────────── -->
+    <div class="pp-transport pp-quick-only" id="pp-transport">
+      <div class="pp-tp-row">
+        <button class="pp-tp-btn" id="pp-tp-stop" onclick="ppStop()" title="Stop">⏹</button>
+        <button class="pp-tp-btn pp-tp-btn-play" id="pp-tp-play" onclick="ppTogglePlay()" title="Play / Pause">▶</button>
+        <span class="pp-tp-time" id="pp-tp-time">0:00 / 0:00</span>
+        <div class="pp-tp-bar" id="pp-tp-bar" role="slider" aria-label="Scrub timeline" tabindex="0">
+          <div class="pp-tp-bar-bg"></div>
+          <div class="pp-tp-bar-fill" id="pp-tp-bar-fill"></div>
+          <div class="pp-tp-bar-ticks" id="pp-tp-bar-ticks"></div>
+          <div class="pp-tp-bar-thumb" id="pp-tp-bar-thumb"></div>
+          <div class="pp-tp-bar-tooltip" id="pp-tp-bar-tooltip">0:00</div>
+        </div>
+        <span class="pp-tp-shot" id="pp-tp-shot">Shot 1 / {{ shots|length }}</span>
       </div>
+    </div>
+
+    <!-- 3 ── FILM STRIP: edge to edge ─────────────────────────────────── -->
+    <div class="pp-filmstrip" id="pp-filmstrip">
+      <div class="pp-thumb-strip" id="pp-thumb-strip">
+        {% for shot in shots %}
+        <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
+             id="pp-thumb-{{ shot.shot_index }}"
+             data-idx="{{ shot.shot_index }}"
+             data-dur="{{ shot.duration or 4.0 }}"
+             onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
+             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s">
+          {% if shot.url %}
+          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
+          {% else %}
+          <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
+          {% endif %}
+          <div class="pp-thumb-meta">
+            <span class="pp-thumb-idx">Shot {{ shot.shot_index }}</span>
+            <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
+                    onclick="ppEditDuration(event, {{ shot.shot_index }})"
+                    title="Click to override duration">
+              {{ '%.1f'|format(shot.duration or 4.0) }}s
+            </button>
+            <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
+          </div>
+          <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
+            <div class="pp-kb-pop-label">Ken Burns — Shot {{ shot.shot_index }}</div>
+            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
+              <option value="">— Use global —</option>
+              <option value="zoom-in">Zoom In</option>
+              <option value="zoom-out">Zoom Out</option>
+              <option value="pan-left">Pan Left</option>
+              <option value="pan-right">Pan Right</option>
+              <option value="pan-up">Pan Up</option>
+              <option value="pan-down">Pan Down</option>
+              <option value="static">Static</option>
+              <option value="random">Random</option>
+            </select>
+            <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 4 ── COLLAPSIBLE SETTINGS TABS ────────────────────────────────── -->
+    <div class="pp-settings" id="pp-settings">
+      <div class="pp-stab-row">
+        <button class="pp-stab active pp-quick-only-tab" id="pp-tab-anim" onclick="ppTab(this,'anim')">Animation</button>
+        <button class="pp-stab" onclick="ppTab(this,'subs')">Subtitles</button>
+        <button class="pp-stab" onclick="ppTab(this,'over')">Overlays</button>
+        <button class="pp-stab" onclick="ppTab(this,'filt')">Filters</button>
+        <button class="pp-stab" onclick="ppTab(this,'expo')">Export</button>
+      </div>
+      <div class="pp-stab-panels open" id="pp-stab-panels">
 
       <!-- Animation -->
       <div class="pp-panel active" id="pp-panel-anim">
@@ -467,72 +525,10 @@
         <p class="pp-ctrl-hint" style="margin-top:8px;">Generation runs in background. Download appears when ready.</p>
       </div>
 
-    </div><!-- /pp-control-panel -->
-  </div><!-- /pp-nle-main -->
+      </div><!-- /pp-stab-panels -->
+    </div><!-- /pp-settings -->
 
-  <!-- ══ TIMELINE: filmstrip + audio ══════════════════════════════════════ -->
-  <div class="pp-nle-timeline">
-    <!-- Time ruler -->
-    <div class="pp-nle-tl-ruler">
-      <div class="pp-nle-tl-rl-label">▣ Track</div>
-      <div class="pp-nle-tl-ruler-marks" id="pp-tl-ruler-marks">
-        <span>00:00:00:00</span><span>01:00:00:00</span><span>02:00:00:00</span>
-        <span>03:00:00:00</span><span>04:00:00:00</span><span>05:00:00:00</span>
-        <span>06:00:00:00</span><span>07:00:00:00</span><span>08:00:00:00</span>
-      </div>
-    </div>
-    <!-- Shot filmstrip -->
-    <div class="pp-nle-tl-filmrow">
-      <div class="pp-nle-tl-rl-label">Track</div>
-      <div class="pp-thumb-strip" id="pp-thumb-strip">
-        {% for shot in shots %}
-        <div class="pp-thumb-item {% if loop.first %}active{% endif %}"
-             id="pp-thumb-{{ shot.shot_index }}"
-             data-idx="{{ shot.shot_index }}"
-             data-dur="{{ shot.duration or 4.0 }}"
-             onclick="ppThumbClick({{ shot.shot_index }}, {{ loop.index0 }})"
-             title="Shot {{ shot.shot_index }} · {{ '%.1f'|format(shot.start_time or 0) }}s — click to configure Ken Burns">
-          {% if shot.url %}
-          <img src="{{ shot.url }}" alt="Shot {{ shot.shot_index }}" loading="lazy">
-          {% else %}
-          <div class="pp-thumb-placeholder">{{ shot.shot_index }}</div>
-          {% endif %}
-          <div class="pp-thumb-meta">
-            <span class="pp-thumb-idx">She {{ shot.shot_index }}</span>
-            <button class="pp-thumb-dur-badge" id="pp-dur-{{ shot.shot_index }}"
-                    onclick="ppEditDuration(event, {{ shot.shot_index }})"
-                    title="Click to override duration">
-              {{ '%.1f'|format(shot.duration or 4.0) }}s
-            </button>
-            <span class="pp-kb-badge" id="pp-kb-badge-{{ shot.shot_index }}" style="display:none;">★</span>
-          </div>
-          <div class="pp-kb-popover" id="pp-kb-pop-{{ shot.shot_index }}" style="display:none;">
-            <div class="pp-kb-pop-label">Ken Burns for shot {{ shot.shot_index }}</div>
-            <select class="pp-kb-pop-select" onchange="ppSetShotKB({{ shot.shot_index }}, this.value)">
-              <option value="">— Use global —</option>
-              <option value="zoom-in">Zoom In</option>
-              <option value="zoom-out">Zoom Out</option>
-              <option value="pan-left">Pan Left</option>
-              <option value="pan-right">Pan Right</option>
-              <option value="pan-up">Pan Up</option>
-              <option value="pan-down">Pan Down</option>
-              <option value="static">Static</option>
-              <option value="random">Random</option>
-            </select>
-            <button class="pp-kb-pop-clear" onclick="ppClearShotKB({{ shot.shot_index }})">Clear override</button>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    <!-- Audio track -->
-    <div class="pp-nle-tl-audiorow">
-      <div class="pp-nle-tl-rl-label">🎵 Audio</div>
-      <div class="pp-nle-audio-wave">
-        <div class="pp-nle-audio-fill"></div>
-      </div>
-    </div>
-  </div><!-- /pp-nle-timeline -->
+  </div><!-- /pp-studio-body -->
 
   <!-- Redo panel (hidden, legacy) -->
   <div style="display:none;">{% include '_redo_panel.html' %}</div>
@@ -548,21 +544,38 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 /* Hide global chrome */
-body { overflow: hidden !important; }
+body { overflow-y: auto !important; }
 .topbar        { display: none !important; }
 .studio-sidebar { display: none !important; }
 
-/* Root wrapper */
+/* Root wrapper — vertical scroll, full-width */
 .pp-nle {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: #1a1a22;
+  min-height: 100vh;
+  background: #0d0d12;
   color: #cfd6df;
   font-family: 'Inter', -apple-system, system-ui, sans-serif;
   font-size: 13px;
-  overflow: hidden;
+  overflow-y: auto;
 }
+
+/* ══ STUDIO BODY: stacked vertical layout ═════════════════════════════ */
+.pp-studio-body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* 1 — Player area: full width, no letterbox gaps */
+.pp-player-area {
+  width: 100%;
+  background: #000;
+  line-height: 0; /* kills inline gap below img */
+}
+/* 2 — Transport: see section below */
+/* 3 — Film strip: see section below */
+/* 4 — Settings tabs: see section below */
 
 /* ══ TOPBAR ════════════════════════════════════════════════════════════ */
 .pp-nle-topbar {
@@ -779,44 +792,33 @@ body { overflow: hidden !important; }
   padding: 0 8px;
 }
 
-/* ══ MAIN WORKSPACE ═══════════════════════════════════════════════════ */
-.pp-nle-main {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-}
-
-/* Player column */
-.pp-nle-player-col {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: #0a0a0a;
-}
-.pp-nle-player-area {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
-  overflow: hidden;
-}
-
-/* 16:9 player frame */
+/* ══ PLAYER FRAME — edge-to-edge, aspect-ratio constrains height ════════ */
 .pp-preview-frame {
   position: relative;
   background: #000;
   overflow: hidden;
-  aspect-ratio: 16/9;
+  display: block;
   width: 100%;
-  max-height: 100%;
+  aspect-ratio: 16/9;
+  max-height: 82vh;     /* never taller than most of the viewport */
 }
-.pp-preview-frame.ar-9-16 { aspect-ratio: 9/16;  width: auto; height: 100%; }
-.pp-preview-frame.ar-1-1  { aspect-ratio: 1/1;   width: auto; height: 100%; }
-.pp-preview-frame.ar-4-3  { aspect-ratio: 4/3;   width: auto; height: 100%; }
+/* Portrait / square modes: limit height, let width scale down from centre */
+.pp-preview-frame.ar-9-16 {
+  aspect-ratio: 9/16;
+  width: auto;
+  max-height: 72vh;
+  margin: 0 auto;
+}
+.pp-preview-frame.ar-1-1 {
+  aspect-ratio: 1/1;
+  width: auto;
+  max-height: 72vh;
+  margin: 0 auto;
+}
+.pp-preview-frame.ar-4-3 {
+  aspect-ratio: 4/3;
+  max-height: 72vh;
+}
 
 .pp-kb-wrap { position: absolute; inset: 0; overflow: hidden; }
 .pp-kb-img  {
@@ -892,36 +894,149 @@ body { overflow: hidden !important; }
 }
 .pp-shot-lbl strong { color: rgba(255,255,255,.8); }
 
-/* ══ RIGHT CONTROL PANEL ══════════════════════════════════════════════ */
-.pp-control-panel {
-  width: 280px;
-  flex-shrink: 0;
-  background: #11111a;
-  border-left: 1px solid #1e1e2a;
-  display: flex;
-  flex-direction: column;
+/* ══ TRANSPORT / SCRUBBER BAR (YouTube-style) ═════════════════════════ */
+.pp-transport {
+  flex: 0 0 auto;
+  background: #0a0a0f;
+  border-top: 1px solid #1a1a24;
+  padding: 9px 14px 12px;
+}
+.pp-tp-row {
+  display: flex; align-items: center; gap: 10px;
+  height: 28px;
+}
+.pp-tp-btn {
+  background: transparent; border: none; color: #d4ff3a;
+  font-size: 16px; line-height: 1; padding: 4px 7px;
+  border-radius: 4px; cursor: pointer;
+  transition: background .12s, transform .12s;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 28px; height: 28px;
+}
+.pp-tp-btn:hover { background: rgba(212,255,58,.12); transform: scale(1.08); }
+.pp-tp-btn:active { transform: scale(0.95); }
+.pp-tp-btn-play { font-size: 15px; color: #fff; background: rgba(212,255,58,.18); }
+.pp-tp-btn-play:hover { background: #d4ff3a; color: #0a0a0f; }
+.pp-tp-time {
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 12px; color: rgba(255,255,255,.85);
+  white-space: nowrap; min-width: 92px; text-align: center;
+  letter-spacing: 0.5px;
+}
+.pp-tp-shot {
+  font-size: 11px; color: rgba(255,255,255,.55);
+  white-space: nowrap; font-weight: 500;
+}
+.pp-tp-bar {
+  position: relative; flex: 1 1 auto;
+  height: 14px; cursor: pointer;
+  display: flex; align-items: center;
+  user-select: none; touch-action: none;
+}
+.pp-tp-bar-bg {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  height: 4px; background: rgba(255,255,255,.18);
+  border-radius: 2px; transition: height .12s;
+}
+.pp-tp-bar-fill {
+  position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%);
+  height: 4px; width: 0%;
+  background: #d4ff3a;
+  border-radius: 2px;
+  transition: height .12s;
+  pointer-events: none;
+}
+.pp-tp-bar-ticks {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  height: 4px; pointer-events: none;
+}
+.pp-tp-tick {
+  position: absolute; top: 0; bottom: 0;
+  width: 2px; margin-left: -1px;
+  background: rgba(0,0,0,.55);
+  pointer-events: none;
+}
+.pp-tp-bar-thumb {
+  position: absolute; top: 50%; left: 0%;
+  transform: translate(-50%, -50%);
+  width: 12px; height: 12px;
+  background: #d4ff3a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(212,255,58,.25);
+  opacity: 0; transition: opacity .15s, transform .12s;
+  pointer-events: none;
+}
+.pp-tp-bar:hover .pp-tp-bar-bg,
+.pp-tp-bar.dragging .pp-tp-bar-bg,
+.pp-tp-bar:hover .pp-tp-bar-fill,
+.pp-tp-bar.dragging .pp-tp-bar-fill { height: 6px; }
+.pp-tp-bar:hover .pp-tp-bar-thumb,
+.pp-tp-bar.dragging .pp-tp-bar-thumb {
+  opacity: 1; transform: translate(-50%, -50%) scale(1);
+}
+.pp-tp-bar.dragging .pp-tp-bar-thumb { transform: translate(-50%, -50%) scale(1.2); }
+.pp-tp-bar-tooltip {
+  position: absolute; bottom: 22px; left: 0%;
+  transform: translateX(-50%);
+  background: rgba(20,20,28,.96);
+  color: #fff; font-size: 11px;
+  padding: 4px 7px; border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity .12s;
+  border: 1px solid rgba(212,255,58,.25);
+}
+.pp-tp-bar.hovering .pp-tp-bar-tooltip,
+.pp-tp-bar.dragging .pp-tp-bar-tooltip { opacity: 1; }
+
+/* ══ FILM STRIP (3rd row) — edge to edge ══════════════════════════════ */
+.pp-filmstrip {
+  width: 100%;
+  background: #0c0c14;
+  border-top: 1px solid #1a1a28;
+  border-bottom: 1px solid #1a1a28;
   overflow: hidden;
 }
-.pp-tabs {
+
+/* ══ SETTINGS ACCORDION (4th row) ═════════════════════════════════════ */
+.pp-settings {
+  width: 100%;
+  background: #0e0e16;
+}
+
+/* Tab button row */
+.pp-stab-row {
   display: flex;
-  border-bottom: 1px solid #1e1e2a;
-  background: #0d0d14;
-  flex-shrink: 0;
+  background: #0b0b12;
+  border-bottom: 1px solid #1a1a28;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.pp-tabs::-webkit-scrollbar { display: none; }
-.pp-tab {
-  flex: 1; padding: 9px 4px;
-  background: none; border: none;
-  color: #5a6270; font-size: 11px; font-weight: 600;
-  cursor: pointer; letter-spacing: .02em;
-  transition: all .15s; border-bottom: 2px solid transparent;
-  white-space: nowrap; min-width: 50px; font-family: inherit;
+.pp-stab-row::-webkit-scrollbar { display: none; }
+.pp-stab {
+  flex: 1; padding: 11px 6px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: #4a5260; font-size: 11px; font-weight: 700;
+  cursor: pointer; letter-spacing: .05em; text-transform: uppercase;
+  transition: all .15s; white-space: nowrap; min-width: 60px;
+  font-family: inherit;
 }
-.pp-tab:hover  { color: #9aa6b2; }
-.pp-tab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; }
-.pp-panel { display: none; padding: 14px; overflow-y: auto; flex: 1; }
+.pp-stab:hover  { color: #9aa6b2; background: rgba(255,255,255,.03); }
+.pp-stab.active { color: #d4ff3a; border-bottom-color: #d4ff3a; background: rgba(212,255,58,.04); }
+
+/* Panel container — collapses when .open is absent */
+.pp-stab-panels {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease;
+}
+.pp-stab-panels.open { max-height: 800px; }
+
+/* Individual panels */
+.pp-panel { display: none; }
 .pp-panel.active { display: block; }
 
 /* Controls inside panel */
@@ -1011,87 +1126,24 @@ body { overflow: hidden !important; }
   cursor: pointer; padding: 0; text-decoration: underline;
 }
 
-/* ══ TIMELINE ══════════════════════════════════════════════════════════ */
-.pp-nle-timeline {
-  flex-shrink: 0;
-  height: 128px;
-  display: flex;
-  flex-direction: column;
-  background: #0c0c14;
-  border-top: 2px solid #1e1e2a;
-}
-
-/* Time ruler row */
-.pp-nle-tl-ruler {
-  display: flex;
-  align-items: center;
-  height: 22px;
-  flex-shrink: 0;
-  background: #0f0f18;
-  border-bottom: 1px solid #1e1e2a;
-}
-.pp-nle-tl-rl-label {
-  width: 56px;
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  color: #3a3f4a;
-  padding: 0 8px;
-  border-right: 1px solid #1e1e2a;
-  height: 100%;
-  display: flex;
-  align-items: center;
-}
-.pp-nle-tl-ruler-marks {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  padding: 0 6px;
-  gap: 0;
-  overflow: hidden;
-}
-.pp-nle-tl-ruler-marks span {
-  font-size: 9px;
-  color: #3a4050;
-  font-family: monospace;
-  flex: 1;
-  text-align: left;
-}
-
-/* Filmstrip row */
-.pp-nle-tl-filmrow {
-  display: flex;
-  align-items: stretch;
-  flex: 1 1 0;
-  min-height: 0;
-  border-bottom: 1px solid #1e1e2a;
-  background: #1a1e2a;
-}
-.pp-nle-tl-filmrow .pp-nle-tl-rl-label {
-  font-size: 10px;
-  color: #5a6270;
-  align-self: center;
-}
-
-/* Thumbnail strip (filmstrip) */
+/* ══ FILM STRIP — thumbnail rail ═══════════════════════════════════════ */
 .pp-thumb-strip {
   display: flex;
-  gap: 2px;
+  gap: 3px;
   overflow-x: auto;
-  flex: 1;
-  align-items: stretch;
-  padding: 4px 4px;
+  align-items: flex-start;
+  padding: 6px 8px;
   scrollbar-width: thin;
   scrollbar-color: #2a2a38 transparent;
 }
-.pp-thumb-strip::-webkit-scrollbar { height: 3px; }
+.pp-thumb-strip::-webkit-scrollbar { height: 4px; }
 .pp-thumb-strip::-webkit-scrollbar-thumb { background: #2a2a38; border-radius: 2px; }
 
 .pp-thumb-item {
   flex: 0 0 auto;
-  width: 90px;
+  width: 100px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: visible;
   position: relative;
   border: 2px solid rgba(255,255,255,.06);
@@ -1099,10 +1151,10 @@ body { overflow: hidden !important; }
   background: #111520;
 }
 .pp-thumb-item.active { border-color: #d4ff3a; }
-.pp-thumb-item:hover  { border-color: rgba(212,255,58,.4); }
+.pp-thumb-item:hover  { border-color: rgba(212,255,58,.45); }
 .pp-thumb-item img, .pp-thumb-placeholder {
-  width: 90px; height: 50px; object-fit: cover;
-  border-radius: 2px; display: block; background: #1a1f26;
+  width: 100px; height: 56px; object-fit: cover;
+  border-radius: 3px 3px 0 0; display: block; background: #1a1f26;
 }
 .pp-thumb-placeholder {
   display: flex; align-items: center; justify-content: center;
@@ -1110,9 +1162,9 @@ body { overflow: hidden !important; }
 }
 .pp-thumb-meta {
   display: flex; align-items: center; gap: 2px;
-  padding: 2px 3px 0; flex-wrap: nowrap; overflow: hidden;
+  padding: 3px 4px; flex-wrap: nowrap; overflow: hidden;
 }
-.pp-thumb-idx { font-size: 8px; color: #5a6270; flex-shrink: 0; white-space: nowrap; overflow: hidden; max-width: 40px; }
+.pp-thumb-idx { font-size: 8px; color: #5a6270; flex-shrink: 0; white-space: nowrap; overflow: hidden; max-width: 46px; }
 .pp-thumb-dur-badge {
   font-size: 8px; background: rgba(255,255,255,.08); border: none;
   color: #9aa6b2; padding: 1px 4px; border-radius: 3px; cursor: pointer;
@@ -1121,39 +1173,17 @@ body { overflow: hidden !important; }
 .pp-thumb-dur-badge:hover { background: rgba(212,255,58,.15); color: #d4ff3a; }
 .pp-kb-badge { font-size: 9px; color: #f5a623; margin-left: 1px; }
 
-/* Audio row */
-.pp-nle-tl-audiorow {
-  display: flex;
-  align-items: stretch;
-  height: 34px;
-  flex-shrink: 0;
-  background: #0e0e18;
+/* ══ PANEL CONTENT LAYOUT — multi-column on wide screens ══════════════ */
+.pp-panel {
+  padding: 16px 20px 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px 24px;
+  align-items: start;
 }
-.pp-nle-tl-audiorow .pp-nle-tl-rl-label { align-self: center; }
-.pp-nle-audio-wave {
-  flex: 1;
-  background: #1a1e2a;
-  margin: 4px 4px;
-  border-radius: 3px;
-  overflow: hidden;
-  position: relative;
-}
-.pp-nle-audio-fill {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg,
-    rgba(56,225,255,.15) 0%,
-    rgba(56,225,255,.35) 20%,
-    rgba(56,225,255,.15) 40%,
-    rgba(56,225,255,.4)  60%,
-    rgba(56,225,255,.2)  80%,
-    rgba(56,225,255,.3)  100%
-  );
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' preserveAspectRatio='none' viewBox='0 0 200 26'%3E%3Cpath d='M0,13 Q5,5 10,13 Q15,21 20,13 Q25,5 30,13 Q35,21 40,13 Q45,6 50,13 Q55,20 60,13 Q65,5 70,13 Q75,21 80,13 Q85,3 90,13 Q95,22 100,13 Q105,5 110,13 Q115,21 120,13 Q125,7 130,13 Q135,19 140,13 Q145,4 150,13 Q155,22 160,13 Q165,6 170,13 Q175,20 180,13 Q185,5 190,13 Q195,21 200,13' stroke='%2338e1ff' stroke-width='2' fill='none'/%3E%3C/svg%3E");
-  mask-size: 100% 100%;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' preserveAspectRatio='none' viewBox='0 0 200 26'%3E%3Cpath d='M0,13 Q5,5 10,13 Q15,21 20,13 Q25,5 30,13 Q35,21 40,13 Q45,6 50,13 Q55,20 60,13 Q65,5 70,13 Q75,21 80,13 Q85,3 90,13 Q95,22 100,13 Q105,5 110,13 Q115,21 120,13 Q125,7 130,13 Q135,19 140,13 Q145,4 150,13 Q155,22 160,13 Q165,6 170,13 Q175,20 180,13 Q185,5 190,13 Q195,21 200,13' stroke='%2338e1ff' stroke-width='2' fill='none'/%3E%3C/svg%3E");
-  -webkit-mask-size: 100% 100%;
-}
+/* Groups that need to span all columns */
+.pp-ctrl-group       { margin-bottom: 0; }
+.pp-ctrl-group.pp-full-span { grid-column: 1 / -1; }
 
 /* ══ MODE VISIBILITY ══════════════════════════════════════════════════ */
 .pp-ai-mode .pp-quick-only      { display: none !important; }
@@ -1491,7 +1521,7 @@ body { overflow: hidden !important; }
       // If Animation tab was active, switch to Subtitles
       const animTab = document.getElementById('pp-tab-anim');
       if (animTab && animTab.classList.contains('active')) {
-        const subsTab = document.querySelector('.pp-tab:not(.pp-quick-only-tab)');
+        const subsTab = document.querySelector('.pp-stab:not(.pp-quick-only-tab)');
         if (subsTab) ppTab(subsTab, 'subs');
       }
     } else {
@@ -1645,10 +1675,19 @@ body { overflow: hidden !important; }
 
   /* ── Tabs ───────────────────────────────────────────────────────────── */
   window.ppTab = function(btn, id) {
-    document.querySelectorAll('.pp-tab').forEach(b => b.classList.remove('active'));
+    const wasActive = btn.classList.contains('active');
+    document.querySelectorAll('.pp-stab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.pp-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('pp-panel-' + id).classList.add('active');
+    const panels = document.getElementById('pp-stab-panels');
+    if (wasActive) {
+      // Same tab clicked again → collapse
+      if (panels) panels.classList.remove('open');
+    } else {
+      btn.classList.add('active');
+      const pane = document.getElementById('pp-panel-' + id);
+      if (pane) pane.classList.add('active');
+      if (panels) panels.classList.add('open');
+    }
   };
 
   /* ── Range value display ────────────────────────────────────────────── */
@@ -1681,15 +1720,19 @@ body { overflow: hidden !important; }
     const thumb = document.getElementById('pp-thumb-' + shot.idx);
     if (thumb) { thumb.classList.add('active'); thumb.scrollIntoView({block:'nearest',inline:'center'}); }
     document.querySelectorAll('.pp-kb-popover').forEach(p => p.style.display = 'none');
+    // Always re-anchor the playback offset to the start of the jumped-to shot.
+    // (When paused, ppCurrentTime() returns playTimeOffset — without this, a
+    //  pause → click-thumb → play sequence would resume from the OLD offset.)
+    playWallStart  = Date.now();
+    playTimeOffset = ppElapsedAt(currentIdx);
+    if (ppAudio) ppAudioSeek(playTimeOffset);
     if (playing) {
-      // Reset wall clock so subtitle sync stays accurate after a manual shot jump
-      playWallStart  = Date.now();
-      playTimeOffset = ppElapsedAt(currentIdx);
-      if (ppAudio) ppAudioSeek(playTimeOffset);
+      clearTimeout(playTimer);
+      ppAutoAdvance();
     } else {
-      // Static view — show cue at shot's start time
-      ppShowSubtitleCue(ppElapsedAt(currentIdx));
+      ppShowSubtitleCue(playTimeOffset);
     }
+    ppUpdateTransport(playTimeOffset);
   };
 
   function renderShot() {
@@ -1706,11 +1749,205 @@ body { overflow: hidden !important; }
       wrap.classList.add('kb-' + kbMode);
     }
     const elapsed = ppElapsedAt(currentIdx);
-    const total   = SHOTS.reduce((a,s) => a+(cfg.per_shot_duration[s.idx]||s.dur),0);
+    const total   = ppTotalDuration();
     document.getElementById('pp-time-display').textContent =
       elapsed.toFixed(1) + 's / ' + total.toFixed(1) + 's';
+    const shotNumEl = document.getElementById('pp-shot-num');
+    if (shotNumEl) shotNumEl.textContent = (currentIdx + 1);
+    ppUpdateTransport(playing ? ppCurrentTime() : elapsed);
     ppSubPreview();
   }
+
+  /* ── Transport / Scrubber bar ──────────────────────────────────────── */
+  function ppTotalDuration() {
+    return SHOTS.reduce((a, s) => a + (cfg.per_shot_duration[s.idx] || s.dur), 0);
+  }
+  function ppFmtTime(secs) {
+    if (!isFinite(secs) || secs < 0) secs = 0;
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function ppShotAtTime(secs) {
+    let acc = 0;
+    for (let i = 0; i < SHOTS.length; i++) {
+      const d = cfg.per_shot_duration[SHOTS[i].idx] || SHOTS[i].dur;
+      if (secs < acc + d) return i;
+      acc += d;
+    }
+    return Math.max(0, SHOTS.length - 1);
+  }
+  function ppCurrentTime() {
+    // Single source of truth for "where are we now in the timeline?"
+    // While playing: wall-clock-driven. While paused: the last persisted offset
+    // (set on pause, scrub, jump, or playback end).
+    if (!playing) return playTimeOffset;
+    return playTimeOffset + (Date.now() - playWallStart) / 1000;
+  }
+  window.ppUpdateTransport = function(secs) {
+    const total = ppTotalDuration();
+    if (secs == null) secs = ppCurrentTime();
+    secs = Math.max(0, Math.min(secs, total));
+    const pct = total > 0 ? (secs / total) * 100 : 0;
+    const fill = document.getElementById('pp-tp-bar-fill');
+    const thumb = document.getElementById('pp-tp-bar-thumb');
+    const time = document.getElementById('pp-tp-time');
+    const shotLbl = document.getElementById('pp-tp-shot');
+    if (fill) fill.style.width = pct + '%';
+    if (thumb) thumb.style.left = pct + '%';
+    if (time) time.textContent = ppFmtTime(secs) + ' / ' + ppFmtTime(total);
+    if (shotLbl) shotLbl.textContent = 'Shot ' + (currentIdx + 1) + ' / ' + SHOTS.length;
+    // Keep the legacy in-frame controls in sync too (they are the authoritative
+    // labels used elsewhere in the UI; intra-shot scrubs would otherwise leave
+    // these stale because renderShot() only runs when currentIdx changes).
+    const legacyTime = document.getElementById('pp-time-display');
+    if (legacyTime) legacyTime.textContent = secs.toFixed(1) + 's / ' + total.toFixed(1) + 's';
+    const legacyShot = document.getElementById('pp-shot-num');
+    if (legacyShot) legacyShot.textContent = (currentIdx + 1);
+  };
+  function ppBuildTicks() {
+    const ticks = document.getElementById('pp-tp-bar-ticks');
+    if (!ticks) return;
+    const total = ppTotalDuration();
+    if (total <= 0) { ticks.innerHTML = ''; return; }
+    let html = '';
+    let acc = 0;
+    for (let i = 0; i < SHOTS.length - 1; i++) {
+      acc += (cfg.per_shot_duration[SHOTS[i].idx] || SHOTS[i].dur);
+      const pct = (acc / total) * 100;
+      html += '<div class="pp-tp-tick" style="left:' + pct + '%"></div>';
+    }
+    ticks.innerHTML = html;
+  }
+  window.ppScrubTo = function(secs) {
+    const total = ppTotalDuration();
+    secs = Math.max(0, Math.min(secs, total));
+    const newIdx = ppShotAtTime(secs);
+    if (newIdx !== currentIdx) {
+      currentIdx = newIdx;
+      renderShot();
+      document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
+      const s2 = SHOTS[currentIdx];
+      const th = document.getElementById('pp-thumb-' + s2.idx);
+      if (th) { th.classList.add('active'); th.scrollIntoView({block:'nearest', inline:'center'}); }
+    }
+    if (ppAudio) ppAudioSeek(secs);
+    playWallStart  = Date.now();
+    playTimeOffset = secs;
+    ppUpdateTransport(secs);
+    ppShowSubtitleCue(secs);
+    if (playing) {
+      clearTimeout(playTimer);
+      ppAutoAdvance();
+    }
+  };
+  window.ppStop = function() {
+    if (playing) {
+      playing = false;
+      clearTimeout(playTimer);
+      const pb = document.getElementById('pp-play-btn');
+      const tpb = document.getElementById('pp-tp-play');
+      if (pb) pb.textContent = '▶';
+      if (tpb) tpb.textContent = '▶';
+      if (ppAudio) ppAudio.pause();
+    }
+    currentIdx = 0;
+    if (ppAudio) ppAudioSeek(0);
+    playWallStart  = Date.now();
+    playTimeOffset = 0;
+    renderShot();
+    ppUpdateTransport(0);
+    document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
+    const th0 = document.getElementById('pp-thumb-' + SHOTS[0].idx);
+    if (th0) { th0.classList.add('active'); th0.scrollIntoView({block:'nearest', inline:'center'}); }
+  };
+
+  /* Drag / click handlers on the scrub bar */
+  (function initTransportBar() {
+    const bar = document.getElementById('pp-tp-bar');
+    const tip = document.getElementById('pp-tp-bar-tooltip');
+    if (!bar) return;
+    let dragging = false;
+    function timeFromEvent(e) {
+      const rect = bar.getBoundingClientRect();
+      const cx = (e.clientX != null) ? e.clientX
+               : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const ratio = Math.max(0, Math.min(1, (cx - rect.left) / Math.max(1, rect.width)));
+      return ratio * ppTotalDuration();
+    }
+    function moveTooltip(e) {
+      if (!tip) return;
+      const rect = bar.getBoundingClientRect();
+      const cx = (e.clientX != null) ? e.clientX
+               : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const ratio = Math.max(0, Math.min(1, (cx - rect.left) / Math.max(1, rect.width)));
+      tip.style.left = (ratio * 100) + '%';
+      tip.textContent = ppFmtTime(ratio * ppTotalDuration());
+    }
+    bar.addEventListener('mouseenter', () => bar.classList.add('hovering'));
+    bar.addEventListener('mouseleave', () => { if (!dragging) bar.classList.remove('hovering'); });
+    bar.addEventListener('mousemove', moveTooltip);
+    bar.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      bar.classList.add('dragging');
+      ppScrubTo(timeFromEvent(e));
+      moveTooltip(e);
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      ppScrubTo(timeFromEvent(e));
+      moveTooltip(e);
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      bar.classList.remove('dragging');
+      if (!bar.matches(':hover')) bar.classList.remove('hovering');
+    });
+    bar.addEventListener('touchstart', (e) => {
+      dragging = true;
+      bar.classList.add('dragging');
+      bar.classList.add('hovering');
+      ppScrubTo(timeFromEvent(e));
+      moveTooltip(e);
+    }, {passive: true});
+    // Listen on document so the drag keeps working when the finger leaves
+    // the bar's bounding box, and add touchcancel cleanup.
+    function endTouch() {
+      if (!dragging) return;
+      dragging = false;
+      bar.classList.remove('dragging');
+      bar.classList.remove('hovering');
+    }
+    document.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      ppScrubTo(timeFromEvent(e));
+      moveTooltip(e);
+    }, {passive: true});
+    document.addEventListener('touchend',    endTouch);
+    document.addEventListener('touchcancel', endTouch);
+    /* Keyboard arrows for accessibility */
+    bar.addEventListener('keydown', (e) => {
+      const total = ppTotalDuration();
+      const step = Math.max(0.5, total / 100);
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); ppScrubTo(ppCurrentTime() - step); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); ppScrubTo(ppCurrentTime() + step); }
+      if (e.key === 'Home')       { e.preventDefault(); ppScrubTo(0); }
+      if (e.key === 'End')        { e.preventDefault(); ppScrubTo(total); }
+      if (e.key === ' ')          { e.preventDefault(); ppTogglePlay(); }
+    });
+  })();
+
+  /* RAF loop drives the scrubber while playing */
+  (function tpRafLoop() {
+    if (playing) ppUpdateTransport();
+    requestAnimationFrame(tpRafLoop);
+  })();
+
+  /* Initial render of ticks + transport state */
+  ppBuildTicks();
+  ppUpdateTransport(0);
 
   window.ppUpdateKBPreview = function() { renderShot(); };
 
@@ -1724,27 +1961,64 @@ body { overflow: hidden !important; }
 
   window.ppTogglePlay = function() {
     const btn = document.getElementById('pp-play-btn');
+    const tpBtn = document.getElementById('pp-tp-play');
     if (playing) {
-      clearTimeout(playTimer); playing = false; btn.textContent = '▶';
-      if (ppAudio) ppAudio.pause();
-      // Show static cue at current shot's start time when paused
-      ppShowSubtitleCue(ppElapsedAt(currentIdx));
-    } else {
-      playing = true; btn.textContent = '⏸';
-      // Snap wall clock to current playback position
+      // Capture true elapsed time BEFORE flipping `playing`, then persist it
+      // into playTimeOffset so ppCurrentTime() keeps returning the correct
+      // paused position (and resume picks up from exactly here).
+      const pausedAt = playTimeOffset + (Date.now() - playWallStart) / 1000;
+      clearTimeout(playTimer);
+      playing        = false;
+      playTimeOffset = Math.max(0, Math.min(pausedAt, ppTotalDuration()));
       playWallStart  = Date.now();
-      playTimeOffset = ppElapsedAt(currentIdx);
+      if (btn) btn.textContent = '▶';
+      if (tpBtn) tpBtn.textContent = '▶';
+      if (ppAudio) ppAudio.pause();
+      ppUpdateTransport(playTimeOffset);
+      ppShowSubtitleCue(playTimeOffset);
+    } else {
+      const totalDur = ppTotalDuration();
+      const curT     = ppCurrentTime();   // paused → playTimeOffset
+      let startAt;
+      if (totalDur > 0 && curT >= totalDur - 0.05) {
+        // Restart from the beginning when user hits play at the very end.
+        currentIdx = 0;
+        startAt    = 0;
+        renderShot();
+      } else {
+        // Resume from wherever we were paused / scrubbed to.
+        startAt = curT;
+        // Make sure currentIdx matches that time (it may have drifted if the
+        // user scrubbed within the same shot then jumped via thumbnails).
+        const idxAtT = ppShotAtTime(startAt);
+        if (idxAtT !== currentIdx) {
+          currentIdx = idxAtT;
+          renderShot();
+          document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
+          const s2 = SHOTS[currentIdx];
+          const th = document.getElementById('pp-thumb-' + s2.idx);
+          if (th) { th.classList.add('active'); th.scrollIntoView({block:'nearest', inline:'center'}); }
+        }
+      }
+      playing = true;
+      if (btn) btn.textContent = '⏸';
+      if (tpBtn) tpBtn.textContent = '⏸';
+      playWallStart  = Date.now();
+      playTimeOffset = startAt;
       if (ppAudio) { ppAudioSeek(playTimeOffset); ppAudio.play().catch(()=>{}); }
       ppAutoAdvance();
-      // Start RAF subtitle loop
       if (!subRafId) subRafId = requestAnimationFrame(subUpdateLoop);
     }
   };
 
   function ppAutoAdvance() {
     if (!playing) return;
-    const shot = SHOTS[currentIdx];
-    const dur  = (cfg.per_shot_duration[shot.idx] || shot.dur) * 1000;
+    const shot      = SHOTS[currentIdx];
+    const shotStart = ppElapsedAt(currentIdx);
+    const shotDur   = (cfg.per_shot_duration[shot.idx] || shot.dur);
+    const shotEnd   = shotStart + shotDur;
+    const nowT      = ppCurrentTime();
+    const remainMs  = Math.max(50, (shotEnd - nowT) * 1000);
     playTimer = setTimeout(() => {
       if (currentIdx < SHOTS.length - 1) {
         currentIdx++;
@@ -1756,10 +2030,19 @@ body { overflow: hidden !important; }
         ppAutoAdvance();
       } else {
         playing = false;
-        document.getElementById('pp-play-btn').textContent = '▶';
+        const pb  = document.getElementById('pp-play-btn');
+        const tpb = document.getElementById('pp-tp-play');
+        if (pb)  pb.textContent  = '▶';
+        if (tpb) tpb.textContent = '▶';
         if (ppAudio) ppAudio.pause();
+        // Persist the end-of-timeline position so ppCurrentTime() returns
+        // total duration while paused — needed for the "restart at end"
+        // check inside ppTogglePlay.
+        playTimeOffset = ppTotalDuration();
+        playWallStart  = Date.now();
+        ppUpdateTransport(playTimeOffset);
       }
-    }, dur);
+    }, remainMs);
   }
 
   /* ── KB per-shot override ───────────────────────────────────────────── */
@@ -1833,6 +2116,7 @@ body { overflow: hidden !important; }
       const shot = SHOTS.find(s => s.idx === idx);
       badge.textContent = (shot ? shot.dur : 4.0).toFixed(1) + 's';
     }
+    ppBuildTicks();   // rebuild scrubber ticks — duration changed
     markDirty(); scheduleAutosave();
   };
 
@@ -1911,6 +2195,10 @@ body { overflow: hidden !important; }
     else if (ar === '4:3')  frame.classList.add('ar-4-3');
     if (!silent) markDirty();
   };
+
+  /* No-op: aspect-ratio CSS now handles frame sizing without JS.
+     Kept as a stub so any lingering calls don't throw. */
+  function ppFitPlayerArea() {}
 
   /* ── Subtitle preview ───────────────────────────────────────────────── */
   window.ppSubPreview = function() {
