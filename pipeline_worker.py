@@ -7522,6 +7522,37 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                 except Exception:
                     logger.warning("Quick video: subtitle burn-in failed (non-fatal)", exc_info=True)
 
+            # ── Text overlay (Animation tab free-text field) ───────────────────
+            text_overlay = (settings.get("text_overlay") or "").strip()
+            if text_overlay:
+                try:
+                    import re as _re
+                    # Escape special drawtext characters
+                    _esc = text_overlay.replace("\\", "\\\\").replace("'", "\\'") \
+                                       .replace(":", "\\:").replace("%", "\\%")
+                    # Multi-line support: replace newlines with drawtext newline escape
+                    _esc = _esc.replace("\n", "\n")
+                    text_out = work_dir / "with_text.mp4"
+                    drawtext_filter = (
+                        f"drawtext=text='{_esc}':"
+                        f"fontcolor=white:fontsize=48:"
+                        f"borderw=2:bordercolor=black:"
+                        f"shadowx=2:shadowy=2:shadowcolor=black@0.8:"
+                        f"x=(w-text_w)/2:y=h*0.06:"
+                        f"line_spacing=8"
+                    )
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-i", str(current_video),
+                        "-vf", drawtext_filter,
+                        "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                        "-c:a", "copy", str(text_out),
+                    ]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    current_video = text_out
+                except Exception:
+                    logger.warning("Quick video: text overlay burn-in failed (non-fatal)", exc_info=True)
+
             # ── Upload to R2 ──────────────────────────────────────────────────
             safe_name = (row.get("name") or "qaivid").strip().replace(" ", "_")
             r2_key = f"projects/{project_id}/quick/{safe_name}_quick.mp4"
