@@ -1118,7 +1118,7 @@ def _render_shot(project_id: str, shot: dict,
         # the 3-second poll cycle always finds "rendering" before timing out.
         _update_shot(project_id, idx, "rendering",
                      prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
-                     motion_prompt=(shot.get("motion_prompt") or "")[:400] or None)
+                     motion_prompt=(shot.get("motion_prompt") or "")[:2000] or None)
 
         # ── Resolve character + location records ────────────────────────
         # Per-shot ref URL args are only used when callers supply them explicitly.
@@ -1271,7 +1271,7 @@ def _render_shot(project_id: str, shot: dict,
                 # so the video render stage uses the prompt that was paired
                 # with this exact still image at generation time.
                 _update_shot(project_id, idx, "rendering",
-                             motion_prompt=computed_video_prompt[:400])
+                             motion_prompt=computed_video_prompt[:2000])
                 logger.debug(
                     "_render_shot: locked video prompt for shot=%s (%d chars): %s...",
                     idx, len(computed_video_prompt), computed_video_prompt[:80],
@@ -4608,6 +4608,206 @@ def composed_prompt_preview(project_id: str, shot: dict) -> str:
     return prompt
 
 
+def pre_compute_shot_prompts(project_id: str) -> int:
+    """Pre-compute video clip prompt + Frame-0 still prompt for every non-ready shot.
+
+    Called at stage transition (references_approve) so the stills_control page
+    shows real WAN-ready prompts immediately, before any Generate click.
+
+    Replicates the brain data resolution pattern from _render_shot but without
+    image generation.  Motion prompts are always updated (overwriting stale
+    timeline data); Frame-0 prompts respect prompt_user_edited.
+
+    Returns the number of shots updated.
+    """
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute("SELECT styled_timeline FROM projects WHERE id=%s", (project_id,))
+            row = cur.fetchone()
+            cur.execute(
+                "SELECT shot_index, status, prompt_user_edited FROM shot_assets WHERE project_id=%s",
+                (project_id,),
+            )
+            asset_rows = {r["shot_index"]: r for r in (cur.fetchall() or [])}
+
+        if not row or not row.get("styled_timeline"):
+            return 0
+
+        timeline = list(row["styled_timeline"])
+
+        # ── Load brain data once for all shots ──────────────────────────
+        bc_list: list = []
+        brain_char_idx: dict = {}
+        brain_loc_idx:  dict = {}
+        motion_philosophy  = "mixed"
+        cinematic_style    = None
+        lighting_logic     = None
+        continuity_rules   = None
+        emotional_mode_id  = ""
+        vibe_shot_direction = ""
+        vibe_avoid: list   = []
+        _shot_brain        = None
+
+        try:
+            with _db() as conn:
+                _shot_brain = ProjectBrain.load(project_id, conn)
+            _mp = _shot_brain.read("materializer_packet") or {}
+            bc_list = list((_mp.get("character_profile") or {}).get("characters") or [])
+            bl_list = list((_mp.get("location_profile")  or {}).get("locations")  or [])
+            brain_char_idx = {
+                b["db_id"]: b for b in bc_list
+                if isinstance(b, dict) and isinstance(b.get("db_id"), int)
+            }
+            brain_loc_idx = {
+                b["db_id"]: b for b in bl_list
+                if isinstance(b, dict) and isinstance(b.get("db_id"), int)
+            }
+            _cr = _mp.get("continuity_rules") or []
+            continuity_rules = [str(r) for r in _cr] if _cr else None
+
+            _emp = _shot_brain.read("emotional_mode_packet") or {}
+            emotional_mode_id = str(_emp.get("primary_mode") or "").strip()
+
+            _ssp = _shot_brain.read("style_packet") or {}
+            vibe_shot_direction = str(_ssp.get("vibe_shot_direction") or "").strip()
+            _raw_av = _ssp.get("vibe_avoid") or []
+            vibe_avoid = (
+                [str(a) for a in _raw_av if a]
+                if isinstance(_raw_av, list)
+                else ([str(_raw_av)] if _raw_av else [])
+            )
+            cinematic_style = str((_ssp.get("cinematic") or {}).get("look") or "").strip() or None
+            lighting_logic  = str(_ssp.get("lighting_logic") or "").strip() or None
+
+            _nar = _shot_brain.read("narrative_packet") or {}
+            motion_philosophy = str(_nar.get("motion_philosophy") or "mixed").strip()
+        except Exception:
+            logger.debug(
+                "pre_compute_shot_prompts: brain load failed for project=%s (non-fatal)",
+                project_id, exc_info=True,
+            )
+
+        from motion_render_prompt_builder import build_video_clip_prompt as _bvcp  # noqa: PLC0415
+
+        _human_shot_types = {
+            "close_up", "extreme_close_up", "head_shoulders",
+            "medium_shot", "full_body", "movement",
+        }
+
+        updated = 0
+        for shot in timeline:
+            idx = shot.get("shot_index") or shot.get("timeline_index")
+            if idx is None:
+                continue
+            asset = asset_rows.get(idx, {})
+            if asset.get("status") == "ready":
+                continue
+
+            # ── Resolve character + location for this shot ───────────────
+            try:
+                _char_url, _env_url, character, location = _resolve_shot_refs_full(project_id, idx)
+            except Exception:
+                character, location = None, None
+
+            brain_char: Optional[dict] = None
+            brain_loc:  Optional[dict] = None
+            if character and isinstance(character.get("id"), int):
+                brain_char = brain_char_idx.get(character["id"])
+            if location and isinstance(location.get("id"), int):
+                brain_loc = brain_loc_idx.get(location["id"])
+
+            # ── Human-shot fallback: no char FK → use primary brain char ─
+            _is_environment_shot = (location is not None and character is None)
+            if brain_char is None and bc_list and not _is_environment_shot:
+                _st = (shot.get("shot_type") or "").strip().lower()
+                if _st in _human_shot_types:
+                    _primary_bc = next(
+                        (b for b in bc_list if isinstance(b, dict) and b.get("identity_seed")),
+                        None,
+                    )
+                    if _primary_bc:
+                        brain_char = _primary_bc
+
+            identity_seed_v = (brain_char or {}).get("identity_seed") or None
+
+            # ── Build video clip prompt ──────────────────────────────────
+            try:
+                computed_video_prompt = _bvcp(
+                    shot,
+                    motion_philosophy=motion_philosophy,
+                    identity_seed=identity_seed_v,
+                    cinematic_style=cinematic_style,
+                    lighting_logic=lighting_logic,
+                    continuity_rules=continuity_rules,
+                    emotional_mode_id=emotional_mode_id,
+                    vibe_shot_direction=vibe_shot_direction,
+                    vibe_avoid=vibe_avoid,
+                )
+            except Exception:
+                logger.debug(
+                    "pre_compute_shot_prompts: build_video_clip_prompt failed for shot=%s (non-fatal)",
+                    idx, exc_info=True,
+                )
+                continue
+
+            if not computed_video_prompt:
+                continue
+
+            # ── Store motion_prompt ──────────────────────────────────────
+            try:
+                with _db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET motion_prompt=%s, updated_at=NOW()"
+                        " WHERE project_id=%s AND shot_index=%s",
+                        (computed_video_prompt[:2000], project_id, idx),
+                    )
+                    conn.commit()
+            except Exception:
+                logger.debug(
+                    "pre_compute_shot_prompts: motion_prompt store failed for shot=%s (non-fatal)",
+                    idx, exc_info=True,
+                )
+
+            # ── Derive + store Frame-0 prompt (honours prompt_user_edited) ─
+            if not asset.get("prompt_user_edited"):
+                try:
+                    frame0 = _derive_frame0_prompt(computed_video_prompt, shot)
+                    if frame0:
+                        _store_frame0_prompt(project_id, idx, frame0)
+                        logger.debug(
+                            "pre_compute_shot_prompts: shot=%s Frame-0 stored (%d chars)",
+                            idx, len(frame0),
+                        )
+                except Exception:
+                    logger.debug(
+                        "pre_compute_shot_prompts: Frame-0 derivation failed for shot=%s (non-fatal)",
+                        idx, exc_info=True,
+                    )
+
+            updated += 1
+
+        logger.info(
+            "pre_compute_shot_prompts: project=%s updated %d/%d shots",
+            project_id, updated, len(timeline),
+        )
+        return updated
+    except Exception:
+        logger.exception(
+            "pre_compute_shot_prompts: unexpected error for project=%s", project_id,
+        )
+        return 0
+
+
+def kick_pre_compute_shot_prompts(project_id: str) -> None:
+    """Submit pre_compute_shot_prompts to the shared shot executor (non-blocking).
+
+    Called from references_approve so Frame-0 and video prompts are derived
+    in the background while the user browses the stills_control page.
+    """
+    _SHOT_EXECUTOR.submit(pre_compute_shot_prompts, project_id)
+    logger.info("kick_pre_compute_shot_prompts: submitted for project=%s", project_id)
+
+
 def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
     """Seed shot_assets rows with prompts from the styled_timeline so the
     stills_control page can display editable prompts before generation starts.
@@ -4619,7 +4819,7 @@ def seed_shot_rows_with_prompts(project_id: str, styled_timeline: list) -> None:
             if idx is None:
                 continue
             prompt = (shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000]
-            motion = (shot.get("motion_prompt") or "")[:400] or None  # safety cap — builder already sizes to model limit
+            motion = (shot.get("motion_prompt") or "")[:2000] or None  # safety cap — builder already sizes to model limit
             cur.execute(
                 """
                 INSERT INTO shot_assets (project_id, shot_index, status, prompt, motion_prompt)

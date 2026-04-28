@@ -107,18 +107,18 @@
           &#8635; Regenerate All
         </button>
       </form>
-      {% if ns.failed > 0 %}
       <form method="post"
             action="{{ url_for('project_retry_all_failed_shots', project_id=project.id) }}"
             class="sc-bulk-form"
-            onsubmit="return scBulkSubmit(event, 'retry-failed');">
+            id="form-retry-failed-bulk"
+            onsubmit="return scBulkSubmit(event, 'retry-failed');"
+            style="{{ '' if ns.failed > 0 else 'display:none;' }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-secondary sc-btn-retry-failed" id="btn-retry-failed-bulk"
                 style="border-color:#a83232;color:#ff8080;">
-          &#9888; Retry All Failed ({{ ns.failed }})
+          &#9888; Generate Failed (<span id="btn-failed-count">{{ ns.failed }}</span>)
         </button>
       </form>
-      {% endif %}
       <span class="sc-bulk-hint muted">Accepted: JPG, PNG, WEBP</span>
     </div>
 
@@ -376,6 +376,21 @@
   font-size: 11px; color: #7a9060; line-height: 1.55;
   font-family: 'JetBrains Mono', monospace; white-space: pre-wrap;
 }
+.sc-det-video-prompt-ta {
+  width: 100%; box-sizing: border-box; font-size: 11px;
+  background: #080e06; border: 1px solid #2a3a20;
+  color: #8aaa68; border-radius: 6px; padding: 8px 10px;
+  resize: vertical; font-family: 'JetBrains Mono', monospace; line-height: 1.45;
+  min-height: 80px;
+}
+.sc-det-rederive-btn {
+  padding: 5px 12px; font-size: 10px; font-weight: 600;
+  background: rgba(80,160,60,.12); color: #7ec864;
+  border: 1px solid rgba(80,160,60,.3); border-radius: 6px;
+  cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.sc-det-rederive-btn:hover { background: rgba(80,160,60,.25); }
+.sc-det-rederive-btn:disabled { opacity: .5; cursor: default; }
 .sc-det-err {
   font-size: 11px; color: #ff6b6b; background: rgba(255,107,107,.08);
   border: 1px solid rgba(255,107,107,.2); border-radius: 6px; padding: 6px 10px;
@@ -586,13 +601,30 @@
           ? `<div class="sc-det-err" id="sc-err-${idx}">${escHtml(shot.error.slice(0, 200))}</div>`
           : `<div id="sc-err-${idx}" style="display:none;" class="sc-det-err"></div>`}
 
-        ${shot.motionPrompt ? `
         <div class="sc-det-video-prompt">
           <span class="sc-det-prompt-label" style="color:#7a8060;">
-            ▶ Video prompt (WAN 2.6 — source of truth)
+            ▶ Video prompt (WAN 2.6 — edit here, then re-derive Frame 0)
           </span>
-          <div class="sc-det-video-prompt-text">${escHtml(shot.motionPrompt)}</div>
-        </div>` : ''}
+          <textarea class="sc-det-video-prompt-ta" id="sc-vid-prompt-${idx}"
+                    rows="4" maxlength="2000">${escHtml(shot.motionPrompt || '')}</textarea>
+          <div class="sc-det-prompt-row" style="margin-top:6px;gap:8px;flex-wrap:wrap;">
+            <button class="sc-det-rederive-btn" id="sc-rederive-btn-${idx}"
+                    onclick="scSaveVideoPrompt(${idx}, document.getElementById('sc-vid-prompt-${idx}').value, true)">
+              ↻ Save &amp; Re-derive Frame 0
+            </button>
+            <button class="btn-mini" style="font-size:10px;"
+                    onclick="scSaveVideoPromptOnly(${idx}, document.getElementById('sc-vid-prompt-${idx}').value)">
+              Save prompt
+            </button>
+            ${shot.status === 'failed' ? `
+            <button class="sc-det-gen-btn" style="font-size:10px;padding:4px 12px;"
+                    onclick="scGenOne(${idx}, false)">
+              ▶ Generate
+            </button>` : ''}
+            <span id="sc-vid-saved-${idx}" style="display:none;font-size:10px;color:#7ec8a4;">✓ Saved</span>
+            <span id="sc-vid-deriving-${idx}" style="display:none;font-size:10px;color:#c8f135;">⏳ Deriving…</span>
+          </div>
+        </div>
 
         <div>
           <label class="sc-det-prompt-label">
@@ -756,6 +788,12 @@
       failedBanner.style.display = failed > 0 ? '' : 'none';
       const fc = el('sc-failed-count');
       if (fc) fc.textContent = failed;
+    }
+    const retryFailedForm = el('form-retry-failed-bulk');
+    if (retryFailedForm) {
+      retryFailedForm.style.display = failed > 0 ? '' : 'none';
+      const bfc = el('btn-failed-count');
+      if (bfc) bfc.textContent = failed;
     }
     const genAllBtn = el('btn-gen-all');
     if (genAllBtn) genAllBtn.textContent = '\u25B6 Generate All Pending (' + pending + ')';
@@ -1027,7 +1065,7 @@
       .catch(() => { if (label) label.textContent = '⬆ Upload'; });
   };
 
-  /* ── Prompt save ── */
+  /* ── Frame-0 prompt save ── */
   window.scSavePrompt = async function(idx, val) {
     if (shotData[idx]) shotData[idx].prompt = val;
     const ind = document.getElementById('sc-saved-' + idx);
@@ -1040,6 +1078,49 @@
       const data = await resp.json();
       if (data.ok && ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
     } catch(e) {}
+  };
+
+  /* ── Video (motion) prompt save only (no Frame-0 re-derive) ── */
+  window.scSaveVideoPromptOnly = async function(idx, val) {
+    if (shotData[idx]) shotData[idx].motionPrompt = val;
+    const ind = document.getElementById('sc-vid-saved-' + idx);
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/video-prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, motion_prompt: val, rederive: false }),
+      });
+      const data = await resp.json();
+      if (data.ok && ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2000); }
+    } catch(e) {}
+  };
+
+  /* ── Video prompt save + re-derive Frame 0 via GPT-4.1 ── */
+  window.scSaveVideoPrompt = async function(idx, val, rederive) {
+    if (shotData[idx]) shotData[idx].motionPrompt = val;
+    const ind      = document.getElementById('sc-vid-saved-' + idx);
+    const deriving = document.getElementById('sc-vid-deriving-' + idx);
+    const btn      = document.getElementById('sc-rederive-btn-' + idx);
+    if (rederive && deriving) deriving.style.display = '';
+    if (rederive && btn) { btn.disabled = true; btn.textContent = '⏳ Deriving…'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/video-prompt', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: idx, motion_prompt: val, rederive: !!rederive }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        if (data.frame0_prompt) {
+          if (shotData[idx]) shotData[idx].prompt = data.frame0_prompt;
+          const f0ta = document.getElementById('sc-prompt-' + idx);
+          if (f0ta) f0ta.value = data.frame0_prompt;
+        }
+        if (ind) { ind.style.display = ''; setTimeout(() => { ind.style.display = 'none'; }, 2500); }
+      }
+    } catch(e) {}
+    if (deriving) deriving.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.textContent = '\u21BB Save & Re-derive Frame 0'; }
   };
 
   /* ── Start polls and update counters on load ── */

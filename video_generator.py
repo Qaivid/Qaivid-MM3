@@ -26,7 +26,7 @@ RESOLUTION              = "720p"          # Flash sweet spot; change to "1080p" 
 MIN_DURATION            = 2               # seconds (WAN 2.6 minimum)
 DEFAULT_DURATION        = 5               # seconds — fallback when no duration hint
 MAX_DURATION            = 15              # seconds (WAN 2.6 maximum)
-MOTION_PROMPT_MAX_CHARS = 400             # change here when switching models
+MOTION_PROMPT_MAX_CHARS = 2000            # WAN 2.6 I2V limit; change here when switching models
 POLL_INTERVAL_S         = 4
 VIDEO_TIMEOUT_S         = 360             # 6 min — Flash is faster than standard
 

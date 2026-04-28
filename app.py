@@ -62,6 +62,8 @@ from pipeline_worker import (
     retry_video,
     set_entity_uploaded_plate,
     seed_shot_rows_with_prompts,
+    pre_compute_shot_prompts,
+    kick_pre_compute_shot_prompts,
     update_shot_prompt,
     set_shot_uploaded_image,
     kick_single_shot,
@@ -3408,6 +3410,12 @@ def references_approve(project_id: str):
                 seed_shot_rows_with_prompts(project_id, timeline)
         conn.commit()
 
+    if advanced:
+        # Pre-compute real brain-aware video prompts + GPT-derived Frame-0
+        # still prompts in the background.  The user can edit/approve them on
+        # the stills_control page before clicking Generate.
+        kick_pre_compute_shot_prompts(project_id)
+
     if not advanced:
         # Either someone else moved the stage, or a plate isn't ready. Tell the
         # user what's actually blocking them.
@@ -3685,6 +3693,63 @@ def stills_update_prompt(project_id: str):
         return jsonify({"ok": False, "error": "shot_index and prompt required"}), 400
     update_shot_prompt(project_id, int(shot_index), prompt)
     return jsonify({"ok": True})
+
+
+@app.route("/project/<project_id>/stills/video-prompt", methods=["POST"])
+@login_required
+def stills_update_video_prompt(project_id: str):
+    """Save an edited video (motion) prompt and optionally re-derive the Frame-0 still prompt.
+
+    Body JSON:
+        shot_index    int   — required
+        motion_prompt str   — required; new WAN 2.6 motion prompt (max 2000 chars)
+        rederive      bool  — optional; if true, call GPT-4.1 to re-derive Frame 0 and
+                              return the new frame0_prompt in the response
+
+    Returns JSON: {"ok": true, "frame0_prompt": "..."} or {"ok": true}
+    """
+    _stills_control_guard(project_id)
+    data = request.get_json(silent=True) or {}
+    shot_index = data.get("shot_index")
+    motion_prompt = (data.get("motion_prompt") or "").strip()
+    if shot_index is None or not motion_prompt:
+        return jsonify({"ok": False, "error": "shot_index and motion_prompt required"}), 400
+    shot_index = int(shot_index)
+
+    # Persist the edited motion prompt (uncapped by user_edited flag — user owns it now).
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE shot_assets SET motion_prompt=%s, updated_at=NOW()"
+            " WHERE project_id=%s AND shot_index=%s",
+            (motion_prompt[:2000], project_id, shot_index),
+        )
+        conn.commit()
+
+    # Optionally re-derive the Frame-0 still prompt via GPT-4.1.
+    frame0_prompt = None
+    if data.get("rederive"):
+        try:
+            from pipeline_worker import _derive_frame0_prompt  # noqa: PLC0415
+            frame0_prompt = _derive_frame0_prompt(motion_prompt, {"shot_index": shot_index})
+            if frame0_prompt:
+                # Overwrite unconditionally — the user explicitly requested re-derivation.
+                with db() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE shot_assets SET prompt=%s, prompt_user_edited=FALSE, updated_at=NOW()"
+                        " WHERE project_id=%s AND shot_index=%s",
+                        (frame0_prompt, project_id, shot_index),
+                    )
+                    conn.commit()
+        except Exception:
+            logger.exception(
+                "stills_update_video_prompt: re-derive Frame-0 failed for project=%s shot=%s",
+                project_id, shot_index,
+            )
+
+    resp: dict = {"ok": True}
+    if frame0_prompt:
+        resp["frame0_prompt"] = frame0_prompt
+    return jsonify(resp)
 
 
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
