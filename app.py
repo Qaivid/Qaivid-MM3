@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import uuid
 from pathlib import Path
 
@@ -3635,6 +3636,55 @@ def _stills_control_guard(project_id: str):
     return project
 
 
+_wan_derive_inflight: set[str] = set()
+
+
+def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
+    """Spawn a background thread to derive `wan_video_prompt` for every ready
+    shot that is still missing one.  No-ops immediately if a thread is already
+    in flight for this project so polling never spawns multiple workers."""
+    if project_id in _wan_derive_inflight:
+        return
+    missing = [
+        a for a in assets
+        if (a.get("status") or "pending") == "ready"
+        and not a.get("wan_video_prompt")
+        and a.get("motion_prompt")
+    ]
+    if not missing:
+        return
+
+    def _worker() -> None:
+        try:
+            from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
+            for a in missing:
+                idx = a["shot_index"]
+                mp = (a.get("motion_prompt") or "").strip()
+                if not mp:
+                    continue
+                try:
+                    wan_p = _derive_wan_continuation_prompt(mp, {"shot_index": idx})
+                    if wan_p:
+                        with db() as conn, conn.cursor() as cur:
+                            cur.execute(
+                                "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
+                                " WHERE project_id=%s AND shot_index=%s"
+                                "   AND (wan_video_prompt IS NULL OR wan_video_prompt='')",
+                                (wan_p[:600], project_id, idx),
+                            )
+                            conn.commit()
+                except Exception:
+                    logger.debug(
+                        "_kick_missing_wan_prompts: derivation failed for "
+                        "project=%s shot=%s (non-fatal)", project_id, idx,
+                    )
+        finally:
+            _wan_derive_inflight.discard(project_id)
+
+    _wan_derive_inflight.add(project_id)
+    threading.Thread(target=_worker, daemon=True, name=f"wan-derive-{project_id[:8]}").start()
+
+
 @app.route("/project/<project_id>/stills/status.json")
 @login_required
 def stills_status_json(project_id: str):
@@ -3660,6 +3710,10 @@ def stills_status_json(project_id: str):
         a.get("wan_video_prompt") is None and (a.get("status") or "pending") == "ready"
         for a in assets
     )
+    # Kick a background thread to fill in any missing WAN prompts (legacy shots
+    # that were ready before Task #193; thread is a no-op if already running).
+    if wan_pending:
+        _kick_missing_wan_prompts(project_id, assets)
     return jsonify({
         "precompute_pending": precompute_pending or wan_pending,
         "shots": [

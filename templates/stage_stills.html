@@ -595,6 +595,8 @@
 
   /* ── Polling ── */
   let pollTimer = null, pollFailCount = 0;
+  let _wanPrecompute_pending = false;
+  const _PRECOMPUTE_DEADLINE = Date.now() + 5 * 60 * 1000;
   async function _pollOnce() {
     try {
       const r = await fetch('/project/' + PID + '/stills/status.json', {
@@ -603,6 +605,7 @@
       if (r.ok) {
         const data = await r.json();
         pollFailCount = 0;
+        _wanPrecompute_pending = !!data.precompute_pending && Date.now() < _PRECOMPUTE_DEADLINE;
         for (const shot of data.shots) {
           const prev = shotState[shot.shot_index];
           if (!prev || prev.status !== shot.status || prev.url !== shot.url) {
@@ -633,7 +636,7 @@
       }
     } catch(e) { if (++pollFailCount >= 3) { clearInterval(pollTimer); pollTimer = null; } }
     const hasLive = Object.values(shotState).some(s => s.status === 'rendering' || s.status === 'queued');
-    if (!hasLive && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (!hasLive && !_wanPrecompute_pending && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
   function startPolling() {
