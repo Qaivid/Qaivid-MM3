@@ -3991,6 +3991,79 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
         return jsonify({"ok": False, "error": f"Derivation failed: {exc}"}), 500
 
 
+@app.route("/project/<project_id>/stills/rederive-wan-all", methods=["POST"])
+@login_required
+def stills_rederive_wan_all(project_id: str):
+    """Derive (or re-derive) WAN continuation prompts for ALL shots in one request.
+
+    Uses the deterministic parser — no API calls, completes in milliseconds.
+    Overwrites any existing wan_video_prompt values.
+    Returns JSON: {"ok": true, "derived": N, "skipped": N, "prompts": {idx: text}}
+    """
+    _stills_control_guard(project_id)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT shot_index, motion_prompt, prompt FROM shot_assets"
+            " WHERE project_id=%s ORDER BY shot_index",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return jsonify({"ok": True, "derived": 0, "skipped": 0,
+                        "message": "No shots found", "prompts": {}})
+    try:
+        from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Import error: {exc}"}), 500
+
+    derived = 0
+    skipped = 0
+    results: list[tuple[str, str, int]] = []  # (wan_prompt, project_id, shot_index)
+
+    for row in rows:
+        shot_index = row["shot_index"]
+        motion_prompt = (row.get("motion_prompt") or "").strip()
+        if not motion_prompt:
+            skipped += 1
+            continue
+        shot_ctx = {
+            "shot_index": shot_index,
+            "visual_prompt": (row.get("prompt") or "").strip(),
+        }
+        try:
+            wan_p = _derive_wan_continuation_prompt(motion_prompt, shot_ctx)
+            if wan_p:
+                results.append((wan_p[:600], project_id, shot_index))
+                derived += 1
+            else:
+                skipped += 1
+        except Exception:
+            logger.exception(
+                "stills_rederive_wan_all: derivation failed for shot=%s", shot_index
+            )
+            skipped += 1
+
+    if results:
+        with db() as conn, conn.cursor() as cur:
+            for wan_p, pid, sidx in results:
+                cur.execute(
+                    "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
+                    " WHERE project_id=%s AND shot_index=%s",
+                    (wan_p, pid, sidx),
+                )
+            conn.commit()
+
+    prompts_map = {sidx: wp for (wp, _pid, sidx) in results}
+    suffix = f", skipped {skipped}" if skipped else ""
+    return jsonify({
+        "ok": True,
+        "derived": derived,
+        "skipped": skipped,
+        "message": f"Generated {derived} WAN prompt{'s' if derived != 1 else ''}{suffix}",
+        "prompts": prompts_map,
+    })
+
+
 @app.route("/project/<project_id>/stills/upload/<int:shot_index>", methods=["POST"])
 @login_required
 def stills_upload_one(project_id: str, shot_index: int):

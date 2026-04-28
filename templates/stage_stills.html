@@ -62,6 +62,16 @@
     </div>
     {% endif %}
 
+    <!-- ── WAN prompt bulk action ───────────────────────────────── -->
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
+      <button class="sc-btn-wan-all" id="btn-rederive-wan-all"
+              onclick="scRederiveWanAll()"
+              title="Generate WAN 2.6 continuation prompts for every shot at once">
+        🎬 Generate All WAN Prompts
+      </button>
+      <span id="wan-all-status" style="display:none;font-size:11px;color:#c070d8;"></span>
+    </div>
+
     <!-- ── Ref plates row ────────────────────────────────────────── -->
     {% if refs %}
     <div class="ref-row" style="margin-bottom:6px;">
@@ -312,6 +322,15 @@
 .sc-rederive-btn { padding: 5px 13px; font-size: 10px; font-weight: 700; background: rgba(80,160,50,.15); color: #7ec864; border: 1px solid rgba(80,160,50,.35); border-radius: 6px; cursor: pointer; transition: background .15s; white-space: nowrap; }
 .sc-rederive-btn:hover:not(:disabled) { background: rgba(80,160,50,.28); }
 .sc-rederive-btn:disabled { opacity: .45; cursor: default; }
+.sc-btn-wan-all {
+  padding: 6px 16px; font-size: 11px; font-weight: 700;
+  background: rgba(140,40,180,.18); color: #c070d8;
+  border: 1px solid rgba(180,80,220,.4); border-radius: 6px;
+  cursor: pointer; transition: background .15s, border-color .15s;
+  white-space: nowrap; letter-spacing: .02em;
+}
+.sc-btn-wan-all:hover:not(:disabled) { background: rgba(140,40,180,.32); border-color: rgba(200,100,240,.6); }
+.sc-btn-wan-all:disabled { opacity: .45; cursor: default; }
 .sc-save-btn { padding: 5px 13px; font-size: 10px; font-weight: 700; background: rgba(60,80,180,.12); color: #8099cc; border: 1px solid rgba(60,80,180,.25); border-radius: 6px; cursor: pointer; transition: background .15s; }
 .sc-save-btn:hover { background: rgba(60,80,180,.24); }
 .sc-indicator { font-size: 10px; margin-left: 2px; }
@@ -839,6 +858,43 @@
     };
   }
   window.scModalCancel = function() { document.getElementById('sc-regen-modal').classList.remove('open'); modalTarget = null; };
+
+  /* ── Generate All WAN Prompts ── */
+  window.scRederiveWanAll = async function() {
+    const btn    = document.getElementById('btn-rederive-wan-all');
+    const status = document.getElementById('wan-all-status');
+    const total  = Object.keys(shotData).length;
+    if (btn) { btn.disabled = true; btn.textContent = `⏳ Generating ${total} prompts…`; }
+    if (status) { status.style.display = ''; status.style.color = '#c8f135'; status.textContent = 'Deriving WAN prompts for all shots…'; }
+    try {
+      const resp = await fetch('/project/' + PID + '/stills/rederive-wan-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        if (data.prompts) {
+          for (const [idx, wp] of Object.entries(data.prompts)) {
+            const sidx = parseInt(idx);
+            if (shotData[sidx]) shotData[sidx].wanVideoPrompt = wp;
+            const ta = document.getElementById('sc-wan-prompt-' + sidx);
+            if (ta && ta !== document.activeElement) ta.value = wp;
+          }
+        }
+        if (status) {
+          status.style.color = '#c070d8';
+          status.textContent = '✓ ' + (data.message || 'Done');
+          setTimeout(() => { status.style.display = 'none'; }, 5000);
+        }
+      } else {
+        if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ ' + (data.error || 'Failed'); }
+      }
+    } catch(e) {
+      if (status) { status.style.color = '#ff8080'; status.textContent = '⚠ Network error'; }
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '🎬 Generate All WAN Prompts'; }
+  };
 
   /* ── Init ── */
   startPolling();
