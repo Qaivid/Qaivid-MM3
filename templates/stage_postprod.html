@@ -218,6 +218,7 @@
         <button class="pp-stab" onclick="ppTab(this,'subs')">Subtitles</button>
         <button class="pp-stab" onclick="ppTab(this,'over')">Overlays</button>
         <button class="pp-stab" onclick="ppTab(this,'filt')">Filters</button>
+        <button class="pp-stab" onclick="ppTab(this,'audio')">Audio</button>
         <button class="pp-stab" onclick="ppTab(this,'expo')">Export</button>
       </div>
       <div class="pp-stab-panels open" id="pp-stab-panels">
@@ -498,6 +499,49 @@
           <img src="{{ shots[0].url }}" alt="filter preview" id="pp-filter-preview-img">
           {% endif %}
           <div class="pp-filter-preview-label" id="pp-filter-preview-label">Original</div>
+        </div>
+      </div>
+
+      <!-- Audio Track -->
+      <div class="pp-panel" id="pp-panel-audio">
+        <!-- Active track indicator -->
+        <div class="pp-ctrl-group" id="pp-audio-active-group">
+          <label class="pp-ctrl-label">Active Audio Track</label>
+          <div class="pp-audio-track-info" id="pp-audio-track-info">
+            <div class="pp-audio-track-icon">♪</div>
+            <div class="pp-audio-track-details">
+              <span class="pp-audio-track-name" id="pp-audio-track-name">{{ project.audio_filename or 'No audio' }}</span>
+              <span class="pp-audio-track-badge" id="pp-audio-track-badge">Original</span>
+            </div>
+            <span class="pp-audio-dur" id="pp-audio-dur"></span>
+          </div>
+        </div>
+
+        <!-- Upload replacement -->
+        <div class="pp-ctrl-group">
+          <label class="pp-ctrl-label">Replace with Custom Track</label>
+          <p class="pp-ctrl-hint" style="margin-bottom:6px;">
+            Uploading a new track makes it the <strong>source of truth</strong> for video timing.
+            The rendered video will use this audio and scale shot durations to match it.
+          </p>
+          <div class="pp-upload-area" id="audio-upload-area">
+            <input type="file" accept=".mp3,.wav,.m4a,.ogg,.flac,.aac" id="audio-file-input"
+                   style="display:none;" onchange="ppUploadAudio(this)">
+            <button class="pp-upload-btn" onclick="document.getElementById('audio-file-input').click()">
+              ↑ Choose audio file
+            </button>
+            <span class="pp-upload-name" id="audio-upload-status">MP3, WAV, M4A, AAC — max 100 MB</span>
+          </div>
+          <button class="pp-reset-btn" id="audio-rm-btn" style="display:none; margin-top:6px;"
+                  onclick="ppRemoveAudio()">✕ Revert to original</button>
+        </div>
+
+        <!-- Playback note -->
+        <div class="pp-ctrl-group">
+          <p class="pp-ctrl-hint">
+            The player above uses this audio in real time.
+            Re-render the video after changing tracks to lock the timing in.
+          </p>
         </div>
       </div>
 
@@ -864,6 +908,33 @@ body { overflow-y: auto !important; }
   position: absolute; inset: 0; pointer-events: none;
   mix-blend-mode: color; opacity: 0; transition: opacity .3s;
 }
+/* ── Audio track panel ─────────────────────────────────────────────────── */
+.pp-audio-track-info {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; padding: 10px 12px;
+}
+.pp-audio-track-icon {
+  font-size: 20px; opacity: .8; flex-shrink: 0;
+}
+.pp-audio-track-details {
+  display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;
+}
+.pp-audio-track-name {
+  font-size: 12px; color: #e0e0e0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pp-audio-track-badge {
+  display: inline-block; font-size: 10px; padding: 1px 6px;
+  border-radius: 4px; background: rgba(255,255,255,.15); color: #aaa;
+}
+.pp-audio-track-badge.custom {
+  background: rgba(99,230,140,.25); color: #63e68c;
+}
+.pp-audio-dur {
+  font-size: 11px; color: #999; flex-shrink: 0; white-space: nowrap;
+}
+
 .pp-sub-preview {
   position: absolute; left: 5%; right: 5%; bottom: 10%;
   text-align: center; pointer-events: none; font-size: 18px;
@@ -1344,6 +1415,8 @@ body { overflow-y: auto !important; }
     quality: '1080p',
     logos: {},
     srt_r2_key: '',
+    custom_audio_r2_key: '',
+    custom_audio_filename: '',
     per_shot_duration: {},
     subtitle_style: {
       font: 'Arial', font_size: 24, primary_colour: '&H00FFFFFF',
@@ -2653,6 +2726,135 @@ body { overflow-y: auto !important; }
     markDirty(); scheduleAutosave();
   };
 
+  /* ── Audio track helpers ─────────────────────────────────────────────── */
+
+  /* Swap the <audio> element to a new src and measure its duration. */
+  function ppSetAudioSrc(src) {
+    if (!ppAudio) return;
+    ppAudio.pause();
+    if (src) {
+      ppAudio.src = src;
+      ppAudio.load();
+    }
+  }
+
+  /* Update the Audio panel UI to reflect the currently active track. */
+  function ppRefreshAudioUI(filename, isCustom, dur) {
+    const nameEl  = document.getElementById('pp-audio-track-name');
+    const badge   = document.getElementById('pp-audio-track-badge');
+    const durEl   = document.getElementById('pp-audio-dur');
+    const rmBtn   = document.getElementById('audio-rm-btn');
+    const statusEl = document.getElementById('audio-upload-status');
+    if (nameEl) nameEl.textContent = filename || 'No audio';
+    if (badge) {
+      badge.textContent = isCustom ? 'Custom' : 'Original';
+      badge.classList.toggle('custom', isCustom);
+    }
+    if (durEl) durEl.textContent = dur ? _ppFmtDur(dur) : '';
+    if (rmBtn) rmBtn.style.display = isCustom ? '' : 'none';
+    if (statusEl && isCustom) statusEl.textContent = '✓ ' + (filename || '');
+  }
+
+  function _ppFmtDur(secs) {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  /* Listen to the <audio> element's metadata so we can show duration. */
+  if (ppAudio) {
+    ppAudio.addEventListener('loadedmetadata', () => {
+      const dur = ppAudio.duration || 0;
+      const isCustom = !!(cfg.custom_audio_r2_key || cfgQuick.custom_audio_r2_key);
+      const fname    = (isCustom
+        ? (cfg.custom_audio_filename || cfgQuick.custom_audio_filename)
+        : '{{ project.audio_filename or "" }}');
+      ppRefreshAudioUI(fname, isCustom, dur);
+    });
+  }
+
+  /* Called on page boot to restore audio UI from saved config. */
+  function ppInitAudio() {
+    const r2key    = cfgQuick.custom_audio_r2_key || '';
+    const filename = cfgQuick.custom_audio_filename || '';
+    if (r2key) {
+      ppRefreshAudioUI(filename, true, null);
+      // Audio src already set via server-rendered <audio> tag; just sync UI.
+    } else {
+      ppRefreshAudioUI('{{ project.audio_filename or "No audio" }}', false, null);
+    }
+  }
+
+  /* Upload a custom audio track. */
+  window.ppUploadAudio = async function(input) {
+    if (!input.files[0]) return;
+    const file   = input.files[0];
+    const fname  = file.name;
+    const statusEl = document.getElementById('audio-upload-status');
+    if (statusEl) statusEl.textContent = '⏳ Uploading…';
+
+    const fd = new FormData();
+    fd.append('audio_file', file);
+    fd.append('csrf_token', CSRF);
+    try {
+      const res = await fetch(`/project/${PID}/postprod/upload_audio`, { method:'POST', body:fd });
+      const d   = await res.json();
+      if (d.ok) {
+        // Sync to both mode configs (shared setting like srt_r2_key)
+        [cfgQuick, cfgAi].forEach(c => {
+          c.custom_audio_r2_key   = d.r2_key;
+          c.custom_audio_filename = fname;
+        });
+        cfg.custom_audio_r2_key   = d.r2_key;
+        cfg.custom_audio_filename = fname;
+        // Switch the player audio immediately
+        if (d.preview_url) ppSetAudioSrc(d.preview_url);
+        ppRefreshAudioUI(fname, true, null);
+        // File input reset so same file can be re-selected after removal
+        const fileEl = document.getElementById('audio-file-input');
+        if (fileEl) fileEl.value = '';
+        markDirty(); scheduleAutosave();
+      } else {
+        if (statusEl) statusEl.textContent = 'MP3, WAV, M4A, AAC — max 100 MB';
+        alert('Upload failed: ' + (d.error || 'Unknown error'));
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = 'MP3, WAV, M4A, AAC — max 100 MB';
+      alert('Upload error: ' + err.message);
+    }
+  };
+
+  /* Remove custom audio — revert to the original project audio. */
+  window.ppRemoveAudio = async function() {
+    const statusEl = document.getElementById('audio-upload-status');
+    try {
+      const res = await fetch(`/project/${PID}/postprod/remove_audio`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+        body:'{}',
+      });
+      const d = await res.json();
+      if (d.ok) {
+        [cfgQuick, cfgAi, cfg].forEach(c => {
+          c.custom_audio_r2_key   = '';
+          c.custom_audio_filename = '';
+        });
+        // Restore original audio in the player
+        const origSrc = '{{ audio_url | default("", true) }}';
+        if (origSrc) ppSetAudioSrc(origSrc);
+        ppRefreshAudioUI('{{ project.audio_filename or "No audio" }}', false, null);
+        if (statusEl) statusEl.textContent = 'MP3, WAV, M4A, AAC — max 100 MB';
+        const fileEl = document.getElementById('audio-file-input');
+        if (fileEl) fileEl.value = '';
+        markDirty(); scheduleAutosave();
+      } else {
+        alert('Could not remove audio: ' + (d.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Remove error: ' + err.message);
+    }
+  };
+
   /* ── Clear text overlay ──────────────────────────────────────────────── */
   window.ppClearTextOverlay = function() {
     const ta = document.getElementById('ctrl-text-area');
@@ -2754,6 +2956,7 @@ body { overflow-y: auto !important; }
               'logos:', Object.keys(cfg.logos || {}).length,
               'srt:', !!cfg.srt_r2_key);
   _safe(restoreControls, 'restoreControls');
+  _safe(ppInitAudio, 'ppInitAudio');
   _safe(() => { if (SHOTS.length > 0) ppJumpTo(0); }, 'ppJumpTo(0)');
   _safe(ppRefreshAllOverlays, 'ppRefreshAllOverlays');
   if (_safeFailures.length > 0) {

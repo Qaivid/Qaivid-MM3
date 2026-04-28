@@ -7276,22 +7276,41 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                 raise RuntimeError("Could not download any ready stills.")
 
             # ── Fetch audio early to measure its duration ──────────────────────
+            # Priority: postprod custom audio (user's source of truth) → original
+            # project audio track.  The custom track's duration drives stills
+            # scaling so the final video matches it exactly.
             audio_local: Optional[Path] = None
-            audio_filename = row.get("audio_filename")
-            if audio_filename:
-                candidate = PROJECTS_ROOT / project_id / "uploads" / audio_filename
-                if candidate.is_file():
+            custom_audio_r2_key = settings.get("custom_audio_r2_key") or ""
+            if custom_audio_r2_key and r2_storage.r2_available():
+                try:
+                    ext = Path(custom_audio_r2_key).suffix or ".mp3"
+                    candidate = work_dir / f"custom_audio{ext}"
+                    data = r2_storage.download_bytes(custom_audio_r2_key)
+                    candidate.write_bytes(data)
                     audio_local = candidate
-                elif r2_storage.r2_available():
-                    try:
-                        data = r2_storage.download_bytes(
-                            f"projects/{project_id}/uploads/{audio_filename}"
-                        )
-                        candidate.parent.mkdir(parents=True, exist_ok=True)
-                        candidate.write_bytes(data)
+                    logger.info("Quick video: using postprod custom audio (%s) for project %s",
+                                custom_audio_r2_key, project_id)
+                except Exception:
+                    logger.warning("Quick video: could not fetch custom audio, "
+                                   "falling back to original audio", exc_info=True)
+
+            if not audio_local:
+                audio_filename = row.get("audio_filename")
+                if audio_filename:
+                    candidate = PROJECTS_ROOT / project_id / "uploads" / audio_filename
+                    if candidate.is_file():
                         audio_local = candidate
-                    except Exception:
-                        logger.warning("Quick video: could not fetch audio for project %s", project_id)
+                    elif r2_storage.r2_available():
+                        try:
+                            data = r2_storage.download_bytes(
+                                f"projects/{project_id}/uploads/{audio_filename}"
+                            )
+                            candidate.parent.mkdir(parents=True, exist_ok=True)
+                            candidate.write_bytes(data)
+                            audio_local = candidate
+                        except Exception:
+                            logger.warning("Quick video: could not fetch audio for project %s",
+                                           project_id)
 
             # ── Measure audio duration via ffprobe ─────────────────────────────
             audio_dur: float = 0.0
@@ -7934,6 +7953,35 @@ def _assemble_ai_postprod_job(project_id: str, settings: dict) -> None:
                     current_video = subtitled
                 except Exception:
                     logger.warning("AI postprod: subtitle burn-in failed (non-fatal)", exc_info=True)
+
+            # ── Custom audio replacement ───────────────────────────────────────
+            # If the user uploaded their own audio track in the postprod panel,
+            # replace whatever audio is in the AI-rendered video with that track.
+            # We use -shortest so the output duration equals the shorter of the
+            # two; in practice the user should supply a track that matches their
+            # song, so the lengths will be identical.
+            _custom_audio_r2 = settings.get("custom_audio_r2_key") or ""
+            if _custom_audio_r2 and r2_storage.r2_available():
+                try:
+                    _ca_ext  = Path(_custom_audio_r2).suffix or ".mp3"
+                    _ca_path = work_dir / f"ai_custom_audio{_ca_ext}"
+                    _ca_data = r2_storage.download_bytes(_custom_audio_r2)
+                    _ca_path.write_bytes(_ca_data)
+                    _ca_out  = work_dir / "ai_ca_muxed.mp4"
+                    cmd = [
+                        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                        "-i", str(current_video),
+                        "-i", str(_ca_path),
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                        "-shortest",
+                        str(_ca_out),
+                    ]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    current_video = _ca_out
+                    logger.info("AI postprod: custom audio track muxed for project %s", project_id)
+                except Exception:
+                    logger.warning("AI postprod: custom audio mux failed (non-fatal)", exc_info=True)
 
             # ── Upload to R2 ───────────────────────────────────────────────────
             safe_name = (row.get("name") or "qaivid").strip().replace(" ", "_")

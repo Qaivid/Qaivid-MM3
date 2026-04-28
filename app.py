@@ -4781,8 +4781,9 @@ def advance_stage_5(project_id: str):
 
 # ── Post Production Routes (Task #100) ───────────────────────────────────────
 
-ALLOWED_LOGO = {".png"}        # spec: PNG-only overlay slots
-ALLOWED_SRT  = {".srt", ".vtt"}
+ALLOWED_LOGO  = {".png"}        # spec: PNG-only overlay slots
+ALLOWED_SRT   = {".srt", ".vtt"}
+ALLOWED_AUDIO = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac"}
 
 
 @app.route("/project/<project_id>/postprod", methods=["GET"])
@@ -4832,9 +4833,11 @@ def postprod_page(project_id: str):
     quick_cfg = config.get("quick") or {}
     ai_cfg    = config.get("ai") or {}
 
-    # Shared settings (SRT/logos) live at top level of raw_config regardless of nesting
+    # Shared settings live at top level of raw_config regardless of nesting.
     shared_cfg = {
-        k: raw_config[k] for k in ("srt_r2_key", "logos") if k in raw_config
+        k: raw_config[k]
+        for k in ("srt_r2_key", "logos", "custom_audio_r2_key", "custom_audio_filename")
+        if k in raw_config
     }
 
     quick_video_url = _asset_url(project.get("quick_video_url")) if project.get("quick_video_url") else None
@@ -4881,17 +4884,27 @@ def postprod_page(project_id: str):
             else:
                 _ldata["preview_url"] = url_for("project_asset", asset_path=_r2k, _external=False)
 
-    # Construct audio preview URL from the uploaded audio file
+    # Construct audio preview URL.
+    # Priority: custom audio uploaded in postprod → original project audio.
     audio_url = None
-    audio_filename = project.get("audio_filename")
-    if audio_filename:
+    custom_audio_r2_key  = raw_config.get("custom_audio_r2_key") or ""
+    custom_audio_filename = raw_config.get("custom_audio_filename") or ""
+
+    def _audio_proxy(r2_key: str) -> str | None:
         try:
-            import r2_storage as _r2
-            if _r2.r2_available():
-                raw_url = _r2.public_url_for(f"projects/{project_id}/uploads/{audio_filename}")
-                audio_url = url_for("r2proxy", url=raw_url, _external=False)
+            if r2_storage.r2_available():
+                raw_url = r2_storage.public_url_for(r2_key)
+                return url_for("r2proxy", url=raw_url, _external=False)
         except Exception:
             pass
+        return None
+
+    if custom_audio_r2_key:
+        audio_url = _audio_proxy(custom_audio_r2_key)
+    if not audio_url:
+        audio_filename = project.get("audio_filename")
+        if audio_filename:
+            audio_url = _audio_proxy(f"projects/{project_id}/uploads/{audio_filename}")
 
     return render_template(
         "stage_postprod.html",
@@ -4910,6 +4923,8 @@ def postprod_page(project_id: str):
         ai_error=ai_error,
         total_duration=round(total_duration, 1),
         audio_url=audio_url,
+        custom_audio_r2_key=custom_audio_r2_key,
+        custom_audio_filename=custom_audio_filename,
     )
 
 
@@ -4935,6 +4950,7 @@ def postprod_save(project_id: str):
             "generating", "quick_video_error",
             "ai_generating", "ai_error",
             "srt_r2_key", "logos",
+            "custom_audio_r2_key", "custom_audio_filename",
         )
         if k in existing
     }
@@ -5126,6 +5142,81 @@ def postprod_upload_logo(project_id: str, slot: str):
     else:
         preview_url = url_for("project_asset", asset_path=r2_key, _external=False)
     return jsonify({"ok": True, "r2_key": r2_key, "preview_url": preview_url})
+
+
+@app.route("/project/<project_id>/postprod/upload_audio", methods=["POST"])
+@login_required
+def postprod_upload_audio(project_id: str):
+    """Upload a custom audio track and store its R2 key in postprod_config.
+    This becomes the source of truth for video timing and is muxed into the
+    final rendered video instead of the original project audio."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    f = request.files.get("audio_file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    ext = Path(secure_filename(f.filename)).suffix.lower()
+    if ext not in ALLOWED_AUDIO:
+        return jsonify({
+            "ok": False,
+            "error": f"Unsupported format: {ext}. Use MP3, WAV, M4A, OGG, FLAC, or AAC."
+        }), 400
+    raw_bytes = f.read()
+    max_bytes = 100 * 1024 * 1024   # 100 MB — enough for a full song in WAV
+    if len(raw_bytes) > max_bytes:
+        return jsonify({"ok": False, "error": "File too large (max 100 MB)"}), 400
+
+    r2_key = f"projects/{project_id}/postprod/custom_audio{ext}"
+    if r2_storage.r2_available():
+        ct_map = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
+                  ".ogg": "audio/ogg", ".flac": "audio/flac", ".aac": "audio/aac"}
+        r2_storage.upload_bytes(raw_bytes, r2_key, content_type=ct_map.get(ext, "audio/mpeg"))
+    else:
+        local_path = PROJECTS_ROOT / project_id / "postprod"
+        local_path.mkdir(parents=True, exist_ok=True)
+        (local_path / f"custom_audio{ext}").write_bytes(raw_bytes)
+
+    config = project.get("postprod_config") or {}
+    config["custom_audio_r2_key"]  = r2_key
+    config["custom_audio_filename"] = f.filename
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+            (Json(config), project_id),
+        )
+        conn.commit()
+
+    # Return a browser-usable preview URL so the JS player can switch tracks.
+    preview_url = None
+    if r2_storage.r2_available():
+        raw_url = r2_storage.public_url_for(r2_key)
+        preview_url = url_for("r2proxy", url=raw_url, _external=False)
+    return jsonify({
+        "ok": True,
+        "r2_key": r2_key,
+        "filename": f.filename,
+        "preview_url": preview_url,
+    })
+
+
+@app.route("/project/<project_id>/postprod/remove_audio", methods=["POST"])
+@login_required
+def postprod_remove_audio(project_id: str):
+    """Remove the custom audio track so the video reverts to the original project audio."""
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+    config = project.get("postprod_config") or {}
+    config.pop("custom_audio_r2_key", None)
+    config.pop("custom_audio_filename", None)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET postprod_config=%s, updated_at=NOW() WHERE id=%s",
+            (Json(config), project_id),
+        )
+        conn.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/project/<project_id>/retry/all_failed_refs", methods=["POST"])
