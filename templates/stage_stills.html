@@ -1016,11 +1016,13 @@
       } else {
         applyStyles(prevSource);
         if (shotData[idx]) shotData[idx].wanPromptSource = prevSource;
+        _scUpdateAiWarnEl(idx);
         alert('Could not save selection: ' + (data.error || 'Unknown error'));
       }
     } catch(e) {
       applyStyles(prevSource);
       if (shotData[idx]) shotData[idx].wanPromptSource = prevSource;
+      _scUpdateAiWarnEl(idx);
       alert('Network error saving WAN prompt source');
     }
   };
