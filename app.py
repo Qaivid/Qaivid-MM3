@@ -3688,8 +3688,10 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
         finally:
             with _wan_derive_lock:
                 _wan_derive_inflight.discard(project_id)
-                if any_success or not missing:
-                    _wan_derive_done.add(project_id)
+                # Always mark done so polling never re-spawns a worker for this
+                # project (retry churn).  Users can still re-derive per-shot via
+                # the /stills/rederive-wan/<idx> endpoint.
+                _wan_derive_done.add(project_id)
 
     threading.Thread(target=_worker, daemon=True, name=f"wan-derive-{project_id[:8]}").start()
 
@@ -3888,15 +3890,16 @@ def stills_update_wan_prompt(project_id: str):
     _stills_control_guard(project_id)
     data = request.get_json(silent=True) or {}
     shot_index = data.get("shot_index")
-    wan_prompt = (data.get("wan_video_prompt") or "").strip()
-    if shot_index is None or not wan_prompt:
+    if shot_index is None or "wan_video_prompt" not in data:
         return jsonify({"ok": False, "error": "shot_index and wan_video_prompt required"}), 400
+    # Allow empty string to clear the prompt (rendering then falls back to motion_prompt).
+    wan_prompt = (data.get("wan_video_prompt") or "").strip()
     shot_index = int(shot_index)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE shot_assets SET wan_video_prompt=%s, updated_at=NOW()"
             " WHERE project_id=%s AND shot_index=%s",
-            (wan_prompt[:600], project_id, shot_index),
+            (wan_prompt[:600] if wan_prompt else None, project_id, shot_index),
         )
         conn.commit()
     return jsonify({"ok": True})
