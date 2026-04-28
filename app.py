@@ -3685,7 +3685,12 @@ def _kick_missing_wan_prompts(project_id: str, assets: list) -> None:
                 if not mp:
                     continue
                 try:
-                    wan_p = _derive_wan_continuation_prompt(mp, {"shot_index": idx})
+                    # Pass the full asset dict so _derive_wan_continuation_prompt
+                    # can use the image prompt (prompt col = Frame 0 description)
+                    # and any other per-shot fields already loaded.
+                    shot_ctx = dict(a)
+                    shot_ctx.setdefault("visual_prompt", shot_ctx.get("prompt") or "")
+                    wan_p = _derive_wan_continuation_prompt(mp, shot_ctx)
                     if wan_p:
                         with db() as conn, conn.cursor() as cur:
                             cur.execute(
@@ -3947,7 +3952,8 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
     _stills_control_guard(project_id)
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT motion_prompt FROM shot_assets WHERE project_id=%s AND shot_index=%s",
+            "SELECT motion_prompt, prompt FROM shot_assets"
+            " WHERE project_id=%s AND shot_index=%s",
             (project_id, shot_index),
         )
         row = cur.fetchone()
@@ -3956,10 +3962,16 @@ def stills_rederive_wan_prompt(project_id: str, shot_index: int):
     motion_prompt = (row.get("motion_prompt") or "").strip()
     if not motion_prompt:
         return jsonify({"ok": False, "error": "No motion prompt available to derive from"}), 400
+    # Build a shot context dict with the image prompt so the derivation function
+    # can use it as the Frame 0 anchor (image prompt = what the still actually shows).
+    shot_ctx = {
+        "shot_index": shot_index,
+        "visual_prompt": (row.get("prompt") or "").strip(),
+    }
     try:
         from pipeline_worker import _derive_wan_continuation_prompt  # noqa: PLC0415
         wan_prompt = _derive_wan_continuation_prompt(
-            motion_prompt, {"shot_index": shot_index}, raise_errors=True
+            motion_prompt, shot_ctx, raise_errors=True
         )
         if not wan_prompt:
             return jsonify({"ok": False, "error": "Could not derive a WAN prompt — motion prompt may be empty or unrecognised"}), 500
