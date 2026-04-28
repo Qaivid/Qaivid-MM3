@@ -494,6 +494,40 @@ def _update_shot(project_id: str, shot_index: int, status: str,
         conn.commit()
 
 
+def _claim_shot_for_rendering(project_id: str, shot_index: int,
+                               prompt: Optional[str] = None,
+                               motion_prompt: Optional[str] = None) -> bool:
+    """Atomically move a shot from 'queued' → 'rendering'.
+
+    Returns True if the transition succeeded (we now own this shot).
+    Returns False if the row is NOT currently 'queued' — meaning the project
+    was reset after the task was submitted to the executor, so the task must
+    abort to prevent stale renders from running against a reset project.
+    """
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE shot_assets
+               SET status        = 'rendering',
+                   prompt        = COALESCE(%s, prompt),
+                   motion_prompt = COALESCE(%s, motion_prompt),
+                   updated_at    = NOW()
+             WHERE project_id = %s
+               AND shot_index = %s
+               AND status     = 'queued'
+            """,
+            (
+                prompt[:4000] if prompt else None,
+                motion_prompt[:2000] if motion_prompt else None,
+                project_id,
+                shot_index,
+            ),
+        )
+        claimed = cur.rowcount == 1
+        conn.commit()
+    return claimed
+
+
 def _seed_video_rows(project_id: str, shot_indices: list[int]) -> None:
     with _db() as conn, conn.cursor() as cur:
         for idx in shot_indices:
@@ -1112,13 +1146,23 @@ def _render_shot(project_id: str, shot: dict,
         logger.info("Shot %s for project %s already rendering; skipping duplicate", idx, project_id)
         return
     try:
-        # ── Mark DB as rendering IMMEDIATELY so polling never sees a
-        # stale "pending" status during the pre-flight resolution phase.
-        # This must be the very first DB write inside the lock so that
-        # the 3-second poll cycle always finds "rendering" before timing out.
-        _update_shot(project_id, idx, "rendering",
-                     prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
-                     motion_prompt=(shot.get("motion_prompt") or "")[:2000] or None)
+        # ── Atomic queued→rendering gate ─────────────────────────────────
+        # Only transitions from 'queued'.  If the row is 'pending' (project
+        # was reset after this task was submitted to the executor), the claim
+        # returns False and we abort silently — preventing stale renders from
+        # running against a just-reset project and generating unwanted images.
+        claimed = _claim_shot_for_rendering(
+            project_id, idx,
+            prompt=(shot.get("styled_visual_prompt") or shot.get("visual_prompt") or "")[:4000],
+            motion_prompt=(shot.get("motion_prompt") or "")[:2000] or None,
+        )
+        if not claimed:
+            logger.info(
+                "_render_shot: shot=%s for project=%s not in 'queued' state — "
+                "skipping (project was likely reset after this task was enqueued)",
+                idx, project_id,
+            )
+            return
 
         # ── Resolve character + location records ────────────────────────
         # Per-shot ref URL args are only used when callers supply them explicitly.
