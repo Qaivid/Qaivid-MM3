@@ -3692,7 +3692,10 @@ def advance_stage_4(project_id: str):
 @app.route("/project/<project_id>/advance/video_assembly", methods=["POST"])
 @login_required
 def advance_stage_video_assembly(project_id: str):
-    """User approved the motion plan — kick Video Rendering (Stage 11).
+    """User approved the motion plan — park at Video Studio for manual per-shot rendering.
+
+    Does NOT auto-render. Seeds all shots as pending so the user can
+    generate clips one at a time (or all at once) from the Video Studio page.
 
     Atomic gate: only transitions if currently parked at video_assembly_review.
     """
@@ -3702,19 +3705,26 @@ def advance_stage_video_assembly(project_id: str):
 
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET status=%s, stage=%s, error=NULL, "
-            "       updated_at=NOW() "
+            "UPDATE projects SET status='awaiting_review', stage='videos_control',"
+            "       error=NULL, updated_at=NOW() "
             " WHERE id=%s "
             "   AND stage='video_assembly_review' "
             "   AND status='awaiting_review'",
-            ("queued", "queued", project_id),
+            (project_id,),
         )
         if cur.rowcount != 1:
             flash("This step has already been completed or is not ready yet.", "error")
             return redirect(url_for("project_detail", project_id=project_id))
 
-    kick_stage_4(project_id)
-    return redirect(url_for("project_detail", project_id=project_id))
+    # Seed pending video_asset rows (no rendering triggered)
+    timeline = project.get("styled_timeline") or []
+    shot_indices = [
+        s.get("shot_index") or s.get("timeline_index")
+        for s in timeline
+    ]
+    seed_video_rows(project_id, [i for i in shot_indices if i is not None])
+
+    return redirect(url_for("video_studio_page", project_id=project_id))
 
 
 # ── Stills Control routes ────────────────────────────────────────────────────

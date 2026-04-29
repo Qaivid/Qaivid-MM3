@@ -67,7 +67,7 @@
             <div class="vc-frame-empty">No still</div>
             {% endif %}
             <span class="vc-frame-num">#{{ s.shot_index }}</span>
-            {% if s.video_status in ('pending', 'failed') %}
+            {% if s.video_status in ('pending', 'queued', 'failed') %}
             <button class="vc-frame-gen-btn {% if s.video_status == 'failed' %}vc-frame-gen-btn--failed{% endif %}"
                     id="vc-frame-btn-{{ s.shot_index }}"
                     onclick="event.preventDefault(); event.stopPropagation(); vcGenerateOne({{ s.shot_index }})"
@@ -468,7 +468,7 @@ function applyStatus(idx, status, url, error) {
       ov.id = 'vc-frame-btn-' + idx;
       ov.innerHTML = '<div class="vc-spinner"></div><span>Rendering…</span>';
       frameWrap.appendChild(ov);
-    } else if (status === 'pending' || status === 'failed') {
+    } else if (status === 'pending' || status === 'queued' || status === 'failed') {
       const ob = document.createElement('button');
       ob.className = 'vc-frame-gen-btn' + (status === 'failed' ? ' vc-frame-gen-btn--failed' : '');
       ob.id = 'vc-frame-btn-' + idx;
