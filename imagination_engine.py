@@ -115,15 +115,35 @@ WHAT YOU MUST PRODUCE:
    For each section: what is its mood, and what does the camera show or feel?
    Be specific. One section = one visual idea. Not "emotional" — VISUAL.
 
+   VISUAL VARIETY MANDATE (this is non-negotiable):
+   a) NO two consecutive sections may show the same setting or environment.
+      Each section must move the camera to a visually distinct space or perspective.
+   b) Use at least 3 different visual environments across all sections
+      (e.g. exterior landscape, interior room, public space, abstract/symbolic space).
+   c) If the song has an addressee — a "you" who is absent, a lost lover, a person
+      being addressed — at least 2 sections MUST evoke that person's presence
+      through memory, objects, or implied absence (empty chairs, a fading photograph,
+      a space they once occupied). This creates the narrative contrast that tells a story.
+   d) If the song contains grief or longing, include at least one section that shows
+      contrast with the present emotional state — a memory of joy, a moment of hope,
+      or a flashback that reveals what was lost. Grief without contrast is not a story.
+   e) Repeated sections (chorus appearing 3 times) must each have a DIFFERENT visual
+      environment or perspective — never the same place twice in a row.
+
 5. shot_ideas — 6 to 10 specific, concrete shot ideas.
    These are not instructions — they are creative sparks for the storyboard team.
+   Spread these across different characters, locations, and perspectives.
+   Include at least 2 shot ideas that involve the absent person or a memory/contrast.
    Examples: "a close-up of hands releasing grain into still water"
              "the speaker's shadow stretched long across an empty road at golden hour"
              "two chairs at a table — one empty, tea cooling in the cup"
+             "a brief flash of laughter — her face bright, before the grief returns"
 
 6. director_notes — one paragraph to the storyboard team.
    What tone must be protected. What visual trap to avoid.
    The one thing that must NEVER be lost.
+   REQUIRED: explicitly name the trap of visual monotony — warn against showing
+   one person in one location for the whole video.
 
 RULES:
 - Every field must be specific to THIS song — no generic descriptions.
@@ -132,6 +152,8 @@ RULES:
 - Do NOT write scene-level instructions — that is the storyboard's job.
 - DO write with the authority of a director who has heard this song a hundred times \
   and knows exactly what it should feel like on screen.
+- STORY OVER AESTHETICS: a beautiful but monotonous video is a failed video. \
+  Visual variety is not optional — it is what makes a music video a story.
 
 Respond ONLY with valid JSON matching the schema provided. No prose outside the JSON."""
 
