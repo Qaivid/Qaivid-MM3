@@ -116,6 +116,158 @@ class CulturePackRegistry:
                 "The devotional tradition is South Asian — do not assign a non-South Asian cultural identity without clear textual basis.",
             ],
         },
+        "western_folk_indie": {
+            "triggers": [
+                "countryside", "heartbreak", "river", "wandering", "longing",
+                "highway", "prairie", "porch", "banjo", "fiddle", "dusty road",
+                "cabin", "wildflower", "home town", "hometown", "blue ridge",
+                "appalachian", "folk song", "old oak", "rainstorm", "firefly"
+            ],
+            "metaphors": {
+                "river": "passage of time, emotional release, life's current, departure",
+                "road": "freedom, restlessness, self-discovery, escape from stagnation",
+                "heartbreak": "formative loss, personal reckoning, turning-point grief",
+                "home": "belonging, nostalgia, tension between rootedness and wandering",
+                "fire": "warmth of memory, fleeting connection, creative spark",
+            },
+            "world_defaults": {
+                "geography": "rural UK or American landscape (Appalachia, English countryside, Scottish highlands, American Midwest)",
+                "cultural_dna": "Western folk / indie singer-songwriter tradition",
+            },
+            "appearance_defaults": {
+                "clothing": "worn denim, flannel shirts, simple cotton dresses, work boots or bare feet — understated and personal",
+                "architecture": "wooden porches, clapboard farmhouses, stone-walled English fields, barns, small-town diners",
+                "palette": "muted earth tones, golden-hour amber, overcast grey skies, deep forest greens",
+                "props": "acoustic guitar, worn notebook, mason jar, pick-up truck, handwritten letters",
+            },
+            "visual_restrictions": [
+                "Do not use South Asian dress, ornamentation, or architecture (no shalwar kameez, bangles, havelis, or courtyards).",
+                "Do not use East Asian visual motifs (no hanok architecture, hanbok, Korean or Japanese street signage).",
+                "Do not use tropical or Latin American landscapes — the world is temperate, rural, and Northern.",
+                "Do not glamourise with slick high-fashion styling — the aesthetic is honest, worn, and natural.",
+                "Do not place the speaker in a modern urban environment unless the lyric explicitly demands it.",
+            ],
+            "meaning_guards": [
+                "Do not treat landscape imagery as generic backdrop — rivers, roads, and fields carry specific emotional and narrative weight in folk tradition.",
+                "Do not impose a polished urban or pop reading on raw, intimate folk imagery.",
+                "The speaker is rooted in the UK or American folk-indie tradition — do not assign a South Asian or East Asian cultural identity without clear textual basis.",
+                "Longing and wandering in this tradition are about personal freedom and loss, not diaspora or spiritual seeking.",
+            ],
+        },
+        "french_chanson": {
+            "triggers": [
+                "amour", "cœur", "rue", "soir", "nuit", "lumière", "paris",
+                "café", "chanson", "toujours", "jamais", "pleure", "liberté",
+                "boulevard", "sein", "brasserie", "accordéon", "bistro", "automne",
+                "mélancolie", "tendresse", "âme", "souvenir", "horizon"
+            ],
+            "metaphors": {
+                "night": "romantic possibility, melancholy, existential atmosphere",
+                "street": "urban intimacy, fleeting encounter, lived Parisian or provincial life",
+                "heart": "romantic vulnerability, sincerity, the exposed emotional self",
+                "autumn": "passing time, bittersweet endings, beauty in decline",
+                "light": "fleeting beauty, memory, the glow of lost or present love",
+            },
+            "world_defaults": {
+                "geography": "France — Paris streets and cafés, or rural Provençal and Breton landscapes",
+                "cultural_dna": "French chanson tradition",
+            },
+            "appearance_defaults": {
+                "clothing": "classic French dress — trench coat, beret, simple blouse, tailored jacket; understated elegance",
+                "architecture": "Haussmann boulevards, zinc-roofed bistros, cobblestone side streets, wrought-iron balconies, rural stone farmhouses",
+                "palette": "desaturated blues and greys of Paris dusk, warm amber café light, autumnal ochre and rust",
+                "props": "cigarette, wine glass, accordion, handwritten letter, café table, old bicycle",
+            },
+            "visual_restrictions": [
+                "Do not use South Asian, East Asian, or Latin American architectural or costume cues.",
+                "Do not render as a flashy pop music video — the aesthetic is intimate, literary, and emotionally restrained.",
+                "Do not use generic 'European café' stock imagery — anchor visuals firmly in French cultural specifics.",
+                "Do not substitute Parisian atmosphere with a generic modern city environment.",
+                "Do not make costumes glamorous or fashion-forward beyond the understated French elegance of the tradition.",
+            ],
+            "meaning_guards": [
+                "Do not flatten French chanson into generic European pop — it carries a distinct literary, melancholic, and romantic register.",
+                "Do not treat Parisian references as tourism imagery — street, café, and night have emotional and philosophical weight.",
+                "The speaker is rooted in the French cultural and linguistic tradition — do not assign a non-French cultural identity without clear textual basis.",
+                "Melancholy in this tradition is aesthetic and philosophical, not pathological — preserve its elegance.",
+            ],
+        },
+        "k_pop_ballad": {
+            "triggers": [
+                "sarang", "보고싶다", "눈물", "이별", "마음", "기억", "그리움",
+                "seoul", "han river", "korea", "한강", "사랑", "슬픔", "혼자",
+                "기다려", "편지", "별", "달빛", "새벽", "설레임", "그대"
+            ],
+            "metaphors": {
+                "memory": "unresolved longing, emotional anchor, the weight of what was shared",
+                "tears": "sincere emotional release, beauty in sorrow, cathartic vulnerability",
+                "star": "distant or lost beloved, hopeful waiting, guiding emotional presence",
+                "moonlight": "solitary reflection, quiet longing, liminal emotional state",
+                "letter": "unexpressed feeling, unfinished relationship, deferred connection",
+            },
+            "world_defaults": {
+                "geography": "Korean urban and natural landscape — Seoul cityscape, Han River, mountain forests, coastal scenery",
+                "cultural_dna": "K-pop ballad / Korean popular emotional song tradition",
+            },
+            "appearance_defaults": {
+                "clothing": "contemporary Korean casual or smart-casual — understated monochrome tones, oversized coats, clean simple silhouettes",
+                "architecture": "Seoul apartment rooftops, Han River walkways, glass-and-steel city skylines, forested mountain paths, coastal cliffs",
+                "palette": "cool blues and whites, soft grey urban light, moonlit silver, pale dawn lavender",
+                "props": "earphones, smartphone with a single unanswered message, school notebook, city lights seen through glass, cherry blossom",
+            },
+            "visual_restrictions": [
+                "Do not use high-energy K-pop performance staging, neon-drenched idol choreography, or concert production — this is a ballad world.",
+                "Do not substitute Korean visual identity with generic East Asian or Chinese visual motifs (no Chinese architecture, hanfu, or Mandarin-language signage).",
+                "Do not use South Asian or Western folk visual cues.",
+                "Do not make the environment visually loud or busy — the ballad world is quiet, still, and interior.",
+                "Do not use traditional Korean hanbok unless the lyric explicitly invokes historical or ceremonial context.",
+            ],
+            "meaning_guards": [
+                "Do not reduce Korean emotional vocabulary to generic Asian imagery — Korean ballads have a specific aesthetic of sincere, unguarded emotional expression (han, jeong).",
+                "Do not conflate K-pop ballad with high-energy K-pop performance — ballads foreground stillness, intimacy, and lyrical melancholy.",
+                "The speaker is rooted in Korean cultural tradition — do not assign a non-Korean cultural identity without clear textual basis.",
+                "Urban and natural settings are emotionally charged in this tradition — do not treat them as neutral backdrops.",
+            ],
+        },
+        "latin_bolero_cumbia": {
+            "triggers": [
+                "amor", "corazón", "bésame", "cumbia", "bolero", "salsa",
+                "colombia", "cuba", "mexico", "habana", "havana", "río",
+                "luna", "bailar", "fiesta", "noche", "calor", "rumba",
+                "tropical", "caribe", "querida", "cielo", "abrazame", "saudade",
+                "samba", "bossa", "brasil", "tango", "buenos aires", "flamenco"
+            ],
+            "metaphors": {
+                "night": "romantic possibility, sensory richness, communal celebration or intimate encounter",
+                "dance": "courtship, surrender, emotional dialogue between bodies, life force",
+                "moon": "romantic witness, longing, guiding light over separation",
+                "fire / heat": "desire, passion, vitality — not anger or destruction",
+                "river": "life's flow, homeland memory, erotic undertone in tropical tradition",
+            },
+            "world_defaults": {
+                "geography": "Latin American and Iberian landscapes — Caribbean coast, Mexican highlands, Colombian cities, Cuban streets, Argentine pampas, Brazilian coast, Andalusian villages",
+                "cultural_dna": "Latin American and Iberian romantic song tradition (bolero, cumbia, samba, tango, flamenco)",
+            },
+            "appearance_defaults": {
+                "clothing": "flowy tropical dresses, guayabera shirts, tango suits, flamenco ruffles, or simple beach attire — expressive but grounded in the specific sub-genre",
+                "architecture": "colonial-era plazas, Caribbean seafronts, Buenos Aires milonga halls, whitewashed Andalusian walls, favela hillsides, Havana streetscapes",
+                "palette": "warm saturated colours — terracotta, deep red, sun-bleached white, turquoise water, golden candlelight",
+                "props": "acoustic guitar, maracas, flamenco fan, candle, street market stall, old convertible car, tropical flowers",
+            },
+            "visual_restrictions": [
+                "Do not use South Asian, East Asian, or Western folk visual motifs — the world is Latin American or Iberian.",
+                "Do not render as a generic beach-party or club scene — the visual register should respect the emotional and cultural depth of the sub-genre.",
+                "Do not conflate all Latin American aesthetics — a bolero is not a cumbia is not a tango; respect visual sub-genre specificity when clear.",
+                "Do not use a cold, desaturated colour palette — warmth and colour are intrinsic to this visual world.",
+                "Do not use North American pop or hip-hop visual language unless the lyric explicitly invokes that world.",
+            ],
+            "meaning_guards": [
+                "Do not flatten the Latin American tradition into a single generic 'tropical' mood — bolero, cumbia, samba, tango, and flamenco each carry distinct emotional registers.",
+                "Do not reduce passion and heat to cliché — in this tradition they carry genuine emotional depth and communal significance.",
+                "The speaker is rooted in Latin American or Iberian cultural tradition — do not assign a non-Latin cultural identity without clear textual basis.",
+                "Dance and music are meaning-bearing acts in this tradition, not mere entertainment — preserve their emotional and social significance.",
+            ],
+        },
         "universal": {
             "triggers": [],
             "metaphors": {},
