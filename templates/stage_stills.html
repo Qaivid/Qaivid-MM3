@@ -144,6 +144,19 @@
               {% if shot.status in ('rendering','queued') %}⏳{% elif shot.url or shot.status == 'ready' %}↺{% else %}▶{% endif %}
             </button>
           </div>
+          {%- set _sf = (shot.environment_profile or {}).get('scene_frame') or {} -%}
+          {%- if _sf.location or _sf.time_of_day or _sf.scene_name -%}
+            {%- if _sf.location and _sf.time_of_day -%}
+              {%- set _sf_text = _sf.location ~ ', ' ~ _sf.time_of_day -%}
+            {%- elif _sf.location -%}
+              {%- set _sf_text = _sf.location -%}
+            {%- elif _sf.time_of_day -%}
+              {%- set _sf_text = _sf.time_of_day -%}
+            {%- else -%}
+              {%- set _sf_text = _sf.scene_name -%}
+            {%- endif -%}
+          <div class="sc-strip-scene-label" title="{{ _sf_text | e }}">{{ _sf_text }}</div>
+          {%- endif %}
         </div>
         {% endfor %}
         <div class="sc-film-edge sc-film-edge--bottom"></div>
@@ -286,6 +299,19 @@
 .sc-strip-status-badge--failed    { background: rgba(255,107,107,.2); color: #ff6b6b; }
 .sc-strip-status-badge--rendering { background: rgba(200,241,53,.15); color: #c8f135; }
 .sc-strip-status-badge--pending   { background: rgba(80,80,120,.25);  color: #8899bb; }
+
+/* Scene location label — below thumbnail, omitted when no scene_frame */
+.sc-strip-scene-label {
+  padding: 3px 6px;
+  font-size: 9px;
+  color: #7a9ab8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(10,18,36,.7);
+  border-top: 1px solid rgba(100,160,220,.08);
+  line-height: 1.3;
+}
 
 /* Per-shot regenerate button — overlay bottom-right of each thumb */
 .sc-strip-regen-btn {
