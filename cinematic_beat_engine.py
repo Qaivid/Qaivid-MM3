@@ -608,7 +608,7 @@ class CinematicBeatEngine:
         world = ctx.get("world_assumptions") or {}
         geography = self._clean(world.get("geography"), "unspecified geography")
         setting = self._clean(
-            world.get("characteristic_setting") or world.get("domestic_setting"),
+            world.get("characteristic_setting"),
             "lived-in setting",
         )
         architecture = self._clean(world.get("architecture_style"), "")
@@ -740,7 +740,7 @@ class CinematicBeatEngine:
             "character": self._clean(speaker.get("identity"), "same primary subject"),
             "wardrobe": "preserve wardrobe and grooming continuity unless arc change is explicit",
             "world": self._clean(
-                world.get("characteristic_setting") or world.get("domestic_setting"),
+                world.get("characteristic_setting"),
                 "same world logic",
             ),
             "mode": expression_mode,

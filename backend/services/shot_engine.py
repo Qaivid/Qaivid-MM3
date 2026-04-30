@@ -223,7 +223,7 @@ def _build_subject_action(line_meaning: Dict, viz_mode: str, narrative_mode: str
     implied = line_meaning.get("implied_meaning", "")
     emotion = line_meaning.get("emotional_meaning", "contemplative")
     scene = scene or {}
-    location = scene.get("location") or scene.get("domestic_setting") or "the space"
+    location = scene.get("location") or "the space"
     objs = scene.get("objects_of_significance") or []
     obj_hint = objs[0] if objs else "an object she has been holding"
 

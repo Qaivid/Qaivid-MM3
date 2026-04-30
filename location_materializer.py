@@ -154,7 +154,7 @@ def materialize_locations(project_id: str, context_packet: dict) -> list[dict]:
     architecture_style = _world_field(world, "architecture_style")
     weather_or_atmosphere = _world_field(
         world, "weather_or_atmosphere", "season",
-        "characteristic_setting", "domestic_setting"
+        "characteristic_setting"
     )
     social_layer = _world_field(
         world, "social_layer", "social_context", "economic_context"
