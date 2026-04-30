@@ -410,3 +410,60 @@ def test_regenerate_brief_rejected_when_status_is_not_awaiting_review(client, fa
     update_calls = [(sql, p) for sql, p in sink if "UPDATE projects" in sql]
     assert not update_calls, "DB must not be touched when status is not awaiting_review"
     kick_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# advance_brief race-condition tests (Task #92)
+# ---------------------------------------------------------------------------
+
+
+def _patches_for_advance(project, sink, user, materializer_mock):
+    """Patches needed to exercise the advance_brief route without a live DB."""
+    return [
+        patch.object(app_module, "_get_project", return_value=project),
+        patch.object(app_module, "current_user", return_value=user),
+        patch("auth.current_user", return_value=user),
+        patch.object(app_module, "db", lambda: RecordingConn(sink)),
+        patch.object(app_module, "kick_stage_materializer", materializer_mock),
+        # File upload helper — returns None for missing files (no uploads in tests)
+        patch.object(app_module, "_save_upload_to_r2", return_value=None),
+    ]
+
+
+def test_advance_brief_blocked_when_stage_is_queued(client, fake_user):
+    """advance_brief must refuse to lock while regeneration is in progress (stage=queued)."""
+    project = _make_project(stage="queued", status="queued")
+    sink = []
+    materializer_mock = MagicMock()
+    patches = _patches_for_advance(project, sink, fake_user, materializer_mock)
+
+    def go():
+        return client.post("/project/proj-brief/advance/brief")
+
+    resp = _run(patches, go)
+    assert resp.status_code in (302, 303)
+
+    # No DB write should happen — we must bail before touching the DB
+    update_calls = [(sql, p) for sql, p in sink if "UPDATE projects" in sql]
+    assert not update_calls, "DB must not be touched while regeneration is in progress"
+
+    # Materializer must never be kicked
+    materializer_mock.assert_not_called()
+
+
+def test_advance_brief_blocked_when_only_status_is_queued(client, fake_user):
+    """advance_brief must refuse to lock when status alone is queued (regeneration race window)."""
+    project = _make_project(stage="creative_brief_review", status="queued")
+    sink = []
+    materializer_mock = MagicMock()
+    patches = _patches_for_advance(project, sink, fake_user, materializer_mock)
+
+    def go():
+        return client.post("/project/proj-brief/advance/brief")
+
+    resp = _run(patches, go)
+    assert resp.status_code in (302, 303)
+
+    update_calls = [(sql, p) for sql, p in sink if "UPDATE projects" in sql]
+    assert not update_calls, "DB must not be touched when status is queued"
+    materializer_mock.assert_not_called()

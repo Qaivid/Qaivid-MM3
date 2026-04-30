@@ -2603,6 +2603,19 @@ def advance_brief(project_id: str):
     if not project:
         abort(404)
 
+    # Guard: if a regeneration is currently in progress (stage/status = queued),
+    # refuse to lock so a stale tab can never commit a variant from the old
+    # generation over the top of the one being produced now.
+    # This check runs before upload processing so no R2 side effects occur for
+    # requests that are going to be rejected anyway.
+    if project.get("stage") == "queued" or project.get("status") == "queued":
+        flash(
+            "A brief regeneration is currently in progress — please wait for "
+            "the new variants to load before locking the brief.",
+            "error",
+        )
+        return redirect(url_for("project_detail", project_id=project_id))
+
     # Optional reference uploads — stash in the user session (NOT brain — see
     # the long note further down) so the Reference Engine can pick them up
     # after the Materializer review gate is approved.
