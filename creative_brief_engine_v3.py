@@ -370,7 +370,7 @@ def _user_prompt(
           '      "shots": [\n'
           "        {\n"
           '          "shot_id":          "shot_1",\n'
-          '          "execution_detail": "ADDITIVE detail only — lighting/atmosphere/emotional layer that the system will append to action_intent. Do NOT restate the action_intent itself."\n'
+          '          "execution_detail": "<lighting / atmosphere / emotional layer that adds depth to the locked visual concept — do NOT include the locked visual concept text itself; it is appended automatically by the system>"\n'
           "        }\n"
           "      ],\n"
           '      "subject_focus":          "character|environment|object|mixed",\n'
@@ -421,6 +421,11 @@ def _coerce_shot_brief(raw: Any, src_shot: Dict[str, Any]) -> Dict[str, Any]:
 
     # LOCKED FIELDS — pass through verbatim from src_shot.  No strip,
     # no truncate, no coerce — the storyboard owns these.
+    #
+    # `actions` carries the multishot decomposition for shots > the
+    # video-render cap (each action is ≤8s and gets its own WAN/Kling
+    # call in Phase 4).  We preserve it verbatim so the brief remains a
+    # complete superset of the storyboard for downstream consumption.
     locked = {
         "shot_id":       src_shot.get("shot_id"),
         "scene_id":      src_shot.get("scene_id"),
@@ -429,6 +434,7 @@ def _coerce_shot_brief(raw: Any, src_shot: Dict[str, Any]) -> Dict[str, Any]:
         "duration":      src_shot.get("duration"),
         "lyric_text":    src_shot.get("lyric_text") or "",
         "action_intent": src_shot.get("action_intent") or "",
+        "actions":       list(src_shot.get("actions") or []),
     }
 
     # ADDITIVE ENRICHMENT — the LLM contributes execution_detail only.
@@ -440,12 +446,22 @@ def _coerce_shot_brief(raw: Any, src_shot: Dict[str, Any]) -> Dict[str, Any]:
     ai = locked["action_intent"].strip()
 
     def _strip_ai_prefix(text: str) -> str:
-        """If the LLM disobeyed and included the action_intent inside the
-        detail, drop that prefix so we don't end up with the action_intent
-        twice in the composed enriched_direction."""
+        """If the LLM disobeyed and included the action_intent inside
+        the detail, drop that prefix so we don't end up with the
+        action_intent twice in the composed enriched_direction.  Also
+        strips the literal token "action_intent" if the LLM echoed the
+        placeholder phrase from the prompt template instead of writing
+        real content (defensive — the template wording was reworded but
+        we want belt-and-braces protection)."""
         t = text.strip()
         if ai and t.lower().startswith(ai.lower()):
             t = t[len(ai):].lstrip(" -—:;.,\t\n")
+        # Defensive: drop a leading literal "action_intent" token that
+        # the LLM may echo back from the prompt template.
+        for tok in ("action_intent", "action intent"):
+            if t.lower().startswith(tok):
+                t = t[len(tok):].lstrip(" -—:;.,\t\n")
+                break
         return t.strip()
 
     detail = _strip_ai_prefix(str(raw.get("execution_detail") or ""))

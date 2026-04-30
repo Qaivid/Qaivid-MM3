@@ -1450,6 +1450,52 @@ async def generate_storyboard_v3(
 
     # ── Call 3 ─────────────────────────────────────────────────────────
     shots = await _run_call3(client, shots, scenes)
+
+    # Defensive final pass: guarantee every multishot's per-action
+    # durations sum exactly to the parent shot's duration.  This is the
+    # bridge invariant for Phase-3 timeline_builder_v3 and Phase-4
+    # WAN/Kling rendering — a desync would cause render length and final
+    # assembly to drift.  _repair_call3_expansions already attempts this
+    # against an intermediate snapshot, but the final sh["duration"] can
+    # differ (e.g. when call-2 defensive-pass rounding lands a different
+    # int than the value seen during call-3 repair).  We re-enforce the
+    # contract here against the *final* shot durations.
+    for sh in shots:
+        acts = sh.get("actions") or []
+        if not acts:
+            continue
+        target = int(sh.get("duration") or 0)
+        if target <= 0:
+            continue
+        cur = sum(int(round(float(a.get("duration") or 0))) for a in acts)
+        if cur == target:
+            # Re-stamp as ints so the rest of the pipeline sees ints.
+            for a in acts:
+                a["duration"] = int(round(float(a.get("duration") or 0)))
+            continue
+        # Rescale proportionally then absorb residual on the last action.
+        scale = target / cur if cur > 0 else 1.0
+        scaled = [max(1.0, float(a.get("duration") or 0) * scale) for a in acts]
+        ints = [int(round(x)) for x in scaled]
+        diff = target - sum(ints)
+        ints[-1] += diff
+        # If the last action would go below 1s, redistribute the deficit
+        # leftward, leaving each action ≥ 1s.
+        if ints[-1] < 1:
+            deficit = 1 - ints[-1]
+            ints[-1] = 1
+            for k in range(len(ints) - 2, -1, -1):
+                take = min(deficit, ints[k] - 1)
+                ints[k] -= take
+                deficit -= take
+                if deficit <= 0:
+                    break
+        for a, n in zip(acts, ints):
+            a["duration"] = n
+        # Re-number orders just in case
+        for i, a in enumerate(acts):
+            a["order"] = i + 1
+
     n_multi = sum(1 for s in shots if s.get("actions"))
     logger.info("StoryboardV3 Call 3 OK: %d multishots out of %d shots",
                 n_multi, len(shots))
