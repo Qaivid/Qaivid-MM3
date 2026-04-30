@@ -121,8 +121,11 @@ def _system_prompt() -> str:
         "action_intent.  These shots are LOCKED — do not change their "
         "count, timings, lyric_text, or scene assignment.\n\n"
         "ROLE: produce a per-scene executable brief that:\n"
-        "  1. Commits to ONE chosen_direction per scene (drawn from that "
-        "scene's valid_realizations) and explains why.\n"
+        "  1. ACCEPTS the storyboard's shots as the committed creative "
+        "direction for each scene. The shots are already locked — their "
+        "action_intent defines what happens on screen. Your job is NOT to "
+        "pick a direction or choose from alternatives; the direction is "
+        "already decided by the storyboard.\n"
         "  2. Enriches every shot by emitting an execution_detail string "
         "that adds execution depth — emotional state, lighting quality, "
         "character presence, atmosphere — drawn from the narrative, "
@@ -131,18 +134,19 @@ def _system_prompt() -> str:
         "`action_intent — execution_detail`.  Do NOT restate, paraphrase, "
         "or replace the action_intent inside execution_detail; assume the "
         "action_intent is already there.\n"
-        "  3. Generates the per-scene execution intent fields "
+        "  3. Generates the per-scene production context fields "
         "(scene_purpose, subject_focus, environment_type, "
         "character_presence/identity_hint, key_elements, "
         "emotional_state/intensity, lighting_condition, movement_type, "
         "timeline_mode, motion_density, repetition_handling, "
         "motif_usage, continuity_hooks).  Each field is GENERAL and "
-        "NON-SPECIFIC.\n\n"
+        "NON-SPECIFIC — these are the production envelope the shots live "
+        "inside, not a restatement of shot content.\n\n"
         "RULES:\n"
         "1. SHOT FIDELITY — emit exactly one entry in shots[] per "
         "storyboard shot in the same order, preserving shot_id, "
         "start_time, end_time, duration, lyric_text, and action_intent. "
-        "Add a new enriched_direction string per shot.\n"
+        "Add a new execution_detail string per shot.\n"
         "2. APPLY narrative logic: presence_strategy → character_presence; "
         "motion_philosophy → movement_type/motion_density; "
         "timeline_strategy → timeline_mode; expression_channels → which "
@@ -202,7 +206,6 @@ def _format_scene_with_shots(scene: Dict[str, Any],
     we        = scene.get("time_window_end")
     motifs    = scene.get("motif_usage") or []
     hooks     = scene.get("continuity_hooks") or {}
-    realizations = scene.get("valid_realizations") or []
 
     lines = [
         f"  - scene_id: {sid} (section={section}, phase={phase}, "
@@ -212,10 +215,7 @@ def _format_scene_with_shots(scene: Dict[str, Any],
         f"    motifs: {', '.join(motifs) if motifs else '—'}",
         (f"    continuity: subject={hooks.get('subject') or '—'}, "
          f"motifs_carry={', '.join(hooks.get('motifs') or []) or '—'}"),
-        "    valid_realizations:",
     ]
-    for i, r in enumerate(realizations):
-        lines.append(f"      [{i}] {str(r).strip()[:300]}")
 
     if shots_for_scene:
         lines.append("    shots (LOCKED — preserve count, timings, lyric, action_intent):")
@@ -344,7 +344,7 @@ def _user_prompt(
         ("\n\n" + imagination_block if imagination_block else "")
         + "\n\nSTORY (Stage 5 v3 — macro arc to honor):\n"
         + _format_story(story)
-        + "\n\nSTORYBOARD SCENES & SHOTS (Stage 5 v3 — possibilities + locked shots):\n"
+        + "\n\nSTORYBOARD SCENES & SHOTS (Stage 5 v3 — locked shots; accept as committed direction):\n"
         + _format_scenes_with_shots(scenes, shots)
         + "\n\nNARRATIVE PACKET (Stage 3 — story logic to honor):\n"
         + _format_narrative(narrative_packet)
@@ -363,9 +363,7 @@ def _user_prompt(
           '      "scene_id":               "s1",\n'
           '      "source_section":         "intro|verse1|chorus|...",\n'
           '      "narrative_phase":        "intro|build|peak|breakdown|resolution",\n'
-          '      "scene_purpose":          "the emotional purpose of this scene",\n'
-          '      "chosen_direction":       "ONE enriched valid_realization, full text",\n'
-          '      "selection_basis":        "why this realization was chosen and what context was added",\n'
+          '      "scene_purpose":          "the emotional purpose of this scene (restate from storyboard, may enrich)",\n'
           '      "variation_anchor":       "what stays consistent across re-runs",\n'
           '      "shots": [\n'
           "        {\n"
@@ -497,8 +495,6 @@ def _coerce_scene_brief(raw: Any,
                         idx: int) -> Optional[Dict[str, Any]]:
     if not isinstance(raw, dict):
         raw = {}
-    valid_realizations = src_scene.get("valid_realizations") or []
-
     # Per-shot enrichment — index LLM shots by shot_id, then pull in
     # source order so we never lose a storyboard shot to a missing LLM
     # entry.  Fall back to positional alignment for any LLM entry whose
@@ -531,11 +527,10 @@ def _coerce_scene_brief(raw: Any,
                 chosen = raw_unmatched.pop(0)
         coerced_shots.append(_coerce_shot_brief(chosen, src_sh))
 
-    # chosen_direction — fall back to first valid_realization if LLM omits
-    chosen = str(raw.get("chosen_direction") or "").strip()
-    if not chosen or chosen.startswith("=") or chosen.lower().startswith("copy the text"):
-        chosen = (str(valid_realizations[0]).strip()
-                  if valid_realizations else "")
+    # chosen_direction is no longer LLM-generated — it is derived from
+    # the storyboard's scene purpose (the direction is already committed
+    # via the locked shots).  Keep the field for downstream compatibility.
+    chosen = str(src_scene.get("purpose") or "").strip()[:400]
 
     hooks_in = raw.get("continuity_hooks") or {}
     if not isinstance(hooks_in, dict):
@@ -566,8 +561,8 @@ def _coerce_scene_brief(raw: Any,
         "scene_purpose":           str(raw.get("scene_purpose")
                                         or src_scene.get("purpose")
                                         or "").strip()[:300],
-        "chosen_direction":        chosen[:400],
-        "selection_basis":         str(raw.get("selection_basis") or "").strip()[:300],
+        "chosen_direction":        chosen,
+        "selection_basis":         "accepted from storyboard",
         "variation_anchor":        str(raw.get("variation_anchor") or "").strip()[:200],
         "shots":                   coerced_shots,
         "shot_directions":         shot_directions,
@@ -604,8 +599,8 @@ def _coerce_scene_brief(raw: Any,
 
 def _fallback(scenes: List[Dict[str, Any]],
               shots:  List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Deterministic fallback: pick first valid_realization per scene,
-    pass through action_intents as enriched_directions (no LLM)."""
+    """Deterministic fallback: pass through storyboard shots with action_intents
+    as enriched_directions (no LLM). chosen_direction = scene purpose."""
     by_scene: Dict[str, List[Dict[str, Any]]] = {}
     for sh in shots or []:
         sid = str(sh.get("scene_id") or "")
@@ -614,10 +609,7 @@ def _fallback(scenes: List[Dict[str, Any]],
     out: List[Dict[str, Any]] = []
     for i, s in enumerate(scenes or []):
         sid = str(s.get("scene_id") or f"s{i + 1}")
-        realizations = s.get("valid_realizations") or []
-        chosen = (str(realizations[0]).strip()[:400]
-                  if realizations
-                  else "Express the scene's emotional intent.")
+        chosen = str(s.get("purpose") or "").strip()[:400]
         scene_shots = by_scene.get(sid, [])
         coerced_shots = [_coerce_shot_brief(None, sh) for sh in scene_shots]
         shot_directions = [s["enriched_direction"] for s in coerced_shots
@@ -629,7 +621,7 @@ def _fallback(scenes: List[Dict[str, Any]],
             "narrative_phase":         str(s.get("narrative_phase") or "build"),
             "scene_purpose":           str(s.get("purpose") or ""),
             "chosen_direction":        chosen,
-            "selection_basis":         "default fallback selection (first valid realization)",
+            "selection_basis":         "accepted from storyboard",
             "variation_anchor":        "subject identity remains consistent",
             "shots":                   coerced_shots,
             "shot_directions":         shot_directions,
