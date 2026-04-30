@@ -197,11 +197,18 @@
           {%- set _sf = (shot.environment_profile or {}).get('scene_frame') or {} -%}
           {%- if _sf.location or _sf.time_of_day or _sf.scene_name -%}
             {%- if _sf.location and _sf.time_of_day -%}
-              {%- set _sf_text = _sf.location ~ ', ' ~ _sf.time_of_day -%}
+              {%- set _sf_loctime = _sf.location ~ ', ' ~ _sf.time_of_day -%}
             {%- elif _sf.location -%}
-              {%- set _sf_text = _sf.location -%}
+              {%- set _sf_loctime = _sf.location -%}
             {%- elif _sf.time_of_day -%}
-              {%- set _sf_text = _sf.time_of_day -%}
+              {%- set _sf_loctime = _sf.time_of_day -%}
+            {%- else -%}
+              {%- set _sf_loctime = '' -%}
+            {%- endif -%}
+            {%- if _sf.scene_name and _sf_loctime -%}
+              {%- set _sf_text = _sf.scene_name ~ ' — ' ~ _sf_loctime -%}
+            {%- elif _sf_loctime -%}
+              {%- set _sf_text = _sf_loctime -%}
             {%- else -%}
               {%- set _sf_text = _sf.scene_name -%}
             {%- endif -%}
@@ -416,12 +423,14 @@
   padding: 3px 6px;
   font-size: 9px;
   color: #7a9ab8;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
   background: rgba(10,18,36,.7);
   border-top: 1px solid rgba(100,160,220,.08);
-  line-height: 1.3;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 /* Per-shot regenerate button — overlay bottom-right of each thumb */
