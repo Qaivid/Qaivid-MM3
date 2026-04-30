@@ -1193,42 +1193,51 @@ def project_detail(project_id: str):
             status = "awaiting_review"
         elif _ready_stills > 0:
             recovery_stage = "stills_review"
-        elif project.get("styled_timeline"):
-            # If at least one character/location plate was already locked, the
-            # references stage was reached — drop the user back there so they
-            # can fix the broken plate without restarting the storyboard.
-            with db() as _rconn, _rconn.cursor() as _rcur:
-                _rcur.execute(
-                    "SELECT 1 FROM characters "
-                    " WHERE project_id=%s AND ref_status='ready' AND ref_image_url IS NOT NULL "
-                    " UNION ALL "
-                    "SELECT 1 FROM locations "
-                    " WHERE project_id=%s AND ref_status='ready' AND ref_image_url IS NOT NULL "
-                    " LIMIT 1",
-                    (project_id, project_id),
-                )
-                _has_plate = _rcur.fetchone() is not None
-            recovery_stage = "references_review" if _has_plate else "storyboard_review"
-        elif cp_for_recovery.get("locked_assumptions") or cp_for_recovery.get("_pending_overrides"):
-            # User already passed through context review.
-            # If a Creative Brief was already generated (stage failed at
-            # running_brief after LLM call succeeded), land at brief review
-            # so the user keeps the generated brief. v2 schema writes
-            # `scenes` to brain.creative_briefs (and legacy mirror); v1
-            # wrote `variants` to context_packet.creative_brief.
-            # Detect either shape so pre/post-v2 projects both recover.
+        else:
+            # Read the brain once to determine exactly how far the pipeline
+            # reached — more reliable than DB column presence checks, which
+            # can miss if the crash happened before the column was written.
             _legacy_brief    = dict(cp_for_recovery.get("creative_brief") or {})
             _brief_variants  = list(_legacy_brief.get("variants") or [])
             _brief_scenes_v2 = list(_legacy_brief.get("scenes") or [])
+            _brain_has_storyboard = False
+            _brain_has_brief      = False
+            _brain_has_styled     = False
+            _brain_has_plate      = False
             try:
                 with db() as _bconn:
                     _brain_for_recovery = ProjectBrain.load(project_id, _bconn)
-                _brain_brief = _brain_for_recovery.read("creative_briefs") or {}
+                _brain_sb    = _brain_for_recovery.read("storyboard_packet") or {}
+                _brain_brief = _brain_for_recovery.read("creative_briefs")   or {}
+                _brain_st    = _brain_for_recovery.read("styled_timeline")   or {}
+                _brain_has_storyboard = bool(_brain_sb.get("scenes"))
+                _brain_brief_scenes   = list(_brain_brief.get("scenes") or [])
+                _brain_has_brief      = bool(
+                    _brief_variants or _brief_scenes_v2 or _brain_brief_scenes
+                )
+                _brain_has_styled = bool(_brain_st)
             except Exception:
-                _brain_brief = {}
-            _brain_brief_scenes = list((_brain_brief or {}).get("scenes") or [])
-            _has_brief = bool(_brief_variants or _brief_scenes_v2 or _brain_brief_scenes)
-            if _has_brief:
+                pass
+
+            # Also check the projects DB column for styled_timeline (legacy path).
+            _db_has_styled = bool(project.get("styled_timeline"))
+
+            if _db_has_styled or _brain_has_styled:
+                # Timeline was built — references or materialiser failed.
+                with db() as _rconn, _rconn.cursor() as _rcur:
+                    _rcur.execute(
+                        "SELECT 1 FROM characters "
+                        " WHERE project_id=%s AND ref_status='ready' AND ref_image_url IS NOT NULL "
+                        " UNION ALL "
+                        "SELECT 1 FROM locations "
+                        " WHERE project_id=%s AND ref_status='ready' AND ref_image_url IS NOT NULL "
+                        " LIMIT 1",
+                        (project_id, project_id),
+                    )
+                    _has_plate = _rcur.fetchone() is not None
+                recovery_stage = "references_review" if _has_plate else "storyboard_review"
+            elif _brain_has_brief:
+                # Creative Brief was generated but timeline failed — land at brief review.
                 recovery_stage = "creative_brief_review"
                 with db() as _rconn, _rconn.cursor() as _rcur:
                     _rcur.execute(
@@ -1242,28 +1251,29 @@ def project_detail(project_id: str):
                 project["status"] = "awaiting_review"
                 actual_stage = "creative_brief_review"
                 status = "awaiting_review"
-            else:
-                recovery_stage = "context_review"
+            elif _brain_has_storyboard:
+                # Storyboard exists but brief failed — land at storyboard review.
+                recovery_stage = "storyboard_review"
                 with db() as _rconn, _rconn.cursor() as _rcur:
                     _rcur.execute(
-                        "UPDATE projects SET stage='context_review', "
+                        "UPDATE projects SET stage='storyboard_review', "
                         "       status='awaiting_review', error=NULL, updated_at=NOW() "
                         " WHERE id=%s AND status='failed'",
                         (project_id,),
                     )
                     _rconn.commit()
-                project["stage"] = "context_review"
+                project["stage"] = "storyboard_review"
                 project["status"] = "awaiting_review"
-                actual_stage = "context_review"
+                actual_stage = "storyboard_review"
                 status = "awaiting_review"
-        elif cp_for_recovery:
-            recovery_stage = "context_review"
-        elif project.get("style_suggestions"):
-            recovery_stage = "style_review"
-        elif project.get("audio_data"):
-            recovery_stage = "audio_review"
-        else:
-            recovery_stage = None
+            elif cp_for_recovery:
+                recovery_stage = "context_review"
+            elif project.get("style_suggestions"):
+                recovery_stage = "style_review"
+            elif project.get("audio_data"):
+                recovery_stage = "audio_review"
+            else:
+                recovery_stage = None
     else:
         recovery_stage = None
 
