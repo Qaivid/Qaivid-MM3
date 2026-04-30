@@ -50,6 +50,8 @@
 {% set sm = project.summary or {} %}
 {% set tl = project.styled_timeline or [] %}
 {% set sb_scenes = sb_scenes or [] %}
+{% set sb_schema_version = (storyboard_packet or {}).get('schema_version', 2) | int %}
+{% set sb_shots = (storyboard_packet or {}).get('shots') or [] %}
 <style>
 .sb-poss-section { margin: 0 0 28px; }
 .sb-poss-header { display:flex; align-items:baseline; gap:.6rem; margin:0 0 .5rem; }
@@ -108,21 +110,78 @@
             <span class="stage-badge">Stage 5 — Storyboard (Possibilities)</span>
             <h1>{{ project.name }}</h1>
             <p class="stage-sub">
+                {% if sb_schema_version >= 3 %}
+                The V3 Storyboard Engine has produced a concrete timed shot list
+                — <strong>{{ sb_shots|length }} shot{{ '' if sb_shots|length == 1 else 's' }}</strong>
+                across <strong>{{ sb_scenes|length }} scene{{ '' if sb_scenes|length == 1 else 's' }}</strong>.
+                The Creative Brief will enrich each shot with a locked creative direction;
+                the Timeline Builder then decorates them into the final shot list.
+                {% else %}
                 Storyboard is where every scene fans out into <strong>possible realizations</strong>.
                 The next stage — the Creative Brief — locks ONE realization per scene and
                 builds the timed shot list.
                 Below: <strong>{{ sb_scenes|length }} scene{{ '' if sb_scenes|length == 1 else 's' }}</strong>
-                of possibilities.{% if tl %}
+                of possibilities.
+                {% endif %}
+                {% if tl %}
                 The underlying shot list contains
                 <strong>{{ tl|length }} shot{{ '' if tl|length == 1 else 's' }}</strong>
                 ({{ "%.1f"|format(sm.total_duration or 0) }}s,
                 preset <strong>{{ sm.style_preset or "cinematic_natural" }}</strong>)
-                produced by the Creative Brief stage.{% endif %}
+                produced by the Creative Brief stage.
+                {% endif %}
             </p>
         </div>
 
-        {# ── Scene possibilities (storyboard_packet.scenes[*].valid_realizations) ── #}
+        {# ── Scene display: v3 = timed shot preview; v2 = possibilities fan-out ── #}
         <section class="sb-poss-section">
+            {% if sb_schema_version >= 3 %}
+            {# V3: show shots grouped by scene from storyboard_packet.shots #}
+            <div class="sb-poss-header">
+                <h2>Shot Plan</h2>
+                <span class="muted">— timed shots produced directly by the V3 engine, grouped by scene.</span>
+            </div>
+            {% if sb_scenes %}
+                {% for scene in sb_scenes %}
+                {% set _sc_id = scene.scene_id %}
+                {% set _sc_shots = sb_shots | selectattr('scene_id', 'equalto', _sc_id) | list %}
+                <div class="sb-scene-poss">
+                    <div class="sb-scene-poss-head">
+                        <span class="sb-scene-poss-num">Scene {{ loop.index }}</span>
+                        <span class="sb-scene-poss-name">{{ scene.name or _sc_id or ('Scene ' ~ loop.index) }}</span>
+                        {% if scene.beat_range %}<span class="muted">· {{ scene.beat_range }}</span>{% endif %}
+                        {% if scene.purpose %}<div class="sb-scene-poss-purpose">{{ scene.purpose }}</div>{% endif %}
+                    </div>
+                    {% if _sc_shots %}
+                    <div class="sb-real-grid">
+                        {% for shot in _sc_shots %}
+                        <div class="sb-real-card">
+                            <p class="sb-real-card-title">
+                                Shot {{ shot.shot_index or loop.index }}
+                                <span class="muted">· {{ "%.1f"|format(shot.start_time or 0) }}s + {{ "%.1f"|format(shot.duration or 0) }}s</span>
+                            </p>
+                            {% if shot.action_intent %}
+                            <p class="sb-real-card-desc">{{ shot.action_intent }}</p>
+                            {% endif %}
+                            <div class="sb-real-card-meta">
+                                {% if shot.expression_mode %}<span>mode: {{ shot.expression_mode }}</span>{% endif %}
+                                {% if shot.subject %}<span>subject: {{ shot.subject }}</span>{% endif %}
+                                {% if shot.intensity is defined %}<span>intensity: {{ "%.2f"|format(shot.intensity) }}</span>{% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="sb-poss-empty">No shots found for this scene.</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="sb-poss-empty">No scene metadata found in v3 storyboard packet.</p>
+            {% endif %}
+
+            {% else %}
+            {# V2: show scene possibilities / valid_realizations fan-out #}
             <div class="sb-poss-header">
                 <h2>Scene Possibilities</h2>
                 <span class="muted">— approve this fan-out so the Creative Brief can pick from it.</span>
@@ -169,6 +228,7 @@
                 No scene possibilities packet was produced (legacy project or
                 fallback path). The shot list below still represents the locked storyboard.
             </p>
+            {% endif %}
             {% endif %}
         </section>
 

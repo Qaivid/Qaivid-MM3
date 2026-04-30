@@ -4221,11 +4221,12 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                             or StyleProfileRegistry.default_style_profile())
 
         scenes = list(brain_storyboard.get("scenes") or [])
+        _sb_schema_version = int(brain_storyboard.get("schema_version") or 2)
 
         logger.info(
-            "Stage brief v2: brain inputs storyboard.scenes=%d narrative=%s "
-            "context=%s style=%s for project=%s",
-            len(scenes),
+            "Stage brief: brain inputs storyboard.schema_version=%d storyboard.scenes=%d "
+            "narrative=%s context=%s style=%s for project=%s",
+            _sb_schema_version, len(scenes),
             "yes" if brain_narrative else ("fallback" if narrative_packet else "none"),
             "yes" if brain_context   else ("fallback" if context_packet   else "none"),
             "yes" if brain_style     else "fallback",
@@ -4234,24 +4235,41 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
 
         _set_status(project_id, "running",
                     {"stage": "brief",
-                     "label": "Locking ONE direction per scene…"},
+                     "label": ("Enriching shots with creative directions…"
+                               if _sb_schema_version >= 3 else
+                               "Locking ONE direction per scene…")},
                     stage="running_brief")
 
-        from creative_brief_engine_v2 import generate_creative_brief_v2
-        scene_briefs, used_fallback = _run_async(generate_creative_brief_v2(
-            api_key=api_key,
-            storyboard_scenes=scenes,
-            narrative_packet=narrative_packet,
-            context_packet=context_packet,
-            style_profile=style_profile,
-            input_structure=brain_input,
-            project_settings=brain_settings,
-            imagination_packet=brain_imagination or {},
-        ))
+        if _sb_schema_version >= 3:
+            # ── V3 path: brief enriches each shot, timeline decorates ───────
+            from creative_brief_engine_v3 import generate_creative_brief_v3
+            scene_briefs, used_fallback = _run_async(generate_creative_brief_v3(
+                api_key=api_key,
+                storyboard_packet=brain_storyboard,
+                narrative_packet=narrative_packet,
+                context_packet=context_packet,
+                style_profile=style_profile,
+                input_structure=brain_input,
+                project_settings=brain_settings,
+                imagination_packet=brain_imagination or {},
+            ))
+        else:
+            # ── V2 path (legacy) ─────────────────────────────────────────────
+            from creative_brief_engine_v2 import generate_creative_brief_v2
+            scene_briefs, used_fallback = _run_async(generate_creative_brief_v2(
+                api_key=api_key,
+                storyboard_scenes=scenes,
+                narrative_packet=narrative_packet,
+                context_packet=context_packet,
+                style_profile=style_profile,
+                input_structure=brain_input,
+                project_settings=brain_settings,
+                imagination_packet=brain_imagination or {},
+            ))
 
         # ── Write creative_briefs to brain (Stage 6 namespace) ──────────────
         creative_brief_packet = {
-            "schema_version": 2,
+            "schema_version": _sb_schema_version,
             "scenes":         scene_briefs,
             "used_fallback":  used_fallback,
             "approved":       False,
@@ -4263,26 +4281,61 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                 brain.save(conn)
                 conn.commit()
             logger.info(
-                "ProjectBrain: wrote creative_briefs v2 for project=%s "
+                "ProjectBrain: wrote creative_briefs v%d for project=%s "
                 "(%d scenes, fallback=%s)",
-                project_id, len(scene_briefs), used_fallback,
+                _sb_schema_version, project_id, len(scene_briefs), used_fallback,
             )
         except Exception:
             logger.exception(
-                "Stage brief v2: failed to write creative_briefs to brain for project=%s",
+                "Stage brief: failed to write creative_briefs to brain for project=%s",
                 project_id,
             )
 
         # ── Mirror into legacy context_packet.creative_brief for the UI ─────
-        # Templates that haven't migrated to brain reads still pull from here.
+        # Templates still pull from context_packet.creative_brief.  Under v3
+        # we adapt the shot-level brief to the scene-level format the templates
+        # expect (chosen_direction + shot_directions list per scene).
         creative_brief_legacy = dict(context_packet.get("creative_brief") or {})
-        creative_brief_legacy["schema_version"] = 2
-        creative_brief_legacy["scenes"]         = scene_briefs
+        creative_brief_legacy["schema_version"] = _sb_schema_version
         creative_brief_legacy["used_fallback"]  = used_fallback
-        # Drop legacy v1 keys — they no longer apply under v2.
         creative_brief_legacy.pop("variants", None)
         creative_brief_legacy.pop("chosen", None)
         creative_brief_legacy.pop("_pending_overrides", None)
+
+        if _sb_schema_version >= 3:
+            # Adapt v3 scene briefs (each scene has shots[]) to the v2-compatible
+            # scene list (chosen_direction + shot_directions) for the UI template.
+            _legacy_scenes = []
+            for _sc in scene_briefs:
+                _shots = list(_sc.get("shots") or [])
+                _first = _shots[0] if _shots else {}
+                _legacy_scenes.append({
+                    "scene_id":              _sc.get("scene_id"),
+                    "scene_purpose":         _sc.get("purpose") or _sc.get("scene_purpose"),
+                    "chosen_direction":      _first.get("enriched_direction", ""),
+                    "shot_directions":       [_s.get("enriched_direction", "")
+                                              for _s in _shots],
+                    "subject_focus":         _first.get("subject_focus"),
+                    "environment_type":      _first.get("environment_type"),
+                    "character_presence":    _first.get("character_presence"),
+                    "key_elements":          _first.get("key_elements", []),
+                    "lighting_condition":    _first.get("lighting_condition"),
+                    "movement_type":         _first.get("movement_type"),
+                    "motion_density":        _first.get("motion_density"),
+                    "timeline_mode":         _first.get("timeline_mode"),
+                    "emotional_state":       _first.get("emotional_state"),
+                    "emotional_intensity":   _sc.get("emotional_intensity"),
+                    "motif_usage":           _sc.get("motif_usage", []),
+                    "character_identity_hint": _first.get("character_identity_hint"),
+                    "variation_anchor":      _sc.get("variation_anchor"),
+                    "continuity_hooks":      _sc.get("continuity_hooks"),
+                    "schema_version":        3,
+                    "_shot_count":           len(_shots),
+                })
+            creative_brief_legacy["scenes"] = _legacy_scenes
+        else:
+            creative_brief_legacy["scenes"] = scene_briefs
+
         context_packet["creative_brief"] = creative_brief_legacy
 
         with _db() as conn, conn.cursor() as cur:
@@ -4392,19 +4445,33 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                 for _li, _lu in enumerate(_tl_lyrics)
             ]
 
-        from timeline_builder_v2 import build_timeline_from_brief
-        styled_timeline = build_timeline_from_brief(
-            creative_briefs      = creative_brief_packet,
-            input_structure      = _tl_input,
-            emotional_mode_packet= _tl_emp,
-            style_packet         = _tl_style,
-            narrative_packet     = _tl_narr,
-            audio_data           = _tl_audio,
-        )
-        logger.info(
-            "_stage_brief_job: V2 timeline built: %d shots for project=%s",
-            len(styled_timeline), project_id,
-        )
+        if _sb_schema_version >= 3:
+            from timeline_builder_v3 import build_timeline_from_brief_v3
+            styled_timeline = build_timeline_from_brief_v3(
+                brief_packet          = creative_brief_packet,
+                style_packet          = _tl_style,
+                narrative_packet      = _tl_narr,
+                emotional_mode_packet = _tl_emp,
+                audio_data            = _tl_audio,
+            )
+            logger.info(
+                "_stage_brief_job: V3 timeline built: %d shots for project=%s",
+                len(styled_timeline), project_id,
+            )
+        else:
+            from timeline_builder_v2 import build_timeline_from_brief
+            styled_timeline = build_timeline_from_brief(
+                creative_briefs       = creative_brief_packet,
+                input_structure       = _tl_input,
+                emotional_mode_packet = _tl_emp,
+                style_packet          = _tl_style,
+                narrative_packet      = _tl_narr,
+                audio_data            = _tl_audio,
+            )
+            logger.info(
+                "_stage_brief_job: V2 timeline built: %d shots for project=%s",
+                len(styled_timeline), project_id,
+            )
 
         # Seed shot rows (used by materializer / refs / stills)
         shot_indices = [s.get("shot_index") or s.get("timeline_index")
@@ -4454,23 +4521,26 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
 
 
 def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
-    """Storyboard (Stage 5) — V2 intent layer only.
+    """Storyboard (Stage 5) — V3 engine.
 
-    Runs StoryboardEngineV2 to produce scenes + valid_realizations.
-    Does NOT produce styled_timeline — that is built by the V2 Timeline
-    Builder (timeline_builder_v2.py) in _stage_brief_job after the Creative
-    Brief is locked.
+    Runs StoryboardEngineV3 to produce a concrete timed shot list directly
+    from audio_data + lyrics_timed + brain packets.  Under v3 there is no
+    valid_realizations fan-out; each shot carries scene_id, start_time,
+    duration, subject, action_intent, and expression_mode.
+
+    The V3 Creative Brief (_stage_brief_job) enriches each shot with a
+    locked enriched_direction; the V3 Timeline Builder then decorates the
+    shot list with visual_prompt, camera_profile, etc.
 
     Reads from Project Brain (per master spec):
       • context_packet   (Stage 2)
       • narrative_packet (Stage 3)
       • style_packet     (Stage 4)
       • input_structure / project_settings (root-level intent inputs)
-    Storyboard is the POSSIBILITIES layer — it MUST NOT read
-    creative_briefs (Stage 6 = SELECTION). Brief runs after this stage
-    and picks one realization per scene.
+      • emotional_mode_packet / imagination_packet (optional enrichment)
+    Storyboard MUST NOT read creative_briefs (Stage 6 = SELECTION).
     Falls back to legacy JSONB columns per-namespace for pre-brain projects.
-    On success, writes brain.storyboard_packet (Stage 5 namespace).
+    On success, writes brain.storyboard_packet (schema_version=3).
     """
     try:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -4560,14 +4630,17 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
                     {"stage": "storyboard", "label": "Building visual storyboard…"}, stage="running_2")
 
 
-        # ── Storyboard Engine v2 — pure intent layer ───────────────────────
-        # Produces scenes with valid_realizations from brain inputs.
-        # styled_timeline is NOT produced here; the V2 Timeline Builder builds
-        # it after the Creative Brief is locked (see _stage_brief_job).
-        from storyboard_engine_v2 import generate_storyboard_v2
-        v2_scenes, v2_used_fallback = _run_async(generate_storyboard_v2(
+        # ── Storyboard Engine v3 — timed shot list ─────────────────────────
+        # Produces scenes + a concrete timed shot list directly from audio +
+        # lyrics + brain inputs.  The V3 Brief Engine (run in _stage_brief_job)
+        # enriches each shot; the V3 Timeline Builder then decorates.  No
+        # "possibilities" / valid_realizations layer exists in v3.
+        from storyboard_engine_v3 import generate_storyboard_v3
+        v3_packet, v3_used_fallback = _run_async(generate_storyboard_v3(
             api_key=api_key,
+            audio_data=audio_data_blob,
             input_structure=input_structure,
+            lyrics_timed=timed_lyrics,
             context_packet=context_packet,
             narrative_packet=narrative_packet,
             style_profile=style_profile,
@@ -4575,11 +4648,12 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             emotional_mode_packet=brain_emotional or {},
             imagination_packet=brain_imagination or {},
         ))
-        v2_scenes = list(v2_scenes or [])
+        v3_shots  = list(v3_packet.get("shots")  or [])
+        v3_scenes = list(v3_packet.get("scenes") or [])
 
         logger.info(
-            "[StoryboardV2] project=%s scenes=%d fallback=%s",
-            project_id, len(v2_scenes), v2_used_fallback,
+            "[StoryboardV3] project=%s shots=%d scenes=%d fallback=%s",
+            project_id, len(v3_shots), len(v3_scenes), v3_used_fallback,
         )
 
         # ── Write storyboard_packet to brain (Stage 5 namespace) ───────────
@@ -4587,17 +4661,18 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
             with _db() as conn:
                 brain = ProjectBrain.load(project_id, conn)
                 brain.write("storyboard_packet", {
-                    "schema_version":   2,
-                    "scenes":           v2_scenes,
-                    "used_fallback_v2": v2_used_fallback,
+                    "schema_version":   3,
+                    "scenes":           v3_scenes,
+                    "shots":            v3_shots,
+                    "used_fallback_v3": v3_used_fallback,
                     "style_preset":     style_preset,
                 })
                 brain.save(conn)
                 conn.commit()
             logger.info(
-                "ProjectBrain: wrote storyboard_packet v2 for project=%s "
-                "(%d scenes, preset=%s)",
-                project_id, len(v2_scenes), style_preset,
+                "ProjectBrain: wrote storyboard_packet v3 for project=%s "
+                "(%d shots, %d scenes, preset=%s)",
+                project_id, len(v3_shots), len(v3_scenes), style_preset,
             )
         except Exception:
             logger.exception(
@@ -4607,8 +4682,8 @@ def _stage2_job(project_id: str, name: str, overrides: dict) -> None:
 
         _set_status(project_id, "awaiting_review",
                     {"stage": "storyboard",
-                     "label": (f"Storyboard ready — {len(v2_scenes)} scenes of possibilities. "
-                               "Review and continue to Creative Brief.")},
+                     "label": (f"Storyboard ready — {len(v3_shots)} shots across "
+                               f"{len(v3_scenes)} scenes. Review and continue to Creative Brief.")},
                     stage="storyboard_review")
 
     except Exception as exc:

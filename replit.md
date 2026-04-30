@@ -7,14 +7,18 @@ A web-based SaaS that turns lyrics, poems, scripts, and stories into beat-synced
 - **Backend**: Flask (`app.py`) running on port 5000
 - **Database**: Replit PostgreSQL via `psycopg` (connection via `DATABASE_URL`)
 - **Frontend**: Server-rendered Jinja2 templates + plain CSS (no build step)
-- **V2 pipeline engines** (active — Task #163):
+- **V3 pipeline engines** (active — Phase 4/5 wiring complete):
   - `audio_processor.py` - extracts BPM, beats, segments, energy from audio
   - `unified_context_engine_master.py` - GPT-4o context extraction (theme, speaker, location)
-  - `storyboard_engine_v2.py` - pure intent layer: produces scenes + valid_realizations (POSSIBILITIES)
-  - `creative_brief_engine_v2.py` - locks ONE realization per scene (SELECTION)
-  - `timeline_builder_v2.py` - converts locked brief + audio timing → styled_timeline; runs StyleGradingEngine with full style_profile (Task #163, fixes audit #3)
+  - `storyboard_engine_v3.py` - produces concrete timed shot list (shots[] + scenes[]) from audio + lyrics; schema_version=3; wired in `_stage2_job`
+  - `creative_brief_engine_v3.py` - enriches each shot with locked enriched_direction, per-scene; wired in `_stage_brief_job` when schema_version≥3
+  - `timeline_builder_v3.py` - decorates v3 brief shots with visual_prompt, camera_profile, etc.; wired in `_stage_brief_job` when schema_version≥3
   - `style_grading_engine.py` - applies cinematic style profiles; passes through MM3.1 fields
   - `asset_export_module.py` - exports JSON for downstream tooling
+- **V2 pipeline engines** (legacy fallback — used when storyboard_packet.schema_version < 3):
+  - `storyboard_engine_v2.py` - pure intent layer: produces scenes + valid_realizations (POSSIBILITIES)
+  - `creative_brief_engine_v2.py` - locks ONE realization per scene (SELECTION)
+  - `timeline_builder_v2.py` - converts locked brief + audio timing → styled_timeline
 - **V1 engines (quarantined — legacy/ directory, Task #163)**:
   - `legacy/production_orchestrator.py` - still used for `run_context_only()` in context stage; `run_to_timeline()` no longer called
   - `legacy/visual_storyboard_engine.py` - retired; V2 uses storyboard_engine_v2 instead
