@@ -399,7 +399,7 @@ def build_timeline_from_brief(
         _u_idxs = scene_units_map.get(_sc_i, [])
         if not _u_idxs:
             # Scene has no units (short/empty section) — give it one shot
-            shot_plan.append((scene, [{}], 0))
+            shot_plan.append((scene, [{}], 0, 0))
             continue
         # Chunk unit indices into groups of ~_target_ups
         _shots_this_scene = max(1, round(len(_u_idxs) / _target_ups))
@@ -412,7 +412,9 @@ def build_timeline_from_brief(
             _pos += _chunk_size + _extra
             if not _grp_idxs:
                 continue
-            shot_plan.append((scene, [units[_k] for _k in _grp_idxs], _grp_idxs[0]))
+            # Include _gi (within-scene shot index) so the variety pass can
+            # give each shot in the same scene a distinct visual focus.
+            shot_plan.append((scene, [units[_k] for _k in _grp_idxs], _grp_idxs[0], _gi))
 
     logger.info(
         "TimelineBuilderV2: planned %d shots from %d scenes "
@@ -426,7 +428,7 @@ def build_timeline_from_brief(
     prev_mode: Optional[str] = None
     any_lyric_anchor = False
 
-    for shot_i, (scene, unit_group, first_flat_unit_idx) in enumerate(shot_plan):
+    for shot_i, (scene, unit_group, first_flat_unit_idx, shot_within_scene) in enumerate(shot_plan):
         # Use first unit in group for lyric anchor + representative lyric text
         first_unit = unit_group[0] if unit_group else {}
         last_unit  = unit_group[-1] if unit_group else {}
@@ -577,6 +579,9 @@ def build_timeline_from_brief(
             "_v2_chosen_direction":     str(scene.get("chosen_direction") or ""),
             # Lyric unit coverage (for downstream editors)
             "_v2_lyric_units_count":    len(unit_group),
+            # Position of this shot within its scene (0 = first shot).
+            # Used by the intra-scene variety pass to assign distinct visual focus.
+            "_shot_within_scene":       shot_within_scene,
         })
 
         prev_mode = mode
@@ -644,6 +649,85 @@ def build_timeline_from_brief(
             "shot_type left as None for all shots."
         )
 
+    # ── Intra-scene visual variety pass ────────────────────────────────────
+    # After the variety engine stamps shot_type, rewrite chosen_direction and
+    # visual_prompt so shots within the same scene show DIFFERENT things.
+    # Without this, every shot in a scene shares the same chosen_direction
+    # (from the creative brief), making images look identical.
+    _intra_variety_log: Dict[str, int] = {}
+    for _s in raw_shots:
+        _st      = _s.get("shot_type") or "medium_shot"
+        _within  = _s.get("_shot_within_scene", 0)
+        _base    = _s.get("_v2_chosen_direction") or _s.get("chosen_direction") or ""
+        _env     = _s.get("environment_type") or "setting"
+        _keys    = list(_s.get("key_elements") or [])
+        _emo     = _s.get("emotional_state") or ""
+        _light   = _s.get("lighting_condition") or ""
+        _mvmt    = _s.get("movement_type") or "slow"
+        _purpose = _s.get("meaning") or ""
+        _lsuffix = _light.rstrip(".") + "." if _light else ""
+
+        # Brief excerpt of the scene direction for context (max 60 chars)
+        _ctx = _base[:60].rstrip(" ,.") if _base else (_emo or _purpose or "")
+
+        if _st in ("close_up", "extreme_close_up"):
+            _new = (
+                f"Face — emotion raw in eyes. {_ctx}. "
+                f"{_emo or _purpose}. {_lsuffix}"
+            ).strip()
+        elif _st == "head_shoulders":
+            _new = (
+                f"Head and shoulders — {_ctx}. "
+                f"{_emo or 'controlled emotion'}. {_lsuffix}"
+            ).strip()
+        elif _st in ("wide_shot", "drone"):
+            _new = (
+                f"Wide view of {_env}. "
+                f"Space and atmosphere carry the weight of {_emo or _ctx}. {_lsuffix}"
+            ).strip()
+        elif _st == "insert":
+            _key = _keys[0] if _keys else "a meaningful object"
+            _new = (
+                f"Tight detail of {_key}. Tactile surface, symbolic resonance. "
+                f"{_ctx}. {_lsuffix}"
+            ).strip()
+        elif _st == "memory_fragment":
+            _new = (
+                f"Memory — {_ctx}. Soft, impressionistic, slightly defocused. "
+                f"{_emo or ''}. {_lsuffix}"
+            ).strip()
+        elif _st == "movement":
+            _new = (
+                f"Subject in {_mvmt} movement — {_ctx}. "
+                f"Through {_env}. {_lsuffix}"
+            ).strip()
+        elif _st == "full_body":
+            _new = (
+                f"Full figure — {_ctx}. "
+                f"Subject and {_env} together. {_emo or _purpose}. {_lsuffix}"
+            ).strip()
+        else:
+            # medium_shot — keep the full chosen_direction as primary scene shot
+            _new = _base
+
+        _s["chosen_direction"]     = _new
+        _s["_v2_chosen_direction"] = _new
+        # Rebuild visual_prompt to carry the new direction
+        # (preserve any embedded lyric quote from the original prompt)
+        import re as _re
+        _lyric_q = ""
+        _vp_orig = _s.get("visual_prompt") or ""
+        _qm = _re.search(r'"([^"]{4,})"', _vp_orig)
+        if _qm:
+            _lyric_q = f' "{_qm.group(1)}"'
+        _s["visual_prompt"] = _new + _lyric_q
+        _intra_variety_log[_st] = _intra_variety_log.get(_st, 0) + 1
+
+    logger.info(
+        "TimelineBuilderV2: intra-scene variety pass applied — %s",
+        ", ".join(f"{k}:{v}" for k, v in sorted(_intra_variety_log.items())),
+    )
+
     # ── Style grading pass ─────────────────────────────────────────────────
     styled_timeline = _apply_style_grading(raw_shots, style_packet)
 
@@ -662,6 +746,8 @@ def build_timeline_from_brief(
         "chosen_direction", "timeline_mode",
         # Shot Variety Engine — cinematic shot distribution
         "shot_type", "variety_applied",
+        # Intra-scene variety fields (must survive style grading)
+        "visual_prompt", "_shot_within_scene",
     )
     raw_by_idx = {r.get("shot_index"): r for r in raw_shots}
     for styled in styled_timeline:
