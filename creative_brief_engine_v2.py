@@ -96,22 +96,26 @@ def _system_prompt() -> str:
     return (
         "You are the CREATIVE BRIEF ENGINE for Qaivid — the FIRST commitment "
         "layer of a music-video pipeline.\n\n"
-        "ROLE: convert storyboard possibilities (multiple valid_realizations "
-        "per scene) into ONE executable direction per scene, while preserving "
-        "downstream flexibility, continuity, and controlled variation.\n\n"
+        "ROLE: take the storyboard's already-defined scene and shot structure "
+        "(valid_realizations) and make each shot richer and more executable "
+        "by enriching it with narrative, style, and emotional context. "
+        "You do NOT change what the shots are — you enhance them.\n\n"
         "RULES:\n"
-        "1. SELECT ONE realization per scene from its valid_realizations list. "
-        "Selection must be non-deterministic within constraints — different "
-        "runs may pick differently — but must always respect narrative + "
-        "context + continuity, and the full set of selections must remain "
-        "coherent across scenes.\n"
-        "2. For EVERY scene, expand the chosen direction into the per-scene "
-        "execution intent fields (scene_purpose, subject_focus, environment_"
-        "type, character_presence/identity_hint, key_elements, emotional_"
-        "state/intensity, lighting_condition, movement_type, timeline_mode, "
-        "motion_density, repetition_handling, motif_usage, continuity_hooks). "
+        "1. ENRICH ALL valid_realizations as shot_directions: for every "
+        "realization in the scene's valid_realizations list, produce one "
+        "enhanced shot_direction entry that takes the storyboard's visual "
+        "concept and adds execution detail — emotional state, lighting quality, "
+        "character presence, atmosphere — drawn from the narrative, context, "
+        "and style packets. Preserve the storyboard's visual concept exactly; "
+        "only add execution depth. Order must match the storyboard order. "
+        "chosen_direction = shot_directions[0] (the first enriched shot).\n"
+        "2. For EVERY scene, also generate the per-scene execution intent "
+        "fields (scene_purpose, subject_focus, environment_type, character_"
+        "presence/identity_hint, key_elements, emotional_state/intensity, "
+        "lighting_condition, movement_type, timeline_mode, motion_density, "
+        "repetition_handling, motif_usage, continuity_hooks). "
         "Each field is GENERAL and NON-SPECIFIC — enough direction to execute, "
-        "not a locked visual.\n"
+        "not a locked visual. These apply to the scene as a whole.\n"
         "3. APPLY narrative logic: presence_strategy → character_presence; "
         "motion_philosophy → movement_type/motion_density; timeline_strategy "
         "→ timeline_mode; expression_channels → which channels carry the "
@@ -286,8 +290,9 @@ def _user_prompt(
           '      "source_section":         "intro|verse1|chorus|...",\n'
           '      "narrative_phase":        "intro|build|peak|breakdown|resolution",\n'
           '      "scene_purpose":          "the emotional purpose of this scene",\n'
-          '      "chosen_direction":       "the picked realization (one of the valid_realizations, possibly slightly tightened)",\n'
-          '      "selection_basis":        "why this realization was picked over the alternatives",\n'
+          '      "shot_directions":        ["one enriched entry per valid_realization, same order — storyboard concept preserved, execution detail added"],\n'
+          '      "chosen_direction":       "= shot_directions[0] — the first enriched shot direction",\n'
+          '      "selection_basis":        "what execution context was added and why it serves the scene",\n'
           '      "variation_anchor":       "what stays consistent across re-runs (subject identity, motif, etc.)",\n'
           '      "subject_focus":          "character|environment|object|mixed",\n'
           '      "character_presence":     "continuous|intermittent|minimal",\n'
@@ -310,6 +315,9 @@ def _user_prompt(
           "  ]\n"
           "}\n\n"
           "Produce ONE entry per scene_id from the storyboard, in the same order. "
+          "shot_directions must have the same number of entries as valid_realizations "
+          "for that scene, in the same order — each entry enriches the corresponding "
+          "storyboard concept without replacing it. "
           "All values must remain general and non-locking — never name an exact "
           "person, an exact place, an exact prop, or a camera move."
     )
@@ -327,9 +335,21 @@ def _coerce_scene_brief(raw: Any, src_scene: Dict[str, Any], idx: int) -> Option
     if not isinstance(raw, dict):
         raw = {}
     valid_realizations = src_scene.get("valid_realizations") or []
+
+    # shot_directions — one enriched entry per valid_realization, same order.
+    # Fall back to raw valid_realizations if the LLM omits the field.
+    sd_raw = raw.get("shot_directions")
+    if isinstance(sd_raw, list) and sd_raw:
+        shot_directions = [str(d).strip()[:500] for d in sd_raw if str(d).strip()]
+    else:
+        shot_directions = [str(r).strip()[:500] for r in valid_realizations if str(r).strip()]
+    # Always have at least one entry
+    if not shot_directions and valid_realizations:
+        shot_directions = [str(valid_realizations[0])[:500]]
+
     chosen = str(raw.get("chosen_direction") or "").strip()
-    if not chosen and valid_realizations:
-        chosen = str(valid_realizations[0])
+    if not chosen:
+        chosen = shot_directions[0] if shot_directions else ""
 
     hooks_in = raw.get("continuity_hooks") or {}
     if not isinstance(hooks_in, dict):
@@ -359,6 +379,7 @@ def _coerce_scene_brief(raw: Any, src_scene: Dict[str, Any], idx: int) -> Option
         "scene_purpose":           str(raw.get("scene_purpose")
                                         or src_scene.get("purpose")
                                         or "").strip()[:300],
+        "shot_directions":         shot_directions,
         "chosen_direction":        chosen[:400],
         "selection_basis":         str(raw.get("selection_basis") or "").strip()[:300],
         "variation_anchor":        str(raw.get("variation_anchor") or "").strip()[:200],
@@ -387,18 +408,20 @@ def _coerce_scene_brief(raw: Any, src_scene: Dict[str, Any], idx: int) -> Option
 
 
 def _fallback(scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Deterministic fallback: pick the first valid_realization per scene
+    """Deterministic fallback: pass all valid_realizations as shot_directions
     and fill execution fields from the storyboard hints (no LLM)."""
     out: List[Dict[str, Any]] = []
     for i, s in enumerate(scenes or []):
         realizations = s.get("valid_realizations") or []
-        chosen = str(realizations[0]) if realizations else "Express the scene's emotional intent."
+        shot_directions = [str(r).strip()[:500] for r in realizations if str(r).strip()]
+        chosen = shot_directions[0] if shot_directions else "Express the scene's emotional intent."
         hooks = s.get("continuity_hooks") or {}
         out.append({
             "scene_id":                str(s.get("scene_id") or f"s{i + 1}"),
             "source_section":          str(s.get("source_section") or ""),
             "narrative_phase":         str(s.get("narrative_phase") or "build"),
             "scene_purpose":           str(s.get("purpose") or ""),
+            "shot_directions":         shot_directions,
             "chosen_direction":        chosen[:400],
             "selection_basis":         "default fallback selection (first valid realization)",
             "variation_anchor":        "subject identity remains consistent",
