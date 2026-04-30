@@ -1,0 +1,273 @@
+Locked directions per scene
+The brief enriched every storyboard realization into an executable shot direction. The highlighted direction (Shot 1) is the anchor; the others cycle across shots within the same scene to give visual variety. Approve to generate reference plates, or regenerate for a fresh mix.
+
+Scene s1
+intro
+intro
+intensity: low
+Purpose: Establishes the emotional landscape of solitude and loss.
+
+A slow pan across an empty room, focusing on personal objects that hint at a beloved's presence.
+
+Why this pick: This realization was chosen for its ability to visually convey the woman's solitude while hinting at her emotional connection to the absent beloved through personal belongings.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: interior and exterior village environment
+Lighting: golden hour interior and exterior lighting
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: sorrowful
+Repetition: N/A
+Identity hint: woman dealing with emotional loss
+Variation anchor: the emotional state linked through her personal belongings
+Continuity: focus on the woman's emotional state
+Key elements:
+personal belongings
+warm light
+empty spaces
+Motifs:
+dupattas
+Shot directions used in this scene (cycle order)
+
+1
+wide establishing shot of the field at dusk, slow push toward the horizon — evoking a warm, nostalgic atmosphere with golden hour lighting that accentuates the feelings of emptiness.
+2
+close-up of the woman's face, reflecting sorrowful thoughts — illuminated by soft golden light, capturing the intricate details of her expression filled with hidden pain.
+3
+pan across empty village streets, capturing a sense of loneliness — the warm sunlight casts long shadows, enhancing the atmosphere of solitude that permeates the scene.
+Scene s2
+verse
+build
+intensity: medium
+Purpose: Reveals the woman's hidden sorrow amidst the beauty of her surroundings.
+
+The woman stands alone in a mustard field, her expression revealing her internal conflict.
+
+Why this pick: This realization was chosen for its powerful visual juxtaposition between the vibrant beauty of nature and the woman's internal turmoil, enhancing the emotional depth of the narrative.
+
+Subject focus: character
+Character presence: continuous
+Environment: mustard field
+Lighting: golden hour lighting
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: hidden sorrow
+Repetition: N/A
+Identity hint: a woman dealing with emotional loss
+Variation anchor: the woman's emotional journey through nature
+Continuity: the woman's emotional journey
+Key elements:
+mustard plants
+tears
+nature's beauty
+Motifs:
+teardrop
+Shot directions used in this scene (cycle order)
+
+1
+woman gazes at a distant tree, lost in thought — the golden light envelops her, creating a sense of longing and connection to her memories.
+2
+close-up of a tear rolling down her cheek — highlighted by golden hour light, illuminating the raw emotion of sorrow she tries to conceal.
+3
+woman brushes her hand against the wall, feeling the texture — the rich, warm light enhances the tactile quality of her surroundings, grounding her in her memories.
+4
+wide shot of the woman in the field, arms outstretched — the expansive frame captures her isolation amid the vibrant mustard flowers, amplifying her emotional state.
+5
+flashback sequence of her and her beloved laughing together — the scene is bathed in warm light, contrasting the present sorrow with joyful memories.
+6
+slow-motion shot of a flower wilting in the wind — the warm light highlights the delicate nature of beauty and loss, symbolizing her internal struggle.
+7
+Reveals the woman's hidden sorrow amidst the beauty of her surroundings. — Reveals the woman's hidden sorrow amidst the beauty of her surroundings — the golden light captures her delicate emotional state, deepening the connection with her surroundings.
+8
+Reveals the woman's hidden sorrow amidst the beauty of her surroundings. — Reveals the woman's hidden sorrow amidst the beauty of her surroundings — the golden light enhances the vividness of the flowers while contrasting with her inner grief.
+Scene s3
+chorus
+peak
+intensity: high
+Purpose: Intensifies the emotional longing through visual symbolism.
+
+An empty chair in a sunlit courtyard, casting a long shadow that symbolizes the beloved's absence.
+
+Why this pick: This realization was chosen to visually emphasize the central motif of absence while contrasting it with the warmth of the environment, deepening the emotional impact.
+
+Subject focus: object
+Character presence: continuous
+Environment: sunlit courtyard
+Lighting: sunlit outdoor lighting
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: intensified longing
+Repetition: N/A
+Identity hint: woman experiencing deep longing
+Variation anchor: the symbol of absence
+Continuity: the symbol of absence
+Key elements:
+empty chair
+sunlight
+shadows
+Motifs:
+empty chair
+Shot directions used in this scene (cycle order)
+
+1
+close-up of the woman's hand clutching a piece of clothing — the warm sunlight highlights her grip, symbolizing her connection to the memories of her beloved.
+2
+abstract shot of rain falling on a window, obscuring her view — the interplay of light and shadow enhances the emotional weight of isolation and longing.
+3
+Intensifies the emotional longing through visual symbolism. — Intensifies the emotional longing through visual symbolism — the bright sunlight contrasts sharply with her internal sorrow, underscoring the theme of absence.
+Scene s4
+verse
+build
+intensity: medium
+Purpose: Evokes nostalgia through memories intertwined with present sorrow.
+
+The camera captures the gentle flutter of a dupatta as it dances in the breeze, evoking shared moments.
+
+Why this pick: This realization was chosen for its ability to visually connect the present with the past, enhancing the emotional depth of nostalgia while maintaining the theme of longing.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: interior home environment
+Lighting: golden hour lighting
+Movement: slow
+Motion density: medium
+Timeline mode: memory
+Emotional state: nostalgic yearning
+Repetition: N/A
+Identity hint: woman reflecting on her past
+Variation anchor: transitioning between present and memory
+Continuity: transitioning between present and memory
+Key elements:
+empty plate
+walls
+dupattas
+Motifs:
+dupattas
+Shot directions used in this scene (cycle order)
+
+1
+montage of past memories flickering across her face — warm light creates a dreamy atmosphere, intertwining her present sorrow with joyful recollections.
+2
+shot of her looking at an empty plate on the table — the intimate lighting accentuates the absence of shared meals, deepening the sense of loss.
+3
+tracking shot of her walking through the house, touching the walls — the warm, tactile environment evokes a sense of nostalgia and connection to her past.
+4
+Evokes nostalgia through memories intertwined with present sorrow. — Evokes nostalgia through memories intertwined with present sorrow — the golden light captures the beauty of fleeting moments, contrasting with her current grief.
+5
+Evokes nostalgia through memories intertwined with present sorrow. — Evokes nostalgia through memories intertwined with present sorrow — warm light highlights her emotional struggle while connecting her to happier times.
+6
+Evokes nostalgia through memories intertwined with present sorrow. — Evokes nostalgia through memories intertwined with present sorrow — the rich textures of the environment amplify her emotional journey.
+7
+Evokes nostalgia through memories intertwined with present sorrow. — Evokes nostalgia through memories intertwined with present sorrow — the golden hues enhance the bittersweet quality of her recollections.
+8
+Evokes nostalgia through memories intertwined with present sorrow. — Evokes nostalgia through memories intertwined with present sorrow — the fluttering dupatta symbolizes both loss and cultural identity, illuminated by warm light.
+Scene s5
+chorus
+peak
+intensity: high
+Purpose: Deepens the despair felt by the woman as she confronts her loneliness.
+
+The woman is framed alone by a window, her reflection visible as she silently weeps.
+
+Why this pick: This realization was chosen for its stark depiction of isolation, reinforcing the emotional intensity of the moment and contrasting with the outside world.
+
+Subject focus: character
+Character presence: continuous
+Environment: interior room
+Lighting: golden hour interior lighting
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: deep despair
+Repetition: N/A
+Identity hint: woman experiencing deep despair
+Variation anchor: the reinforcement of absence
+Continuity: the reinforcement of absence
+Key elements:
+window
+reflection
+light
+Motifs:
+empty chair
+Shot directions used in this scene (cycle order)
+
+1
+extreme close-up of her eyes, filled with tears — the golden light captures the raw depth of her sorrow, enhancing the emotional weight.
+2
+wide shot of her sitting alone in an empty room — the warm light contrasts with her isolation, emphasizing her profound loneliness.
+3
+Deepens the despair felt by the woman as she confronts her loneliness. — Deepens the despair felt by the woman as she confronts her loneliness — the soft golden light casts a melancholic atmosphere over her solitude.
+Scene s6
+bridge
+breakdown
+intensity: medium
+Purpose: Reflects on bittersweet memories, highlighting the contrast with present sorrow.
+
+A vibrant flashback of the woman and her beloved running through the mustard fields, laughing.
+
+Why this pick: This realization was chosen for its visual representation of joy contrasting with the current sorrow, enhancing the emotional depth of the woman's journey.
+
+Subject focus: character
+Character presence: continuous
+Environment: mustard field
+Lighting: golden hour lighting
+Movement: slow
+Motion density: medium
+Timeline mode: memory
+Emotional state: bittersweet memory
+Repetition: N/A
+Identity hint: woman recalling joyful memories
+Variation anchor: memories of joy contrasting present grief
+Continuity: contrast with present grief
+Key elements:
+photo
+sunset
+laughter
+Motifs:
+mustard field
+Shot directions used in this scene (cycle order)
+
+1
+slow zoom on a photo of her and her beloved — warm light creates an intimate atmosphere, evoking cherished memories.
+2
+fade into a scene of her looking at the sunset — the golden hues enhance the bittersweet quality of her reflections, symbolizing the end of a joyful moment.
+Scene s7
+chorus
+resolution
+intensity: high
+Purpose: Concludes the story with unresolved sorrow and the enduring impact of absence.
+
+The final shot lingers on the empty chair as the woman stands in the courtyard, lost in thought.
+
+Why this pick: This realization was chosen for its powerful symbolism of absence and longing, effectively concluding the emotional journey with a haunting sense of unresolved grief.
+
+Subject focus: character
+Character presence: continuous
+Environment: courtyard
+Lighting: twilight lighting
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: unresolved sorrow
+Repetition: N/A
+Identity hint: woman embracing unresolved grief
+Variation anchor: final reflection on longing and absence
+Continuity: final reflection on longing
+Key elements:
+empty chair
+twilight
+flowers
+Motifs:
+empty chair
+Shot directions used in this scene (cycle order)
+
+1
+close-up of her hand releasing a flower into the wind — the warm light beautifully captures the moment of letting go, symbolizing her enduring love amidst loss.
+2
+final shot of her silhouette against a twilight sky — the golden light fades, leaving a poignant reminder of her solitude and longing.
+Next we'll generate ONE face plate per character and ONE environment plate per location. Optionally upload a real photo for either to skip the AI plate.
+
