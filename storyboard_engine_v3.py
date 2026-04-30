@@ -107,7 +107,12 @@ _MAX_REALIZATIONS = 6
 # =====================================================================
 def _format_musical_map(audio_data: Dict[str, Any],
                         input_structure: Dict[str, Any]) -> str:
-    """BPM + section structure + intensity curve + audio duration."""
+    """BPM + section structure + intensity curve + audio duration.
+
+    Sections are the primary scene boundary guide.  Each section is formatted
+    with its type, label, time window, duration, repeat annotation, and first
+    lyric so the LLM can orient itself within the song.
+    """
     ad = audio_data or {}
     bpm = ad.get("bpm") or 120
     bpb = ad.get("beats_per_bar") or 4
@@ -133,31 +138,89 @@ def _format_musical_map(audio_data: Dict[str, Any],
 
     sections = (input_structure or {}).get("sections") or []
     units    = (input_structure or {}).get("units")    or []
-    sec_lines: List[str] = []
-    for sec in sections:
-        sid    = sec.get("id") or "?"
-        stype  = sec.get("type") or "section"
-        label  = sec.get("label") or stype
-        u_ids  = sec.get("unit_ids") or []
-        # Find time window of this section from its units
-        sec_starts: List[float] = []
-        sec_ends:   List[float] = []
-        for u in units:
-            if isinstance(u, dict) and u.get("id") in u_ids:
-                if u.get("start_time") is not None:
-                    sec_starts.append(float(u["start_time"]))
-                if u.get("end_time") is not None:
-                    sec_ends.append(float(u["end_time"]))
-        win = ""
-        if sec_starts and sec_ends:
-            win = f" [{min(sec_starts):.1f}s → {max(sec_ends):.1f}s]"
-        sec_lines.append(f"  [{sid}] {stype} — {label}{win} ({len(u_ids)} units)")
 
+    # Build unit lookup: id → unit dict (for timing + first lyric)
+    unit_map: Dict[str, Any] = {u["id"]: u for u in units
+                                 if isinstance(u, dict) and u.get("id")}
+
+    # Count occurrences per section type for chorus occurrence numbering
+    type_count: Dict[str, int] = {}
+
+    sec_lines: List[str] = []
+
+    # Detect pre-lyric instrumental gap (0 → first section start)
+    first_sec_start: float = 0.0
+    if sections:
+        first_u_ids = sections[0].get("unit_ids") or []
+        first_starts = [float(unit_map[uid]["start_time"])
+                        for uid in first_u_ids
+                        if uid in unit_map and unit_map[uid].get("start_time") is not None]
+        if first_starts:
+            first_sec_start = min(first_starts)
+    if first_sec_start > 2.0:
+        sec_lines.append(
+            f"  [s000] instrumental — Pre-lyric Intro "
+            f"[0.0s → {first_sec_start:.1f}s] ({first_sec_start:.1f}s)  "
+            f"← B-ROLL SCENE: establish world / atmosphere (no lyrics)"
+        )
+
+    for sec in sections:
+        sid   = sec.get("id") or "?"
+        stype = sec.get("type") or "section"
+        label = sec.get("label") or stype
+        u_ids = sec.get("unit_ids") or []
+        repeat_of = sec.get("repeat_of")
+
+        # Timing from units
+        sec_starts = [float(unit_map[uid]["start_time"])
+                      for uid in u_ids
+                      if uid in unit_map and unit_map[uid].get("start_time") is not None]
+        sec_ends   = [float(unit_map[uid]["end_time"])
+                      for uid in u_ids
+                      if uid in unit_map and unit_map[uid].get("end_time") is not None]
+
+        t_start = min(sec_starts) if sec_starts else 0.0
+        t_end   = max(sec_ends)   if sec_ends   else 0.0
+        sec_dur = t_end - t_start
+
+        # Occurrence number per type (chorus #1, chorus #2, …)
+        type_count[stype] = type_count.get(stype, 0) + 1
+        occ = type_count[stype]
+        occ_label = f" #{occ}" if occ > 1 or (stype == "chorus") else ""
+
+        # First lyric text
+        first_lyric = ""
+        for uid in u_ids:
+            txt = (unit_map.get(uid) or {}).get("text", "").strip()
+            if txt:
+                first_lyric = f'  ← starts: "{txt[:55]}"'
+                break
+
+        # Repeat annotation
+        repeat_note = f"  [repeat of {repeat_of}]" if repeat_of else ""
+
+        # Duration warning for sections that are very long
+        split_hint = ""
+        if sec_dur > 40:
+            split_hint = f"  ⚠ {sec_dur:.0f}s — SPLIT INTO 2+ SUB-SCENES at emotional turning point"
+
+        sec_lines.append(
+            f"  [{sid}] {stype}{occ_label} — {label} "
+            f"[{t_start:.1f}s → {t_end:.1f}s] ({sec_dur:.1f}s)"
+            f"{repeat_note}{first_lyric}{split_hint}"
+        )
+
+    section_header = (
+        "  *** SCENE RULE: Each section below = its own scene. "
+        "Never merge two sections. Split any section >40s. ***"
+    )
     return (
         f"  audio_duration: {dur:.1f}s\n"
         f"  bpm: {bpm}, beats_per_bar: {bpb}\n"
         f"  intensity_curve_samples: {ic_str}\n"
-        f"  sections:\n" + ("\n".join(sec_lines) if sec_lines else "    (none)")
+        f"  sections (→ MANDATORY scene boundaries):\n"
+        f"{section_header}\n"
+        + ("\n".join(sec_lines) if sec_lines else "    (none)")
     )
 
 
@@ -282,31 +345,49 @@ def _format_imagination_block(imagination_packet: Dict[str, Any]) -> str:
 def _call1_system_prompt() -> str:
     return (
         "You are the STORYBOARD DIRECTOR for Qaivid — a music-video pipeline.\n\n"
-        "ROLE (Call 1 of 3): Read the audio's musical map (BPM, sections, "
-        "intensity curve, timed lyrics) AND the story context, then produce:\n"
+        "ROLE (Call 1 of 3): Read the musical map AND story context, then produce:\n"
         "  • a STORY block (arc, summary, central_conflict)\n"
         "  • a SCENE list, each with a time_window_start/end that tiles the "
         "    full audio duration\n\n"
-        "RULES:\n"
-        "1. Scene boundaries should align with section boundaries when natural, "
-        "   but you MAY split a long section or merge two short ones if the "
-        "   emotional arc justifies it.\n"
-        "2. Scene time windows MUST tile [0, audio_end] with NO gaps and NO "
-        "   overlaps. The first scene starts at 0.0; the last scene ends at "
-        "   the audio duration. Use intensity peaks to place act breaks.\n"
-        "3. Pre-lyric instrumental sections are REAL scenes — assign them a "
-        "   purpose (establish world, introduce character, set mood) and a "
-        "   time window. Don't merge instrumental space into the first sung "
-        "   scene.\n"
-        "4. For EACH scene, also produce 3-6 valid_realizations — short "
-        "   one-sentence ideas for how the scene could be expressed visually. "
-        "   These feed downstream variety; do not pick a single one.\n"
-        "5. Maintain continuity_hooks (subject thread, motifs carried across).\n"
-        "6. Repeated sections (chorus N times) MUST EVOLVE — different "
-        "   timeline_position or presence_hint or environment each time.\n"
-        "7. Style is a LIGHT influence; story + context drive the scene plan.\n\n"
+
+        "━━ RULE 1 — SECTION-TO-SCENE MAPPING (MANDATORY, NO EXCEPTIONS) ━━\n"
+        "The musical map provides a list of labeled sections "
+        "(intro, verse, chorus, bridge, outro, etc.) with exact time windows.\n"
+        "EACH SECTION MUST BECOME AT LEAST ONE SCENE.\n"
+        "  • NEVER merge two sections into one scene, even if they share "
+        "    a similar emotional theme. A chorus followed by a verse = two scenes.\n"
+        "  • A section marked '⚠ SPLIT' is longer than 40 s — divide it at "
+        "    an internal emotional turning point (e.g. midpoint of a long verse).\n"
+        "  • A section marked 'B-ROLL SCENE' is instrumental (no lyrics) — give "
+        "    it a purpose of establishing world / atmosphere / character; do NOT "
+        "    merge it into the adjacent sung scene.\n"
+        "  • Use the section's type and label as the scene's source_section.\n\n"
+
+        "━━ RULE 2 — CHORUS EVOLUTION (MANDATORY) ━━\n"
+        "Every chorus occurrence is a SEPARATE scene with a DISTINCT emotional "
+        "purpose showing progression through the arc. Never assign the same "
+        "purpose to two chorus scenes. Suggested arc:\n"
+        "  Chorus #1: raw, first cry of longing — emotion erupts for the first time\n"
+        "  Chorus #2: desperate escalation — the pain deepens, no relief in sight\n"
+        "  Chorus #3: numb exhaustion — the cry has become a hollow repetition\n"
+        "  Chorus #4: resigned surrender — acceptance, the final emotional note\n\n"
+
+        "━━ RULE 3 — TILING CONSTRAINT ━━\n"
+        "Scene time windows MUST tile [0, audio_duration] with NO gaps and NO "
+        "overlaps. First scene starts at 0.0; last scene ends at audio_duration.\n\n"
+
+        "━━ RULE 4 — VALID REALIZATIONS ━━\n"
+        "For EACH scene produce 3–6 valid_realizations: short one-sentence "
+        "visual ideas for how the scene could be expressed. Do not pick one.\n\n"
+
+        "━━ RULE 5 — CONTINUITY ━━\n"
+        "Maintain continuity_hooks (subject thread, motifs) across scenes.\n\n"
+
+        "━━ RULE 6 — STYLE ━━\n"
+        "Style is a LIGHT influence only; story + context drive the scene plan.\n\n"
+
         "FORBIDDEN: locking specific locations, props, characters, lens / "
-        "camera shots, or executable prompts. That happens in Call 2 and the "
+        "camera shots, or executable prompts. Those happen in Call 2 and the "
         "Brief stage.\n\n"
         "Return strict JSON. No prose outside the JSON object."
     )
