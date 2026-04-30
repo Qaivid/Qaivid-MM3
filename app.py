@@ -2319,13 +2319,24 @@ def advance_stage_2b(project_id: str):
 
     cp["locked_assumptions"] = locked
 
+    # Atomic guard: only accept this submission if the project is still parked
+    # at assumptions_review awaiting review.  Prevents a fast double-submit or
+    # a crafted POST from advancing the pipeline a second time.
     with db() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE projects SET context_packet=%s, updated_at=NOW() WHERE id=%s",
-            (Json(cp), project_id),
+            "UPDATE projects SET context_packet=%s, stage=%s, status=%s, "
+            "       error=NULL, updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='assumptions_review' "
+            "   AND status='awaiting_review'",
+            (Json(cp), "queued", "queued", project_id),
         )
+        if cur.rowcount != 1:
+            flash("This step has already been completed or is not ready yet.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
         conn.commit()
 
+    kick_stage_brief(project_id, {})
     return redirect(url_for("project_detail", project_id=project_id))
 
 

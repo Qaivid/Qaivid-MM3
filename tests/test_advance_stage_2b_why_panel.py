@@ -22,6 +22,11 @@ Covered scenarios
    - Present "override" actions update motivation + locked_assumptions.
    - Present "accept" actions leave the existing lock value unchanged.
    - confidence is bumped when at least one change is recorded.
+
+3. Atomic double-submit guard.
+   - When the DB UPDATE rowcount == 0 (guard fires): no kick_stage_brief call
+     is made and the response is a redirect with a flash error.
+   - When rowcount == 1 (happy path): kick_stage_brief is called exactly once.
 """
 
 import os
@@ -40,8 +45,10 @@ os.environ.setdefault("FLASK_ENV", "development")
 
 
 class _StubCursor:
+    """Default stub cursor: rowcount=1 so the atomic guard passes."""
+
     def __init__(self):
-        self.rowcount = 0
+        self.rowcount = 1
 
     def __enter__(self):
         return self
@@ -62,6 +69,55 @@ class _StubCursor:
 class _StubConn:
     def cursor(self, *a, **kw):
         return _StubCursor()
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _RecordingCursor:
+    """Cursor whose rowcount is configurable; records all execute() calls."""
+
+    def __init__(self, rowcount: int = 1):
+        self.rowcount = rowcount
+        self.calls: list = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+
+class _RecordingConn:
+    """Connection whose cursor rowcount is configurable."""
+
+    def __init__(self, rowcount: int = 1):
+        self._rowcount = rowcount
+        self.cursor_instance = _RecordingCursor(rowcount)
+
+    def cursor(self, *a, **kw):
+        return self.cursor_instance
 
     def commit(self):
         pass
@@ -116,7 +172,7 @@ def _make_project(motivation=None, locked_assumptions=None):
         "id":      "proj-why-2b",
         "user_id": 99,
         "name":    "Why_Panel_Project",
-        "stage":   "context_review",
+        "stage":   "assumptions_review",
         "status":  "awaiting_review",
         "context_packet": {
             "motivation": dict(
@@ -154,6 +210,7 @@ def _run_advance_2b(client, project, form_data, fake_user):
         patch("auth.current_user", return_value=fake_user),
         patch.object(app_module, "db", lambda: _StubConn()),
         patch.object(app_module, "Json", side_effect=_capturing_Json),
+        patch.object(app_module, "kick_stage_brief"),
     ]
 
     for p in patches:
@@ -353,4 +410,102 @@ def test_partial_why_actions_confidence_bumped_on_override(client, fake_user):
     confidence = float(saved_motivation.get("confidence", 0))
     assert confidence >= 0.9, (
         f"confidence must be bumped to at least 0.9 after an 'override' action; got {confidence}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scenario 3 — Atomic double-submit guard
+# ---------------------------------------------------------------------------
+
+
+def test_guard_fires_no_kick_and_flash_error(client, fake_user):
+    """
+    When the DB UPDATE rowcount == 0 (guard fires — project is already queued
+    or in an unexpected state), the route must:
+    - NOT call kick_stage_brief.
+    - Redirect (302/303).
+    - Include a flash error message in the session.
+    """
+    project = _make_project()
+    recording_conn = _RecordingConn(rowcount=0)
+    kick_calls: list = []
+
+    p_get      = patch.object(app_module, "_get_project", return_value=project)
+    p_cu       = patch.object(app_module, "current_user", return_value=fake_user)
+    p_auth     = patch("auth.current_user", return_value=fake_user)
+    p_db       = patch.object(app_module, "db", lambda: recording_conn)
+    p_json     = patch.object(app_module, "Json", side_effect=app_module.Json)
+    p_kick     = patch.object(
+        app_module,
+        "kick_stage_brief",
+        side_effect=lambda *a, **kw: kick_calls.append((a, kw)),
+    )
+
+    for p in (p_get, p_cu, p_auth, p_db, p_json, p_kick):
+        p.start()
+    try:
+        with app_module.app.test_client() as cl:
+            with cl.session_transaction() as sess:
+                sess["_flashes"] = []
+            resp = cl.post(
+                f"/project/{project['id']}/advance/2b",
+                data={},
+            )
+            with cl.session_transaction() as sess:
+                flashes = sess.get("_flashes", [])
+    finally:
+        for p in (p_get, p_cu, p_auth, p_db, p_json, p_kick):
+            p.stop()
+
+    assert resp.status_code in (302, 303), (
+        "advance_stage_2b must redirect even when the guard fires"
+    )
+    assert len(kick_calls) == 0, (
+        f"kick_stage_brief must NOT be called when the guard fires (rowcount==0); "
+        f"called {len(kick_calls)} time(s)"
+    )
+    assert any("error" in str(cat) for cat, _ in flashes), (
+        "A flash error message must be emitted when the guard fires"
+    )
+
+
+def test_guard_passes_kick_called_once(client, fake_user):
+    """
+    When the DB UPDATE rowcount == 1 (happy path), the route must call
+    kick_stage_brief exactly once and redirect.
+    """
+    project = _make_project()
+    recording_conn = _RecordingConn(rowcount=1)
+    kicked: list = []
+
+    patches = [
+        patch.object(app_module, "_get_project", return_value=project),
+        patch.object(app_module, "current_user", return_value=fake_user),
+        patch("auth.current_user", return_value=fake_user),
+        patch.object(app_module, "db", lambda: recording_conn),
+        patch.object(app_module, "Json", side_effect=app_module.Json),
+        patch.object(
+            app_module,
+            "kick_stage_brief",
+            side_effect=lambda *a, **kw: kicked.append((a, kw)),
+        ),
+    ]
+
+    for p in patches:
+        p.start()
+    try:
+        resp = client.post(
+            f"/project/{project['id']}/advance/2b",
+            data={},
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert resp.status_code in (302, 303), (
+        "advance_stage_2b must redirect on the happy path"
+    )
+    assert len(kicked) == 1, (
+        f"kick_stage_brief must be called exactly once on the happy path; "
+        f"called {len(kicked)} time(s)"
     )
