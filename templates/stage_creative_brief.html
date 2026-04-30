@@ -45,6 +45,39 @@
   background: rgba(255,255,255,.06); color: #c9c9d4;
   font-size: .72rem;
 }
+
+/* Shot directions panel */
+.brief-shot-dirs {
+  margin-top: .85rem;
+  border-top: 1px solid rgba(255,255,255,.07);
+  padding-top: .7rem;
+}
+.brief-shot-dirs-label {
+  font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: #7a8aaa; margin: 0 0 .5rem;
+}
+.brief-shot-dir-item {
+  display: flex; gap: .7rem; align-items: flex-start;
+  padding: .45rem .6rem;
+  border-radius: 7px;
+  margin-bottom: .3rem;
+  background: rgba(255,255,255,.025);
+  font-size: .84rem; color: #c5c8d4;
+  line-height: 1.45;
+}
+.brief-shot-dir-item--primary {
+  background: rgba(255,177,66,.07);
+  border: 1px solid rgba(255,177,66,.18);
+  color: #e8e0cc;
+}
+.brief-shot-dir-num {
+  flex-shrink: 0;
+  min-width: 1.7rem;
+  font-size: .72rem; font-weight: 700;
+  color: #7a8aaa; padding-top: .1rem;
+  text-align: right;
+}
+.brief-shot-dir-item--primary .brief-shot-dir-num { color: #ffb142; }
 </style>
 
 {% set cp = project.context_packet or {} %}
@@ -78,12 +111,12 @@
     <div class="stage-card">
         <div class="stage-header">
             <span class="stage-badge">Stage 6 — Creative Brief</span>
-            <h1>One locked direction per scene</h1>
+            <h1>Locked directions per scene</h1>
             <p class="stage-sub">
-                The brief picked ONE realization per storyboard scene and added the
-                execution intent the downstream stages need (subject focus, presence,
-                environment type, lighting, motion, motifs, continuity). Approve to
-                generate reference plates, or regenerate for a fresh selection.
+                The brief enriched every storyboard realization into an executable shot direction.
+                The highlighted direction (Shot 1) is the anchor; the others cycle across shots
+                within the same scene to give visual variety. Approve to generate reference
+                plates, or regenerate for a fresh mix.
             </p>
         </div>
 
@@ -179,6 +212,22 @@
                 <div class="brief-scene-tags">
                     <strong style="color:#e8e8ee; font-size:.78rem; margin-right:.2rem;">Motifs:</strong>
                     {% for m in s.motif_usage %}<span class="pill">{{ m }}</span>{% endfor %}
+                </div>
+                {% endif %}
+
+                {% set _dirs = s.shot_directions or [] %}
+                {% if _dirs %}
+                <div class="brief-shot-dirs">
+                    <p class="brief-shot-dirs-label">Shot directions used in this scene (cycle order)</p>
+                    {% for d in _dirs %}
+                    {%- set _d = (d or '') | string | trim -%}
+                    {%- if _d and not _d.startswith('=') -%}
+                    <div class="brief-shot-dir-item{% if loop.first %} brief-shot-dir-item--primary{% endif %}">
+                        <span class="brief-shot-dir-num">{{ loop.index }}</span>
+                        <span>{{ _d }}</span>
+                    </div>
+                    {%- endif -%}
+                    {% endfor %}
                 </div>
                 {% endif %}
             </article>
