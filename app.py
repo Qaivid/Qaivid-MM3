@@ -43,6 +43,7 @@ from pipeline_worker import (
     kick_stage_2b_emotional,
     kick_stage_narrative,
     kick_stage_imagination,
+    kick_reimagine_then_storyboard,
     kick_stage_style,
     kick_stage_2,
     kick_stage_brief,
@@ -3319,8 +3320,8 @@ def rerun_from_stage(project_id: str, target_stage: str):
             "era":          _cb_pending.get("era"),
             "style_preset": _cb_pending.get("style_preset") or "cinematic_natural",
         }
-        kick_stage_2(project_id, project.get("name") or "Qaivid_Project", overrides)
-        flash(f"Storyboard engine is re-running. You'll land on {label} when ready.", "info")
+        kick_reimagine_then_storyboard(project_id, project.get("name") or "Qaivid_Project", overrides)
+        flash(f"Re-imagining visual world then rebuilding storyboard. You'll land on {label} when ready.", "info")
     elif target_stage == "materializer_review":
         kick_stage_materializer(project_id)
         flash(f"Re-running the Cast & World. You'll land on {label} when ready.", "info")

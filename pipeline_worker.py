@@ -5577,6 +5577,78 @@ def kick_stage_imagination(project_id: str) -> None:
     _EXECUTOR.submit(_stage_imagination_job, project_id)
 
 
+def _reimagine_then_storyboard_job(project_id: str, name: str, overrides: dict) -> None:
+    """Combined job: re-run Imagination Engine then Storyboard Engine in sequence.
+
+    Used when the user resets to storyboard_review so both the imagination packet
+    AND the storyboard are regenerated (not just the storyboard with the stale
+    cached imagination packet).
+    """
+    try:
+        from imagination_engine import generate_imagination_packet
+
+        # ── Step 1: regenerate imagination_packet ──────────────────────────
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+
+        context_packet        = brain.read("context_packet")        or {}
+        narrative_packet_data = brain.read("narrative_packet")      or {}
+        style_packet          = brain.read("style_packet")          or {}
+        emotional_mode_packet = brain.read("emotional_mode_packet") or {}
+        input_structure       = brain.read("input_structure")       or {}
+
+        if not context_packet:
+            with _db() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT context_packet, narrative_packet, style_profile FROM projects WHERE id=%s",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+            if row:
+                context_packet        = dict(row.get("context_packet") or {})
+                narrative_packet_data = dict(row.get("narrative_packet") or {}) if not narrative_packet_data else narrative_packet_data
+                style_packet          = dict(row.get("style_profile") or {}) if not style_packet else style_packet
+
+        _set_status(project_id, "running",
+                    {"stage": "imagination", "label": "Re-imagining the visual world…"},
+                    stage="running_imagination")
+
+        imagination_packet = _run_async(
+            generate_imagination_packet(
+                context_packet=context_packet,
+                narrative_packet=narrative_packet_data,
+                style_packet=style_packet,
+                emotional_mode_packet=emotional_mode_packet,
+                input_structure=input_structure,
+            )
+        )
+
+        with _db() as conn:
+            brain = ProjectBrain.load(project_id, conn)
+            brain.write("imagination_packet", imagination_packet)
+            brain.save(conn)
+            conn.commit()
+
+        logger.info(
+            "reimagine_then_storyboard: wrote imagination_packet for project=%s",
+            project_id,
+        )
+
+        # ── Step 2: run storyboard with fresh imagination_packet ──────────
+        _stage2_job(project_id, name, overrides)
+
+    except Exception as exc:
+        logger.exception("reimagine_then_storyboard failed for project=%s", project_id)
+        _set_status(project_id, "failed",
+                    {"stage": "error", "label": "Storyboard re-run failed."},
+                    stage="failed", error=f"{exc}\n{traceback.format_exc(limit=4)}")
+
+
+def kick_reimagine_then_storyboard(project_id: str, name: str, overrides: dict) -> None:
+    """Re-run Imagination Engine + Storyboard in sequence (for redo-to-storyboard resets)."""
+    _EXECUTOR.submit(_reimagine_then_storyboard_job, project_id, name, overrides)
+
+
 def kick_stage_2b_emotional(project_id: str) -> None:
     """Stage 2b — Emotional Mode Engine.
     Classifies the dominant emotional mode from context_packet + audio_data,
