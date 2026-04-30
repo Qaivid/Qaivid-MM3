@@ -2923,12 +2923,22 @@ def regenerate_brief(project_id: str):
 @login_required
 def regenerate_storyboard(project_id: str):
     """Re-run storyboard generation (Stage 5) in isolation using the existing
-    brain packets — no need to re-run context, narrative, style, or brief.
+    brain packets — no need to re-run context, narrative, style, or imagination.
 
-    Allowed only when the project is parked at storyboard_review with
-    awaiting_review status.  Atomically flips to queued to prevent double-
-    submission, then submits _stage2_job via the thread pool.  The job parks
-    back at storyboard_review when done.
+    Pipeline order: storyboard (Stage 5) → creative_brief (Stage 6) → later.
+    This route is ONLY valid from storyboard_review + awaiting_review because
+    that is the only stage at which regenerating the storyboard leaves no
+    downstream data stale:
+      • No creative_brief exists yet (it is generated in Stage 6, AFTER approval)
+      • No styled_timeline exists yet (_stage_brief_job writes it in Stage 6)
+      • No reference plates, stills, or video exist yet
+    If the project has advanced past storyboard_review, use rerun_from_stage
+    to reset the pipeline properly with full downstream data invalidation.
+
+    Atomically flips to queued to prevent double-submission, submits _stage2_job
+    to the thread pool, which reads context/narrative/style/imagination packets
+    from the brain and parks back at storyboard_review/awaiting_review on
+    completion.
     """
     project = _get_project(project_id, current_user()["id"])
     if not project:
