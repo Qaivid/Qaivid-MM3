@@ -72,6 +72,32 @@
                       font-size:.72rem; color:#888; }
 .sb-real-card-meta span { background:#0e0e18; padding:1px 6px; border-radius:4px; }
 .sb-poss-empty { color:#888; font-size:.85rem; font-style:italic; }
+
+/* Scene frame (location + time) badge on each shot card */
+.sb-card-scene-frame {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: .25rem .45rem;
+    font-size: .78rem;
+    color: #9cb8d8;
+    padding: .3rem .75rem .2rem;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    background: rgba(100,160,220,.06);
+}
+.sb-scene-frame-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .68rem;
+    color: #6a9fc0;
+}
+.sb-scene-frame-name {
+    font-weight: 600;
+    color: #b8d5ee;
+}
+.sb-scene-frame-sep { color: #5a7a8a; }
+.sb-scene-frame-loc { color: #9cb8d8; font-style: italic; }
 </style>
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
@@ -229,6 +255,24 @@
                         <span>{{ "%.2f"|format(intensity) }}</span>
                     </div>
                 </header>
+
+                {# Scene frame: location + time of day from creative brief (scene_frame key) #}
+                {% set sf = env.get('scene_frame') or {} %}
+                {% if sf and (sf.location or sf.time_of_day) %}
+                <div class="sb-card-scene-frame">
+                    <span class="sb-scene-frame-label">Scene</span>
+                    {% if sf.scene_name %}<span class="sb-scene-frame-name">{{ sf.scene_name }}</span><span class="sb-scene-frame-sep"> — </span>{% endif %}
+                    <span class="sb-scene-frame-loc">
+                        {%- if sf.location and sf.time_of_day -%}
+                            {{ sf.location }}, {{ sf.time_of_day }}
+                        {%- elif sf.location -%}
+                            {{ sf.location }}
+                        {%- else -%}
+                            {{ sf.time_of_day }}
+                        {%- endif -%}
+                    </span>
+                </div>
+                {% endif %}
 
                 <div class="sb-card-meaning">
                     <span class="sb-motion-edit" data-project="{{ project.id }}" data-shot="{{ shot.shot_index or shot.timeline_index }}" data-field="meaning" data-endpoint="meaning">
