@@ -1,0 +1,192 @@
+Jeon Jogya
+The V3 Storyboard Engine has produced a concrete timed shot list — 41 shots across 6 scenes. The Creative Brief will enrich each shot with a locked creative direction; the Timeline Builder then decorates them into the final shot list.
+
+Shot Plan
+— timed shots produced directly by the V3 engine, grouped by scene.
+Scene 1
+s1
+Establish the speaker's solitude and emotional landscape.
+Shot 1 · 0.0s + 7.0s
+
+wide establishing shot of a solitary woman walking through a vibrant field, reflecting her solitude
+
+Shot 2 · 7.0s + 7.0s
+
+slow close-up of the woman's face, capturing her pensive expression against the sunset
+
+Shot 3 · 14.0s + 12.0s
+
+pan across the landscape, revealing the contrast between the vibrant colors and her somber mood
+
+Scene 2
+s2
+Explore the speaker's memories and reminders of her beloved.
+Shot 1 · 26.5s + 12.0s
+
+intimate close-up of the woman's eyes, glistening with unshed tears as she recalls a memory
+
+Shot 2 · 38.3s + 9.0s
+
+over-the-shoulder shot of the woman looking at a faded photograph, highlighting her longing
+
+Shot 3 · 47.0s + 15.0s
+
+wide shot of her standing before a wall covered in memories, slowly touching it as if hoping to feel him again
+
+Scene 3
+s3
+Convey the intense yearning for her beloved's return.
+Shot 1 · 62.0s + 12.0s
+
+intense close-up of her face, tears streaming down as she whispers his name
+
+Shot 2 · 73.9s + 11.0s
+
+medium shot of her holding her chest, overwhelmed by the weight of her emotions
+
+Shot 3 · 84.6s + 12.0s
+
+slow zoom on her trembling hands as she wipes away the tears
+
+Shot 4 · 96.1s + 15.0s
+
+wide shot showing her alone in the vast field, contrasting her internal struggle with the external beauty
+
+Shot 5 · 111.1s + 15.0s
+
+close-up of her lips quivering as she sings, capturing the raw emotion of her longing
+
+Shot 6 · 126.1s + 15.0s
+
+abstract shot of colorful, swirling smoke representing her memories, creating a surreal atmosphere
+
+Scene 4
+s4
+Highlight the speaker's disconnection from the vibrant world around her.
+Shot 1 · 141.1s + 15.0s
+
+medium shot of her standing in sunlight, embodying the beauty of a flower yet feeling the pain of loss
+
+Shot 2 · 156.1s + 15.0s
+
+close-up of her fingers brushing against petals, symbolizing fragility and transience
+
+Shot 3 · 171.1s + 15.0s
+
+wide shot of her standing alone amidst a bustling market, feeling disconnected from the world
+
+Shot 4 · 186.1s + 15.0s
+
+close-up of her feet standing still as vibrant life passes by, emphasizing her emotional stagnation
+
+Shot 5 · 201.1s + 15.0s
+
+intimate close-up of her face, expressing pain as she recalls the bitterness of separation
+
+Shot 6 · 216.1s + 15.0s
+
+Highlight the speaker's disconnection from the vibrant world around her.
+
+Shot 7 · 231.1s + 15.0s
+
+Highlight the speaker's disconnection from the vibrant world around her.
+
+Shot 8 · 246.1s + 15.0s
+
+Highlight the speaker's disconnection from the vibrant world around her.
+
+Shot 9 · 261.1s + 15.0s
+
+Highlight the speaker's disconnection from the vibrant world around her.
+
+Shot 10 · 276.1s + 7.0s
+
+Highlight the speaker's disconnection from the vibrant world around her.
+
+Scene 5
+s5
+Visually represent the flood of memories and fragmented thoughts.
+Shot 1 · 282.9s + 3.0s
+
+quick shot of her clenching her fists tightly, embodying the struggle to find strength
+
+Shot 2 · 286.3s + 9.0s
+
+wide shot of her standing in the rain, arms outstretched, as if calling out for her beloved
+
+Shot 3 · 295.7s + 8.0s
+
+close-up of rain mixing with her tears, symbolizing the depth of her sorrow
+
+Shot 4 · 303.6s + 8.0s
+
+dynamic shot of her spinning around in the rain, capturing a moment of chaotic emotion
+
+Shot 5 · 311.2s + 11.0s
+
+medium shot of her collapsing to the ground in despair, emphasizing her vulnerability
+
+Shot 6 · 322.7s + 15.0s
+
+abstract representation of her memories flooding in, using slow-motion visuals of her past
+
+Scene 6
+s6
+Convey a deeper emotional arc as she still longs for reunion.
+Shot 1 · 337.7s + 2.0s
+
+close-up of her lips moving as she struggles to articulate her feelings to the void
+
+Shot 2 · 339.7s + 2.0s
+
+wide shot of her sitting against a wall, echoing her feelings of confinement and isolation
+
+Shot 3 · 341.7s + 2.0s
+
+medium shot of clouds forming above her, symbolizing her turbulent emotions
+
+Shot 4 · 343.7s + 2.0s
+
+wide shot of the sky transitioning from day to night, reflecting her internal chaos
+
+Shot 5 · 345.7s + 2.0s
+
+close-up of her hand reaching out toward the horizon, symbolizing her yearning for connection
+
+Shot 6 · 347.7s + 2.0s
+
+quick shot of her shaking her head, as if trying to dispel her memories
+
+Shot 7 · 349.7s + 2.0s
+
+medium shot of her standing tall, determination in her eyes as she faces her pain
+
+Shot 8 · 351.7s + 2.0s
+
+close-up of her eyes, reflecting the depth of her unshed tears
+
+Shot 9 · 353.7s + 2.0s
+
+wide shot of her looking up at the sky, embodying hope amidst her despair
+
+Shot 10 · 355.7s + 2.0s
+
+medium shot of her sitting in a crowded place, feeling isolated despite the people around her
+
+Shot 11 · 357.7s + 2.0s
+
+close-up of her hands clutching a necklace, symbolizing cherished memories
+
+Shot 12 · 359.7s + 2.0s
+
+medium shot of her laughing softly to herself, reminiscing bittersweet memories
+
+Shot 13 · 361.7s + 3.0s
+
+wide shot of her looking at her watch, time slipping away as she waits
+
+Underlying Shot List
+— the timed shot list is built after the Creative Brief is approved.
+No shots yet — the timed shot list is built by the V2 Timeline Builder once you approve the Creative Brief.
+
+Approve or regenerate the Creative Brief to produce the shot list.
