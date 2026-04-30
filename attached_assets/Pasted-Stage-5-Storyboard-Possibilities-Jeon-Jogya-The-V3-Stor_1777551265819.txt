@@ -1,0 +1,148 @@
+Stage 5 — Storyboard (Possibilities)
+Jeon Jogya
+The V3 Storyboard Engine has produced a concrete timed shot list — 29 shots across 7 scenes. The Creative Brief will enrich each shot with a locked creative direction; the Timeline Builder then decorates them into the final shot list.
+
+Shot Plan
+— timed shots produced directly by the V3 engine, grouped by scene.
+Scene 1
+s1
+Establishes the emotional landscape of solitude and loss.
+Shot 1 · 0.0s + 7.0s
+
+wide establishing shot of the field at dusk, slow push toward the horizon
+
+Shot 2 · 7.0s + 7.0s
+
+close-up of the woman's face, reflecting sorrowful thoughts
+
+Shot 3 · 14.0s + 12.0s
+
+pan across empty village streets, capturing a sense of loneliness
+
+Scene 2
+s2
+Reveals the woman's hidden sorrow amidst the beauty of her surroundings.
+Shot 1 · 26.5s + 15.0s
+
+woman gazes at a distant tree, lost in thought
+
+Shot 2 · 41.5s + 15.0s
+
+close-up of a tear rolling down her cheek
+
+Shot 3 · 56.5s + 15.0s
+
+woman brushes her hand against the wall, feeling the texture
+
+Shot 4 · 71.5s + 15.0s
+
+wide shot of the woman in the field, arms outstretched
+
+Shot 5 · 86.5s + 15.0s
+
+flashback sequence of her and her beloved laughing together
+
+Shot 6 · 101.5s + 15.0s
+
+slow-motion shot of a flower wilting in the wind
+
+Shot 7 · 116.5s + 15.0s
+
+Reveals the woman's hidden sorrow amidst the beauty of her surroundings.
+
+Shot 8 · 131.5s + 10.0s
+
+Reveals the woman's hidden sorrow amidst the beauty of her surroundings.
+
+Scene 3
+s3
+Intensifies the emotional longing through visual symbolism.
+Shot 1 · 141.1s + 15.0s
+
+close-up of the woman's hand clutching a piece of clothing
+
+Shot 2 · 156.1s + 15.0s
+
+abstract shot of rain falling on a window, obscuring her view
+
+Shot 3 · 171.1s + 5.0s
+
+Intensifies the emotional longing through visual symbolism.
+
+Scene 4
+s4
+Evokes nostalgia through memories intertwined with present sorrow.
+Shot 1 · 176.0s + 15.0s
+
+montage of past memories flickering across her face
+
+Shot 2 · 191.0s + 15.0s
+
+shot of her looking at an empty plate on the table
+
+Shot 3 · 206.0s + 15.0s
+
+tracking shot of her walking through the house, touching the walls
+
+Shot 4 · 221.0s + 15.0s
+
+Evokes nostalgia through memories intertwined with present sorrow.
+
+Shot 5 · 236.0s + 15.0s
+
+Evokes nostalgia through memories intertwined with present sorrow.
+
+Shot 6 · 251.0s + 15.0s
+
+Evokes nostalgia through memories intertwined with present sorrow.
+
+Shot 7 · 266.0s + 15.0s
+
+Evokes nostalgia through memories intertwined with present sorrow.
+
+Shot 8 · 280.9s + 2.0s
+
+Evokes nostalgia through memories intertwined with present sorrow.
+
+Scene 5
+s5
+Deepens the despair felt by the woman as she confronts her loneliness.
+Shot 1 · 282.9s + 15.0s
+
+extreme close-up of her eyes, filled with tears
+
+Shot 2 · 297.9s + 15.0s
+
+wide shot of her sitting alone in an empty room
+
+Shot 3 · 312.9s + 3.0s
+
+Deepens the despair felt by the woman as she confronts her loneliness.
+
+Scene 6
+s6
+Reflects on bittersweet memories, highlighting the contrast with present sorrow.
+Shot 1 · 316.0s + 9.0s
+
+slow zoom on a photo of her and her beloved
+
+Shot 2 · 325.0s + 13.0s
+
+fade into a scene of her looking at the sunset
+
+Scene 7
+s7
+Concludes the story with unresolved sorrow and the enduring impact of absence.
+Shot 1 · 337.7s + 14.0s
+
+close-up of her hand releasing a flower into the wind
+
+Shot 2 · 352.0s + 13.0s
+
+final shot of her silhouette against a twilight sky
+
+Underlying Shot List
+— the timed shot list is built after the Creative Brief is approved.
+No shots yet — the timed shot list is built by the V2 Timeline Builder once you approve the Creative Brief.
+
+Approve or regenerate the Creative Brief to produce the shot list.
