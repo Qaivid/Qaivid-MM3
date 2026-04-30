@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 def _env_field(env: dict, *keys: str) -> str:
     """Read the first non-empty value from scene_frame, then world_assumptions,
-    across a list of candidate key names (supports both new and legacy names)."""
+    across a list of candidate key names."""
     sf = env.get("scene_frame") or {}
     wa = env.get("world_assumptions") or {}
     for k in keys:
@@ -61,7 +61,7 @@ def _cluster_key(shot: dict, shot_location_ids: dict) -> str:
         return f"loc:{loc_id}"
     env = shot.get("environment_profile") or {}
     # Prefer scene_frame (specific location), fall back to characteristic_setting
-    setting = _env_field(env, "location", "characteristic_setting", "domestic_setting").lower()
+    setting = _env_field(env, "location", "characteristic_setting").lower()
     tod = _env_field(env, "time_of_day", "characteristic_time").lower()
     place_raw = env.get("place_entities") or []
     place = "_".join(sorted(p.lower() for p in place_raw if p))
@@ -93,7 +93,7 @@ def _build_cluster_descriptions(shots: list[dict], shot_location_ids: dict,
             clusters[key] = {
                 "cluster_id": key,
                 "location_name": (loc_rec or {}).get("name") or location_dna or key,
-                "setting": _env_field(env, "location", "characteristic_setting", "domestic_setting"),
+                "setting": _env_field(env, "location", "characteristic_setting"),
                 "time_of_day": _env_field(env, "time_of_day", "characteristic_time"),
                 "place_entities": place_entities,
                 "location_mood": (loc_rec or {}).get("mood") or "",
@@ -169,9 +169,7 @@ def _call_llm(character: dict, clusters: dict[str, dict],
     era = (wa.get("era") or "").strip()
     social_context = (wa.get("social_context") or "").strip()
     economic_context = (wa.get("economic_context") or "").strip()
-    characteristic_setting = (
-        wa.get("characteristic_setting") or wa.get("domestic_setting") or ""
-    ).strip()
+    characteristic_setting = (wa.get("characteristic_setting") or "").strip()
     architecture = (wa.get("architecture_style") or "").strip()
 
     # Assemble cultural world context lines (omit empty fields)

@@ -310,16 +310,8 @@ def _environment_clause(
             if isinstance(wa, dict):
                 season = (wa.get("season") or "").strip()
                 arch = (wa.get("architecture_style") or "").strip()
-                char_setting = (
-                    wa.get("characteristic_setting")
-                    or wa.get("domestic_setting")
-                    or ""
-                ).strip()
-                char_time = (
-                    wa.get("characteristic_time")
-                    or wa.get("time_of_day")
-                    or ""
-                ).strip()
+                char_setting = (wa.get("characteristic_setting") or "").strip()
+                char_time = (wa.get("characteristic_time") or "").strip()
                 active_location = scene_loc or char_setting
                 active_time = scene_tod or char_time
                 bits = [b for b in (loc_dna, active_location, arch, season, active_time) if b]
