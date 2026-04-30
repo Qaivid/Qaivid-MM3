@@ -1,0 +1,421 @@
+Production-ready shot directions
+Every shot from the storyboard has been enriched with execution detail — lighting, atmosphere, emotional depth, and production context. All shots below are locked and ready for reference plate generation. Approve to continue, or regenerate for a fresh brief.
+
+Scene s1
+s000
+intro
+intensity: low
+Purpose: Establish the atmosphere of the speaker's hidden sorrow.
+
+Subject focus: object
+Character presence: minimal
+Environment: natural landscape
+Lighting: warm golden hour
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: sorrowful
+Repetition: consistent focus on absence and solitude
+Identity hint: reflective of loss
+Variation anchor: the empty chair as a symbol of absence
+Continuity: subject continuity note
+Key elements:
+empty chairs
+dew
+golden hour light
+Motifs:
+empty chair
+golden hour light
+Enriched shots — production-ready
+
+1
+wide establishing shot of the field at dusk, slow push toward the horizon — warm golden hour light enveloping the scene, evoking a sense of nostalgia and quiet despair.
+2
+close-up of dew on grass, capturing the stillness of the moment — soft, diffused light enhances the intimate atmosphere, symbolizing the weight of unspoken grief.
+3
+pan across empty chairs in the field, evoking a sense of absence — shadows play across the chairs, enhancing the emotional weight of solitude.
+Scene s2
+s001
+build
+intensity: medium
+Purpose: Introduce the speaker's composed exterior while hinting at her internal struggle.
+
+Subject focus: character
+Character presence: intermittent
+Environment: busy market
+Lighting: golden hour light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: composed yet troubled
+Repetition: evolution of her emotional facade
+Identity hint: woman navigating personal loss
+Variation anchor: the woman's journey through the market
+Continuity: subject continuity note
+Key elements:
+market stalls
+warm light
+expressive facial close-ups
+Motifs:
+golden hour light
+Enriched shots — production-ready
+
+1
+medium shot of the woman smiling, hiding her sorrow behind a façade — warm light reflects her outward composure, contrasting her internal turmoil.
+2
+close-up of her eyes, reflecting a hint of sadness — the depth of her gaze captures the hidden pain beneath her smile.
+3
+wide shot of her standing against a wall, absorbing the moment — golden light creates a nostalgic backdrop, enhancing her emotional isolation.
+Scene s3
+s002
+build
+intensity: high
+Purpose: Reveal the hidden pain within the speaker as she reflects on her loss.
+
+Subject focus: character
+Character presence: continuous
+Environment: intimate space
+Lighting: soft warm light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: introspective pain
+Repetition: deepening emotional context
+Identity hint: woman confronting her past
+Variation anchor: her memories intertwining with present sorrow
+Continuity: subject continuity note
+Key elements:
+photo
+tears
+warm lighting
+Motifs:
+empty chair
+Enriched shots — production-ready
+
+1
+close-up of her face, tears welling up as she recalls the pain — soft light highlights her features, emphasizing the emotional gravity of her memories.
+2
+over-the-shoulder shot of her looking at a photo of her lover — the ambient light casts gentle shadows, symbolizing the weight of nostalgia.
+3
+medium shot of her hands clenching the photo tightly — the tension in her grip mirrors the intensity of her feelings, illuminated by warm light.
+4
+close-up of her lips trembling as she whispers the words — shadows enhance the emotional weight, capturing the essence of her silent grief.
+Scene s4
+s002
+build
+intensity: high
+Purpose: Deepen the emotional intensity as she recalls specific moments with her lover.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: natural setting
+Lighting: golden hour warm light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: introspective longing
+Repetition: escalation of emotional themes
+Identity hint: woman in quiet reflection
+Variation anchor: the woman's reflections deepening the narrative
+Continuity: subject continuity note
+Key elements:
+mirror
+mustard field
+warm light
+Motifs:
+empty chair
+Enriched shots — production-ready
+
+1
+intimate shot of her reflection in a mirror, lost in thought — the warm light creates a sense of closeness to her internal world, emphasizing solitude.
+2
+wide shot of a mustard field, the sun casting long shadows — golden hour light enhances the beauty and depth of her memories.
+Scene s5
+s003
+peak
+intensity: medium
+Purpose: Capture the rawness of her yearning for the lost connection.
+
+Subject focus: character
+Character presence: continuous
+Environment: mustard field
+Lighting: dramatic warm light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: raw yearning
+Repetition: heightened emotional clarity
+Identity hint: woman expressing deep loss
+Variation anchor: the woman's emotional climax in the mustard field
+Continuity: subject continuity note
+Key elements:
+flower petal
+tears
+warm sunlight
+Motifs:
+mustard field
+Enriched shots — production-ready
+
+1
+close-up of her hand releasing a flower petal into the wind — delicate lighting enhances the fragility of the moment, symbolizing loss.
+2
+medium shot of her looking up at the sky, searching for answers — the warm light reflects her hopes and despair, enhancing emotional depth.
+3
+slow motion shot of her walking away from the field, head down — shadows lengthen, paralleling the weight of her sorrow.
+4
+close-up of her face, a tear rolling down her cheek — light catches the tear, emphasizing the intensity of her grief.
+Scene s6
+s004
+build
+intensity: medium
+Purpose: Illustrate quiet reflection post-chorus, enhancing her emotional journey.
+
+Subject focus: character
+Character presence: continuous
+Environment: indoor setting
+Lighting: soft warm light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: quiet reflection
+Repetition: evolution of introspection
+Identity hint: woman reflecting on loss
+Variation anchor: the woman alone with her thoughts
+Continuity: subject continuity note
+Key elements:
+window
+rain
+soft light
+Motifs:
+empty chair
+Enriched shots — production-ready
+
+1
+medium shot of her standing by the window, lost in memories — soft light filters through, creating a contemplative atmosphere.
+2
+close-up of her fingers tracing the window frame, reminiscent — the gentle touch against the glass evokes a sense of longing.
+3
+wide shot of her looking out the window, watching the rain fall — the rain blurs the outside world, mirroring her emotional state.
+4
+close-up of her eyes, reflecting sadness and longing — the warmth of the light contrasts with the melancholic expression.
+Scene s7
+s004
+build
+intensity: high
+Purpose: Explore her intensifying longing and connection to memories.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: intimate indoor space
+Lighting: low warm light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: intensified longing
+Repetition: building emotional complexity
+Identity hint: woman in emotional distress
+Variation anchor: her hands holding a letter, symbolizing longing
+Continuity: subject continuity note
+Key elements:
+letter
+chair
+shadows
+Motifs:
+empty chair
+Enriched shots — production-ready
+
+1
+medium shot of her whispering into the air, a plea — the soft light highlights her sincerity, capturing the essence of her longing.
+2
+close-up of her hands gripping the edges of a chair — the tension in her grip reflects her emotional turmoil, illuminated by warm light.
+3
+wide shot of the room, walls closing in on her — shadows deepen, mirroring her feelings of confinement and isolation.
+4
+medium shot of her looking down, void of hope — the soft light creates a sense of vulnerability, emphasizing her sorrow.
+Scene s8
+s006
+peak
+intensity: high
+Purpose: Build remorse through memories of joyful moments now overshadowed by sorrow.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: natural landscape
+Lighting: dramatic contrast of light and shadow
+Movement: slow
+Motion density: high
+Timeline mode: present
+Emotional state: remorseful reflection
+Repetition: heightened emotional resonance
+Identity hint: woman haunted by memories
+Variation anchor: the contrast of past joy and current grief
+Continuity: subject continuity note
+Key elements:
+clouds
+stars
+well
+Motifs:
+golden hour light
+Enriched shots — production-ready
+
+1
+wide shot of dark clouds gathering above the field — the brewing storm reflects the emotional turmoil, creating a sense of foreboding.
+2
+close-up of sunlight breaking through the clouds — the interplay of light and shadow symbolizes fleeting moments of joy amidst sorrow.
+3
+medium shot of twinkling stars in the night sky — the beauty of the stars contrasts with her current emotional state, evoking a sense of loss.
+4
+wide shot of a deep well, evoking isolation — shadows deepen, symbolizing her feelings of entrapment and despair.
+5
+close-up of her empty hand reaching out, then falling — soft light captures the moment of longing, enhancing the emotional depth.
+Scene s9
+s007
+build
+intensity: medium
+Purpose: Delve into deep sorrow as the speaker confronts her loneliness.
+
+Subject focus: character
+Character presence: continuous
+Environment: intimate indoor space
+Lighting: soft warm light
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: deep sorrow
+Repetition: exploration of solitude
+Identity hint: woman grappling with loneliness
+Variation anchor: the solitude within her room
+Continuity: subject continuity note
+Key elements:
+empty room
+shadows
+warm light
+Motifs:
+golden hour light
+Enriched shots — production-ready
+
+1
+medium shot of her standing silently in the empty room — warm light filters through, creating a sense of quiet contemplation.
+2
+close-up of her face, anguish washing over her features — the softness of the light captures the fragility of her emotional state.
+3
+medium shot of her slumping against the wall in despair — shadows deepen around her, symbolizing the weight of her sorrow.
+4
+wide shot of her alone in the field, echoes of laughter haunting her — the golden hour light creates a bittersweet atmosphere, amplifying her sense of loss.
+Scene s10
+s008
+peak
+intensity: high
+Purpose: Capture an aching nostalgia as she revisits the mustard field.
+
+Subject focus: character
+Character presence: continuous
+Environment: natural landscape
+Lighting: golden hour light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: aching nostalgia
+Repetition: deepening emotional connection to memories
+Identity hint: woman reflecting on past joys
+Variation anchor: the emotional weight of revisiting memories
+Continuity: subject continuity note
+Key elements:
+mustard field
+sunset
+flower
+Motifs:
+mustard field
+Enriched shots — production-ready
+
+1
+close-up of her wistful smile, reminiscing the past — golden light enhances the beauty of her expression, evoking nostalgia.
+2
+medium shot of her looking out at a distant horizon — warm light captures her longing for connection and the vastness of her emotions.
+3
+wide shot of the sunset, reflecting her fading hopes — the soft light creates a poignant moment, symbolizing the passage of time.
+4
+close-up of her hands clutching a flower, symbolizing memories — the delicate light emphasizes the fragility of her recollections.
+5
+intimate shot of her eyes, glistening with unshed tears — the warm light captures her emotional vulnerability, heightening the sense of longing.
+Scene s11
+s009
+build
+intensity: medium
+Purpose: Convey resigned sorrow as she stands by the window.
+
+Subject focus: character
+Character presence: continuous
+Environment: intimate indoor space
+Lighting: soft warm light
+Movement: slow
+Motion density: low
+Timeline mode: present
+Emotional state: resigned sorrow
+Repetition: exploration of acceptance
+Identity hint: woman contemplating her past
+Variation anchor: the speaker reflecting on her solitude
+Continuity: subject continuity note
+Key elements:
+window
+shadows
+warm light
+Motifs:
+golden hour light
+Enriched shots — production-ready
+
+1
+medium shot of her standing by the window, sun setting behind her — the warm light creates a dramatic silhouette, enhancing her sense of isolation.
+2
+close-up of her fingers brushing against the glass — the gentle touch evokes memories of connection, illuminated by soft light.
+3
+medium shot of her looking away, lost in thought — shadows play across her face, emphasizing her emotional distance.
+4
+wide shot of her silhouette against the window, a poignant moment — the golden hour light accentuates her solitude.
+5
+close-up of her contemplative expression, reflecting sorrow — warm light captures the nuances of her feelings, deepening the emotional impact.
+6
+medium shot of her turning away from the window, retreating inside — shadows deepen, reflecting her internal struggle.
+7
+wide shot of her leaving the room, a sense of finality — the soft light evokes a bittersweet farewell to the past.
+Scene s12
+s010
+resolution
+intensity: high
+Purpose: Express a haunting lament as she walks away from the mustard field.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: natural landscape
+Lighting: golden hour light
+Movement: slow
+Motion density: medium
+Timeline mode: present
+Emotional state: haunting lament
+Repetition: culmination of emotional journey
+Identity hint: woman in emotional farewell
+Variation anchor: the finality and complexity of her emotions
+Continuity: subject continuity note
+Key elements:
+mustard field
+sunset
+silhouette
+Motifs:
+mustard field
+Enriched shots — production-ready
+
+1
+close-up of her foot stepping into the mustard field — golden light bathes the scene, symbolizing hope amidst sorrow.
+2
+medium shot of her walking away, the field stretching behind her — the light creates a soft glow, enhancing the sense of loss.
+3
+close-up of her gaze drifting toward the horizon, lost in memory — warm light captures her yearning, deepening the emotional resonance.
+4
+wide shot of her silhouette against the sunset, symbolizing closure — the golden hour light evokes a bittersweet farewell.
+5
+close-up of her face, a final tear falling as she turns away — the light highlights her vulnerability, capturing the essence of her sorrow.
+6
+wide shot of her walking away slowly, the field fading behind her — the soft light envelops her, symbolizing the journey of moving on.
+7
+final fade-out shot of the empty field, evoking loneliness — the lingering golden hour light reinforces the emotional weight of her absence.
+Next we'll generate ONE face plate per character and ONE environment plate per location. Optionally upload a real photo for either to skip the AI plate.
