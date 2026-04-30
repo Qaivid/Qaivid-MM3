@@ -143,12 +143,12 @@
     <div class="stage-card">
         <div class="stage-header">
             <span class="stage-badge">Stage 6 — Creative Brief</span>
-            <h1>Locked directions per scene</h1>
+            <h1>Production-ready shot directions</h1>
             <p class="stage-sub">
-                The brief enriched every storyboard realization into an executable shot direction.
-                The highlighted direction (Shot 1) is the anchor; the others cycle across shots
-                within the same scene to give visual variety. Approve to generate reference
-                plates, or regenerate for a fresh mix.
+                Every shot from the storyboard has been enriched with execution detail —
+                lighting, atmosphere, emotional depth, and production context. All shots
+                below are locked and ready for reference plate generation.
+                Approve to continue, or regenerate for a fresh brief.
             </p>
         </div>
 
@@ -184,15 +184,6 @@
                 <p class="brief-scene-purpose"><em>Purpose:</em> {{ s.scene_purpose }}</p>
                 {% endif %}
 
-                {%- set _cd = (s.chosen_direction or '') | string | trim -%}
-                {%- if not _cd or _cd.startswith('=') or _cd.lower().startswith('copy the text') -%}
-                  {%- set _cd = ((s.shot_directions or [None])[0] or '') | string | trim -%}
-                {%- endif -%}
-                {% if _cd %}<p class="brief-scene-direction">{{ _cd }}</p>{% endif %}
-
-                {% if s.selection_basis %}
-                <p class="brief-scene-basis">Why this pick: {{ s.selection_basis }}</p>
-                {% endif %}
 
                 <div class="brief-scene-meta">
                     {% if s.subject_focus %}
@@ -250,11 +241,11 @@
                 {% set _dirs = s.shot_directions or [] %}
                 {% if _dirs %}
                 <div class="brief-shot-dirs">
-                    <p class="brief-shot-dirs-label">Shot directions used in this scene (cycle order)</p>
+                    <p class="brief-shot-dirs-label">Enriched shots — production-ready</p>
                     {% for d in _dirs %}
                     {%- set _d = (d or '') | string | trim -%}
                     {%- if _d and not _d.startswith('=') -%}
-                    <div class="brief-shot-dir-item{% if loop.first %} brief-shot-dir-item--primary{% endif %}">
+                    <div class="brief-shot-dir-item">
                         <span class="brief-shot-dir-num">{{ loop.index }}</span>
                         <span>{{ _d }}</span>
                     </div>
