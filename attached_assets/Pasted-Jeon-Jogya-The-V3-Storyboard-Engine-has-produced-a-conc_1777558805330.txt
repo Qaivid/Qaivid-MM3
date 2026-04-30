@@ -1,0 +1,206 @@
+Jeon Jogya
+The V3 Storyboard Engine has produced a concrete timed shot list — 41 shots across 10 scenes. The Creative Brief will enrich each shot with a locked creative direction; the Timeline Builder then decorates them into the final shot list.
+
+Shot Plan
+— timed shots produced directly by the V3 engine, grouped by scene.
+Scene 1
+s1
+Establishes the serene yet sorrowful atmosphere of the speaker's world.
+Shot 1 · 0.0s + 7.0s
+
+Establishes the serene yet sorrowful atmosphere of the speaker's world.
+
+Shot 2 · 6.6s + 7.0s
+
+Establishes the serene yet sorrowful atmosphere of the speaker's world.
+
+Shot 3 · 13.2s + 7.0s
+
+Establishes the serene yet sorrowful atmosphere of the speaker's world.
+
+Shot 4 · 19.9s + 7.0s
+
+Establishes the serene yet sorrowful atmosphere of the speaker's world.
+
+Scene 2
+s2
+Introduces the speaker's sorrow, revealing her emotional struggle.
+Shot 1 · 26.5s + 15.0s
+
+close-up of the woman looking down, a tear rolling down her cheek
+
+Shot 2 · 41.5s + 15.0s
+
+medium shot of the woman in a crowded market, feeling isolated
+
+Shot 3 · 56.5s + 6.0s
+
+Introduces the speaker's sorrow, revealing her emotional struggle.
+
+Scene 3
+s3
+Explores the depths of the speaker's sorrow through memories.
+Shot 1 · 62.0s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Shot 2 · 68.4s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Shot 3 · 74.9s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Shot 4 · 81.3s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Shot 5 · 87.7s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Shot 6 · 94.2s + 6.0s
+
+Explores the depths of the speaker's sorrow through memories.
+
+Scene 4
+s4
+Deepens the exploration of the speaker's emotional state as she recalls pain.
+Shot 1 · 100.6s + 15.0s
+
+wide shot of the woman standing against a wall, deep in thought
+
+Shot 2 · 115.6s + 15.0s
+
+Deepens the exploration of the speaker's emotional state as she recalls pain.
+
+Shot 3 · 130.6s + 10.0s
+
+Deepens the exploration of the speaker's emotional state as she recalls pain.
+
+Scene 5
+s5
+Captures the raw intensity of the speaker's yearning.
+Shot 1 · 141.1s + 15.0s
+
+flashback sequence of the woman laughing with her beloved
+
+Shot 2 · 156.1s + 15.0s
+
+close-up of her hands clenching a fabric, symbolizing her pain
+
+Shot 3 · 171.1s + 5.0s
+
+Captures the raw intensity of the speaker's yearning.
+
+Scene 6
+s6
+Illustrates her reflective melancholy and disconnect from her surroundings.
+Shot 1 · 176.0s + 15.0s
+
+medium shot of her staring at a photo of her beloved
+
+Shot 2 · 191.0s + 15.0s
+
+wide shot of the woman sitting alone in a vibrant room, feeling lost
+
+Shot 3 · 206.0s + 15.0s
+
+close-up of her eyes welling up with tears
+
+Shot 4 · 221.0s + 12.0s
+
+Illustrates her reflective melancholy and disconnect from her surroundings.
+
+Scene 7
+s7
+Continues to explore her deepening despair as she reflects on her memories.
+Shot 1 · 233.3s + 15.0s
+
+flashback montage of joyful moments with her beloved, fading to sorrow
+
+Shot 2 · 248.3s + 10.0s
+
+close-up of a flower wilting in the sun, symbolizing her despair
+
+Shot 3 · 258.0s + 10.0s
+
+medium shot of the woman looking up at the sun, squinting in pain
+
+Shot 4 · 267.9s + 15.0s
+
+wide shot of the woman standing alone in a field of flowers, surrounded by beauty
+
+Scene 8
+s8
+Highlights the escalating desperation and longing for connection.
+Shot 1 · 282.9s + 14.0s
+
+close-up of her feet sinking into the earth, symbolizing her heaviness
+
+Shot 2 · 296.4s + 14.0s
+
+medium shot of her staring at a river, reflecting on her sorrow
+
+Shot 3 · 310.6s + 5.0s
+
+close-up of her hand brushing against the water, feeling its coldness
+
+Scene 9
+s9
+Depicts rising despair and a flood of memories overwhelming her.
+Shot 1 · 316.0s + 6.0s
+
+medium shot of her looking up at the sky, searching for answers
+
+Shot 2 · 322.3s + 5.0s
+
+close-up of her tear-streaked face, reflecting her inner turmoil
+
+Shot 3 · 327.7s + 5.0s
+
+wide shot of the woman collapsing to her knees in the field
+
+Shot 4 · 332.8s + 5.0s
+
+medium shot of her clutching her heart, overwhelmed by emotion
+
+Scene 10
+s10
+Conveys a sense of resigned acceptance amidst the sorrow.
+Shot 1 · 337.7s + 8.0s
+
+wide shot of the woman walking away from the camera, silhouetted against the sunset
+
+Shot 2 · 345.7s + 3.0s
+
+close-up of her hands touching the wall, feeling its roughness
+
+Shot 3 · 349.1s + 4.0s
+
+medium shot of her looking back at her home with a pained expression
+
+Shot 4 · 352.6s + 3.0s
+
+wide shot of the sky filled with dark clouds, reflecting her mood
+
+Shot 5 · 356.0s + 4.0s
+
+close-up of her face illuminated by moonlight, showing her sorrow
+
+Shot 6 · 359.5s + 3.0s
+
+medium shot of her reaching into the well, letting go of a flower
+
+Shot 7 · 362.9s + 2.0s
+
+close-up of her hand resting on the well's edge, reflecting her longing
+
+Underlying Shot List
+— the timed shot list is built after the Creative Brief is approved.
+No shots yet — the timed shot list is built by the V2 Timeline Builder once you approve the Creative Brief.
+
+Approve or regenerate the Creative Brief to produce the shot list.
+
+Storyboard = possibilities. Next, the Creative Brief locks ONE direction per scene from the realizations above and parks for your review.
