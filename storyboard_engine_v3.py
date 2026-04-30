@@ -88,7 +88,7 @@ _MAX_RETRIES_PER_CALL = 0   # repair pass handles known issues; no retry needed
 # ── Duration rules ───────────────────────────────────────────────────────
 _MIN_SHOT_DURATION = 2
 _MAX_SHOT_DURATION = 15
-_MULTISHOT_THRESHOLD = 8    # shots > 8s become multishot
+_MULTISHOT_THRESHOLD = 12   # shots > 12s become multishot (lyric-aligned shots stay shorter)
 
 # ── Enum sets (mirrors v2 for scene-shape compatibility) ─────────────────
 _NARRATIVE_PHASES = {"intro", "build", "peak", "breakdown", "resolution"}
@@ -161,11 +161,28 @@ def _format_musical_map(audio_data: Dict[str, Any],
     )
 
 
+_CHORUS_EVOLUTION_HINTS = {
+    2: "chorus repeat 2 — use a DIFFERENT visual angle from the 1st occurrence",
+    3: "chorus repeat 3 — deepen the emotional arc, more intimate or abstract",
+    4: "chorus repeat 4 — move toward resolution or final symbolic image",
+}
+
+
 def _format_timed_lyrics(lyrics_timed: List[Dict[str, Any]],
                          max_lines: int = 80) -> str:
-    """Compact timed lyric block: 'idx [start–end] text'."""
+    """Compact timed lyric block with chorus-repeat annotations.
+
+    Format per line:
+        N. [start–end] text
+        N. [start–end] text  ← chorus repeat 2 — use a DIFFERENT visual angle
+    Repeated lyric text (same string, normalised) is detected and annotated so
+    the LLM knows to vary the visual direction for each chorus occurrence.
+    """
     if not lyrics_timed:
         return "  (no timed lyrics available)"
+
+    # Build occurrence counter keyed on normalised text
+    seen: dict = {}   # normalised_text -> occurrence count so far
     lines: List[str] = []
     for i, ly in enumerate(lyrics_timed[:max_lines]):
         if not isinstance(ly, dict):
@@ -176,7 +193,20 @@ def _format_timed_lyrics(lyrics_timed: List[Dict[str, Any]],
         except (TypeError, ValueError):
             s, e = 0.0, 0.0
         text = (ly.get("text") or ly.get("line") or "").strip()
-        lines.append(f"  {i + 1}. [{s:.2f}–{e:.2f}] {text[:120]}")
+        key  = text.lower().strip()
+
+        seen[key] = seen.get(key, 0) + 1
+        occurrence = seen[key]
+
+        base = f"  {i + 1}. [{s:.2f}–{e:.2f}] {text[:120]}"
+        if occurrence >= 2:
+            hint = _CHORUS_EVOLUTION_HINTS.get(
+                occurrence,
+                f"chorus repeat {occurrence} — evolve toward resolution",
+            )
+            base = f"{base}  ← {hint}"
+        lines.append(base)
+
     if len(lyrics_timed) > max_lines:
         lines.append(f"  … (+{len(lyrics_timed) - max_lines} more lines)")
     return "\n".join(lines)
@@ -509,26 +539,48 @@ async def _run_call1(client: AsyncOpenAI, audio_data, input_structure,
 def _call2_system_prompt() -> str:
     return (
         "You are the STORYBOARD DIRECTOR for Qaivid — Call 2 of 3.\n\n"
-        "ROLE: Take the scene plan from Call 1 and break each scene's time "
-        "window into SHOTS. Every shot has a precise start_time, end_time, "
-        "duration, and a one-line action_intent.\n\n"
-        "RULES:\n"
-        f"1. Each shot duration MUST be between {_MIN_SHOT_DURATION} and "
-        f"{_MAX_SHOT_DURATION} seconds (inclusive).\n"
+        "ROLE: Break each scene's time window into SHOTS. Every shot has a "
+        "precise start_time, end_time, duration, and a one-line action_intent.\n\n"
+
+        "━━ LYRIC ALIGNMENT — PRIMARY STRUCTURAL RULE ━━\n"
+        "The TIMED LYRICS provided in the user prompt are your primary timing "
+        "guide. A new lyric phrase is a strong signal to cut to a new shot.\n"
+        "• Align shot start/end boundaries to lyric phrase boundaries wherever "
+        "  possible (snap within 0.5 s of a lyric start or end).\n"
+        "• You may GROUP two or three adjacent lyric lines into a SINGLE shot "
+        "  when they form one coherent visual moment (e.g. a couplet, an "
+        "  emotional phrase that breathes as a unit). Do NOT hardcode one "
+        "  line = one shot.\n"
+        "• Do NOT stretch a single shot across many distinct lyric phrases — "
+        "  if three different ideas are being sung, they deserve three cuts.\n"
+        "• Aim for shots of 4–10 s in lyric sections. Shots under 3 s feel "
+        "  like a strobe; shots over 12 s make the video feel static.\n\n"
+
+        "━━ CHORUS EVOLUTION — MANDATORY ━━\n"
+        "Lyric lines annotated with '← chorus repeat N' in the lyrics block "
+        "MUST receive a DIFFERENT action_intent from every prior occurrence "
+        "of that same line. Same emotional theme — different subject, framing, "
+        "or visual angle. Never reuse the same shot idea for a repeated line.\n"
+        "Suggested arc across four chorus hits:\n"
+        "  1st: wide establishing shot (introduce the emotion)\n"
+        "  2nd: intimate close-up (intensify)\n"
+        "  3rd: symbolic or abstract image (deepen)\n"
+        "  4th: silhouette / resolution image (conclude)\n\n"
+
+        "━━ INSTRUMENTAL SECTIONS ━━\n"
+        "When no lyric is active, create atmospheric shots that establish "
+        "world / character / mood. These may run up to 12 s. Do NOT write "
+        "'no action' — every shot must describe a specific cinematic action.\n\n"
+
+        "━━ HARD CONSTRAINTS ━━\n"
+        f"1. Each shot duration ∈ [{_MIN_SHOT_DURATION}, {_MAX_SHOT_DURATION}] seconds (inclusive).\n"
         "2. Within EACH scene, shots tile that scene's [time_window_start, "
-        "   time_window_end] window with NO gaps and NO overlaps.\n"
-        "3. Across all scenes, shots tile [0, audio_duration].\n"
-        "4. Shot count per scene is YOUR creative decision based on "
-        "   narrative density. A peak/chorus needs more rapid shots; an "
-        "   introspective bridge can use fewer, longer shots. Do NOT pad.\n"
-        "5. Each shot's action_intent is ONE concrete cinematic action "
-        "   (verb-driven sentence). Shots within the same scene MUST have "
-        "   distinct action_intents — do not repeat.\n"
-        "6. Use the timed lyrics to align shot boundaries near lyric line "
-        "   starts when possible (snap within 0.5s).\n"
-        "7. Pre-lyric instrumental shots get cinematic action_intents that "
-        "   establish world / character / mood — not 'no action'.\n"
-        "8. Shot IDs are sequential across the entire video: shot_1, shot_2, ...\n\n"
+        "   time_window_end] with NO gaps and NO overlaps.\n"
+        "3. Across all scenes, shots tile [0, audio_duration] exactly.\n"
+        "4. Every action_intent is ONE concrete, verb-driven cinematic sentence. "
+        "   NEVER restate or paraphrase the scene's purpose — describe a "
+        "   specific physical or visual action.\n"
+        "5. Shot IDs are sequential across the entire video: shot_1, shot_2, …\n\n"
         "Return strict JSON. No prose outside the JSON object."
     )
 
