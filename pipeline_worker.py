@@ -4497,6 +4497,25 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                 "(non-fatal)", project_id,
             )
 
+        # Clear the _regenerating flag so future queued states don't
+        # accidentally render the brief page.
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE projects
+                   SET context_packet = jsonb_set(
+                           context_packet,
+                           '{creative_brief}',
+                           (context_packet->'creative_brief') - '_regenerating'
+                       ),
+                       updated_at = NOW()
+                 WHERE id = %s
+                   AND context_packet->'creative_brief' ? '_regenerating'
+                """,
+                (project_id,),
+            )
+            conn.commit()
+
         _set_status(project_id, "awaiting_review",
                     {"stage": "brief",
                      "label": (f"Creative Brief ready ({len(scene_briefs)} scenes "

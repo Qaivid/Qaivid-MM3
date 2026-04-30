@@ -1300,6 +1300,13 @@ def project_detail(project_id: str):
     project["_viewing_stage"] = stage
     project["_is_review_only"] = (stage != actual_stage)
 
+    # If queued/running specifically because the user regenerated the brief,
+    # render the brief review page with a spinner rather than the generic running screen.
+    _cp_q = project.get("context_packet") or {}
+    _cb_q = _cp_q.get("creative_brief") or {}
+    if status in ("running", "queued") and _cb_q.get("_regenerating"):
+        return render_template("stage_creative_brief.html", project=project, regenerating=True)
+
     # Running or queued — show spinner screen that auto-reloads
     if status in ("running", "queued") or stage.startswith("running_"):
         return render_template("stage_running.html", project=project)
@@ -2895,6 +2902,7 @@ def regenerate_brief(project_id: str):
     cb.pop("scenes", None)
     cb.pop("variants", None)
     cb.pop("_pending_overrides", None)
+    cb["_regenerating"] = True
     cp["creative_brief"] = cb
 
     # Atomically flip to queued — prevents double-submission and mirrors

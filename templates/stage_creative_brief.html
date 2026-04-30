@@ -84,6 +84,38 @@
 {% set cb = cp.creative_brief or {} %}
 {% set scenes = cb.scenes or [] %}
 
+{% if regenerating %}
+<style>
+.brief-regen-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(10,10,18,.82);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 1.4rem;
+}
+.brief-regen-spinner {
+  width: 52px; height: 52px;
+  border: 4px solid rgba(255,177,66,.2);
+  border-top-color: #ffb142;
+  border-radius: 50%;
+  animation: brief-spin 0.9s linear infinite;
+}
+@keyframes brief-spin { to { transform: rotate(360deg); } }
+.brief-regen-label {
+  color: #ffb142; font-size: 1.1rem; font-weight: 600; letter-spacing: .02em;
+}
+.brief-regen-hint {
+  color: #9da0aa; font-size: .85rem;
+}
+</style>
+<div class="brief-regen-overlay" role="status" aria-live="polite">
+  <div class="brief-regen-spinner"></div>
+  <p class="brief-regen-label">Regenerating…</p>
+  <p class="brief-regen-hint">Generating a fresh set of creative directions. This usually takes under a minute.</p>
+</div>
+<script>setTimeout(() => location.reload(), 4000);</script>
+{% endif %}
+
 <div class="stage-wrap">
     {% include '_stage_header.html' %}
 
