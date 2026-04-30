@@ -95,52 +95,21 @@ class VisualStoryboardEngine:
     # FRAMING LOOKUP TABLES
     # =========================================================================
 
-    # ── BACKWARD-COMPAT FRAMING TABLES ─────────────────────────────────────
-    # These rotation tables are FALLBACK-ONLY in MM3.1.
+    # ── FALLBACK FRAMING DICT ───────────────────────────────────────────────
+    # Single canonical fallback string per expression mode.
+    # Used ONLY when no shot_event is present (test stubs, legacy projects,
+    # or imports from pre-MM3.1 pipeline runs).
     # The primary framing path is beat/event-driven:
     #   shot_event.camera_motivation → frame_directive (sole directive when set)
-    # These tables are only used when no shot_event is present (test stubs,
-    # legacy projects, or imports from pre-MM3.1 pipeline runs).
     # Do NOT add new production framing logic here; extend ACTION_TO_RIG /
     # CAMERA_PLAN_TO_RIG in cinematography_engine.py instead.
-    _FACE_FRAMES = (
-        "extreme close-up on eyes and brow, shallow depth of field",
-        "medium close-up, face and one shoulder, slight negative space",
-        "tight facial framing showing tear-line on cheek",
-        "side profile, chin slightly down, gaze distant",
-        "two-thirds face, downward gaze, hands partially in frame",
-        "soft pull-focus: face sharp, blurred cultural background behind",
-        "near-profile with leading lines of doorframe or window visible",
-    )
-
-    _BODY_FRAMES = (
-        "medium two-thirds shot, hands visible and clasped in lap",
-        "medium shot from behind, figure facing away into open space",
-        "low-angle medium: figure seated, ground detail visible",
-        "over-the-shoulder toward empty doorway or open field",
-        "hands-only framing: knuckles, fabric edge, jewellery detail",
-        "wide medium: figure small against traditional architecture",
-        "medium shot, figure slowly turning away from camera",
-        "three-quarter back view, shoulders slightly bowed",
-    )
-
-    _ENVIRONMENT_FRAMES = (
-        "wide establishing shot: empty space, late afternoon slant light",
-        "medium landscape, natural background, foreground texture",
-        "tight detail of architectural element: carved threshold, jali screen",
-        "low-angle looking up through roof opening or canopy at open sky",
-        "slow track through corridor, ambient environmental motion",
-        "medium of empty domestic space: simple furniture, open window",
-    )
-
-    _SYMBOLIC_FRAMES = (
-        "extreme close-up on the symbolic object, background dissolved",
-        "medium poetic composition: object in natural cultural context",
-        "wide symbolic scene, human figure small or absent",
-        "split-light composition: shadow and illuminated surface",
-        "detail within environment: motif isolated, other elements blurred",
-        "overhead or Dutch-angle symbolic composition, culturally grounded",
-    )
+    _FALLBACK_FRAMES: Dict[str, str] = {
+        "face":        "medium close-up, face and one shoulder, slight negative space",
+        "body":        "medium two-thirds shot, hands visible and clasped in lap",
+        "environment": "wide establishing shot: empty space, late afternoon slant light",
+        "symbolic":    "medium poetic composition: object in natural cultural context",
+        "macro":       "medium close-up, face and one shoulder, slight negative space",
+    }
 
     # Framing index → framing_bias value (spec: 0,2,4→"close"; 1,3→"medium_close"; 5,6→"medium")
     _FACE_FRAMING_BIAS = ("close", "medium_close", "close", "medium_close", "close", "medium", "medium")
@@ -178,92 +147,24 @@ class VisualStoryboardEngine:
     # BODY LANGUAGE LOOKUP
     # =========================================================================
 
-    _EMOTIONAL_BODY_LANGUAGE: Dict[str, List[str]] = {
-        "tears": [
-            "hands lifting slowly to wipe tears from cheek, shoulders forward",
-            "fingers pressed lightly to the corner of one eye, head bowed",
-            "both hands drop to lap as tears fall unchecked, gaze downward",
-        ],
-        "despair": [
-            "head slightly bowed, hands pressed flat to thighs, weight inward",
-            "arms folded loosely across chest, chin toward sternum, body folded",
-            "palms turned upward in lap, shoulders collapsed, stillness held",
-        ],
-        "abandoned": [
-            "shoulders turned away, gaze toward empty space off-frame",
-            "one arm wraps around own waist, head angled to the side",
-            "body retreated into itself, hands gathered at centre, eyes averted",
-        ],
-        "accusation": [
-            "chin slightly raised, hands tightening in lap",
-            "one hand half-extended then pulled back, jaw set, gaze direct",
-            "spine straightened, hands gripping own wrists, breath held",
-        ],
-        "longing": [
-            "one hand reaching forward slightly, fingers open",
-            "both hands rest in lap, fingertips just touching, eyes soft and distant",
-            "body leans toward negative space, one shoulder tilted forward",
-        ],
-        "resignation": [
-            "seated stillness, hands in lap, eyelids heavy",
-            "slow exhale visible in the shoulders, hands turn palms-up and release",
-            "body settles backward, hands fall open, gaze drifts to floor",
-        ],
-        "unfulfilled": [
-            "fingers trace the hem of clothing slowly, eyes averted",
-            "thumb circles a ring or bracelet in slow repetition",
-            "hands rest open, then close gently on nothing, then open again",
-        ],
-        "separation": [
-            "back to camera, slight forward lean",
-            "one hand presses flat to chest, body angled away from frame centre",
-            "shoulders draw together as if bracing against cold, gaze off-frame",
-        ],
-        "regret": [
-            "hands folded, head down, weight in the body",
-            "one hand rises to lips briefly, then settles back in lap",
-            "fingers interlace and press together, brow gently furrowed, stillness",
-        ],
-        "neglect": [
-            "gaze fixed at a point off-frame, body utterly still",
-            "hands resting in lap, fingers barely touching, eyes vacant and soft",
-            "slight turn of the head toward absence, weight surrendered in the chair",
-        ],
-        "pain": [
-            "hand resting on chest, breath held, eyes averted",
-            "hand at sternum, slow inhale-exhale, body contracted slightly inward",
-            "both arms draw in, shoulders rise, gaze falls, stillness follows",
-        ],
-        "anger": [
-            "jaw set, hands gripping fabric, posture rigid",
-            "hands press flat to thighs, stillness masking tension underneath",
-            "one fist closes at side, spine straight, gaze steady and hard",
-        ],
-        "love": [
-            "gentle forward lean, hands open and relaxed in lap",
-            "one hand presses lightly over heart, soft smile held in stillness",
-            "body tilted toward warmth, fingers uncurled, breath slow and full",
-        ],
-        "grief": [
-            "shoulders curved inward, chin near chest, stillness",
-            "body folds slightly forward, hands cover face briefly then lower",
-            "arms wrap loosely around torso, rocking imperceptibly, eyes closed",
-        ],
-        "waiting": [
-            "one hand in lap, other at rest, eyes fixed mid-distance",
-            "both hands settled, fingers loose, gaze drifting toward a doorway or window",
-            "slight tension in the shoulders, hands still, periodic glance to one side",
-        ],
-        "betrayal": [
-            "body half-turned away, one hand raised then lowered",
-            "head turns slowly away, hand drops to lap, jaw tightens then releases",
-            "shoulders rotate inward, gaze falls, hands press together in the lap",
-        ],
-        "hope": [
-            "head tilted slightly upward, hands loosening their grip",
-            "body opens marginally, one hand uncurls, gaze lifts toward light",
-            "spine straightens quietly, hands release fabric, breath deepens",
-        ],
+    _EMOTIONAL_BODY_LANGUAGE: Dict[str, str] = {
+        "tears":       "hands lifting slowly to wipe tears from cheek, shoulders forward",
+        "despair":     "head slightly bowed, hands pressed flat to thighs, weight inward",
+        "abandoned":   "shoulders turned away, gaze toward empty space off-frame",
+        "accusation":  "chin slightly raised, hands tightening in lap",
+        "longing":     "one hand reaching forward slightly, fingers open",
+        "resignation": "seated stillness, hands in lap, eyelids heavy",
+        "unfulfilled": "fingers trace the hem of clothing slowly, eyes averted",
+        "separation":  "back to camera, slight forward lean",
+        "regret":      "hands folded, head down, weight in the body",
+        "neglect":     "gaze fixed at a point off-frame, body utterly still",
+        "pain":        "hand resting on chest, breath held, eyes averted",
+        "anger":       "jaw set, hands gripping fabric, posture rigid",
+        "love":        "gentle forward lean, hands open and relaxed in lap",
+        "grief":       "shoulders curved inward, chin near chest, stillness",
+        "waiting":     "one hand in lap, other at rest, eyes fixed mid-distance",
+        "betrayal":    "body half-turned away, one hand raised then lowered",
+        "hope":        "head tilted slightly upward, hands loosening their grip",
     }
 
     # =========================================================================
@@ -1232,32 +1133,15 @@ class VisualStoryboardEngine:
     # =========================================================================
 
     def _mode_table_len(self, mode: str) -> int:
-        tables = {
-            "face": self._FACE_FRAMES,
-            "body": self._BODY_FRAMES,
-            "environment": self._ENVIRONMENT_FRAMES,
-            "symbolic": self._SYMBOLIC_FRAMES,
-            "macro": self._FACE_FRAMES,
-        }
-        return len(tables.get(mode, self._ENVIRONMENT_FRAMES))
+        return len(self._MOTION_TEMPLATES.get(mode, self._MOTION_TEMPLATES["environment"]))
 
     def _pick_frame(self, mode: str) -> tuple:
-        """Return (frame_directive_string, frame_index) and advance the counter."""
-        if mode == "face":
-            table = self._FACE_FRAMES
-        elif mode == "body":
-            table = self._BODY_FRAMES
-        elif mode == "symbolic":
-            table = self._SYMBOLIC_FRAMES
-        elif mode == "macro":
-            table = self._FACE_FRAMES
-        else:
-            table = self._ENVIRONMENT_FRAMES
-            mode = "environment"
-
-        idx = self._frame_counters.get(mode, 0) % len(table)
-        self._frame_counters[mode] = idx + 1
-        return table[idx], idx
+        """Return (fallback_frame_string, frame_index) and advance the counter."""
+        effective_mode = mode if mode in self._FALLBACK_FRAMES else "environment"
+        frame_str = self._FALLBACK_FRAMES[effective_mode]
+        idx = self._frame_counters.get(effective_mode, 0)
+        self._frame_counters[effective_mode] = idx + 1
+        return frame_str, idx
 
     def _derive_framing_bias(self, mode: str, idx: int) -> str:
         if mode == "face":
@@ -1295,8 +1179,6 @@ class VisualStoryboardEngine:
             shot.get("meaning", ""),
         ]).lower()
 
-        # Collect ALL matching keywords so multiple emotional cues contribute
-        # their alternatives to the description pool.
         matched_keys = [k for k in self._EMOTIONAL_BODY_LANGUAGE if k in text_blob]
 
         if not matched_keys:
@@ -1305,23 +1187,18 @@ class VisualStoryboardEngine:
             fallback_idx = shot.get("line_index", 1) % len(self._BODY_LANGUAGE_FALLBACKS)
             return self._BODY_LANGUAGE_FALLBACKS[fallback_idx]
 
-        # Build a flat pool of all alternative descriptions for every matched keyword.
-        pool: List[str] = []
-        for k in matched_keys:
-            pool.extend(self._EMOTIONAL_BODY_LANGUAGE[k])
-
         current_key_set = frozenset(matched_keys)
 
         if current_key_set == self._body_lang_last_keys:
-            # Same emotional signature as the previous body shot — advance the
-            # cycle so consecutive shots never repeat the same directive.
+            # Same emotional signature as the previous body shot — cycle through
+            # matched keys to avoid repeating the same directive consecutively.
             self._body_lang_cycle_idx += 1
         else:
-            # Emotional signature changed; start a fresh cycle from index 0.
             self._body_lang_last_keys = current_key_set
             self._body_lang_cycle_idx = 0
 
-        return pool[self._body_lang_cycle_idx % len(pool)]
+        key = matched_keys[self._body_lang_cycle_idx % len(matched_keys)]
+        return self._EMOTIONAL_BODY_LANGUAGE[key]
 
     # =========================================================================
     # MOTION PROMPT BUILDER
