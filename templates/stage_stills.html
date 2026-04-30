@@ -419,6 +419,30 @@
 .ref-mini { display: flex; flex-direction: column; gap: 4px; }
 .ref-mini-label { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: .04em; }
 .ref-mini img { height: 52px; width: auto; border-radius: 6px; border: 1px solid #2a2a3a; object-fit: cover; }
+
+/* scene frame strip — location + time of day (mirrors storyboard page) */
+.sc-scene-frame {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: .25rem .45rem;
+    font-size: .78rem;
+    color: #9cb8d8;
+    padding: .3rem .75rem .25rem;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    background: rgba(100,160,220,.06);
+    margin-bottom: 2px;
+}
+.sc-scene-frame-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .68rem;
+    color: #6a9fc0;
+}
+.sc-scene-frame-name { font-weight: 600; color: #b8d5ee; }
+.sc-scene-frame-sep  { color: #5a7a8a; }
+.sc-scene-frame-loc  { color: #9cb8d8; font-style: italic; }
 </style>
 
 <script>
@@ -445,6 +469,7 @@
     startTime:      {{ (shot.start_time or 0) | tojson }},
     duration:       {{ (shot.duration or 0) | tojson }},
     source:         {{ (shot.source or '') | tojson }},
+    sceneFrame:     {{ ((shot.environment_profile or {}).get('scene_frame') or {}) | tojson }},
   };
   {% endfor %}
 
@@ -523,6 +548,22 @@
       actionHtml += `<button class="sc-op-btn" id="sc-op-btn-${idx}" onclick="ssOutpaintOne(${idx})">${opIcon} ${ASPECT}</button>`;
     }
 
+    // Build scene frame strip if location or time_of_day is present
+    const sf = shot.sceneFrame || {};
+    const sfLoc = (sf.location || '').trim();
+    const sfTime = (sf.time_of_day || '').trim();
+    const sfName = (sf.scene_name || '').trim();
+    let sceneFrameHtml = '';
+    if (sfLoc || sfTime) {
+      const locText = sfLoc && sfTime ? `${escHtml(sfLoc)}, ${escHtml(sfTime)}`
+                    : sfLoc ? escHtml(sfLoc) : escHtml(sfTime);
+      sceneFrameHtml = `<div class="sc-scene-frame">
+        <span class="sc-scene-frame-label">Scene</span>
+        ${sfName ? `<span class="sc-scene-frame-name">${escHtml(sfName)}</span><span class="sc-scene-frame-sep"> — </span>` : ''}
+        <span class="sc-scene-frame-loc">${locText}</span>
+      </div>`;
+    }
+
     detail.innerHTML = `
       <div class="sc-det-inner">
         <div class="sc-det-header">
@@ -534,6 +575,7 @@
             ${shot.source === 'uploaded' ? ' · <span style="color:#c8f135;">uploaded</span>' : ''}
           </span>
         </div>
+        ${sceneFrameHtml}
 
         ${imgUrl
           ? `<div class="sc-det-img-wrap"><img src="${imgUrl}" alt="Shot ${idx}" class="sc-det-img" id="sc-img-${idx}">${wanBadgeHtml}</div>`

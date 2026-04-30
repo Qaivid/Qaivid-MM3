@@ -754,6 +754,30 @@
 .sc-modal h3 { margin: 0 0 10px; font-size: 16px; color: #ff9f43; }
 .sc-modal p  { color: #9aa6b2; font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
 .sc-modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* scene frame strip — location + time of day (mirrors storyboard page) */
+.sc-scene-frame {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: .25rem .45rem;
+    font-size: .78rem;
+    color: #9cb8d8;
+    padding: .3rem .75rem .25rem;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    background: rgba(100,160,220,.06);
+    margin-bottom: 2px;
+}
+.sc-scene-frame-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .68rem;
+    color: #6a9fc0;
+}
+.sc-scene-frame-name { font-weight: 600; color: #b8d5ee; }
+.sc-scene-frame-sep  { color: #5a7a8a; }
+.sc-scene-frame-loc  { color: #9cb8d8; font-style: italic; }
 </style>
 
 <script>
@@ -781,6 +805,7 @@
     startTime:      {{ (shot.start_time or 0) | tojson }},
     duration:       {{ (shot.duration or 0) | tojson }},
     source:         {{ (shot.source or '') | tojson }},
+    sceneFrame:     {{ ((shot.environment_profile or {}).get('scene_frame') or {}) | tojson }},
   };
   {% endfor %}
 
@@ -872,6 +897,22 @@
       </form>
     `;
 
+    // Build scene frame strip if location or time_of_day is present
+    const sf = shot.sceneFrame || {};
+    const sfLoc = (sf.location || '').trim();
+    const sfTime = (sf.time_of_day || '').trim();
+    const sfName = (sf.scene_name || '').trim();
+    let sceneFrameHtml = '';
+    if (sfLoc || sfTime) {
+      const locText = sfLoc && sfTime ? `${escHtml(sfLoc)}, ${escHtml(sfTime)}`
+                    : sfLoc ? escHtml(sfLoc) : escHtml(sfTime);
+      sceneFrameHtml = `<div class="sc-scene-frame">
+        <span class="sc-scene-frame-label">Scene</span>
+        ${sfName ? `<span class="sc-scene-frame-name">${escHtml(sfName)}</span><span class="sc-scene-frame-sep"> — </span>` : ''}
+        <span class="sc-scene-frame-loc">${locText}</span>
+      </div>`;
+    }
+
     detail.innerHTML = `
       <div class="sc-det-inner">
 
@@ -885,6 +926,7 @@
             ${shot.source === 'uploaded' ? ' · <span style="color:#c8f135;">uploaded</span>' : ''}
           </span>
         </div>
+        ${sceneFrameHtml}
 
         <!-- Image preview -->
         ${imgUrl
