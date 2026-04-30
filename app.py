@@ -2259,6 +2259,76 @@ def advance_stage_2(project_id: str):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
+@app.route("/project/<project_id>/advance/2b", methods=["POST"])
+@login_required
+def advance_stage_2b(project_id: str):
+    """WHY-panel dialogue submission — apply accept/override/reject decisions
+    for each motivation field and persist the results to the context_packet.
+
+    For each motivation key (inciting_cause, underlying_desire, stakes, obstacle)
+    the form may submit a why_action_{key} value:
+      - ``"accept"``   — keep the existing locked value unchanged.
+      - ``"override"`` — replace the locked value with the text from
+                         ``motivation_{key}``.
+      - ``"reject"``   — clear the locked value so the field is no longer
+                         flagged as resolved.
+
+    If a ``why_action_{key}`` field is absent entirely (e.g. an older client
+    or a partial form post), the existing lock for that field is left untouched
+    and the WHY panel loop skips it entirely.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    cp = dict(project.get("context_packet") or {})
+    motivation = dict(cp.get("motivation") or {})
+    locked = dict(cp.get("locked_assumptions") or {})
+    _why_keys = ("inciting_cause", "underlying_desire", "stakes", "obstacle")
+    _changed = False
+
+    for key in _why_keys:
+        action = request.form.get(f"why_action_{key}")
+        if action is None:
+            # Key absent — leave the existing lock for this field untouched.
+            continue
+        action = action.strip().lower()
+        lock_key = f"motivation_{key}"
+        if action == "override":
+            val = (request.form.get(f"motivation_{key}") or "").strip()
+            if val:
+                motivation[key] = val
+                locked[lock_key] = val
+                _changed = True
+        elif action == "reject":
+            motivation.pop(key, None)
+            locked.pop(lock_key, None)
+            _changed = True
+        # "accept" → no change; the existing lock survives as-is.
+
+    if _changed:
+        try:
+            _prev_conf = float(motivation.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            _prev_conf = 0.0
+        motivation["confidence"] = max(_prev_conf, 0.9)
+        cp["motivation"] = motivation
+        scores = dict(cp.get("confidence_scores") or {})
+        scores["motivation"] = motivation["confidence"]
+        cp["confidence_scores"] = scores
+
+    cp["locked_assumptions"] = locked
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET context_packet=%s, updated_at=NOW() WHERE id=%s",
+            (Json(cp), project_id),
+        )
+        conn.commit()
+
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
 @app.route("/project/<project_id>/advance/narrative", methods=["POST"])
 @login_required
 def advance_narrative(project_id: str):
