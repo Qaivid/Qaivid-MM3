@@ -2919,6 +2919,62 @@ def regenerate_brief(project_id: str):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
+@app.route("/project/<project_id>/regenerate_storyboard", methods=["POST"])
+@login_required
+def regenerate_storyboard(project_id: str):
+    """Re-run storyboard generation (Stage 5) in isolation using the existing
+    brain packets — no need to re-run context, narrative, style, or brief.
+
+    Allowed only when the project is parked at storyboard_review with
+    awaiting_review status.  Atomically flips to queued to prevent double-
+    submission, then submits _stage2_job via the thread pool.  The job parks
+    back at storyboard_review when done.
+    """
+    project = _get_project(project_id, current_user()["id"])
+    if not project:
+        abort(404)
+
+    if project.get("stage") != "storyboard_review" or project.get("status") != "awaiting_review":
+        flash("Cannot regenerate the storyboard from the current project state.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    # Atomically flip to queued — mirrors the pattern used by regenerate_brief.
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE projects SET stage=%s, status=%s, error=NULL, updated_at=NOW() "
+            " WHERE id=%s "
+            "   AND stage='storyboard_review' "
+            "   AND status='awaiting_review'",
+            ("queued", "queued", project_id),
+        )
+        if cur.rowcount != 1:
+            flash("Project state changed — please refresh and try again.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+        conn.commit()
+
+    # Build overrides from brain — same pattern as advance_stage_2.
+    try:
+        with db() as conn:
+            _sbrain = ProjectBrain.load(project_id, conn)
+        _icp = _sbrain.read("context_packet") or {}
+        _isp = _sbrain.read("style_packet") or {}
+    except Exception:
+        _icp = {}
+        _isp = {}
+    _speaker = (_icp.get("speaker") or {}) if isinstance(_icp.get("speaker"), dict) else {}
+    overrides = {
+        "speaker_name": _speaker.get("name"),
+        "location":     _icp.get("location_dna"),
+        "era":          ((_icp.get("world_assumptions") or {}).get("era")
+                         or _icp.get("era")),
+        "style_preset": _isp.get("preset") or "cinematic_natural",
+    }
+    name = project.get("name") or "Qaivid_Project"
+    kick_stage_2(project_id, name, overrides)
+    flash("Regenerating storyboard shots — the page will update when ready.", "info")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
 @app.route("/project/<project_id>/rerun_from/<target_stage>", methods=["POST"])
 @login_required
 def rerun_from_stage(project_id: str, target_stage: str):

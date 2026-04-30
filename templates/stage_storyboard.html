@@ -478,6 +478,17 @@
                 </p>
                 <button type="submit" class="btn-stage-primary">Lock Creative Brief →</button>
             </form>
+
+            <form method="post"
+                  action="{{ url_for('regenerate_storyboard', project_id=project.id) }}"
+                  style="margin-top:.75rem;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-secondary"
+                        onclick="return confirm('Re-run just the storyboard? This regenerates shot groupings and action intents using the latest engine — your Brief and Context are preserved. Existing shots will be replaced.')">
+                    Regenerate Storyboard
+                </button>
+            </form>
+
             {% include '_redo_panel.html' %}
             {% if not project._is_review_only %}
             <p class="muted sb-restyle-row" style="margin-top:1rem;">
