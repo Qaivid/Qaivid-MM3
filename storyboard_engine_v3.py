@@ -88,7 +88,7 @@ _MAX_RETRIES_PER_CALL = 0   # repair pass handles known issues; no retry needed
 # ── Duration rules ───────────────────────────────────────────────────────
 _MIN_SHOT_DURATION = 2
 _MAX_SHOT_DURATION = 15
-_MULTISHOT_THRESHOLD = 12   # shots > 12s become multishot (lyric-aligned shots stay shorter)
+_MULTISHOT_THRESHOLD = 8    # shots > 8s get actions[] decomposition — must match timeline_builder_v3._VIDEO_MAX_DURATION
 
 # ── Enum sets (mirrors v2 for scene-shape compatibility) ─────────────────
 _NARRATIVE_PHASES = {"intro", "build", "peak", "breakdown", "resolution"}
