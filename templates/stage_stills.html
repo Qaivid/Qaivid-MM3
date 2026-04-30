@@ -145,24 +145,27 @@
             </button>
           </div>
           {%- set _sf = (shot.environment_profile or {}).get('scene_frame') or {} -%}
-          {%- if _sf.location or _sf.time_of_day or _sf.scene_name -%}
-            {%- if _sf.location and _sf.time_of_day -%}
-              {%- set _sf_loctime = _sf.location ~ ', ' ~ _sf.time_of_day -%}
-            {%- elif _sf.location -%}
-              {%- set _sf_loctime = _sf.location -%}
-            {%- elif _sf.time_of_day -%}
-              {%- set _sf_loctime = _sf.time_of_day -%}
+          {%- set _sf_loc = ((_sf.location or '') | trim) -%}
+          {%- set _sf_tod = ((_sf.time_of_day or '') | trim) -%}
+          {%- set _sf_sn  = ((_sf.scene_name or '') | trim) -%}
+          {%- if _sf_loc or _sf_tod or _sf_sn -%}
+            {%- if _sf_loc and _sf_tod -%}
+              {%- set _sf_loctime = _sf_loc ~ ', ' ~ _sf_tod -%}
+            {%- elif _sf_loc -%}
+              {%- set _sf_loctime = _sf_loc -%}
+            {%- elif _sf_tod -%}
+              {%- set _sf_loctime = _sf_tod -%}
             {%- else -%}
               {%- set _sf_loctime = '' -%}
             {%- endif -%}
-            {%- if _sf.scene_name and _sf_loctime -%}
-              {%- set _sf_text = _sf.scene_name ~ ' — ' ~ _sf_loctime -%}
+            {%- if _sf_sn and _sf_loctime -%}
+              {%- set _sf_text = _sf_sn ~ ' — ' ~ _sf_loctime -%}
             {%- elif _sf_loctime -%}
               {%- set _sf_text = _sf_loctime -%}
             {%- else -%}
-              {%- set _sf_text = _sf.scene_name -%}
+              {%- set _sf_text = _sf_sn -%}
             {%- endif -%}
-          <div class="sc-strip-scene-label" title="{{ _sf_text | e }}">{{ _sf_text }}</div>
+          <div class="sc-strip-scene-label" title="{{ _sf_text | e }}">{{ _sf_text | e }}</div>
           {%- endif %}
         </div>
         {% endfor %}
