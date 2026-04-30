@@ -4303,35 +4303,27 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
         creative_brief_legacy.pop("_pending_overrides", None)
 
         if _sb_schema_version >= 3:
-            # Adapt v3 scene briefs (each scene has shots[]) to the v2-compatible
-            # scene list (chosen_direction + shot_directions) for the UI template.
+            # Adapt v3 scene briefs to the v2-compatible scene list for the UI.
+            # IMPORTANT: in v3 the scene-level brief already exposes
+            # chosen_direction, shot_directions, source_section, narrative_phase,
+            # selection_basis, scene_purpose, subject_focus, environment_type,
+            # character_presence, character_identity_hint, key_elements,
+            # emotional_state, emotional_intensity, lighting_condition,
+            # movement_type, motion_density, repetition_handling, motif_usage,
+            # continuity_hooks, variation_anchor — all on the SCENE, not the shot.
+            # We pass them through directly and only synthesise shot_directions
+            # from shots[] as a fallback when the brief omitted the mirror.
             _legacy_scenes = []
             for _sc in scene_briefs:
                 _shots = list(_sc.get("shots") or [])
-                _first = _shots[0] if _shots else {}
-                _legacy_scenes.append({
-                    "scene_id":              _sc.get("scene_id"),
-                    "scene_purpose":         _sc.get("purpose") or _sc.get("scene_purpose"),
-                    "chosen_direction":      _first.get("enriched_direction", ""),
-                    "shot_directions":       [_s.get("enriched_direction", "")
-                                              for _s in _shots],
-                    "subject_focus":         _first.get("subject_focus"),
-                    "environment_type":      _first.get("environment_type"),
-                    "character_presence":    _first.get("character_presence"),
-                    "key_elements":          _first.get("key_elements", []),
-                    "lighting_condition":    _first.get("lighting_condition"),
-                    "movement_type":         _first.get("movement_type"),
-                    "motion_density":        _first.get("motion_density"),
-                    "timeline_mode":         _first.get("timeline_mode"),
-                    "emotional_state":       _first.get("emotional_state"),
-                    "emotional_intensity":   _sc.get("emotional_intensity"),
-                    "motif_usage":           _sc.get("motif_usage", []),
-                    "character_identity_hint": _first.get("character_identity_hint"),
-                    "variation_anchor":      _sc.get("variation_anchor"),
-                    "continuity_hooks":      _sc.get("continuity_hooks"),
-                    "schema_version":        3,
-                    "_shot_count":           len(_shots),
-                })
+                _shot_dirs = list(_sc.get("shot_directions") or [])
+                if not _shot_dirs and _shots:
+                    _shot_dirs = [_s.get("enriched_direction", "") for _s in _shots]
+                _adapted = dict(_sc)              # passthrough scene-level fields
+                _adapted["shot_directions"] = _shot_dirs
+                _adapted["schema_version"]  = 3
+                _adapted["_shot_count"]     = len(_shots)
+                _legacy_scenes.append(_adapted)
             creative_brief_legacy["scenes"] = _legacy_scenes
         else:
             creative_brief_legacy["scenes"] = scene_briefs
