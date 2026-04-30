@@ -27,11 +27,11 @@ Call 2 — SHOTS WITHIN SCENES
     Constraints: shots tile [0, audio_end] with no gaps / overlaps; each
     shot's window is inside its parent scene's window; duration ∈ [2, 15].
 
-Call 3 — MULTISHOT EXPANSION (only on shots > 8s)
-    Input:  shots from Call 2 with duration > 8s
+Call 3 — MULTISHOT EXPANSION (only on shots > 12s)
+    Input:  shots from Call 2 with duration > 12s
     Output: per-shot actions[] of {order, duration, action_text}
-    Rule:   8 < d ≤ 10 → 2 sub-actions
-            10 < d ≤ 15 → 3+ sub-actions
+    Rule:   12 < d ≤ 13 → 2 sub-actions
+            13 < d ≤ 15 → 3+ sub-actions
             sum(sub-action durations) == shot duration
             All sub-actions share the same Frame 0 (same starting still),
             different actions, in continuity.
@@ -195,8 +195,13 @@ def _format_timed_lyrics(lyrics_timed: List[Dict[str, Any]],
         text = (ly.get("text") or ly.get("line") or "").strip()
         key  = text.lower().strip()
 
-        seen[key] = seen.get(key, 0) + 1
-        occurrence = seen[key]
+        # Only track and annotate non-empty lyric text; blank rows are
+        # instrumental gaps and must never be flagged as chorus repeats.
+        if key:
+            seen[key] = seen.get(key, 0) + 1
+            occurrence = seen[key]
+        else:
+            occurrence = 0
 
         base = f"  {i + 1}. [{s:.2f}–{e:.2f}] {text[:120]}"
         if occurrence >= 2:
@@ -1025,7 +1030,7 @@ async def _run_call2(client: AsyncOpenAI, scenes: List[Dict[str, Any]],
 
 
 # =====================================================================
-# CALL 3 — Multishot expansion (only on shots > 8s)
+# CALL 3 — Multishot expansion (only on shots > 12s)
 # =====================================================================
 def _call3_system_prompt() -> str:
     return (
