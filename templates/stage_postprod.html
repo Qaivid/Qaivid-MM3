@@ -387,6 +387,9 @@
             <label class="pp-ctrl-label">Background</label>
             <input type="color" class="pp-color" id="ctrl-sub-bg" value="#000000"
                    oninput="ppSubPreview(); ppConfigChange()">
+            <label class="pp-ctrl-label" style="margin-top:6px;">Bg Opacity <span class="pp-ctrl-val" id="val-sub-bg-opacity">50%</span></label>
+            <input type="range" class="pp-range" id="ctrl-sub-bg-opacity" min="0" max="100" step="5" value="50"
+                   oninput="ppRangeVal('sub-bg-opacity',this.value,'%'); ppSubPreview(); ppConfigChange()">
           </div>
         </div>
         <div class="pp-ctrl-group pp-two-col">
@@ -997,10 +1000,14 @@ body { overflow-y: auto !important; }
   animation: ppSubCaret .8s steps(1) infinite;
 }
 .pp-sub-anim-karaoke .pp-kar-word {
-  display: inline-block; opacity: .35; margin: 0 .12em;
-  transition: opacity .15s linear, color .15s linear;
+  display: inline-block; opacity: .45; margin: 0 .12em;
+  transition: opacity .12s linear, color .12s linear, text-shadow .12s linear;
 }
-.pp-sub-anim-karaoke .pp-kar-word.pp-kar-on { opacity: 1; }
+.pp-sub-anim-karaoke .pp-kar-word.pp-kar-on {
+  opacity: 1;
+  color: #ffd700;
+  text-shadow: 0 0 6px rgba(255,215,0,.5);
+}
 
 @keyframes ppSubFade        { from { opacity: 0 }                 to { opacity: 1 } }
 @keyframes ppSubSlideUp     { from { opacity: 0; transform: translateY(20px) }   to { opacity: 1; transform: translateY(0) } }
@@ -1523,15 +1530,22 @@ body { overflow-y: auto !important; }
 
   function ppBuildSubStyle() {
     return {
-      font:    document.getElementById('ctrl-sub-font')?.value    || 'Arial',
-      size:    document.getElementById('ctrl-sub-size')?.value    || 24,
-      color:   document.getElementById('ctrl-sub-color')?.value   || '#ffffff',
-      bg:      document.getElementById('ctrl-sub-bg')?.value      || '#000000',
-      outline: document.getElementById('ctrl-sub-outline')?.value || 1.5,
-      shadow:  document.getElementById('ctrl-sub-shadow')?.value  || 0,
-      yPct:    document.getElementById('ctrl-sub-y')?.value       || 90,
-      anim:    document.getElementById('ctrl-sub-anim')?.value    || 'none',
+      font:      document.getElementById('ctrl-sub-font')?.value      || 'Arial',
+      size:      document.getElementById('ctrl-sub-size')?.value      || 24,
+      color:     document.getElementById('ctrl-sub-color')?.value     || '#ffffff',
+      bg:        document.getElementById('ctrl-sub-bg')?.value        || '#000000',
+      bgOpacity: parseInt(document.getElementById('ctrl-sub-bg-opacity')?.value ?? '50'),
+      outline:   document.getElementById('ctrl-sub-outline')?.value   || 1.5,
+      shadow:    document.getElementById('ctrl-sub-shadow')?.value    || 0,
+      yPct:      document.getElementById('ctrl-sub-y')?.value         || 90,
+      anim:      document.getElementById('ctrl-sub-anim')?.value      || 'none',
     };
+  }
+
+  /* Convert bgOpacity (0-100) to 2-digit lowercase hex alpha for CSS 8-char hex colors */
+  function bgAlphaHex(opacity) {
+    return Math.round(Math.max(0, Math.min(100, opacity)) / 100 * 255)
+               .toString(16).padStart(2, '0');
   }
 
   /* List of every animation class — used to wipe stale state before re-applying */
@@ -1595,6 +1609,7 @@ body { overflow-y: auto !important; }
         if (i >= words.length) { clearInterval(el._ppAnimTimer); el._ppAnimTimer = null; return; }
         el.children[i++]?.classList.add('pp-kar-on');
       };
+      tick(); // highlight first word immediately without waiting stepMs
       el._ppAnimTimer = setInterval(tick, stepMs);
       return;
     }
@@ -1625,7 +1640,7 @@ body { overflow-y: auto !important; }
       text-shadow: ${s.outline}px ${s.outline}px 0 #000, -${s.outline}px ${s.outline}px 0 #000,
                    ${s.outline}px -${s.outline}px 0 #000, -${s.outline}px -${s.outline}px 0 #000,
                    0 ${s.shadow}px 4px rgba(0,0,0,.8);
-      background: ${s.bg}80; padding: 2px 8px; border-radius: 3px;
+      background: ${s.bg}${bgAlphaHex(s.bgOpacity ?? 50)}; padding: 2px 8px; border-radius: 3px;
       pointer-events:none; z-index:10; white-space:pre-line;
     `;
 
@@ -1636,7 +1651,7 @@ body { overflow-y: auto !important; }
     // silently fail to re-render (since text+anim haven't changed).
     const sig = [
       text || '', s.anim || 'none', s.font, s.size, s.color, s.bg,
-      s.outline, s.shadow, s.yPct
+      s.bgOpacity ?? 50, s.outline, s.shadow, s.yPct
     ].join('|');
     if (el.dataset.ppSubSig === sig) return;
     el.dataset.ppSubSig = sig;
@@ -1715,6 +1730,10 @@ body { overflow-y: auto !important; }
     // Subtitle colours (ASS → CSS hex)
     if (s.primary_colour) setVal('ctrl-sub-color', assToHex(s.primary_colour));
     if (s.back_colour)    setVal('ctrl-sub-bg',    assToHex(s.back_colour));
+    if (s.bg_opacity !== undefined) {
+      setVal('ctrl-sub-bg-opacity', s.bg_opacity);
+      ppRangeVal('sub-bg-opacity', s.bg_opacity, '%');
+    }
 
     // Subtitle animation
     if (s.animation) setVal('ctrl-sub-anim', s.animation);
@@ -1823,7 +1842,11 @@ body { overflow-y: auto !important; }
     s.margin_r   = parseInt(document.getElementById('ctrl-sub-marginr')?.value || 10);
     s.alignment  = parseInt(document.getElementById('ctrl-sub-align')?.value || 2);
     s.primary_colour = hexToAss(document.getElementById('ctrl-sub-color').value);
-    s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, 128);
+    const bgOpPct    = parseInt(document.getElementById('ctrl-sub-bg-opacity')?.value ?? '50');
+    s.bg_opacity     = bgOpPct;
+    // ASS alpha is inverted: 0 = opaque, 255 = transparent
+    const assAlpha   = Math.round((1 - bgOpPct / 100) * 255);
+    s.back_colour    = hexToAss(document.getElementById('ctrl-sub-bg').value, assAlpha);
     s.animation  = document.getElementById('ctrl-sub-anim')?.value || 'none';
     cfg.subtitle_style = s;
 
@@ -2694,7 +2717,7 @@ body { overflow-y: auto !important; }
       box.style.fontFamily  = s.font;
       box.style.fontSize    = s.size + 'px';
       box.style.color       = s.color;
-      box.style.background  = s.bg + '80';
+      box.style.background  = s.bg + bgAlphaHex(s.bgOpacity ?? 50);
       box.style.textShadow  = `${s.outline}px ${s.outline}px 0 #000`;
     }
   };
