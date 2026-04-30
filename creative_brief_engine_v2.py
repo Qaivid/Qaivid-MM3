@@ -108,7 +108,9 @@ def _system_prompt() -> str:
         "character presence, atmosphere — drawn from the narrative, context, "
         "and style packets. Preserve the storyboard's visual concept exactly; "
         "only add execution depth. Order must match the storyboard order. "
-        "chosen_direction = shot_directions[0] (the first enriched shot).\n"
+        "Set chosen_direction to the FULL TEXT of shot_directions[0] — copy "
+        "the actual string content, do NOT write '= shot_directions[0]' or any "
+        "reference notation.\n"
         "2. For EVERY scene, also generate the per-scene execution intent "
         "fields (scene_purpose, subject_focus, environment_type, character_"
         "presence/identity_hint, key_elements, emotional_state/intensity, "
@@ -291,7 +293,7 @@ def _user_prompt(
           '      "narrative_phase":        "intro|build|peak|breakdown|resolution",\n'
           '      "scene_purpose":          "the emotional purpose of this scene",\n'
           '      "shot_directions":        ["one enriched entry per valid_realization, same order — storyboard concept preserved, execution detail added"],\n'
-          '      "chosen_direction":       "= shot_directions[0] — the first enriched shot direction",\n'
+          '      "chosen_direction":       "copy the text of shot_directions[0] exactly here — the first enriched shot direction text",\n'
           '      "selection_basis":        "what execution context was added and why it serves the scene",\n'
           '      "variation_anchor":       "what stays consistent across re-runs (subject identity, motif, etc.)",\n'
           '      "subject_focus":          "character|environment|object|mixed",\n'
@@ -348,7 +350,7 @@ def _coerce_scene_brief(raw: Any, src_scene: Dict[str, Any], idx: int) -> Option
         shot_directions = [str(valid_realizations[0])[:500]]
 
     chosen = str(raw.get("chosen_direction") or "").strip()
-    if not chosen:
+    if not chosen or chosen.startswith("=") or chosen.lower().startswith("copy the text"):
         chosen = shot_directions[0] if shot_directions else ""
 
     hooks_in = raw.get("continuity_hooks") or {}

@@ -1,0 +1,205 @@
+One locked direction per scene
+The brief picked ONE realization per storyboard scene and added the execution intent the downstream stages need (subject focus, presence, environment type, lighting, motion, motifs, continuity). Approve to generate reference plates, or regenerate for a fresh selection.
+
+Scene s1
+intro
+intro
+intensity: low
+Purpose: Establish solitude and anticipatory sorrow.
+
+= shot_directions[0]
+
+Why this pick: The first shot captures the emotional depth of her solitude while establishing the vibrant landscape, anchoring the viewer's focus on her contemplative state.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: open fields
+Lighting: golden hour warmth
+Movement: static
+Motion density: low
+Timeline mode: present
+Emotional state: anticipatory sorrow
+Repetition: This scene remains consistent in its emotional tone, deepening the sorrow introduced here in future repetitions.
+Identity hint: a young woman lamenting her lost love
+Variation anchor: The motif of the dupatta remains consistent.
+Continuity: The same woman reflecting on her internal turmoil.
+Key elements:
+mustard fields
+dupatta
+soft breeze
+Motifs:
+Dupatta
+Scene s2
+verse1
+build
+intensity: medium
+Purpose: Intensify introspection and lament.
+
+= shot_directions[0]
+
+Why this pick: The first shot intensifies her emotional state by focusing on her eyes, revealing her sorrow and the context of her memories with the empty chair.
+
+Subject focus: mixed
+Character presence: intermittent
+Environment: courtyard
+Lighting: soft afternoon light
+Movement: static
+Motion density: medium
+Timeline mode: present
+Emotional state: introspective lament
+Repetition: This scene builds upon the prior emotional introduction, reflecting a deeper sense of introspection and sorrow.
+Identity hint: the same woman deepening her sense of loss
+Variation anchor: The motif of the empty chair remains present.
+Continuity: The same woman deepening her sense of loss.
+Key elements:
+empty chair
+sunlight
+courtyard
+Motifs:
+Empty Chair
+Scene s3
+chorus
+peak
+intensity: high
+Purpose: Express yearning and the weight of loss.
+
+= shot_directions[0]
+
+Why this pick: The first shot effectively encapsulates her emotional state of yearning, set against the beauty of the fields, highlighting the contrast between her inner and outer worlds.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: open fields
+Lighting: golden hour glow
+Movement: dynamic
+Motion density: medium
+Timeline mode: present
+Emotional state: yearning
+Repetition: This scene builds on the previous expressions of solitude, amplifying her yearning through movement and emotional intensity.
+Identity hint: the same woman evolving through her longing
+Variation anchor: The motif of mustard fields remains present.
+Continuity: The same woman evolving through her longing.
+Key elements:
+mustard fields
+vibrant flowers
+her figure
+Motifs:
+Mustard Fields
+Scene s4
+verse2
+build
+intensity: medium
+Purpose: Evoke reflective nostalgia.
+
+= shot_directions[0]
+
+Why this pick: The first shot establishes an intimate setting while highlighting her reflective state, inviting the viewer into her memories.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: interior
+Lighting: soft interior light
+Movement: static
+Motion density: low
+Timeline mode: memory
+Emotional state: reflective nostalgia
+Repetition: This scene introduces a reflective tone, contrasting with prior emotional expressions to deepen the narrative.
+Identity hint: the same woman reflecting on the past
+Variation anchor: No specific motif for this scene.
+Continuity: The same woman reflecting on the past.
+Key elements:
+window
+rustic haveli
+soft light
+Scene s5
+verse3
+peak
+intensity: high
+Purpose: Convey deepening grief and emotional turmoil.
+
+= shot_directions[0]
+
+Why this pick: The first shot effectively conveys her deep grief, using her physical connection to the dupatta as a metaphor for her emotional turmoil.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: open fields
+Lighting: golden hour softness
+Movement: static
+Motion density: medium
+Timeline mode: present
+Emotional state: deepening grief
+Repetition: This scene builds upon the prior emotional expressions, enhancing the intensity of her grief through physical gestures.
+Identity hint: the same woman, her grief intensifying
+Variation anchor: The motif of the dupatta remains present.
+Continuity: The same woman, her grief intensifying.
+Key elements:
+mustard field edge
+dupatta
+tears
+Motifs:
+Dupatta
+Scene s6
+bridge
+breakdown
+intensity: high
+Purpose: Intensify longing through fragmented memories.
+
+= shot_directions[0]
+
+Why this pick: The first shot captures the essence of her longing through visual fragmentation, highlighting the emotional contrast of her memories.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: mixed memories
+Lighting: varied, emotional intensity
+Movement: dynamic
+Motion density: high
+Timeline mode: present
+Emotional state: intensified longing
+Repetition: This scene deepens the emotional journey through rapid transitions, contrasting with earlier moments of stillness.
+Identity hint: the same woman revisiting shared experiences
+Variation anchor: No specific motif for this scene.
+Continuity: The same woman revisiting shared experiences.
+Key elements:
+photograph
+shared moments
+fragments of memory
+Scene s7
+chorus
+resolution
+intensity: medium
+Purpose: Resolve with resonant solitude and lingering grief.
+
+= shot_directions[0]
+
+Why this pick: The first shot encapsulates the emotional resolution of her journey, grounding her solitude in the beauty of the landscape.
+
+Subject focus: mixed
+Character presence: continuous
+Environment: open fields
+Lighting: soft, fading light
+Movement: static
+Motion density: low
+Timeline mode: present
+Emotional state: resonant solitude
+Repetition: This scene offers a resolution to her emotional journey while maintaining the depth of her solitude, echoing prior feelings.
+Identity hint: the same woman, akin to acceptance yet unresolved
+Variation anchor: The motif of mustard fields remains present.
+Continuity: The same woman, akin to acceptance yet unresolved.
+Key elements:
+mustard fields
+setting sun
+her silhouette
+Motifs:
+Mustard Fields
+Next we'll generate ONE face plate per character and ONE environment plate per location. Optionally upload a real photo for either to skip the AI plate.
+
+Optional speaker photo
+(skip the AI face plate)
+No file chosen
+Optional environment photo
+(skip the AI plate)
+No file chosen
+Approve brief & build Cast Bible →
+Want a different mix of directions? Regenerate brief →

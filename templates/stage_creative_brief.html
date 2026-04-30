@@ -119,7 +119,11 @@
                 <p class="brief-scene-purpose"><em>Purpose:</em> {{ s.scene_purpose }}</p>
                 {% endif %}
 
-                <p class="brief-scene-direction">{{ s.chosen_direction }}</p>
+                {%- set _cd = (s.chosen_direction or '') | string | trim -%}
+                {%- if not _cd or _cd.startswith('=') or _cd.lower().startswith('copy the text') -%}
+                  {%- set _cd = ((s.shot_directions or [None])[0] or '') | string | trim -%}
+                {%- endif -%}
+                {% if _cd %}<p class="brief-scene-direction">{{ _cd }}</p>{% endif %}
 
                 {% if s.selection_basis %}
                 <p class="brief-scene-basis">Why this pick: {{ s.selection_basis }}</p>
