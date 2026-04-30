@@ -35,8 +35,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BPM             = 120.0
 _DEFAULT_BEATS_PER_BAR   = 4
 _DEFAULT_MIN_DURATION    = 2.0
-_DEFAULT_MAX_DURATION    = 15.0
+_DEFAULT_MAX_DURATION    = 10.0
 _DEFAULT_PREFERRED_AVG   = 6.0
+_VIDEO_MAX_DURATION      = 8    # hard cap per video-model render limit (WAN/Kling)
 _DEFAULT_INTENSITY       = 0.5
 
 # ── Intensity mapping from brief emotional_intensity string ──────────────────
@@ -622,6 +623,8 @@ def build_timeline_from_brief(
     if any_lyric_anchor and raw_shots:
         for j in range(len(raw_shots) - 1):
             gap = raw_shots[j + 1]["start_time"] - raw_shots[j]["start_time"]
+            # j==0 may span a long pre-lyric intro — allow full gap so the
+            # video-duration splitter below can slice it into ≤8s segments.
             max_cap = max(max_dur, gap) if j == 0 else max_dur
             dur = int(max(int(min_dur), min(int(max_cap), round(gap))))
             raw_shots[j]["duration"]     = dur
@@ -654,6 +657,57 @@ def build_timeline_from_brief(
                 s["start_beat"] = round(ts / beat_dur)
                 s["bar_index"]  = int(ts // bar_dur) + 1
                 ts += snapped
+
+    # ── Video-duration splitter ────────────────────────────────────────────
+    # Any shot longer than _VIDEO_MAX_DURATION cannot be rendered by a video
+    # model (WAN, Kling, etc.).  Split those shots into equal segments, each
+    # getting its own chosen_direction from the cycled brief shot_directions so
+    # variety is maintained across the splits.
+    _scene_by_id: Dict[str, Any] = {
+        str(sc.get("scene_id") or ""): sc for sc in scenes
+    }
+    split_raw: List[Dict[str, Any]] = []
+    for _s in raw_shots:
+        if int(_s.get("duration") or 0) > _VIDEO_MAX_DURATION:
+            n_seg  = math.ceil(float(_s["duration"]) / _VIDEO_MAX_DURATION)
+            seg    = max(int(min_dur), int(_s["duration"]) // n_seg)
+            ts     = float(_s["start_time"])
+            _base  = int(_s.get("_shot_within_scene") or 0)
+            _sc    = _scene_by_id.get(str(_s.get("_v2_scene_id") or ""))
+            for k in range(n_seg):
+                _ns = dict(_s)
+                _ns["start_time"]        = round(ts, 3)
+                _ns["duration"]          = seg
+                _ns["end_time"]          = round(ts + seg, 3)
+                _ns["_shot_within_scene"] = _base + k
+                if _sc:
+                    _dir = _pick_shot_direction(_sc, _base + k)
+                    _ns["chosen_direction"]      = _dir
+                    _ns["_v2_chosen_direction"]  = _dir
+                    _ns["visual_prompt"] = (
+                        _compose_visual_prompt(_sc, _ns.get("lyric_text") or "", direction_override=_dir)
+                        + f" Motion scale: {_ns.get('motion_scale') or ''}."
+                        + f" Transition behavior: {_ns.get('transition') or ''}."
+                    )
+                split_raw.append(_ns)
+                ts += seg
+        else:
+            split_raw.append(_s)
+
+    if len(split_raw) != len(raw_shots):
+        logger.info(
+            "TimelineBuilderV2: video-duration splitter expanded %d shots → %d "
+            "(VIDEO_MAX=%ds)",
+            len(raw_shots), len(split_raw), _VIDEO_MAX_DURATION,
+        )
+
+    raw_shots = split_raw
+
+    # Renumber after any splits
+    for _i, _s in enumerate(raw_shots):
+        _s["timeline_index"] = _i + 1
+        _s["shot_index"]     = _i + 1
+        _s["shot_id"]        = f"shot_{_i + 1}"
 
     logger.info(
         "TimelineBuilderV2: built %d shots from %d brief scenes "
