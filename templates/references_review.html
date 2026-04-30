@@ -790,18 +790,18 @@ async function _refPoll() {
         const data = await resp.json();
         if (!data.ok) return;
 
-        let anyRendering = false;
+        let anyActive = false;  // true while any plate is still pending or rendering
 
         // Update character cards
         (data.characters || []).forEach(function(c) {
             _refApplyStatus('char', c.id, c.ref_status, c.ref_url);
-            if (c.ref_status === 'rendering') anyRendering = true;
+            if (c.ref_status === 'rendering' || c.ref_status === 'pending') anyActive = true;
         });
 
         // Update location cards
         (data.locations || []).forEach(function(l) {
             _refApplyStatus('loc', l.id, l.ref_status, l.ref_url);
-            if (l.ref_status === 'rendering') anyRendering = true;
+            if (l.ref_status === 'rendering' || l.ref_status === 'pending') anyActive = true;
         });
 
         // Update look dots
@@ -822,7 +822,7 @@ async function _refPoll() {
                 const spill = panel.querySelector('.ref-spill');
                 if (spill && lk.ref_status === 'ready') spill.textContent = '✓ Ready';
             }
-            if (lk.ref_status === 'rendering') anyRendering = true;
+            if (lk.ref_status === 'rendering' || lk.ref_status === 'pending') anyActive = true;
         });
 
         // Update progress label
@@ -835,8 +835,8 @@ async function _refPoll() {
             pendingEl.textContent = ' · ' + rem + ' pending';
         }
 
-        // Stop polling when everything is ready (and nothing is still rendering)
-        if (data.all_ready && !anyRendering) {
+        // Stop polling when everything is ready (nothing pending or rendering)
+        if (data.all_ready && !anyActive) {
             _refStopPolling();
             // Enable the approve button if it was disabled
             const approveBtn = document.querySelector('.btn-stage-primary[disabled]');
@@ -890,12 +890,13 @@ function _refApplyStatus(kind, id, status, refUrl) {
     }
 }
 
-/* ── Auto-start polling if any plate is in "rendering" state on load ─ */
+/* ── Auto-start polling if any plate is pending or rendering on load ─ */
 document.addEventListener('DOMContentLoaded', function() {
-    const hasRendering = document.querySelector(
-        '.ref-dot--rendering, .ref-spill--rendering, .ref-thumb-ph--rendering'
+    const hasActive = document.querySelector(
+        '.ref-dot--rendering, .ref-spill--rendering, .ref-thumb-ph--rendering,' +
+        '.ref-dot--pending,   .ref-spill--pending,   .ref-thumb-ph--pending'
     );
-    if (hasRendering) _refStartPolling();
+    if (hasActive) _refStartPolling();
 });
 
 /* ── Auto-upload on file select ─────────────────────────────────────── */
