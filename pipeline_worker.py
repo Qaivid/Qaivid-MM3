@@ -7023,10 +7023,10 @@ _POSTPROD_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qaivi
 _KB_MODES = {
     "zoom-in":    "zoompan=z='min(zoom+0.0015,1.3)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
     "zoom-out":   "zoompan=z='if(eq(on,1),1.3,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-    "pan-left":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)+t*(iw*0.04/d)':y='ih/2-(ih/zoom/2)'",
-    "pan-right":  "zoompan=z=1.1:x='iw/2-(iw/zoom/2)-t*(iw*0.04/d)':y='ih/2-(ih/zoom/2)'",
-    "pan-up":     "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+t*(ih*0.04/d)'",
-    "pan-down":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-t*(ih*0.04/d)'",
+    "pan-left":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)+on*(iw*0.04/duration)':y='ih/2-(ih/zoom/2)'",
+    "pan-right":  "zoompan=z=1.1:x='iw/2-(iw/zoom/2)-on*(iw*0.04/duration)':y='ih/2-(ih/zoom/2)'",
+    "pan-up":     "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+on*(ih*0.04/duration)'",
+    "pan-down":   "zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)-on*(ih*0.04/duration)'",
     "static":     "zoompan=z=1.0:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
     "random":     None,
 }
