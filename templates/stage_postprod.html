@@ -114,6 +114,8 @@
           <div class="pp-logo-tr" id="pp-logo-tr"></div>
           <div class="pp-logo-bl" id="pp-logo-bl"></div>
           <div class="pp-logo-br" id="pp-logo-br"></div>
+          <!-- Social buttons bar overlay -->
+          <div class="pp-social-bar" id="pp-social-bar" style="display:none;"></div>
           <!-- Active-asset status chips (shown bottom-left of player frame) -->
           <div class="pp-asset-bar" id="pp-asset-bar"></div>
         </div>
@@ -130,6 +132,7 @@
             <div class="pp-logo-tr" id="pp-ai-logo-tr"></div>
             <div class="pp-logo-bl" id="pp-ai-logo-bl"></div>
             <div class="pp-logo-br" id="pp-ai-logo-br"></div>
+            <div class="pp-social-bar" id="pp-ai-social-bar" style="display:none;"></div>
           </div>
         </div>
         {% else %}
@@ -512,6 +515,77 @@
           </div>
         </div>
         {% endfor %}
+
+        <!-- ── Social Buttons Overlay ─────────────────────────────────── -->
+        <div class="pp-ctrl-group pp-logo-slot" style="margin-top:14px;">
+          <div class="pp-logo-slot-header">
+            <label class="pp-ctrl-label" style="font-size:12px;font-weight:700;">📲 Social Buttons</label>
+            <label class="pp-toggle-label" style="margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;">
+              <input type="checkbox" id="ctrl-social-enabled" onchange="ppSocialChange()"> Show on video
+            </label>
+          </div>
+
+          <div id="pp-social-controls" style="display:none;">
+            <!-- Button selection -->
+            <div class="pp-ctrl-group" style="margin-top:8px;">
+              <label class="pp-ctrl-label">Buttons to show</label>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="ctrl-soc-like" checked onchange="ppSocialChange()"> 👍 Like
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="ctrl-soc-subscribe" checked onchange="ppSocialChange()"> 🔔 Subscribe
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="ctrl-soc-share" checked onchange="ppSocialChange()"> ↗ Share
+                </label>
+              </div>
+            </div>
+
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">Position</label>
+                <select class="pp-ctrl-select" id="ctrl-social-pos" onchange="ppSocialChange()">
+                  <option value="bottom-right">Bottom Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                  <option value="bottom-center">Bottom Centre</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="top-left">Top Left</option>
+                </select>
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Style</label>
+                <select class="pp-ctrl-select" id="ctrl-social-style" onchange="ppSocialChange()">
+                  <option value="youtube">YouTube</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="vibrant">Vibrant</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="pp-two-col" style="margin-top:8px;">
+              <div>
+                <label class="pp-ctrl-label">Size <span class="pp-ctrl-val" id="val-social-size">36px</span></label>
+                <input type="range" class="pp-range" id="ctrl-social-size" min="20" max="64" step="2" value="36"
+                       oninput="ppRangeVal('social-size',this.value,'px'); ppSocialChange()">
+              </div>
+              <div>
+                <label class="pp-ctrl-label">Opacity <span class="pp-ctrl-val" id="val-social-op">90%</span></label>
+                <input type="range" class="pp-range" id="ctrl-social-op" min="10" max="100" step="5" value="90"
+                       oninput="ppRangeVal('social-op',this.value,'%'); ppSocialChange()">
+              </div>
+            </div>
+
+            <!-- Live preview of the bar itself -->
+            <div style="margin-top:10px;">
+              <label class="pp-ctrl-label" style="margin-bottom:4px;">Preview</label>
+              <div style="background:rgba(0,0,0,.5);border-radius:6px;padding:8px 10px;min-height:44px;display:flex;align-items:center;">
+                <div class="pp-social-bar" id="pp-social-preview-bar"
+                     style="position:static;padding:0;background:transparent;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -1088,6 +1162,51 @@ body { overflow-y: auto !important; }
   white-space: nowrap;
 }
 
+/* ── Social buttons bar ─────────────────────────────────────────────────── */
+.pp-social-bar {
+  position: absolute;
+  display: flex; gap: 6px; align-items: center;
+  pointer-events: none;
+  z-index: 22; /* above logos (20), below asset bar (30) */
+  padding: 6px 8px;
+}
+/* Position variants */
+.pp-social-bar.pos-bottom-right  { bottom: 52px; right: 10px; }
+.pp-social-bar.pos-bottom-left   { bottom: 52px; left: 10px; }
+.pp-social-bar.pos-bottom-center { bottom: 52px; left: 50%; transform: translateX(-50%); }
+.pp-social-bar.pos-top-right     { top: 10px; right: 10px; }
+.pp-social-bar.pos-top-left      { top: 10px; left: 10px; }
+/* Individual pill buttons */
+.pp-soc-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 20px; font-weight: 700; white-space: nowrap;
+  border: none; cursor: default; line-height: 1;
+}
+/* Style: youtube */
+.pp-social-bar.sty-youtube .pp-soc-btn {
+  background: rgba(15,15,15,.82); color: #fff;
+  backdrop-filter: blur(6px);
+}
+.pp-social-bar.sty-youtube .pp-soc-btn.soc-subscribe {
+  background: #ff0000; color: #fff;
+}
+/* Style: minimal */
+.pp-social-bar.sty-minimal .pp-soc-btn {
+  background: rgba(255,255,255,.15); color: #fff;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.35);
+}
+/* Style: vibrant */
+.pp-social-bar.sty-vibrant .pp-soc-btn {
+  color: #fff;
+}
+.pp-social-bar.sty-vibrant .pp-soc-btn.soc-like      { background: #2563eb; }
+.pp-social-bar.sty-vibrant .pp-soc-btn.soc-subscribe  { background: #dc2626; }
+.pp-social-bar.sty-vibrant .pp-soc-btn.soc-share      { background: #16a34a; }
+/* Icon span inside button */
+.pp-soc-icon { font-size: 1.1em; }
+.pp-soc-label { font-size: .78em; letter-spacing: .02em; }
+
 /* AI video */
 .pp-ai-video-wrap { position: absolute; inset: 0; display: none; flex-direction: column; }
 .pp-ai-video { width: 100%; height: 100%; object-fit: contain; background: #000; flex: 1; }
@@ -1486,6 +1605,14 @@ body { overflow-y: auto !important; }
       outline_colour: '&H00000000', back_colour: '&H80000000',
       bold: 0, outline: 1.5, shadow: 0, alignment: 2, margin_v: 40,
     },
+    social: {
+      enabled: false,
+      buttons: ['like', 'subscribe', 'share'],
+      position: 'bottom-right',
+      style: 'youtube',
+      size: 36,
+      opacity: 90,
+    },
   };
 
   /* ── Shared settings (SRT / logos) ─────────────────────────────────── */
@@ -1777,6 +1904,30 @@ body { overflow-y: auto !important; }
       if (logo.preview_url) ppLogoPreview(slot, logo.preview_url);
     });
 
+    // Social buttons
+    const soc = cfg.social || {};
+    const socEnabledEl = document.getElementById('ctrl-social-enabled');
+    if (socEnabledEl) {
+      socEnabledEl.checked = !!soc.enabled;
+      const socCtrl = document.getElementById('pp-social-controls');
+      if (socCtrl) socCtrl.style.display = soc.enabled ? '' : 'none';
+    }
+    const socBtns = soc.buttons || ['like','subscribe','share'];
+    const likeEl = document.getElementById('ctrl-soc-like');
+    const subEl  = document.getElementById('ctrl-soc-subscribe');
+    const shrEl  = document.getElementById('ctrl-soc-share');
+    if (likeEl) likeEl.checked = socBtns.includes('like');
+    if (subEl)  subEl.checked  = socBtns.includes('subscribe');
+    if (shrEl)  shrEl.checked  = socBtns.includes('share');
+    const socPosEl   = document.getElementById('ctrl-social-pos');
+    const socStyEl   = document.getElementById('ctrl-social-style');
+    const socSizeEl  = document.getElementById('ctrl-social-size');
+    const socOpEl    = document.getElementById('ctrl-social-op');
+    if (socPosEl)  setVal('ctrl-social-pos',   soc.position || 'bottom-right');
+    if (socStyEl)  setVal('ctrl-social-style',  soc.style    || 'youtube');
+    if (socSizeEl) { setVal('ctrl-social-size', soc.size  || 36); ppRangeVal('social-size', soc.size  || 36, 'px'); }
+    if (socOpEl)   { setVal('ctrl-social-op',   soc.opacity || 90); ppRangeVal('social-op',   soc.opacity || 90, '%'); }
+
     // per-shot KB badges
     Object.keys(cfg.per_shot_kb || {}).forEach(idx => ppUpdateKBBadge(parseInt(idx)));
     // per-shot animation badges
@@ -1878,6 +2029,22 @@ body { overflow-y: auto !important; }
       if (x)  cfg.logos[slot].x_offset = parseInt(x.value);
       if (y)  cfg.logos[slot].y_offset = parseInt(y.value);
     });
+
+    // Social buttons
+    const socEnabled = document.getElementById('ctrl-social-enabled');
+    if (socEnabled) {
+      if (!cfg.social) cfg.social = {};
+      cfg.social.enabled  = socEnabled.checked;
+      cfg.social.position = document.getElementById('ctrl-social-pos')?.value  || 'bottom-right';
+      cfg.social.style    = document.getElementById('ctrl-social-style')?.value || 'youtube';
+      cfg.social.size     = parseInt(document.getElementById('ctrl-social-size')?.value || 36);
+      cfg.social.opacity  = parseInt(document.getElementById('ctrl-social-op')?.value || 90);
+      const btns = [];
+      if (document.getElementById('ctrl-soc-like')?.checked)      btns.push('like');
+      if (document.getElementById('ctrl-soc-subscribe')?.checked)  btns.push('subscribe');
+      if (document.getElementById('ctrl-soc-share')?.checked)      btns.push('share');
+      cfg.social.buttons = btns;
+    }
   }
 
   function hexToAss(hex, alpha) {
@@ -2718,6 +2885,12 @@ body { overflow-y: auto !important; }
       chips.push(`<span class="pp-asset-chip">🎨 ${label}</span>`);
     }
 
+    // Social buttons
+    if ((cfg.social || {}).enabled) {
+      const socBtns = (cfg.social.buttons || []).map(b => b.charAt(0).toUpperCase() + b.slice(1));
+      chips.push(`<span class="pp-asset-chip">📲 ${socBtns.join(' · ')}</span>`);
+    }
+
     bar.innerHTML = chips.join('');
   };
 
@@ -2735,6 +2908,7 @@ body { overflow-y: auto !important; }
     _safe(ppApplyFilterPreview, 'filter');
     _safe(ppUpdateTextOverlay,  'text-overlay');
     _safe(ppSubPreview,         'subtitle');
+    _safe(ppApplySocialBar,     'social-bar');
     _safe(ppUpdateAssetBar,     'asset-bar');
     // Restore logo images into corner divs (persists in DOM but may need
     // refreshing after a mode switch or shot change)
@@ -3115,6 +3289,56 @@ body { overflow-y: auto !important; }
     } else {
       alert('Upload failed: ' + d.error);
     }
+  };
+
+  /* ── Social Buttons Overlay ─────────────────────────────────────────── */
+  const SOC_BTN_DEF = {
+    like:      { icon: '👍', label: 'Like',      cls: 'soc-like' },
+    subscribe: { icon: '🔔', label: 'Subscribe', cls: 'soc-subscribe' },
+    share:     { icon: '↗',  label: 'Share',     cls: 'soc-share' },
+  };
+
+  function _buildSocialHTML(soc) {
+    const btns  = (soc.buttons && soc.buttons.length) ? soc.buttons : ['like','subscribe','share'];
+    const sz    = soc.size || 36;
+    const pad   = Math.round(sz * 0.22) + 'px ' + Math.round(sz * 0.42) + 'px';
+    const fsize = Math.round(sz * 0.38) + 'px';
+    return btns.map(k => {
+      const d = SOC_BTN_DEF[k];
+      if (!d) return '';
+      return `<span class="pp-soc-btn ${d.cls}" style="padding:${pad};font-size:${fsize};">` +
+             `<span class="pp-soc-icon">${d.icon}</span>` +
+             `<span class="pp-soc-label">${d.label}</span></span>`;
+    }).join('');
+  }
+
+  window.ppApplySocialBar = function() {
+    const soc = cfg.social || {};
+    const ids = ['pp-social-bar', 'pp-ai-social-bar', 'pp-social-preview-bar'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const isPreview = id === 'pp-social-preview-bar';
+      if (!soc.enabled && !isPreview) { el.style.display = 'none'; return; }
+      if (!soc.enabled && isPreview)  { el.innerHTML = '<span style="color:#666;font-size:11px;">Enable above to preview</span>'; return; }
+      // Position & style classes (not on the inline preview)
+      el.className = 'pp-social-bar' +
+        (isPreview ? '' : ' pos-' + (soc.position || 'bottom-right')) +
+        ' sty-' + (soc.style || 'youtube');
+      el.style.opacity = isPreview ? '1' : ((soc.opacity || 90) / 100);
+      el.style.display = '';
+      el.innerHTML = _buildSocialHTML(soc);
+    });
+  };
+
+  window.ppSocialChange = function() {
+    const enabledEl = document.getElementById('ctrl-social-enabled');
+    const ctrlDiv   = document.getElementById('pp-social-controls');
+    if (enabledEl && ctrlDiv) ctrlDiv.style.display = enabledEl.checked ? '' : 'none';
+    syncCfgFromControls();
+    ppApplySocialBar();
+    ppUpdateAssetBar();
+    markDirty(); scheduleAutosave();
   };
 
   window.ppLogoPreview = function(slot, previewUrl) {
