@@ -7434,14 +7434,21 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
 
                 dst = work_dir / f"still_{idx:04d}.jpg"
                 try:
-                    resp = requests.get(url, timeout=60, stream=True)
-                    resp.raise_for_status()
-                    with open(dst, "wb") as f:
-                        for chunk in resp.iter_content(1 << 16):
-                            f.write(chunk)
+                    # file_path is a private R2 URL — use authenticated download
+                    # rather than a plain HTTP GET which would 403 on private buckets.
+                    from urllib.parse import urlparse as _urlparse
+                    _parsed = _urlparse(url)
+                    _raw_path = _parsed.path.lstrip("/")
+                    _bucket = os.getenv("R2_BUCKET_NAME", "")
+                    if _bucket and _raw_path.startswith(_bucket + "/"):
+                        _r2_key = _raw_path[len(_bucket) + 1:]
+                    else:
+                        _r2_key = _raw_path
+                    _img_bytes = r2_storage.download_bytes(_r2_key)
+                    dst.write_bytes(_img_bytes)
                     local_stills.append((idx, dst, dur))
                 except Exception:
-                    logger.warning("Quick video: could not download still %s for project %s", idx, project_id)
+                    logger.warning("Quick video: could not download still %s for project %s", idx, project_id, exc_info=True)
 
             if not local_stills:
                 raise RuntimeError("Could not download any ready stills.")
