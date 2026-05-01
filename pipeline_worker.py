@@ -7746,39 +7746,70 @@ def _assemble_quick_video_job(project_id: str, settings: dict) -> None:
                     ]
                     subprocess.run(cmd, check=True, capture_output=True)
                 else:
-                    # xfade filter_complex
-                    inputs = []
-                    for clip in processed_clips:
-                        inputs += ["-i", str(clip)]
+                    # xfade filter_complex — chunked to avoid OOM when clip count is large.
+                    # Strategy: stitch groups of CHUNK_SIZE clips with xfade (pass 1),
+                    # then xfade the resulting chunk files together (pass 2).
+                    # This keeps any single FFmpeg invocation to ≤CHUNK_SIZE inputs.
+                    _CHUNK = 10
 
-                    n = len(processed_clips)
-                    filter_parts = []
-                    offsets: list[float] = []
-                    cumulative = 0.0
-                    for i in range(n - 1):
-                        cumulative += local_stills[i][2] - td
-                        offsets.append(round(cumulative, 3))
-
-                    prev_label = "[0:v]"
-                    for i in range(n - 1):
-                        next_label = f"[v{i+1}]" if i < n - 2 else "[vout]"
-                        filter_parts.append(
-                            f"{prev_label}[{i+1}:v]xfade=transition={xfade_effect}"
-                            f":duration={td}:offset={offsets[i]}{next_label}"
+                    def _xfade_stitch(clips_in, durs_in, out_path):
+                        """Stitch clips_in with xfade transitions into out_path."""
+                        _n = len(clips_in)
+                        if _n == 1:
+                            import shutil as _sh2
+                            _sh2.copy2(str(clips_in[0]), str(out_path))
+                            return
+                        _inputs = []
+                        for _c in clips_in:
+                            _inputs += ["-i", str(_c)]
+                        _cum = 0.0
+                        _fp = []
+                        for _i in range(_n - 1):
+                            _cum += durs_in[_i] - td
+                            _off = round(max(0.0, _cum), 3)
+                            _prev = f"[{_i}:v]" if _i == 0 else f"[v{_i}]"
+                            _nxt  = f"[v{_i+1}]" if _i < _n - 2 else "[vout]"
+                            _fp.append(
+                                f"{_prev}[{_i+1}:v]xfade=transition={xfade_effect}"
+                                f":duration={td}:offset={_off}{_nxt}"
+                            )
+                        _cmd = (
+                            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                            + _inputs
+                            + ["-filter_complex", ";".join(_fp),
+                               "-map", "[vout]",
+                               "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
+                               "-pix_fmt", "yuv420p", "-an", str(out_path)]
                         )
-                        prev_label = f"[v{i+1}]"
+                        subprocess.run(_cmd, check=True, capture_output=True)
 
-                    filter_complex = ";".join(filter_parts)
                     stitched = work_dir / "stitched.mp4"
-                    cmd = (
-                        [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
-                        + inputs
-                        + ["-filter_complex", filter_complex,
-                           "-map", "[vout]",
-                           "-c:v", "libx264", "-preset", enc_preset, "-crf", str(crf),
-                           "-pix_fmt", "yuv420p", "-an", str(stitched)]
-                    )
-                    subprocess.run(cmd, check=True, capture_output=True)
+                    _n_total = len(processed_clips)
+                    _all_durs = [s[2] for s in local_stills]
+
+                    if _n_total <= _CHUNK:
+                        # Small enough — single pass
+                        _xfade_stitch(processed_clips, _all_durs, stitched)
+                    else:
+                        # Pass 1: stitch each chunk into an intermediate file
+                        _chunks_clips = [processed_clips[i:i+_CHUNK]
+                                         for i in range(0, _n_total, _CHUNK)]
+                        _chunks_durs  = [_all_durs[i:i+_CHUNK]
+                                         for i in range(0, _n_total, _CHUNK)]
+                        _chunk_files: list[Path] = []
+                        for _ci, (_cc, _cd) in enumerate(zip(_chunks_clips, _chunks_durs)):
+                            _cf = work_dir / f"chunk_{_ci:04d}.mp4"
+                            _xfade_stitch(_cc, _cd, _cf)
+                            _chunk_files.append(_cf)
+
+                        # Each chunk's total play-duration (accounting for xfade overlaps)
+                        _chunk_play_durs = [
+                            max(td + 0.1, sum(_cd) - td * (len(_cd) - 1))
+                            for _cd in _chunks_durs
+                        ]
+
+                        # Pass 2: xfade the small set of chunk files into the final video
+                        _xfade_stitch(_chunk_files, _chunk_play_durs, stitched)
 
             # ── Logo overlays ─────────────────────────────────────────────────
             current_video = stitched
