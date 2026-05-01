@@ -3432,17 +3432,20 @@ body { overflow-y: auto !important; }
   /* Build/style the bar but don't show/hide — timing controls visibility */
   window.ppApplySocialBar = function() {
     const soc = cfg.social || {};
-    // Player overlays — keep hidden; ppSocialTick drives visibility during play
+    // Player overlays — ppSocialTick drives show/hide; we just style + restamp HTML.
+    // If currently visible (_socVisible), keep buttons lit with soc-in so they
+    // don't flash to opacity:0 during shot transitions.
     ['pp-social-bar', 'pp-ai-social-bar'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
       el.className = 'pp-social-bar pos-' + (soc.position || 'right') +
                      ' sty-' + (soc.style || 'youtube');
       el.style.opacity = (soc.opacity || 90) / 100;
-      el.innerHTML = _buildSocialHTML(soc, false);
+      // Rebuild with correct animation state so mid-window transitions don't kill visibility
+      el.innerHTML = _buildSocialHTML(soc, _socVisible);
       if (!soc.enabled) el.style.display = 'none';
     });
-    // Panel preview — always visible, no animation
+    // Panel preview — always static, no animation
     const prev = document.getElementById('pp-social-preview-bar');
     if (prev) {
       if (!soc.enabled) {
