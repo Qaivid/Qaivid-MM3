@@ -99,6 +99,11 @@
         <!-- Ken Burns image (Quick mode) -->
         <div class="pp-kb-wrap" id="pp-kb-wrap">
           <img src="" alt="" class="pp-kb-img" id="pp-kb-img">
+          <!-- Outgoing-shot overlay — sits on top, fades out during crossfade/wipe -->
+          <img src="" alt="" class="pp-kb-img pp-kb-img-prev" id="pp-kb-img-prev"
+               style="opacity:0; pointer-events:none;">
+          <!-- Dip-to-black overlay -->
+          <div id="pp-dip-overlay" style="position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:12;"></div>
           <div class="pp-filter-overlay" id="pp-filter-overlay"></div>
           <!-- Text overlay (from Animation > Text Area) -->
           <div class="pp-text-overlay" id="pp-text-overlay"></div>
@@ -927,6 +932,11 @@ body { overflow-y: auto !important; }
   width: 100%; height: 100%; object-fit: cover;
   transform-origin: center center;
   transition: transform 0.05s linear;
+}
+/* Outgoing-shot overlay (double-buffer transition) */
+#pp-kb-img-prev {
+  position: absolute; inset: 0;
+  z-index: 8; /* above main img, below subtitles/logos */
 }
 /* Ken Burns animations */
 .pp-kb-wrap.kb-zoom-in  .pp-kb-img { animation: ppKBZoomIn  var(--kb-dur,4s) ease-in-out forwards; }
@@ -2097,7 +2107,7 @@ body { overflow-y: auto !important; }
   window.ppJumpTo = function(i) {
     if (i < 0 || i >= SHOTS.length) return;
     currentIdx = i;
-    renderShot();
+    renderShot(true);
     document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
     const shot = SHOTS[i];
     const thumb = document.getElementById('pp-thumb-' + shot.idx);
@@ -2118,12 +2128,18 @@ body { overflow-y: auto !important; }
     ppUpdateTransport(playTimeOffset);
   };
 
-  function renderShot() {
-    const shot = SHOTS[currentIdx];
-    if (!shot) return;
-    const img = document.getElementById('pp-kb-img');
-    img.src = shot.url || '';
-    const wrap = document.getElementById('pp-kb-wrap');
+  /* Cancel any in-progress transition so rapid advances don't stack */
+  let _transTimer = null;
+  function _clearTrans() {
+    if (_transTimer) { clearTimeout(_transTimer); _transTimer = null; }
+    const prev = document.getElementById('pp-kb-img-prev');
+    const dip  = document.getElementById('pp-dip-overlay');
+    if (prev) { prev.style.transition = 'none'; prev.style.opacity = '0'; prev.src = ''; }
+    if (dip)  { dip.style.transition  = 'none'; dip.style.opacity  = '0'; }
+  }
+
+  function _applyKB(shot) {
+    const wrap   = document.getElementById('pp-kb-wrap');
     const kbMode = cfg.per_shot_kb[shot.idx] || cfg.ken_burns_mode || 'zoom-in';
     wrap.className = 'pp-kb-wrap';
     if (kbMode !== 'static' && kbMode !== 'random') {
@@ -2131,10 +2147,81 @@ body { overflow-y: auto !important; }
       void wrap.offsetWidth;
       wrap.classList.add('kb-' + kbMode);
     }
-    const elapsed = ppElapsedAt(currentIdx);
-    const total   = ppTotalDuration();
-    document.getElementById('pp-time-display').textContent =
-      elapsed.toFixed(1) + 's / ' + total.toFixed(1) + 's';
+  }
+
+  function renderShot(doTransition) {
+    const shot = SHOTS[currentIdx];
+    if (!shot) return;
+
+    const img    = document.getElementById('pp-kb-img');
+    const prev   = document.getElementById('pp-kb-img-prev');
+    const dip    = document.getElementById('pp-dip-overlay');
+    const trans  = cfg.transition || 'crossfade';
+    const durS   = Math.max(0.1, cfg.transition_duration || 0.8);
+    const halfMs = durS * 500;
+
+    _clearTrans();
+
+    const currentSrc = img.getAttribute('src') || '';
+    if (doTransition && trans !== 'cut' && currentSrc && currentSrc !== (shot.url || '')) {
+      if (trans === 'dip-to-black') {
+        /* ── Dip to black ── */
+        dip.style.transition = `opacity ${durS / 2}s ease`;
+        dip.style.opacity = '1';
+        _transTimer = setTimeout(() => {
+          img.src = shot.url || '';
+          _applyKB(shot);
+          dip.style.transition = `opacity ${durS / 2}s ease`;
+          dip.style.opacity = '0';
+        }, halfMs);
+
+      } else if (trans === 'wipe') {
+        /* ── Wipe left: outgoing slides out to the left ── */
+        if (prev) {
+          prev.src = img.src;
+          prev.style.transition = 'none';
+          prev.style.opacity = '1';
+          prev.style.transform = 'translateX(0)';
+        }
+        img.src = shot.url || '';
+        _applyKB(shot);
+        requestAnimationFrame(() => {
+          if (prev) {
+            prev.style.transition = `opacity ${durS}s ease, transform ${durS}s ease`;
+            prev.style.opacity = '0';
+            prev.style.transform = 'translateX(-100%)';
+          }
+          _transTimer = setTimeout(() => {
+            if (prev) { prev.style.transform = 'translateX(0)'; prev.src = ''; }
+          }, durS * 1000);
+        });
+
+      } else {
+        /* ── Crossfade / dissolve (default) ── */
+        if (prev) {
+          prev.src = img.src;
+          prev.style.transition = 'none';
+          prev.style.opacity = '1';
+        }
+        img.src = shot.url || '';
+        _applyKB(shot);
+        requestAnimationFrame(() => {
+          if (prev) {
+            prev.style.transition = `opacity ${durS}s ease`;
+            prev.style.opacity = '0';
+          }
+          _transTimer = setTimeout(() => {
+            if (prev) { prev.src = ''; }
+          }, durS * 1000);
+        });
+      }
+    } else {
+      /* ── Hard cut (or first frame / no previous image) ── */
+      img.src = shot.url || '';
+      _applyKB(shot);
+    }
+
+    const elapsed   = ppElapsedAt(currentIdx);
     const shotNumEl = document.getElementById('pp-shot-num');
     if (shotNumEl) shotNumEl.textContent = (currentIdx + 1);
     ppUpdateTransport(playing ? ppCurrentTime() : elapsed);
@@ -2208,7 +2295,7 @@ body { overflow-y: auto !important; }
     const newIdx = ppShotAtTime(secs);
     if (newIdx !== currentIdx) {
       currentIdx = newIdx;
-      renderShot();
+      renderShot(false);
       document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
       const s2 = SHOTS[currentIdx];
       const th = document.getElementById('pp-thumb-' + s2.idx);
@@ -2238,7 +2325,7 @@ body { overflow-y: auto !important; }
     if (ppAudio) ppAudioSeek(0);
     playWallStart  = Date.now();
     playTimeOffset = 0;
-    renderShot();
+    renderShot(false);
     ppUpdateTransport(0);
     document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
     const th0 = document.getElementById('pp-thumb-' + SHOTS[0].idx);
@@ -2332,7 +2419,7 @@ body { overflow-y: auto !important; }
   ppBuildTicks();
   ppUpdateTransport(0);
 
-  window.ppUpdateKBPreview = function() { renderShot(); };
+  window.ppUpdateKBPreview = function() { renderShot(false); };
 
   window.ppThumbClick = function(shotIdx, listIdx) {
     ppJumpTo(listIdx);
@@ -2367,7 +2454,7 @@ body { overflow-y: auto !important; }
         // Restart from the beginning when user hits play at the very end.
         currentIdx = 0;
         startAt    = 0;
-        renderShot();
+        renderShot(false);
       } else {
         // Resume from wherever we were paused / scrubbed to.
         startAt = curT;
@@ -2376,7 +2463,7 @@ body { overflow-y: auto !important; }
         const idxAtT = ppShotAtTime(startAt);
         if (idxAtT !== currentIdx) {
           currentIdx = idxAtT;
-          renderShot();
+          renderShot(false);
           document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
           const s2 = SHOTS[currentIdx];
           const th = document.getElementById('pp-thumb-' + s2.idx);
@@ -2405,7 +2492,7 @@ body { overflow-y: auto !important; }
     playTimer = setTimeout(() => {
       if (currentIdx < SHOTS.length - 1) {
         currentIdx++;
-        renderShot();
+        renderShot(true);
         document.querySelectorAll('.pp-thumb-item').forEach(t => t.classList.remove('active'));
         const s2 = SHOTS[currentIdx];
         const th = document.getElementById('pp-thumb-' + s2.idx);
