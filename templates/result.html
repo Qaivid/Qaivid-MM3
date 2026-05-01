@@ -624,21 +624,58 @@
                                                prodVideosCard.classList.add("active");
         }
 
-        // Attach or update video players on each shot row
+        // Attach a play-button overlay on the shot still for every ready video clip
         videos.forEach(v => {
             if (v.status !== "ready" || !v.url) return;
             const li = document.getElementById("shot-" + v.shot_index);
             if (!li) return;
-            if (li.querySelector(".shot-video")) return;  // already injected
+            if (li.querySelector(".shot-play-btn")) return;  // already injected
+
+            const still = li.querySelector(".shot-still");
+            if (!still) return;
+
+            // ── Play button overlay (visible on hover) ────────────────────
+            const playBtn = document.createElement("button");
+            playBtn.className = "shot-play-btn";
+            playBtn.title = "Play video clip";
+            playBtn.type = "button";
+            const icon = document.createElement("span");
+            icon.textContent = "▶";
+            playBtn.appendChild(icon);
+
+            // ── Inline video (created once, lazy) ─────────────────────────
             const vid = document.createElement("video");
-            vid.className = "shot-video";
+            vid.className = "shot-video-inline";
             vid.src = v.url;
             vid.controls = true;
             vid.loop = true;
-            vid.muted = true;
             vid.playsInline = true;
             vid.preload = "none";
-            li.appendChild(vid);
+
+            // ── Close / back-to-still button ──────────────────────────────
+            const closeBtn = document.createElement("button");
+            closeBtn.className = "shot-video-close";
+            closeBtn.title = "Back to still";
+            closeBtn.type = "button";
+            closeBtn.textContent = "✕";
+
+            still.appendChild(playBtn);
+            still.appendChild(vid);
+            still.appendChild(closeBtn);
+
+            playBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                still.classList.add("shot-still--playing");
+                vid.style.display = "block";
+                vid.play().catch(() => {});
+            });
+
+            closeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                vid.pause();
+                vid.style.display = "none";
+                still.classList.remove("shot-still--playing");
+            });
         });
 
         // Hide "Generate Videos" button once generation has started
