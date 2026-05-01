@@ -1721,9 +1721,16 @@ body { overflow-y: auto !important; }
     return out;
   }
 
-  let cfgQuick = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, _RAW_QUICK);
+  /* Deep-clone defaults so cfgQuick and cfgAi never share nested object
+     references (social, subtitle_style, per_shot_*) with each other or
+     with CFG_DEFAULTS — mutation in one mode must not bleed into another. */
+  function _freshDefaults() {
+    return JSON.parse(JSON.stringify(CFG_DEFAULTS));
+  }
+
+  let cfgQuick = Object.assign(_freshDefaults(), SHARED_CFG, _RAW_QUICK);
   cfgQuick.logos = _mergeLogos(SHARED_CFG.logos, _RAW_QUICK.logos);
-  let cfgAi    = Object.assign({}, CFG_DEFAULTS, SHARED_CFG, _RAW_AI);
+  let cfgAi    = Object.assign(_freshDefaults(), SHARED_CFG, _RAW_AI);
   cfgAi.logos  = _mergeLogos(SHARED_CFG.logos, _RAW_AI.logos);
 
   /* cfg always points to the active mode's config object */
@@ -1933,7 +1940,7 @@ body { overflow-y: auto !important; }
 
     if (cfg.colour_filter) ppSelectFilter(cfg.colour_filter, true);
     if (cfg.aspect_ratio)  ppSelectAR(cfg.aspect_ratio, true);
-    if (cfg.fill_mode)     ppSelectFill(cfg.fill_mode);
+    if (cfg.fill_mode)     ppSelectFill(cfg.fill_mode, true);
 
     const s = cfg.subtitle_style || {};
     setVal('ctrl-sub-font', s.font || 'Arial');
@@ -3037,12 +3044,12 @@ body { overflow-y: auto !important; }
   };
 
   /* ── Fill mode ──────────────────────────────────────────────────────── */
-  window.ppSelectFill = function(mode) {
+  window.ppSelectFill = function(mode, silent) {
     cfg.fill_mode = mode;
     document.querySelectorAll('[data-fill]').forEach(c => {
       c.classList.toggle('active', c.dataset.fill === mode);
     });
-    markDirty(); scheduleAutosave();
+    if (!silent) { markDirty(); scheduleAutosave(); }
   };
 
   /* ── Logo height display helper ─────────────────────────────────────── */
