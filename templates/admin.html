@@ -246,30 +246,81 @@
     ════════════════════════════════════════════════════════ -->
     <div class="adm-panel" id="tab-projects">
         <div class="adm-toolbar">
-            <input type="text" id="proj-search" placeholder="Search by name, owner, status, genre…" class="adm-search" oninput="filterTable('proj-tbody', this.value, [0,1,2,3])">
+            <input type="text" id="proj-search" placeholder="Search by name, owner, status, genre…" class="adm-search" oninput="filterTable('proj-tbody', this.value, [1,2,3,4])">
             <span class="adm-toolbar-count" id="proj-count">{{ projects|length }} projects</span>
         </div>
+        <style>
+            .sqm-bar-wrap { display:flex; height:8px; border-radius:4px; overflow:hidden; width:100%; min-width:80px; background:#1e2535; }
+            .sqm-seg { height:100%; transition:width 0.3s; }
+            .sqm-seg-face { background:#3b82f6; }
+            .sqm-seg-body { background:#22c55e; }
+            .sqm-seg-environment { background:#f59e0b; }
+            .sqm-seg-macro { background:#a855f7; }
+            .sqm-seg-symbolic { background:#ec4899; }
+            .sqm-detail { background:#0d1117; }
+            .sqm-detail td { padding:12px 16px !important; }
+            .sqm-detail-inner { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+            .sqm-legend { display:flex; flex-direction:column; gap:6px; min-width:200px; }
+            .sqm-legend-row { display:flex; align-items:center; gap:8px; font-size:12px; }
+            .sqm-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+            .sqm-label { color:#94a3b8; flex:1; }
+            .sqm-pct { color:#e2e8f0; font-weight:600; font-variant-numeric:tabular-nums; }
+            .sqm-target { color:#475569; font-size:11px; }
+            .sqm-counts { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+            .sqm-count-card { background:#161d2b; border:1px solid #1e2d40; border-radius:8px; padding:10px 14px; min-width:120px; }
+            .sqm-count-num { font-size:22px; font-weight:700; color:#e2e8f0; line-height:1; }
+            .sqm-count-lbl { font-size:11px; color:#64748b; margin-top:3px; }
+            .sqm-count-warn { color:#f59e0b; }
+            .sqm-none { color:#475569; font-size:12px; font-style:italic; }
+            .sqm-expand-btn { background:none; border:none; color:#475569; cursor:pointer; font-size:16px; padding:0 4px; line-height:1; }
+            .sqm-expand-btn:hover { color:#94a3b8; }
+            .sqm-fullbar { display:flex; height:14px; border-radius:4px; overflow:hidden; width:260px; background:#1e2535; flex-shrink:0; }
+        </style>
         <div class="adm-table-wrap">
             <table class="adm-table">
                 <thead>
                     <tr>
+                        <th></th>
                         <th>Name</th>
                         <th>Owner</th>
                         <th>Genre</th>
                         <th>Status</th>
                         <th>Stage</th>
+                        <th>Shot Quality</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="proj-tbody">
                     {% for p in projects %}
+                    {% set sqm = p.shot_quality_metrics or {} %}
+                    {% set sqm_total = sqm.get('total', 0) %}
+                    {% set sqm_modes = sqm.get('mode_counts', {}) %}
                     <tr>
+                        <td style="width:28px;text-align:center">
+                            {% if sqm_total %}
+                            <button class="sqm-expand-btn" onclick="toggleSqmRow('sqm-{{ p.id }}')" title="Show shot quality breakdown">▸</button>
+                            {% endif %}
+                        </td>
                         <td><a href="{{ url_for('project_detail', project_id=p.id) }}" class="adm-link">{{ p.name }}</a></td>
                         <td class="adm-muted">{{ p.owner_email }}</td>
                         <td class="adm-mono" style="font-size:12px">{{ p.genre }}</td>
                         <td><span class="status-pill status-{{ p.status }}">{{ p.status }}</span></td>
                         <td class="adm-muted" style="font-size:12px">{{ p.stage or '—' }}</td>
+                        <td>
+                            {% if sqm_total %}
+                            <div class="sqm-bar-wrap" style="width:120px">
+                                {% for mode in ['face','body','environment','macro','symbolic'] %}
+                                {% set cnt = sqm_modes.get(mode, 0) %}
+                                {% if cnt %}
+                                <div class="sqm-seg sqm-seg-{{ mode }}" style="width:{{ (cnt / sqm_total * 100)|round(1) }}%" title="{{ mode }}: {{ cnt }}/{{ sqm_total }}"></div>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <span class="sqm-none">no data</span>
+                            {% endif %}
+                        </td>
                         <td class="adm-mono">{{ p.created_at.strftime('%Y-%m-%d') }}</td>
                         <td class="adm-actions">
                             <a href="{{ url_for('project_detail', project_id=p.id) }}" class="adm-btn adm-btn-ghost">Open</a>
@@ -280,11 +331,68 @@
                             </form>
                         </td>
                     </tr>
+                    {% if sqm_total %}
+                    <tr id="sqm-{{ p.id }}" class="sqm-detail" data-sqm-detail="1" style="display:none">
+                        <td colspan="9">
+                            <div class="sqm-detail-inner">
+                                <div>
+                                    <div style="font-size:11px;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Shot Distribution ({{ sqm_total }} shots)</div>
+                                    <div class="sqm-fullbar" style="margin-bottom:12px">
+                                        {% for mode in ['face','body','environment','macro','symbolic'] %}
+                                        {% set cnt = sqm_modes.get(mode, 0) %}
+                                        {% if cnt %}
+                                        <div class="sqm-seg sqm-seg-{{ mode }}" style="width:{{ (cnt / sqm_total * 100)|round(1) }}%" title="{{ mode }}: {{ cnt }}"></div>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                    <div class="sqm-legend">
+                                        {% set mode_targets = {'face': 40, 'body': 36, 'environment': 14, 'macro': 5, 'symbolic': 5} %}
+                                        {% set mode_colors = {'face': '#3b82f6', 'body': '#22c55e', 'environment': '#f59e0b', 'macro': '#a855f7', 'symbolic': '#ec4899'} %}
+                                        {% for mode in ['face','body','environment','macro','symbolic'] %}
+                                        {% set cnt = sqm_modes.get(mode, 0) %}
+                                        {% set pct = (cnt / sqm_total * 100)|round(1) if sqm_total else 0 %}
+                                        <div class="sqm-legend-row">
+                                            <div class="sqm-dot" style="background:{{ mode_colors[mode] }}"></div>
+                                            <span class="sqm-label">{{ mode }}</span>
+                                            <span class="sqm-pct">{{ pct }}%</span>
+                                            <span class="sqm-target">(target {{ mode_targets[mode] }}%)</span>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="sqm-counts">
+                                    <div class="sqm-count-card">
+                                        <div class="sqm-count-num {% if sqm.get('validator_rewrite_count', 0) > sqm_total * 0.2 %}sqm-count-warn{% endif %}">{{ sqm.get('validator_rewrite_count', 0) }}</div>
+                                        <div class="sqm-count-lbl">validator rewrites</div>
+                                    </div>
+                                    <div class="sqm-count-card">
+                                        <div class="sqm-count-num {% if sqm.get('variety_cap_reclassified_count', 0) > sqm_total * 0.2 %}sqm-count-warn{% endif %}">{{ sqm.get('variety_cap_reclassified_count', 0) }}</div>
+                                        <div class="sqm-count-lbl">variety reclassified</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+    <script>
+    function toggleSqmRow(id) {
+        var row = document.getElementById(id);
+        if (!row) return;
+        var btn = row.previousElementSibling ? row.previousElementSibling.querySelector('.sqm-expand-btn') : null;
+        if (row.style.display === 'none') {
+            row.style.display = '';
+            if (btn) btn.textContent = '▾';
+        } else {
+            row.style.display = 'none';
+            if (btn) btn.textContent = '▸';
+        }
+    }
+    </script>
 
     <!-- ══════════════════════════════════════════════════════
          TAB: SYSTEM
@@ -770,6 +878,7 @@ function filterTable(tbodyId, query, cols) {
     const q = query.toLowerCase().trim();
     let visible = 0;
     rows.forEach(row => {
+        if (row.dataset.sqmDetail) { row.style.display = 'none'; return; }
         const text = cols.map(c => (row.cells[c]?.textContent || '').toLowerCase()).join(' ');
         const show = !q || text.includes(q);
         row.style.display = show ? '' : 'none';

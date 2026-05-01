@@ -2830,6 +2830,38 @@ def _render_location_plate(project_id: str, location_id: int,
         _release(key)
 
 
+def _compute_shot_quality_metrics(styled_timeline: list[dict]) -> dict:
+    """Derive shot quality metrics from a styled_timeline list.
+
+    Returns a dict with:
+      - total: total shot count
+      - mode_counts: {expression_mode: count} for each mode present
+      - validator_rewrite_count: shots marked is_generic in shot_validation
+      - variety_cap_reclassified_count: shots reclassified by _enforce_variety_caps
+
+    Always returns a dict (even for an empty timeline) so that stale metrics
+    from a previous generation are overwritten rather than retained.
+    """
+    total = len(styled_timeline) if styled_timeline else 0
+    mode_counts: dict[str, int] = {}
+    rewrite_count = 0
+    reclassified_count = 0
+    for shot in styled_timeline:
+        mode = shot.get("expression_mode") or "face"
+        mode_counts[mode] = mode_counts.get(mode, 0) + 1
+        sv = shot.get("shot_validation") or {}
+        if sv.get("is_generic"):
+            rewrite_count += 1
+        if shot.get("variety_cap_reclassified"):
+            reclassified_count += 1
+    return {
+        "total": total,
+        "mode_counts": mode_counts,
+        "validator_rewrite_count": rewrite_count,
+        "variety_cap_reclassified_count": reclassified_count,
+    }
+
+
 def _link_shots_to_entities(project_id: str, styled_timeline: list[dict]) -> None:
     """Update shot_assets.character_id / location_id based on expression_mode.
 
@@ -4477,6 +4509,27 @@ def _stage_brief_job(project_id: str, overrides: dict) -> None:
                 (Json(styled_timeline), project_id),
             )
             conn.commit()
+
+        # Compute and persist shot quality metrics for the admin panel.
+        # Always writes (even when total=0) so stale metrics from a prior
+        # generation are never left on the row after a re-generation.
+        try:
+            _sqm = _compute_shot_quality_metrics(styled_timeline)
+            with _db() as _sqm_conn, _sqm_conn.cursor() as _sqm_cur:
+                _sqm_cur.execute(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+                    "shot_quality_metrics JSONB;"
+                )
+                _sqm_cur.execute(
+                    "UPDATE projects SET shot_quality_metrics=%s WHERE id=%s",
+                    (Json(_sqm), project_id),
+                )
+                _sqm_conn.commit()
+        except Exception as _sqm_err:
+            logger.warning(
+                "_stage_brief_job: could not persist shot_quality_metrics for project=%s: %s",
+                project_id, _sqm_err,
+            )
 
         # Mirror styled_timeline into brain.storyboard_packet for legacy readers
         try:

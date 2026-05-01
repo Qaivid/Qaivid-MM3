@@ -5817,6 +5817,12 @@ def project_export(project_id: str):
 @admin_required
 def admin():
     with db() as conn, conn.cursor() as cur:
+        # Ensure shot_quality_metrics column exists (created on first pipeline run)
+        cur.execute(
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS shot_quality_metrics JSONB;"
+        )
+        conn.commit()
+
         # Users with project counts
         cur.execute(
             """
@@ -5837,7 +5843,8 @@ def admin():
             """
             SELECT p.id, p.name, p.genre, p.status, p.stage,
                    p.created_at, p.updated_at, u.email AS owner_email,
-                   p.error
+                   p.error,
+                   p.shot_quality_metrics
             FROM projects p
             JOIN users u ON u.id = p.user_id
             ORDER BY p.created_at DESC
